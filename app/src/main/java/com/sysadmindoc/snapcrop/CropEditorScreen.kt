@@ -333,8 +333,26 @@ fun CropEditorScreen(
             }
         }
 
-        // Aspect ratio chips
-        Row(
+        // Mode indicator
+        if (editMode != EditMode.CROP) {
+            Row(Modifier.fillMaxWidth().background(
+                if (editMode == EditMode.PIXELATE) Tertiary.copy(alpha = 0.15f) else Secondary.copy(alpha = 0.15f)
+            ).padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.Center) {
+                Text(
+                    when (editMode) {
+                        EditMode.PIXELATE -> "PIXELATE MODE — draw rectangles to redact"
+                        EditMode.DRAW -> "DRAW MODE — ${drawTool.label.lowercase()}"
+                        else -> ""
+                    },
+                    color = if (editMode == EditMode.PIXELATE) Tertiary else Secondary,
+                    fontSize = 11.sp, fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        // Aspect ratio chips (only in crop mode)
+        if (editMode == EditMode.CROP) Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 2.dp),

@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
@@ -30,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -73,6 +75,66 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val batchPickLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) batchAutocrop(uris)
+    }
+
+    private val batchProgress = mutableStateOf("")
+
+    private fun batchAutocrop(uris: List<Uri>) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val statusBarPx = SystemBars.statusBarHeight(resources)
+            val navBarPx = SystemBars.navigationBarHeight(resources)
+            var done = 0
+            val total = uris.size
+
+            for (uri in uris) {
+                withContext(Dispatchers.Main) { batchProgress.value = "Cropping ${done + 1}/$total..." }
+                try {
+                    contentResolver.openInputStream(uri)?.use { stream ->
+                        val bitmap = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
+                        val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
+                        val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
+                                cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
+
+                        val toSave = if (isFullImage) bitmap else {
+                            android.graphics.Bitmap.createBitmap(bitmap,
+                                cropRect.left.coerceAtLeast(0), cropRect.top.coerceAtLeast(0),
+                                cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)),
+                                cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0)))
+                        }
+
+                        val values = android.content.ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.png")
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        if (savedUri != null) {
+                            contentResolver.openOutputStream(savedUri)?.use { out ->
+                                toSave.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            values.clear()
+                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            contentResolver.update(savedUri, values, null, null)
+                        }
+                        if (toSave !== bitmap) toSave.recycle()
+                        bitmap.recycle()
+                    }
+                } catch (_: Exception) {}
+                done++
+            }
+            withContext(Dispatchers.Main) {
+                batchProgress.value = ""
+                Toast.makeText(this@MainActivity, "Batch cropped $done images", Toast.LENGTH_SHORT).show()
+                loadRecentCrops()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -89,6 +151,8 @@ class MainActivity : ComponentActivity() {
                     onToggleService = { toggleService() },
                     onRequestPermissions = { requestPermissions() },
                     onPickImage = { pickImageLauncher.launch("image/*") },
+                    onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
+                    batchProgress = batchProgress.value,
                     hasOverlayPermission = hasOverlayPermission.value,
                     onRequestOverlay = {
                         startActivity(Intent(
@@ -240,6 +304,8 @@ private fun HomeScreen(
     onToggleService: () -> Unit,
     onRequestPermissions: () -> Unit,
     onPickImage: () -> Unit,
+    onBatchCrop: () -> Unit,
+    batchProgress: String,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -270,7 +336,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v3.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v3.2.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -395,6 +461,21 @@ private fun HomeScreen(
             Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Pick Image to Crop")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Batch crop
+        OutlinedButton(
+            onClick = onBatchCrop,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
+            enabled = batchProgress.isEmpty()
+        ) {
+            Icon(Icons.Default.BurstMode, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(if (batchProgress.isNotEmpty()) batchProgress else "Batch Autocrop")
         }
 
         // Stats

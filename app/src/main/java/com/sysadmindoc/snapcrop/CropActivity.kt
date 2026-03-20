@@ -56,6 +56,7 @@ class CropActivity : ComponentActivity() {
     private val cropRect = mutableStateOf(Rect(0, 0, 0, 0))
     private val cropMethod = mutableStateOf("")
     private val isLoading = mutableStateOf(true)
+    private val isSaving = mutableStateOf(false)
     private var sourceUri: Uri? = null
     private val rotationKey = mutableIntStateOf(0)
 
@@ -124,6 +125,14 @@ class CropActivity : ComponentActivity() {
                             onFlipH = { flipBitmap(horizontal = true) },
                             onFlipV = { flipBitmap(horizontal = false) }
                         )
+                    }
+
+                    // Saving overlay
+                    if (isSaving.value) {
+                        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
+                            contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Primary)
+                        }
                     }
 
                     if (showFlash) {
@@ -318,9 +327,16 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, deleteOriginal: Boolean) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
-        saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}", deleteOriginal)
-        cropped.recycle()
+        if (isSaving.value) return
+        isSaving.value = true
+        CoroutineScope(Dispatchers.IO).launch {
+            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
+            withContext(Dispatchers.Main) {
+                saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}", deleteOriginal)
+                cropped.recycle()
+                isSaving.value = false
+            }
+        }
     }
 
     private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>) {
