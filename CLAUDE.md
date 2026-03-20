@@ -68,9 +68,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.7.0
+v5.8.0
 
 ## Version History
+- v5.8.0: Dashed line style toggle for pen/arrow/rect/circle (DashPathEffect on canvas + export), star + heart shape crops (5-point star path, cubic bezier heart, PorterDuff masking), 4 shape crop options total (circle/rounded/star/heart)
 - v5.7.0: Background removal (ML Kit Subject Segmentation via Play Services, one-tap BG remove in editor), color palette extraction (6 dominant colors with hex codes + percentages, tap to copy), gallery date section headers (grouped by date in All Photos view), collage background color picker (6 color options), 5th ML Kit engine
 - v5.6.1: Bug audit + fixes — magnifier tool was drawing result bitmap into itself causing recursive rendering (now draws source bitmap), BootReceiver auto_start default was true (should be false, mismatched with all other code), adj FloatArray default expanded to 6 elements to prevent index bounds issues
 - v5.6.0: Device frame mockup (5 frames: Pixel/iPhone/Samsung/Flat/White, bezel+notch+screen rendering), rounded rect crop (8% corner radius, PorterDuff masking), vignette effect (radial gradient, live preview + export), draw undo/redo improvement (proper redo stack, clear resets both)
@@ -99,10 +100,9 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 
 ### Remaining high-value features:
 - **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch
-- **Background removal** — ML Kit subject segmentation
-- **More shape crops** — Star, heart with transparent BG
-- **Dashed/neon line styles** — Line style variants for shapes
-- **Color palette extraction** — Extract dominant colors from image
+- **Neon glow pen** — Pen stroke with neon glow effect
+- **Save location picker** — Custom output folder
+- **Image resize in editor** — Scale before cropping
 
 ## Gotchas
 - `foregroundServiceType="specialUse"` required for Android 14+

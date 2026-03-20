@@ -316,6 +316,7 @@ class CropActivity : ComponentActivity() {
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
             paint.alpha = 255
+            paint.pathEffect = if (dp.dashed) android.graphics.DashPathEffect(floatArrayOf(dp.strokeWidth * 3, dp.strokeWidth * 2), 0f) else null
 
             // Emoji overlay
             if (dp.shapeType == "emoji" && dp.text != null && dp.points.isNotEmpty()) {
@@ -537,10 +538,49 @@ class CropActivity : ComponentActivity() {
             val shaped = Bitmap.createBitmap(cropped.width, cropped.height, Bitmap.Config.ARGB_8888)
             val c = Canvas(shaped)
             val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-            val radius = minOf(cropped.width, cropped.height) * 0.08f // 8% corner radius
+            val radius = minOf(cropped.width, cropped.height) * 0.08f
             c.drawRoundRect(RectF(0f, 0f, cropped.width.toFloat(), cropped.height.toFloat()), radius, radius, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, 0f, 0f, shapePaint)
+            cropped.recycle()
+            return shaped
+        } else if (shapeType == 3f) {
+            // Star (5-point)
+            val size = minOf(cropped.width, cropped.height)
+            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(shaped)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val starPath = Path()
+            val cx = size / 2f; val cy = size / 2f; val outerR = size / 2f; val innerR = outerR * 0.38f
+            for (i in 0 until 10) {
+                val r = if (i % 2 == 0) outerR else innerR
+                val angle = Math.toRadians((i * 36.0 - 90.0))
+                val x = cx + r * kotlin.math.cos(angle).toFloat()
+                val y = cy + r * kotlin.math.sin(angle).toFloat()
+                if (i == 0) starPath.moveTo(x, y) else starPath.lineTo(x, y)
+            }
+            starPath.close()
+            c.drawPath(starPath, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
+            cropped.recycle()
+            return shaped
+        } else if (shapeType == 4f) {
+            // Heart
+            val size = minOf(cropped.width, cropped.height)
+            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(shaped)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val heartPath = Path()
+            val w = size.toFloat(); val h = size.toFloat()
+            heartPath.moveTo(w / 2, h * 0.25f)
+            heartPath.cubicTo(w * 0.15f, h * -0.05f, -w * 0.1f, h * 0.45f, w / 2, h * 0.95f)
+            heartPath.moveTo(w / 2, h * 0.25f)
+            heartPath.cubicTo(w * 0.85f, h * -0.05f, w * 1.1f, h * 0.45f, w / 2, h * 0.95f)
+            heartPath.close()
+            c.drawPath(heartPath, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
             cropped.recycle()
             return shaped
         }
@@ -556,7 +596,7 @@ class CropActivity : ComponentActivity() {
             val watermarked = applyWatermark(cropped)
             if (watermarked !== cropped) cropped.recycle()
             cropped = watermarked
-            val hasShapeCrop = adj.size > 3 && adj[3] > 0f
+            val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
             withContext(Dispatchers.Main) {
                 saveToGallery(cropped, resolveFilename(), deleteOriginal, forcePng = hasShapeCrop)
                 cropped.recycle()

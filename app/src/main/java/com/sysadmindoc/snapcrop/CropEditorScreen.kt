@@ -81,9 +81,10 @@ data class DrawPath(
     val color: Int,
     val strokeWidth: Float,
     val isArrow: Boolean = false,
-    val shapeType: String? = null, // "rect", "circle", or "text"
+    val shapeType: String? = null,
     val text: String? = null,
-    val filled: Boolean = false
+    val filled: Boolean = false,
+    val dashed: Boolean = false
 )
 
 private enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
@@ -150,7 +151,9 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     RATIO_9_16("9:16", 9f / 16f),
     RATIO_2_1("2:1", 2f / 1f),
     CIRCLE("Circle", 1f),
-    ROUNDED("Rounded", null)
+    ROUNDED("Rounded", null),
+    STAR("Star", 1f),
+    HEART("Heart", 1f)
 }
 
 @Composable
@@ -213,6 +216,7 @@ fun CropEditorScreen(
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
     var shapeFilled by remember { mutableStateOf(false) }
+    var dashedStroke by remember { mutableStateOf(false) }
     var calloutCounter by remember { mutableIntStateOf(1) }
     var eyedropperActive by remember { mutableStateOf(false) }
     var bgRemoving by remember { mutableStateOf(false) }
@@ -601,6 +605,16 @@ fun CropEditorScreen(
                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
                             shape = RoundedCornerShape(8.dp))
                     }
+                    // Dashed toggle (for pen, arrow, rect, circle)
+                    if (drawTool in listOf(DrawTool.PEN, DrawTool.ARROW, DrawTool.RECT, DrawTool.CIRCLE)) {
+                        FilterChip(selected = dashedStroke,
+                            onClick = { dashedStroke = !dashedStroke },
+                            label = { Text("---", fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp))
+                    }
                     // Eyedropper
                     IconButton(onClick = { eyedropperActive = !eyedropperActive },
                         modifier = Modifier.size(28.dp)) {
@@ -841,7 +855,8 @@ fun CropEditorScreen(
                                                     strokeWidth = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth,
                                                     isArrow = drawTool == DrawTool.ARROW,
                                                     shapeType = shape,
-                                                    filled = shapeFilled && (shape == "rect" || shape == "circle")
+                                                    filled = shapeFilled && (shape == "rect" || shape == "circle"),
+                                                    dashed = dashedStroke
                                                 ))
                                             }
                                             currentDrawPoints = emptyList()
@@ -1033,6 +1048,13 @@ fun CropEditorScreen(
                     } else if (selectedRatio == AspectRatio.ROUNDED) {
                         drawRoundRect(CropBorder.copy(alpha = 0.5f), Offset(sl, st), Size(sr - sl, sb - st),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), style = Stroke(2.dp.toPx()))
+                    } else if (selectedRatio == AspectRatio.STAR || selectedRatio == AspectRatio.HEART) {
+                        // Show shape name indicator
+                        val label = if (selectedRatio == AspectRatio.STAR) "Star" else "Heart"
+                        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            color = 0x80CDD6F4.toInt(); textSize = 14.dp.toPx(); textAlign = android.graphics.Paint.Align.CENTER
+                        }
+                        drawContext.canvas.nativeCanvas.drawText(label, (sl + sr) / 2, (st + sb) / 2, labelPaint)
                     }
 
                     // Pixelate region indicators (mosaic pattern)
@@ -1157,7 +1179,8 @@ fun CropEditorScreen(
                             val p1 = pts.first(); val p2 = pts.last()
                             val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
                             val sx2 = ox + p2.x * scale; val sy2 = oy + p2.y * scale
-                            val style = if (dp.filled) null else Stroke(sw)
+                            val dashEffect = if (dp.dashed) androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(sw * 3, sw * 2), 0f) else null
+                            val style = if (dp.filled) null else Stroke(sw, pathEffect = dashEffect)
                             when (shape) {
                                 "rect" -> {
                                     val off = Offset(minOf(sx1, sx2), minOf(sy1, sy2))
@@ -1176,10 +1199,23 @@ fun CropEditorScreen(
                             return
                         }
                         if (pts.size < 2) return
-                        for (i in 1 until pts.size) {
-                            val a = pts[i - 1]; val b = pts[i]
-                            drawLine(color, Offset(ox + a.x * scale, oy + a.y * scale),
-                                Offset(ox + b.x * scale, oy + b.y * scale), strokeWidth = sw)
+                        if (dp.dashed) {
+                            // Dashed lines via nativeCanvas
+                            val dashPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color; strokeWidth = sw; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND
+                                pathEffect = android.graphics.DashPathEffect(floatArrayOf(sw * 3, sw * 2), 0f)
+                            }
+                            val dashPath = android.graphics.Path()
+                            dashPath.moveTo(ox + pts[0].x * scale, oy + pts[0].y * scale)
+                            for (i in 1 until pts.size) dashPath.lineTo(ox + pts[i].x * scale, oy + pts[i].y * scale)
+                            drawContext.canvas.nativeCanvas.drawPath(dashPath, dashPaint)
+                        } else {
+                            for (i in 1 until pts.size) {
+                                val a = pts[i - 1]; val b = pts[i]
+                                drawLine(color, Offset(ox + a.x * scale, oy + a.y * scale),
+                                    Offset(ox + b.x * scale, oy + b.y * scale), strokeWidth = sw)
+                            }
                         }
                         if (dp.isArrow && pts.size >= 2) {
                             val last = pts.last(); val prev = pts[pts.size - 2]
@@ -1333,7 +1369,7 @@ fun CropEditorScreen(
             // Action icons row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
-                val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; else -> 0f }
+                val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }
                 val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
@@ -1344,7 +1380,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; else -> 0f }, warmth, vignette)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }, warmth, vignette)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
