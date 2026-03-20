@@ -4,15 +4,28 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,6 +50,8 @@ data class Photo(val id: Long, val uri: Uri, val dateAdded: Long)
 @Composable
 fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
+    onShareUris: (List<Uri>) -> Unit,
+    onDeleteUris: (List<Uri>) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -44,6 +59,9 @@ fun GalleryScreen(
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var viewerIndex by remember { mutableIntStateOf(-1) } // -1 = not viewing
+    val selectedIds = remember { mutableStateListOf<Long>() }
+    val selectionMode = selectedIds.isNotEmpty()
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { albums = loadAlbums(context.contentResolver) }
@@ -53,34 +71,80 @@ fun GalleryScreen(
     LaunchedEffect(selectedAlbum) {
         selectedAlbum?.let { path ->
             isLoading = true
-            withContext(Dispatchers.IO) { photos = loadPhotos(context.contentResolver, path) }
+            selectedIds.clear()
+            withContext(Dispatchers.IO) {
+                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver)
+                else loadPhotos(context.contentResolver, path)
+            }
             isLoading = false
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()
-    ) {
+    // Fullscreen viewer
+    if (viewerIndex >= 0 && photos.isNotEmpty()) {
+        PhotoViewer(
+            photos = photos,
+            initialIndex = viewerIndex,
+            onClose = { viewerIndex = -1 },
+            onEdit = { onOpenEditor(it.uri); viewerIndex = -1 }
+        )
+        return
+    }
+
+    Column(Modifier.fillMaxSize().background(Color.Black)) {
         // Top bar
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {
-                if (selectedAlbum != null) { selectedAlbum = null; photos = emptyList() }
-                else onBack()
-            }) {
-                @Suppress("DEPRECATION")
-                Icon(Icons.Default.ArrowBack, "Back", tint = OnSurface)
+            if (selectionMode) {
+                // Selection mode bar
+                IconButton(onClick = { selectedIds.clear() }) {
+                    Icon(Icons.Default.Close, "Cancel", tint = OnSurface)
+                }
+                Text("${selectedIds.size} selected", color = OnSurface, fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                IconButton(onClick = {
+                    selectedIds.clear()
+                    selectedIds.addAll(photos.map { it.id })
+                }) { Icon(Icons.Default.SelectAll, "Select all", tint = OnSurface) }
+                IconButton(onClick = {
+                    val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                    onShareUris(uris)
+                }) { Icon(Icons.Default.Share, "Share", tint = OnSurface) }
+                IconButton(onClick = {
+                    val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                    onDeleteUris(uris)
+                    selectedIds.clear()
+                    // Refresh
+                    selectedAlbum?.let { path ->
+                        val refreshPath = path
+                        selectedAlbum = null
+                        selectedAlbum = refreshPath
+                    }
+                }) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
+            } else {
+                IconButton(onClick = {
+                    if (selectedAlbum != null) { selectedAlbum = null; photos = emptyList() }
+                    else onBack()
+                }) {
+                    @Suppress("DEPRECATION")
+                    Icon(Icons.Default.ArrowBack, "Back", tint = OnSurface)
+                }
+                Text(
+                    text = when {
+                        selectedAlbum == "__ALL__" -> "All Photos"
+                        selectedAlbum != null -> selectedAlbum!!.trimEnd('/').substringAfterLast("/")
+                        else -> "Gallery"
+                    },
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                if (selectedAlbum == null) {
+                    Text("${albums.sumOf { it.count }} photos", color = OnSurfaceVariant,
+                        fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
+                }
             }
-            Text(
-                text = if (selectedAlbum != null) {
-                    selectedAlbum!!.trimEnd('/').substringAfterLast("/")
-                } else "Gallery",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = OnSurface
-            )
         }
 
         if (isLoading) {
@@ -88,15 +152,29 @@ fun GalleryScreen(
                 CircularProgressIndicator(color = Primary)
             }
         } else if (selectedAlbum == null) {
-            AlbumGrid(albums = albums, onAlbumClick = { selectedAlbum = it.path })
+            AlbumGrid(albums = albums, onAlbumClick = { selectedAlbum = it.path },
+                onAllPhotos = { selectedAlbum = "__ALL__" })
         } else {
-            PhotoGrid(photos = photos, onPhotoClick = { onOpenEditor(it.uri) })
+            PhotoGrid(
+                photos = photos,
+                selectedIds = selectedIds,
+                selectionMode = selectionMode,
+                onPhotoClick = { photo, index ->
+                    if (selectionMode) toggleSelection(selectedIds, photo.id)
+                    else viewerIndex = index
+                },
+                onPhotoLongClick = { photo -> toggleSelection(selectedIds, photo.id) }
+            )
         }
     }
 }
 
+private fun toggleSelection(selectedIds: MutableList<Long>, id: Long) {
+    if (id in selectedIds) selectedIds.remove(id) else selectedIds.add(id)
+}
+
 @Composable
-private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit) {
+private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit) {
     if (albums.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No albums found", color = OnSurfaceVariant, fontSize = 15.sp)
@@ -110,34 +188,43 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // "All Photos" card first
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAllPhotos() },
+                colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Photo, null, Modifier.size(40.dp), tint = Primary)
+                        Spacer(Modifier.height(8.dp))
+                        Text("All Photos", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Text("${albums.sumOf { it.count }}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
         items(albums) { album ->
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .clickable { onAlbumClick(album) },
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAlbumClick(album) },
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Box(Modifier.fillMaxSize()) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(album.coverUri)
-                            .crossfade(true)
-                            .size(300)
-                            .build(),
+                            .data(album.coverUri).crossfade(true).size(300).build(),
                         contentDescription = album.name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
-                    Box(
-                        Modifier.fillMaxWidth().align(Alignment.BottomCenter)
-                            .background(Color.Black.copy(alpha = 0.6f)).padding(8.dp)
-                    ) {
+                    Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                        .background(Color.Black.copy(alpha = 0.6f)).padding(8.dp)) {
                         Column {
                             Text(album.name, color = OnSurface, fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis)
+                                fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text("${album.count}", color = OnSurfaceVariant, fontSize = 11.sp)
                         }
                     }
@@ -147,8 +234,15 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PhotoGrid(photos: List<Photo>, onPhotoClick: (Photo) -> Unit) {
+private fun PhotoGrid(
+    photos: List<Photo>,
+    selectedIds: List<Long>,
+    selectionMode: Boolean,
+    onPhotoClick: (Photo, Int) -> Unit,
+    onPhotoLongClick: (Photo) -> Unit
+) {
     if (photos.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No photos", color = OnSurfaceVariant, fontSize = 15.sp)
@@ -162,39 +256,82 @@ private fun PhotoGrid(photos: List<Photo>, onPhotoClick: (Photo) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        items(photos) { photo ->
+        items(photos.size) { index ->
+            val photo = photos[index]
+            val isSelected = photo.id in selectedIds
+            Box {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(photo.uri).crossfade(true).size(250).build(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        .clip(RoundedCornerShape(2.dp))
+                        .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
+                        .combinedClickable(
+                            onClick = { onPhotoClick(photo, index) },
+                            onLongClick = { onPhotoLongClick(photo) }
+                        ),
+                    contentScale = ContentScale.Crop
+                )
+                if (isSelected) {
+                    Icon(Icons.Default.CheckCircle, null,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
+                        tint = Primary)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoViewer(
+    photos: List<Photo>,
+    initialIndex: Int,
+    onClose: () -> Unit,
+    onEdit: (Photo) -> Unit
+) {
+    val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(photo.uri)
-                    .crossfade(true)
-                    .size(250)
-                    .build(),
+                    .data(photos[page].uri).crossfade(true).build(),
                 contentDescription = null,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                    .clip(RoundedCornerShape(2.dp))
-                    .clickable { onPhotoClick(photo) },
-                contentScale = ContentScale.Crop
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
             )
+        }
+
+        // Top bar overlay
+        Row(
+            Modifier.fillMaxWidth().align(Alignment.TopCenter)
+                .background(Color.Black.copy(alpha = 0.5f))
+                .statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, "Close", tint = Color.White)
+            }
+            Text("${pagerState.currentPage + 1} / ${photos.size}",
+                color = Color.White, fontSize = 14.sp)
+            IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
+                Icon(Icons.Default.Crop, "Edit", tint = Primary)
+            }
         }
     }
 }
 
 private fun loadAlbums(resolver: ContentResolver): List<Album> {
     val albumMap = mutableMapOf<String, MutableList<Long>>()
-
-    val projection = arrayOf(
-        MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.RELATIVE_PATH
-    )
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.RELATIVE_PATH)
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-    resolver.query(
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        projection, null, null, sortOrder
-    )?.use { cursor ->
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
-
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val path = cursor.getString(pathCol) ?: continue
@@ -211,29 +348,36 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
 
 private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo> {
     val photos = mutableListOf<Photo>()
-
-    val projection = arrayOf(
-        MediaStore.Images.Media._ID,
-        MediaStore.Images.Media.DATE_ADDED
-    )
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-    resolver.query(
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-        projection, selection, selectionArgs, sortOrder
-    )?.use { cursor ->
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
-            val date = cursor.getLong(dateCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, date))
+            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
         }
     }
+    return photos
+}
 
+private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
+    val photos = mutableListOf<Photo>()
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
+        }
+    }
     return photos
 }

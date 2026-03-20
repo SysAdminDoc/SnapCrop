@@ -215,6 +215,21 @@ class MainActivity : ComponentActivity() {
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
+                                onShareUris = { uris ->
+                                    val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                                        type = "image/*"
+                                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    startActivity(Intent.createChooser(shareIntent, null))
+                                },
+                                onDeleteUris = { uris ->
+                                    var count = 0
+                                    for (uri in uris) {
+                                        try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+                                    }
+                                    Toast.makeText(this@MainActivity, "Deleted $count photos", Toast.LENGTH_SHORT).show()
+                                },
                                 onBack = { selectedTab = 0 }
                             )
                         }
@@ -384,7 +399,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v4.0.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v4.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
