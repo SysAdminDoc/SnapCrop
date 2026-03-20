@@ -80,7 +80,8 @@ data class DrawPath(
 
 private enum class EditMode { CROP, PIXELATE, DRAW, OCR }
 private enum class DrawTool(val label: String) {
-    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text")
+    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
+    HIGHLIGHT("Mark"), CALLOUT("#")
 }
 
 private val drawColors = listOf(
@@ -157,6 +158,7 @@ fun CropEditorScreen(
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
     var shapeFilled by remember { mutableStateOf(false) }
+    var calloutCounter by remember { mutableIntStateOf(1) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
@@ -602,6 +604,16 @@ fun CropEditorScreen(
                                                 textPlacePoint = PointF(bx, by)
                                                 textDialogValue = ""
                                                 showTextDialog = true
+                                            } else if (drawTool == DrawTool.CALLOUT) {
+                                                // Place numbered circle at tap point
+                                                drawPaths.add(DrawPath(
+                                                    points = listOf(PointF(bx, by)),
+                                                    color = drawColor,
+                                                    strokeWidth = drawStrokeWidth,
+                                                    shapeType = "callout",
+                                                    text = "${calloutCounter++}"
+                                                ))
+                                                haptic()
                                             } else {
                                                 currentDrawPoints = listOf(PointF(bx, by))
                                             }
@@ -629,19 +641,20 @@ fun CropEditorScreen(
                                             pixDragStart = null; pixDragCurrent = null
                                         }
                                         EditMode.DRAW -> {
-                                            if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT) {
+                                            if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT && drawTool != DrawTool.CALLOUT) {
                                                 val shape = when (drawTool) {
                                                     DrawTool.RECT -> "rect"
                                                     DrawTool.CIRCLE -> "circle"
+                                                    DrawTool.HIGHLIGHT -> "highlight"
                                                     else -> null
                                                 }
                                                 drawPaths.add(DrawPath(
-                                                    points = if (shape != null) listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints.toList(),
+                                                    points = if (shape == "rect" || shape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints.toList(),
                                                     color = drawColor,
-                                                    strokeWidth = drawStrokeWidth,
+                                                    strokeWidth = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth,
                                                     isArrow = drawTool == DrawTool.ARROW,
                                                     shapeType = shape,
-                                                    filled = shapeFilled && shape != null
+                                                    filled = shapeFilled && (shape == "rect" || shape == "circle")
                                                 ))
                                             }
                                             currentDrawPoints = emptyList()
@@ -786,6 +799,35 @@ fun CropEditorScreen(
                             return
                         }
 
+                        // Callout (numbered circle)
+                        if (shape == "callout" && dp.text != null && pts.isNotEmpty()) {
+                            val p = pts.first()
+                            val cx = ox + p.x * scale; val cy = oy + p.y * scale
+                            val radius = dp.strokeWidth * scale * 2
+                            drawCircle(color, radius, Offset(cx, cy))
+                            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = if (dp.color == 0xFFFFFFFF.toInt() || dp.color == 0xFFFFFF00.toInt()) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                                textSize = radius * 1.2f
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(
+                                dp.text, cx, cy + radius * 0.4f, textPaint)
+                            return
+                        }
+
+                        // Highlighter (semi-transparent wide stroke)
+                        if (shape == "highlight" && pts.size >= 2) {
+                            val highlightColor = color.copy(alpha = 0.4f)
+                            for (i in 1 until pts.size) {
+                                val a = pts[i - 1]; val b = pts[i]
+                                drawLine(highlightColor,
+                                    Offset(ox + a.x * scale, oy + a.y * scale),
+                                    Offset(ox + b.x * scale, oy + b.y * scale),
+                                    strokeWidth = sw)
+                            }
+                            return
+                        }
+
                         if (shape != null && pts.size >= 2) {
                             val p1 = pts.first(); val p2 = pts.last()
                             val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
@@ -834,10 +876,14 @@ fun CropEditorScreen(
 
                     // Current draw stroke
                     if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
-                        val curShape = when (drawTool) { DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"; else -> null }
-                        val curPts = if (curShape != null) listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
-                        drawShapeOnCanvas(DrawPath(curPts, drawColor, drawStrokeWidth, drawTool == DrawTool.ARROW, curShape),
-                            curPts, Color(drawColor), drawStrokeWidth * scale)
+                        val curShape = when (drawTool) {
+                            DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
+                            DrawTool.HIGHLIGHT -> "highlight"; else -> null
+                        }
+                        val curSw = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth
+                        val curPts = if (curShape == "rect" || curShape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
+                        drawShapeOnCanvas(DrawPath(curPts, drawColor, curSw, drawTool == DrawTool.ARROW, curShape),
+                            curPts, Color(drawColor), curSw * scale)
                     }
 
                     // Current pixelate drag preview

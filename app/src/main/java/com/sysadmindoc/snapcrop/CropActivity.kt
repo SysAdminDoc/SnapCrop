@@ -280,9 +280,39 @@ class CropActivity : ComponentActivity() {
             strokeJoin = Paint.Join.ROUND
         }
         for (dp in paths) {
-            if (dp.points.size < 2) continue
+            if (dp.points.isEmpty()) continue
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
+            paint.alpha = 255
+
+            // Callout (numbered circle)
+            if (dp.shapeType == "callout" && dp.text != null && dp.points.isNotEmpty()) {
+                val p = dp.points.first()
+                val radius = dp.strokeWidth * 2
+                val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color; style = Paint.Style.FILL
+                }
+                canvas.drawCircle(p.x, p.y, radius, fillPaint)
+                val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = if (dp.color == 0xFFFFFFFF.toInt() || dp.color == 0xFFFFFF00.toInt()) 0xFF000000.toInt() else 0xFFFFFFFF.toInt()
+                    textSize = radius * 1.2f
+                    textAlign = Paint.Align.CENTER
+                    style = Paint.Style.FILL
+                }
+                canvas.drawText(dp.text, p.x, p.y + radius * 0.4f, textPaint)
+                continue
+            }
+
+            // Highlighter (semi-transparent wide stroke)
+            if (dp.shapeType == "highlight" && dp.points.size >= 2) {
+                paint.alpha = 100 // ~40% opacity
+                val path = Path()
+                path.moveTo(dp.points[0].x, dp.points[0].y)
+                for (i in 1 until dp.points.size) path.lineTo(dp.points[i].x, dp.points[i].y)
+                canvas.drawPath(path, paint)
+                paint.alpha = 255
+                continue
+            }
 
             // Text
             if (dp.shapeType == "text" && dp.text != null && dp.points.isNotEmpty()) {
