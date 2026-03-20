@@ -39,7 +39,7 @@ Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitig
 v2.9.0
 
 ## Version History
-- v2.9.0: Pixelate/redact tool (draw rectangles to mosaic regions, applied before save/share/clipboard), BlurOn toggle in top bar, pixelate rects passed through all output paths
+- v2.9.0: Pixelate/redact tool, IS_PENDING=0 fix for screenshot detection (file fully written before opening), removed retry loop/delay bandaids, widened recency window to 10s
 - v2.8.0: Settings screen (delete original, JPEG/PNG format, quality slider, auto-start), copy to clipboard, async bitmap loading with spinner, landscape lock on CropActivity, settings gear on home screen
 - v2.7.0: Flip H/V, double-tap preview toggle, crop % indicator, undo on all crop changes (aspect/reset/auto/AI), scrollable home screen, share button in bottom bar, reorganized toolbar
 - v2.6.0: Fix infinite loop (exclude own saves from ContentObserver), fix bitmap memory leak on rotate (recycle old), OOM protection (scale down images >4096px), AI crop loading spinner, async recent crops query, onDestroy bitmap cleanup, time-based debounce
@@ -60,3 +60,5 @@ v2.9.0
 - SYSTEM_ALERT_WINDOW needed for thumbnail overlay — gracefully skipped if not granted
 - Android 12+ edge-to-edge: status bar is transparent, pixel analysis CANNOT detect it. Must use exact device dimensions via `resources.getIdentifier("status_bar_height", "dimen", "android")`
 - `getIdentifier` returns configured height even with gesture nav / hidden bars — correct for screenshots since they capture full framebuffer
+- ContentObserver fires TWICE per screenshot: IS_PENDING=1 (created, not written) and IS_PENDING=0 (finalized). MUST check IS_PENDING=0 before reading the file or you get "Failed to load image"
+- The 500ms delay / retry loop approaches are bandaids. The proper fix is querying IS_PENDING in the ContentObserver handler

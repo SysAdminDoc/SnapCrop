@@ -26,7 +26,6 @@ class ScreenshotService : Service() {
     }
 
     private var observer: ContentObserver? = null
-    private var lastProcessedUri: String? = null
     private var lastProcessedTime = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -80,16 +79,15 @@ class ScreenshotService : Service() {
 
     private fun handleNewImage(uri: Uri) {
         val now = System.currentTimeMillis()
-        val uriStr = uri.toString()
 
-        // Debounce — MediaStore fires multiple events per screenshot
-        // URI check OR time-based (some devices fire different URIs for same screenshot)
+        // Time-based debounce — prevent processing same screenshot twice
         if (now - lastProcessedTime < 2000) return
 
         val projection = arrayOf(
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.DATE_ADDED
+            MediaStore.Images.Media.DATE_ADDED,
+            MediaStore.Images.Media.IS_PENDING
         )
 
         try {
@@ -98,22 +96,27 @@ class ScreenshotService : Service() {
                     val name = cursor.getString(0) ?: return
                     val path = cursor.getString(1) ?: ""
                     val dateAdded = cursor.getLong(2)
+                    val isPending = cursor.getInt(3)
 
-                    val isRecent = (now / 1000 - dateAdded) < 5
+                    // CRITICAL: Only process when IS_PENDING = 0
+                    // The file is fully written to disk at this point.
+                    // ContentObserver fires twice: once on creation (IS_PENDING=1)
+                    // and once when finalized (IS_PENDING=0). We only want the second.
+                    if (isPending != 0) return
+
+                    val isRecent = (now / 1000 - dateAdded) < 10
                     val isScreenshot = path.contains("screenshot", ignoreCase = true) ||
                             path.contains("Screen", ignoreCase = true) ||
                             name.contains("screenshot", ignoreCase = true) ||
                             name.contains("Screen", ignoreCase = true)
 
-                    // Exclude our own saved crops to prevent infinite loop
+                    // Exclude our own saved crops
                     val isOurSave = path.contains("SnapCrop", ignoreCase = false) ||
                             name.startsWith("SnapCrop_")
 
                     if (isRecent && isScreenshot && !isOurSave) {
-                        lastProcessedUri = uriStr
                         lastProcessedTime = now
-                        // Small delay to let the screenshot file finish writing
-                        Handler(Looper.getMainLooper()).postDelayed({ launchEditor(uri) }, 500)
+                        launchEditor(uri)
                     }
                 }
             }

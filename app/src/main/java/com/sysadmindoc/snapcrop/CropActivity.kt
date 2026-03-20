@@ -162,49 +162,40 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun loadBitmap(uri: Uri) {
-        // Retry loop — screenshot file may not be fully written when ContentObserver fires
-        var bitmap: Bitmap? = null
-        for (attempt in 1..5) {
-            try {
-                // First pass: get dimensions
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+        try {
+            // First pass: get dimensions
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
 
-                if (opts.outWidth <= 0 || opts.outHeight <= 0) {
-                    Thread.sleep(300L * attempt)
-                    continue
-                }
-
-                // Calculate sample size for large images
-                val maxDim = 4096
-                var sampleSize = 1
+            // Scale down if very large
+            val maxDim = 4096
+            var sampleSize = 1
+            if (opts.outWidth > 0 && opts.outHeight > 0) {
                 while (opts.outWidth / sampleSize > maxDim || opts.outHeight / sampleSize > maxDim) {
                     sampleSize *= 2
                 }
-
-                // Second pass: decode
-                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                contentResolver.openInputStream(uri)?.use {
-                    bitmap = BitmapFactory.decodeStream(it, null, decodeOpts)
-                }
-
-                if (bitmap != null) break
-                Thread.sleep(300L * attempt)
-            } catch (_: Exception) {
-                Thread.sleep(300L * attempt)
             }
-        }
 
-        if (bitmap != null) {
-            originalBitmap = bitmap
-            val bmp = bitmap!!
-            val statusBarPx = SystemBars.statusBarHeight(resources)
-            val navBarPx = SystemBars.navigationBarHeight(resources)
-            val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
-            bitmapState.value = bmp
-            cropRect.value = result.rect
-            cropMethod.value = result.method
-        } else {
+            // Second pass: decode
+            val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            contentResolver.openInputStream(uri)?.use {
+                originalBitmap = BitmapFactory.decodeStream(it, null, decodeOpts)
+            }
+
+            originalBitmap?.let { bmp ->
+                val statusBarPx = SystemBars.statusBarHeight(resources)
+                val navBarPx = SystemBars.navigationBarHeight(resources)
+                val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
+                bitmapState.value = bmp
+                cropRect.value = result.rect
+                cropMethod.value = result.method
+            } ?: run {
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+        } catch (e: Exception) {
             runOnUiThread {
                 Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
                 finish()
