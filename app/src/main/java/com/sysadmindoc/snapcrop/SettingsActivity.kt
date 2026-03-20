@@ -149,6 +149,51 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
+                    // Watermark section
+                    Text("Watermark", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    var watermarkEnabled by remember { mutableStateOf(prefs.getBoolean("watermark_enabled", false)) }
+                    SettingToggle(
+                        title = "Add watermark on save",
+                        subtitle = "Stamp diagonal repeating text on saved images",
+                        checked = watermarkEnabled,
+                        onCheckedChange = { watermarkEnabled = it; prefs.edit().putBoolean("watermark_enabled", it).apply() }
+                    )
+                    if (watermarkEnabled) {
+                        var watermarkText by remember {
+                            mutableStateOf(prefs.getString("watermark_text", "SnapCrop") ?: "SnapCrop")
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Watermark text", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = watermarkText,
+                                    onValueChange = {
+                                        watermarkText = it
+                                        prefs.edit().putString("watermark_text", it).apply()
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                        focusedTextColor = OnSurface, unfocusedTextColor = OnSurface,
+                                        cursorColor = Primary
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
                     // Service section
                     Text("Service", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
@@ -192,7 +237,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v5.3.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v5.4.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

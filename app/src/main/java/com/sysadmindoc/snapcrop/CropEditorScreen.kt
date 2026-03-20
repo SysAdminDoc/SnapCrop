@@ -6,6 +6,7 @@ import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -121,8 +122,15 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
 }
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
-    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom")
+    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji")
 }
+
+private val commonEmojis = listOf(
+    "\uD83D\uDE00", "\uD83D\uDE02", "\uD83D\uDE0D", "\uD83E\uDD14", "\uD83D\uDE31",
+    "\uD83D\uDC4D", "\uD83D\uDC4E", "\uD83D\uDD25", "\u2764\uFE0F", "\u2B50",
+    "\u2705", "\u274C", "\u26A0\uFE0F", "\uD83D\uDCA1", "\uD83D\uDCCC",
+    "\uD83D\uDCF7", "\uD83C\uDFAF", "\uD83D\uDE80", "\uD83D\uDC40", "\uD83C\uDF89"
+)
 
 private val drawColors = listOf(
     0xFFFF0000.toInt() to "Red",
@@ -140,7 +148,8 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     RATIO_3_4("3:4", 3f / 4f),
     RATIO_16_9("16:9", 16f / 9f),
     RATIO_9_16("9:16", 9f / 16f),
-    RATIO_2_1("2:1", 2f / 1f)
+    RATIO_2_1("2:1", 2f / 1f),
+    CIRCLE("Circle", 1f)
 }
 
 @Composable
@@ -210,6 +219,9 @@ fun CropEditorScreen(
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
+
+    // Emoji tool
+    var selectedEmoji by remember { mutableStateOf(commonEmojis[0]) }
 
     // Adjust mode (brightness/contrast/saturation)
     var brightness by remember { mutableFloatStateOf(0f) }    // -100 to 100
@@ -620,6 +632,26 @@ fun CropEditorScreen(
                     colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
                         inactiveTrackColor = SurfaceVariant))
             }
+            // Emoji picker row
+            if (drawTool == DrawTool.EMOJI) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    commonEmojis.forEach { emoji ->
+                        Surface(
+                            modifier = Modifier.size(36.dp).clickable { selectedEmoji = emoji },
+                            color = if (selectedEmoji == emoji) PrimaryContainer else SurfaceVariant,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(emoji, fontSize = 20.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Adjust mode sliders
@@ -722,6 +754,16 @@ fun CropEditorScreen(
                                                     color = drawColor,
                                                     strokeWidth = drawStrokeWidth,
                                                     shapeType = "magnifier"
+                                                ))
+                                                haptic()
+                                            } else if (drawTool == DrawTool.EMOJI) {
+                                                // Place emoji at tap point
+                                                drawPaths.add(DrawPath(
+                                                    points = listOf(PointF(bx, by)),
+                                                    color = drawColor,
+                                                    strokeWidth = drawStrokeWidth,
+                                                    shapeType = "emoji",
+                                                    text = selectedEmoji
                                                 ))
                                                 haptic()
                                             } else {
@@ -928,6 +970,13 @@ fun CropEditorScreen(
                     drawCircle(CropHandle, midR, Offset(sl, (st + sb) / 2))
                     drawCircle(CropHandle, midR, Offset(sr, (st + sb) / 2))
 
+                    // Circle crop preview overlay
+                    if (selectedRatio == AspectRatio.CIRCLE) {
+                        val cx = (sl + sr) / 2; val cy = (st + sb) / 2
+                        val radius = minOf(sr - sl, sb - st) / 2
+                        drawCircle(CropBorder.copy(alpha = 0.5f), radius, Offset(cx, cy), style = Stroke(2.dp.toPx()))
+                    }
+
                     // Pixelate region indicators (mosaic pattern)
                     val pixColor = Tertiary.copy(alpha = 0.35f)
                     val pixBorder = Tertiary.copy(alpha = 0.7f)
@@ -951,6 +1000,17 @@ fun CropEditorScreen(
                             }
                             drawContext.canvas.nativeCanvas.drawText(
                                 dp.text, ox + p.x * scale, oy + p.y * scale, textPaint)
+                            return
+                        }
+
+                        // Emoji overlay
+                        if (shape == "emoji" && dp.text != null && pts.isNotEmpty()) {
+                            val p = pts.first()
+                            val emojiPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                textSize = dp.strokeWidth * scale * 5
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(
+                                dp.text, ox + p.x * scale, oy + p.y * scale, emojiPaint)
                             return
                         }
 
@@ -1163,7 +1223,8 @@ fun CropEditorScreen(
             // Action icons row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
-                val adj = floatArrayOf(brightness, contrast, saturation)
+                val circleCrop = if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f
+                val adj = floatArrayOf(brightness, contrast, saturation, circleCrop)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -1173,7 +1234,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)

@@ -12,6 +12,8 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -301,6 +303,16 @@ class CropActivity : ComponentActivity() {
             paint.strokeWidth = dp.strokeWidth
             paint.alpha = 255
 
+            // Emoji overlay
+            if (dp.shapeType == "emoji" && dp.text != null && dp.points.isNotEmpty()) {
+                val p = dp.points.first()
+                val emojiPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    textSize = dp.strokeWidth * 5
+                }
+                canvas.drawText(dp.text, p.x, p.y, emojiPaint)
+                continue
+            }
+
             // Callout (numbered circle)
             if (dp.shapeType == "callout" && dp.text != null && dp.points.isNotEmpty()) {
                 val p = dp.points.first()
@@ -474,6 +486,23 @@ class CropActivity : ComponentActivity() {
             rect.width().coerceAtMost(drawn.width - rect.left.coerceAtLeast(0)),
             rect.height().coerceAtMost(drawn.height - rect.top.coerceAtLeast(0)))
         if (drawn !== bitmap && drawn !== adjusted) drawn.recycle()
+
+        // Circle crop masking (adj[3] == 1f)
+        val isCircle = adj.size > 3 && adj[3] == 1f
+        if (isCircle) {
+            val size = minOf(cropped.width, cropped.height)
+            val circled = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(circled)
+            val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            c.drawCircle(size / 2f, size / 2f, size / 2f, circlePaint)
+            circlePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            val offsetX = (cropped.width - size) / 2
+            val offsetY = (cropped.height - size) / 2
+            c.drawBitmap(cropped, -offsetX.toFloat(), -offsetY.toFloat(), circlePaint)
+            cropped.recycle()
+            return circled
+        }
+
         return cropped
     }
 
@@ -481,9 +510,13 @@ class CropActivity : ComponentActivity() {
         if (isSaving.value) return
         isSaving.value = true
         CoroutineScope(Dispatchers.IO).launch {
-            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            var cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val watermarked = applyWatermark(cropped)
+            if (watermarked !== cropped) cropped.recycle()
+            cropped = watermarked
+            val isCircle = adj.size > 3 && adj[3] == 1f
             withContext(Dispatchers.Main) {
-                saveToGallery(cropped, resolveFilename(), deleteOriginal)
+                saveToGallery(cropped, resolveFilename(), deleteOriginal, forcePng = isCircle)
                 cropped.recycle()
                 isSaving.value = false
             }
@@ -528,6 +561,36 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun applyWatermark(bitmap: Bitmap): Bitmap {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        if (!prefs.getBoolean("watermark_enabled", false)) return bitmap
+        val text = prefs.getString("watermark_text", "SnapCrop") ?: return bitmap
+        if (text.isBlank()) return bitmap
+
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0x40FFFFFF // 25% white
+            textSize = (bitmap.width * 0.04f).coerceAtLeast(24f)
+            style = Paint.Style.FILL
+        }
+        canvas.save()
+        canvas.rotate(-30f, bitmap.width / 2f, bitmap.height / 2f)
+        val spacing = paint.textSize * 3
+        val diag = kotlin.math.sqrt((bitmap.width.toDouble() * bitmap.width + bitmap.height.toDouble() * bitmap.height)).toFloat()
+        var y = -diag / 2
+        while (y < diag * 1.5f) {
+            var x = -diag / 2
+            while (x < diag * 1.5f) {
+                canvas.drawText(text, x, y, paint)
+                x += paint.measureText(text) + spacing
+            }
+            y += spacing
+        }
+        canvas.restore()
+        return result
+    }
+
     private fun resolveFilename(): String {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val template = prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%"
@@ -543,8 +606,8 @@ class CropActivity : ComponentActivity() {
             .replace("%counter%", String.format("%04d", counter))
     }
 
-    private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean) {
-        val (format, quality) = getSaveFormat()
+    private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean, forcePng: Boolean = false) {
+        val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
         val ext = if (format == Bitmap.CompressFormat.JPEG) "jpg" else "png"
         val mime = if (format == Bitmap.CompressFormat.JPEG) "image/jpeg" else "image/png"
 

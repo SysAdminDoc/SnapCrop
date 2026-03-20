@@ -27,7 +27,7 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 ## Key Files
 | File | Lines | Purpose |
 |------|-------|---------|
-| `CropEditorScreen.kt` | ~1200 | Crop UI, 9 draw tools, 5 edit modes, canvas rendering |
+| `CropEditorScreen.kt` | ~1300 | Crop UI, 10 draw tools, 5 edit modes, canvas rendering |
 | `GalleryScreen.kt` | ~690 | Albums, photos, viewer, multi-select, favorites, PDF |
 | `MainActivity.kt` | ~700 | Home screen, permissions, batch crop, stitch, PDF export |
 | `CropActivity.kt` | ~550 | Save/share/delete, bitmap pipeline, adjustments |
@@ -51,6 +51,7 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 7. **Callout** - Auto-incrementing numbered circles
 8. **Spotlight** - Dims everything outside selected rectangle
 9. **Magnifier** - 2x zoomed circular inset with crosshair
+10. **Emoji** - 20 common emojis, scrollable picker, tap to place
 
 ## Edit Modes (5)
 1. **CROP** - Drag handles, aspect ratios, auto/AI crop, rotate/flip
@@ -67,9 +68,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.3.0
+v5.4.0
 
 ## Version History
+- v5.4.0: Emoji overlay tool (20 common emojis, scrollable picker, tap to place, scales with stroke width), watermark overlay (repeating diagonal text, configurable in settings, 25% opacity), circle crop (PorterDuff masking, transparent BG, force PNG on save, visual circle preview on canvas)
 - v5.3.0: Brightness/contrast/saturation adjustment sliders (ColorMatrix, live preview, applied to export), ADJUST edit mode
 - v5.2.0: Magnifier/loupe tool, PDF export from gallery, custom filename templates, stitch reorder
 - v5.1.0: Spotlight tool, image stitching, QS tile, notification actions, 6 bitmap leak fixes, SQL injection fix
