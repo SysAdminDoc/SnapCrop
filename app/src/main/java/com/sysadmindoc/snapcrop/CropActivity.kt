@@ -440,7 +440,19 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun deleteOriginalFile() {
-        sourceUri?.let { uri -> try { contentResolver.delete(uri, null, null) } catch (_: Exception) {} }
+        val uri = sourceUri ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
+                @Suppress("DEPRECATION")
+                startIntentSenderForResult(pendingIntent.intentSender, 99, null, 0, 0, 0)
+            } catch (_: Exception) {
+                // Fallback: try direct delete (works for our own files)
+                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            }
+        } else {
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+        }
     }
 
     override fun onDestroy() {

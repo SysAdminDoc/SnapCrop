@@ -204,13 +204,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenCrop = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
-                                onDeleteCrop = { uri ->
-                                    try {
-                                        contentResolver.delete(uri, null, null)
-                                        Toast.makeText(this@MainActivity, "Deleted", Toast.LENGTH_SHORT).show()
-                                    } catch (_: Exception) {}
-                                    loadRecentCrops()
-                                }
+                                onDeleteCrop = { uri -> requestDeleteUris(listOf(uri)) }
                             )
                             1 -> GalleryScreen(
                                 refreshKey = galleryRefreshKey.intValue,
@@ -225,13 +219,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     startActivity(Intent.createChooser(shareIntent, null))
                                 },
-                                onDeleteUris = { uris ->
-                                    var count = 0
-                                    for (uri in uris) {
-                                        try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
-                                    }
-                                    Toast.makeText(this@MainActivity, "Deleted $count photos", Toast.LENGTH_SHORT).show()
-                                },
+                                onDeleteUris = { uris -> requestDeleteUris(uris) },
                                 onBack = { selectedTab = 0 }
                             )
                         }
@@ -279,6 +267,41 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    private fun requestDeleteUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: system delete confirmation dialog
+            try {
+                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
+                @Suppress("DEPRECATION")
+                startIntentSenderForResult(pendingIntent.intentSender, 42, null, 0, 0, 0)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            // Android 10: direct delete (may throw RecoverableSecurityException)
+            var count = 0
+            for (uri in uris) {
+                try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+            }
+            Toast.makeText(this, "Deleted $count photos", Toast.LENGTH_SHORT).show()
+            galleryRefreshKey.intValue++
+            loadRecentCrops()
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 42) {
+            galleryRefreshKey.intValue++
+            loadRecentCrops()
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun toggleService() {
@@ -402,7 +425,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v4.4.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v4.5.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

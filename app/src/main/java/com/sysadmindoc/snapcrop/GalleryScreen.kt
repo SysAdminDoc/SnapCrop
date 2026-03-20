@@ -23,7 +23,9 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -62,8 +64,9 @@ fun GalleryScreen(
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var viewerIndex by remember { mutableIntStateOf(-1) } // -1 = not viewing
+    var viewerIndex by remember { mutableIntStateOf(-1) }
     val selectedIds = remember { mutableStateListOf<Long>() }
+    var searchQuery by remember { mutableStateOf("") }
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -97,7 +100,19 @@ fun GalleryScreen(
             photos = photos,
             initialIndex = viewerIndex,
             onClose = { viewerIndex = -1 },
-            onEdit = { onOpenEditor(it.uri); viewerIndex = -1 }
+            onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
+            onShare = { onShareUris(listOf(it.uri)) },
+            onDelete = { photo ->
+                onDeleteUris(listOf(photo.uri))
+                photos = photos.filter { it.id != photo.id }
+                if (photos.isEmpty()) viewerIndex = -1
+                else viewerIndex = viewerIndex.coerceAtMost(photos.size - 1)
+                // Refresh albums in background
+                CoroutineScope(Dispatchers.IO).launch {
+                    val refreshed = loadAlbums(context.contentResolver)
+                    withContext(Dispatchers.Main) { albums = refreshed }
+                }
+            }
         )
         return
     }
@@ -160,12 +175,33 @@ fun GalleryScreen(
             }
         }
 
+        // Search bar (album view only)
+        if (selectedAlbum == null && !selectionMode && albums.isNotEmpty()) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search albums...", color = OnSurfaceVariant, fontSize = 14.sp) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                    focusedTextColor = OnSurface, unfocusedTextColor = OnSurface,
+                    cursorColor = Primary
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
+        }
+
+        val filteredAlbums = if (searchQuery.isBlank()) albums
+            else albums.filter { it.name.contains(searchQuery, ignoreCase = true) }
+
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Primary)
             }
         } else if (selectedAlbum == null) {
-            AlbumGrid(albums = albums, onAlbumClick = { selectedAlbum = it.path },
+            AlbumGrid(albums = filteredAlbums, onAlbumClick = { selectedAlbum = it.path },
                 onAllPhotos = { selectedAlbum = "__ALL__" })
         } else {
             PhotoGrid(
@@ -302,7 +338,9 @@ private fun PhotoViewer(
     photos: List<Photo>,
     initialIndex: Int,
     onClose: () -> Unit,
-    onEdit: (Photo) -> Unit
+    onEdit: (Photo) -> Unit,
+    onShare: (Photo) -> Unit,
+    onDelete: (Photo) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
     val context = LocalContext.current
@@ -366,17 +404,41 @@ private fun PhotoViewer(
             }
             Text("${pagerState.currentPage + 1} / ${photos.size}",
                 color = Color.White, fontSize = 14.sp)
-            IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
-                Icon(Icons.Default.Crop, "Edit", tint = Primary)
+            Row {
+                IconButton(onClick = { showInfo = !showInfo }) {
+                    Icon(Icons.Default.Info, "Info", tint = if (showInfo) Primary else Color.White)
+                }
             }
         }
 
-        // Info panel at bottom (tap photo to toggle)
+        // Bottom action bar
+        Row(
+            Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                .background(Color.Black.copy(alpha = 0.5f))
+                .navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            IconButton(onClick = { onShare(photos[pagerState.currentPage]) }) {
+                Icon(Icons.Default.Share, "Share", tint = Color.White)
+            }
+            IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
+                Icon(Icons.Default.Crop, "Edit", tint = Primary)
+            }
+            IconButton(onClick = {
+                val photo = photos[pagerState.currentPage]
+                onDelete(photo)
+            }) {
+                Icon(Icons.Default.Delete, "Delete", tint = Tertiary)
+            }
+        }
+
+        // Info panel (above bottom bar)
         if (showInfo && photoInfo.isNotEmpty()) {
             Box(
                 Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                    .padding(bottom = 80.dp)
                     .background(Color.Black.copy(alpha = 0.7f))
-                    .navigationBarsPadding().padding(12.dp)
+                    .padding(12.dp)
             ) {
                 Text(photoInfo, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
             }
