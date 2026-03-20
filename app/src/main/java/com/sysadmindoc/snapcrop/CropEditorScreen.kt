@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import com.sysadmindoc.snapcrop.ui.theme.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -146,6 +147,8 @@ fun CropEditorScreen(
     var shapeFilled by remember { mutableStateOf(false) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
+    var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
+    var faceRedacting by remember { mutableStateOf(false) }
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
@@ -363,13 +366,16 @@ fun CropEditorScreen(
                         tint = if (editMode == EditMode.DRAW) Secondary else OnSurface)
                 }
                 IconButton(onClick = {
-                    if (editMode == EditMode.OCR) { editMode = EditMode.CROP; ocrBlocks = emptyList() }
+                    if (editMode == EditMode.OCR) { editMode = EditMode.CROP; ocrBlocks = emptyList(); scannedCodes = emptyList() }
                     else {
                         editMode = EditMode.OCR
-                        if (ocrBlocks.isEmpty() && !ocrLoading) {
+                        if (ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
                             ocrLoading = true
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                                ocrBlocks = TextExtractor.extract(bitmap)
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
+                                val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
+                                ocrBlocks = textDeferred.await()
+                                scannedCodes = codeDeferred.await()
                                 ocrLoading = false
                             }
                         }
@@ -390,8 +396,14 @@ fun CropEditorScreen(
             val (bannerBg, bannerColor, bannerText) = when (editMode) {
                 EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, "PIXELATE — draw rectangles to redact")
                 EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "DRAW — ${drawTool.label.lowercase()}")
-                EditMode.OCR -> Triple(Color(0xFFCBA6F7).copy(alpha = 0.15f), Color(0xFFCBA6F7),
-                    if (ocrLoading) "SCANNING TEXT..." else "OCR — tap text to copy (${ocrBlocks.size} blocks)")
+                EditMode.OCR -> {
+                    val info = if (ocrLoading) "SCANNING..." else buildString {
+                        append("OCR — tap to copy")
+                        if (ocrBlocks.isNotEmpty()) append(" | ${ocrBlocks.size} text")
+                        if (scannedCodes.isNotEmpty()) append(" | ${scannedCodes.size} code")
+                    }
+                    Triple(Color(0xFFCBA6F7).copy(alpha = 0.15f), Color(0xFFCBA6F7), info)
+                }
                 else -> Triple(Color.Transparent, Color.Transparent, "")
             }
             Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 16.dp, vertical = 4.dp),
@@ -430,14 +442,46 @@ fun CropEditorScreen(
         }
 
         // Tool options row (pixelate/draw mode)
-        if (editMode == EditMode.PIXELATE && pixelateRects.isNotEmpty()) {
+        if (editMode == EditMode.PIXELATE) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { pixelateRects.removeLastOrNull() }) {
-                    Text("Undo last", color = Tertiary, fontSize = 12.sp)
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                // Smart redact faces
+                FilledTonalButton(
+                    onClick = {
+                        if (!faceRedacting) {
+                            faceRedacting = true
+                            CoroutineScope(Dispatchers.Main).launch {
+                                val faces = FaceDetector.detect(bitmap)
+                                pixelateRects.addAll(faces)
+                                faceRedacting = false
+                                if (faces.isEmpty()) {
+                                    android.widget.Toast.makeText(context, "No faces found", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Redacted ${faces.size} face(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                    haptic()
+                                }
+                            }
+                        }
+                    },
+                    enabled = !faceRedacting,
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    if (faceRedacting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Tertiary)
+                    else Text("Blur Faces", fontSize = 11.sp, color = Tertiary)
                 }
-                TextButton(onClick = { pixelateRects.clear() }) {
-                    Text("Clear all", color = Tertiary, fontSize = 12.sp)
+
+                Row {
+                    if (pixelateRects.isNotEmpty()) {
+                        TextButton(onClick = { pixelateRects.removeLastOrNull() }) {
+                            Text("Undo", color = Tertiary, fontSize = 11.sp)
+                        }
+                        TextButton(onClick = { pixelateRects.clear() }) {
+                            Text("Clear", color = Tertiary, fontSize = 11.sp)
+                        }
+                    }
                 }
             }
         }
@@ -608,15 +652,26 @@ fun CropEditorScreen(
                             detectTapGestures(
                                 onDoubleTap = { previewMode = true },
                                 onTap = { pos ->
-                                    if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
-                                        // Find tapped OCR block
+                                    if (editMode == EditMode.OCR) {
                                         val bx = ((pos.x - offsetX) / scaleX).toInt()
                                         val by = ((pos.y - offsetY) / scaleY).toInt()
-                                        val tapped = ocrBlocks.find { it.bounds.contains(bx, by) }
-                                        if (tapped != null) {
+
+                                        // Check barcodes first (higher priority)
+                                        val tappedCode = scannedCodes.find { it.bounds.contains(bx, by) }
+                                        if (tappedCode != null) {
                                             val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tapped.text))
-                                            android.widget.Toast.makeText(context, "Copied: ${tapped.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
+                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop QR", tappedCode.rawValue))
+                                            android.widget.Toast.makeText(context, "Copied: ${tappedCode.displayValue.take(80)}", android.widget.Toast.LENGTH_SHORT).show()
+                                            haptic()
+                                            return@detectTapGestures
+                                        }
+
+                                        // Then check text blocks
+                                        val tappedText = ocrBlocks.find { it.bounds.contains(bx, by) }
+                                        if (tappedText != null) {
+                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tappedText.text))
+                                            android.widget.Toast.makeText(context, "Copied: ${tappedText.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
                                             haptic()
                                         }
                                     }
@@ -754,7 +809,7 @@ fun CropEditorScreen(
                         drawRect(Tertiary, Offset(rx, ry), Size(rw, rh), style = Stroke(2.dp.toPx()))
                     }
 
-                    // OCR text block overlays
+                    // OCR text block + barcode overlays
                     if (editMode == EditMode.OCR) {
                         val ocrColor = Color(0xFFCBA6F7)
                         for (block in ocrBlocks) {
@@ -764,6 +819,16 @@ fun CropEditorScreen(
                             val bh = block.bounds.height() * scale
                             drawRect(ocrColor.copy(alpha = 0.15f), Offset(bl, bt), Size(bw, bh))
                             drawRect(ocrColor.copy(alpha = 0.6f), Offset(bl, bt), Size(bw, bh), style = Stroke(1.5f.dp.toPx()))
+                        }
+                        // Barcodes in green
+                        val codeColor = Secondary
+                        for (code in scannedCodes) {
+                            val cl = ox + code.bounds.left * scale
+                            val ct = oy + code.bounds.top * scale
+                            val cw2 = code.bounds.width() * scale
+                            val ch2 = code.bounds.height() * scale
+                            drawRect(codeColor.copy(alpha = 0.2f), Offset(cl, ct), Size(cw2, ch2))
+                            drawRect(codeColor, Offset(cl, ct), Size(cw2, ch2), style = Stroke(2.dp.toPx()))
                         }
                     }
                 }

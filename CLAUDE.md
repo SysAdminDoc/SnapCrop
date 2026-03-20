@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v4.2.0
+v4.3.0
 
 ## Version History
+- v4.3.0: Smart face redaction (ML Kit Face Detection, one-tap blur all faces with 15% padding), QR/barcode scanner (ML Kit Barcode Scanning, tap to copy decoded content, green overlays), parallel text+barcode scan in OCR mode
 - v4.2.0: OCR text extraction (ML Kit Text Recognition, tap text blocks to copy to clipboard, purple overlay on detected text, loading spinner), TextExtractor engine, OCR edit mode
 - v4.1.0: Fullscreen photo viewer (HorizontalPager, swipe between photos, edit button), multi-select (long-press, select all, share/delete batch), "All Photos" timeline view, selection mode top bar with count
 - v4.0.0: Built-in gallery (album grid → photo grid → tap to edit), bottom navigation (Home/Gallery tabs), Coil AsyncImage for fast thumbnails, MediaStore album queries, all photos openable in crop editor
