@@ -166,6 +166,7 @@ fun CropEditorScreen(
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
+    onRemoveBg: () -> Unit,
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit
@@ -214,6 +215,9 @@ fun CropEditorScreen(
     var shapeFilled by remember { mutableStateOf(false) }
     var calloutCounter by remember { mutableIntStateOf(1) }
     var eyedropperActive by remember { mutableStateOf(false) }
+    var bgRemoving by remember { mutableStateOf(false) }
+    var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
+    var showPalette by remember { mutableStateOf(false) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
@@ -1269,6 +1273,58 @@ fun CropEditorScreen(
                     if (aiLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Tertiary)
                     else Icon(Icons.Default.Psychology, null, Modifier.size(16.dp), tint = Tertiary)
                     Spacer(Modifier.width(4.dp)); Text("AI", fontSize = 13.sp, color = Tertiary)
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        if (!bgRemoving) {
+                            bgRemoving = true
+                            onRemoveBg()
+                        }
+                    },
+                    enabled = !bgRemoving,
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    if (bgRemoving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Secondary)
+                    else Text("BG", fontSize = 13.sp, color = Secondary)
+                }
+
+                FilledTonalButton(
+                    onClick = {
+                        if (paletteColors.isEmpty()) {
+                            paletteColors = ColorPaletteExtractor.extract(bitmap)
+                        }
+                        showPalette = !showPalette
+                    },
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                ) { Text("Colors", fontSize = 13.sp, color = Color(0xFFFAB387)) }
+            }
+
+            // Color palette display
+            if (showPalette && paletteColors.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    paletteColors.forEach { pc ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable {
+                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
+                                android.widget.Toast.makeText(context, "Copied ${pc.hex}", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Box(Modifier.size(28.dp).background(Color(pc.color), RoundedCornerShape(4.dp))
+                                .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(4.dp)))
+                            Text(pc.hex, fontSize = 8.sp, color = OnSurfaceVariant)
+                            Text("${pc.percentage.toInt()}%", fontSize = 7.sp, color = OnSurfaceVariant)
+                        }
+                    }
                 }
             }
 

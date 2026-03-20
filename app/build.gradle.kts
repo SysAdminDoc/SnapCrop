@@ -12,8 +12,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 33
-        versionName = "5.6.1"
+        versionCode = 34
+        versionName = "5.7.0"
     }
 
     buildTypes {
@@ -57,5 +57,6 @@ dependencies {
     implementation(libs.mlkit.textrecognition)
     implementation(libs.mlkit.facedetection)
     implementation(libs.mlkit.barcodescanning)
+    implementation(libs.mlkit.subjectsegmentation)
     debugImplementation(libs.androidx.ui.tooling)
 }

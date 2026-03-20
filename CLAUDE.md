@@ -68,9 +68,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.6.1
+v5.7.0
 
 ## Version History
+- v5.7.0: Background removal (ML Kit Subject Segmentation via Play Services, one-tap BG remove in editor), color palette extraction (6 dominant colors with hex codes + percentages, tap to copy), gallery date section headers (grouped by date in All Photos view), collage background color picker (6 color options), 5th ML Kit engine
 - v5.6.1: Bug audit + fixes — magnifier tool was drawing result bitmap into itself causing recursive rendering (now draws source bitmap), BootReceiver auto_start default was true (should be false, mismatched with all other code), adj FloatArray default expanded to 6 elements to prevent index bounds issues
 - v5.6.0: Device frame mockup (5 frames: Pixel/iPhone/Samsung/Flat/White, bezel+notch+screen rendering), rounded rect crop (8% corner radius, PorterDuff masking), vignette effect (radial gradient, live preview + export), draw undo/redo improvement (proper redo stack, clear resets both)
 - v5.5.0: Collage maker (8 grid layouts from 2x1 to 3x3, adjustable gap, center-crop cells), warmth adjustment slider (red/blue shift via ColorMatrix), batch resize from gallery multi-select (5 size presets with dialog), home screen layout improved (stitch+collage side by side)

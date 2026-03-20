@@ -47,6 +47,15 @@ private data class CollageLayout(
     val slots: Int = cols * rows
 )
 
+private val collageBgColors = listOf(
+    0xFF1A1A1A.toInt() to "Dark",
+    0xFF000000.toInt() to "Black",
+    0xFFFFFFFF.toInt() to "White",
+    0xFF89B4FA.toInt() to "Blue",
+    0xFFA6E3A1.toInt() to "Green",
+    0xFFF38BA8.toInt() to "Pink",
+)
+
 private val layouts = listOf(
     CollageLayout("2x1", 2, 1),
     CollageLayout("1x2", 1, 2),
@@ -64,6 +73,7 @@ class CollageActivity : ComponentActivity() {
     private val selectedLayout = mutableStateOf(layouts[2]) // default 2x2
     private val isSaving = mutableStateOf(false)
     private val spacing = mutableIntStateOf(4) // pixels gap
+    private val bgColorIdx = mutableIntStateOf(0)
 
     private val pickImagesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -85,8 +95,10 @@ class CollageActivity : ComponentActivity() {
                     layout = selectedLayout.value,
                     isSaving = isSaving.value,
                     spacing = spacing.intValue,
+                    bgColorIdx = bgColorIdx.intValue,
                     onLayoutChange = { selectedLayout.value = it },
                     onSpacingChange = { spacing.intValue = it },
+                    onBgColorChange = { bgColorIdx.intValue = it },
                     onPickImages = { pickImagesLauncher.launch(arrayOf("image/*")) },
                     onSave = { buildAndSave() },
                     onClose = { finish() }
@@ -125,7 +137,7 @@ class CollageActivity : ComponentActivity() {
                 val result = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(result)
                 // Background
-                canvas.drawColor(0xFF1A1A1A.toInt())
+                canvas.drawColor(collageBgColors[bgColorIdx.intValue.coerceIn(0, collageBgColors.size - 1)].first)
 
                 for (i in 0 until layout.slots) {
                     if (i >= bitmaps.size) break
@@ -205,8 +217,10 @@ private fun CollageScreen(
     layout: CollageLayout,
     isSaving: Boolean,
     spacing: Int,
+    bgColorIdx: Int,
     onLayoutChange: (CollageLayout) -> Unit,
     onSpacingChange: (Int) -> Unit,
+    onBgColorChange: (Int) -> Unit,
     onPickImages: () -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit
@@ -251,6 +265,23 @@ private fun CollageScreen(
                 valueRange = 0f..20f, modifier = Modifier.weight(1f),
                 colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
             )
+        }
+
+        // Background color picker
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("BG:", color = OnSurfaceVariant, fontSize = 11.sp)
+            collageBgColors.forEachIndexed { i, (color, name) ->
+                Box(
+                    Modifier.size(24.dp)
+                        .background(Color(color), RoundedCornerShape(4.dp))
+                        .then(if (i == bgColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                        .clickable { onBgColorChange(i) }
+                )
+            }
         }
 
         // Collage preview

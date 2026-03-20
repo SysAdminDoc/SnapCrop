@@ -140,6 +140,19 @@ class CropActivity : ComponentActivity() {
                                     cropMethod.value = "ai"
                                 }
                             },
+                            onRemoveBg = {
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    val result = BackgroundRemover.remove(bmp)
+                                    if (result !== bmp) {
+                                        val old = bitmapState.value
+                                        if (old != null && old !== originalBitmap) old.recycle()
+                                        originalBitmap = null
+                                        bitmapState.value = result
+                                        cropRect.value = android.graphics.Rect(0, 0, result.width, result.height)
+                                        cropMethod.value = ""
+                                    }
+                                }
+                            },
                             onRotate = { rotateBitmap() },
                             onFlipH = { flipBitmap(horizontal = true) },
                             onFlipV = { flipBitmap(horizontal = false) }

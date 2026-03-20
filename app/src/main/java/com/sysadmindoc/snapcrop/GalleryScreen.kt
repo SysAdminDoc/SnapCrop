@@ -14,6 +14,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -280,6 +281,7 @@ fun GalleryScreen(
             PhotoGrid(
                 photos = sortedPhotos,
                 columns = gridColumns,
+                showDateHeaders = sortMode == SortMode.DATE,
                 selectedIds = selectedIds,
                 selectionMode = selectionMode,
                 onPhotoClick = { photo, index ->
@@ -388,6 +390,7 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllP
 private fun PhotoGrid(
     photos: List<Photo>,
     columns: Int,
+    showDateHeaders: Boolean = false,
     selectedIds: List<Long>,
     selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit,
@@ -400,6 +403,8 @@ private fun PhotoGrid(
         }
         return
     }
+
+    val dateFormat = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
 
     var lastPinchZoom by remember { mutableFloatStateOf(1f) }
     LazyVerticalGrid(
@@ -417,6 +422,23 @@ private fun PhotoGrid(
             }
         }
     ) {
+        // Date section headers (full-span)
+        if (showDateHeaders) {
+            val grouped = photos.groupBy { dateFormat.format(java.util.Date(it.dateAdded * 1000)) }
+            grouped.forEach { (date, datePhotos) ->
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(date, color = OnSurfaceVariant, fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
+                }
+                items(datePhotos.size) { i ->
+                    val photo = datePhotos[i]
+                    val globalIdx = photos.indexOf(photo)
+                    val isSelected = photo.id in selectedIds
+                    PhotoItem(photo, globalIdx, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
+                }
+            }
+        } else {
         items(photos.size) { index ->
             val photo = photos[index]
             val isSelected = photo.id in selectedIds
@@ -454,6 +476,48 @@ private fun PhotoGrid(
                         tint = Primary)
                 }
             }
+        }
+        } // else no date headers
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhotoItem(
+    photo: Photo, index: Int, isSelected: Boolean, selectionMode: Boolean,
+    onPhotoClick: (Photo, Int) -> Unit, onPhotoLongClick: (Photo) -> Unit
+) {
+    Box {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(photo.uri).crossfade(true).size(250).build(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                .clip(RoundedCornerShape(2.dp))
+                .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
+                .combinedClickable(
+                    onClick = { onPhotoClick(photo, index) },
+                    onLongClick = { onPhotoLongClick(photo) }
+                ),
+            contentScale = ContentScale.Crop
+        )
+        if (photo.isVideo) {
+            Icon(Icons.Default.PlayCircle, null,
+                modifier = Modifier.align(Alignment.Center).size(32.dp),
+                tint = Color.White.copy(alpha = 0.8f))
+            if (photo.duration > 0) {
+                val secs = (photo.duration / 1000).toInt()
+                val durText = "${secs / 60}:${String.format("%02d", secs % 60)}"
+                Text(durText, color = Color.White, fontSize = 10.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp))
+            }
+        }
+        if (isSelected) {
+            Icon(Icons.Default.CheckCircle, null,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
+                tint = Primary)
         }
     }
 }
