@@ -53,6 +53,6 @@ dependencies {
     implementation(libs.androidx.material.icons)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
-    implementation(libs.mlkit.object.detection)
+    implementation(libs.mlkit.objectdetection)
     debugImplementation(libs.androidx.ui.tooling)
 }

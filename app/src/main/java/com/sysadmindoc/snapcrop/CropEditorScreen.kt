@@ -2,9 +2,6 @@ package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
 import android.graphics.Rect
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -180,12 +177,8 @@ fun CropEditorScreen(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            // Preview mode: show only the cropped portion
-            AnimatedVisibility(
-                visible = previewMode,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            if (previewMode) {
+                // Preview mode: show only the cropped portion
                 val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom) {
                     try {
                         Bitmap.createBitmap(
@@ -217,14 +210,8 @@ fun CropEditorScreen(
                         dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt())
                     )
                 }
-            }
-
-            // Edit mode: show full image with crop overlay
-            AnimatedVisibility(
-                visible = !previewMode,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
+            } else {
+                // Edit mode: show full image with crop overlay
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()

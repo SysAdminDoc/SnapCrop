@@ -118,7 +118,7 @@ class CropActivity : ComponentActivity() {
 
             val shareUri = FileProvider.getUriForFile(
                 this,
-                "${applicationId}.fileprovider",
+                "${packageName}.fileprovider",
                 shareFile
             )
 
