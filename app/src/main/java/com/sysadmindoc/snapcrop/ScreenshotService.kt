@@ -27,7 +27,7 @@ class ScreenshotService : Service() {
     private var observer: ContentObserver? = null
     private var lastProcessedUri: String? = null
     private var lastProcessedTime = 0L
-    private var overlay: ScreenshotOverlay? = null
+    private var screenFlash: ScreenFlash? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -104,11 +104,33 @@ class ScreenshotService : Service() {
                     if (isRecent && isScreenshot) {
                         lastProcessedUri = uriStr
                         lastProcessedTime = now
-                        showThumbnailOverlay(uri)
+                        flashAndOpenEditor(uri)
                     }
                 }
             }
         } catch (_: Exception) {}
+    }
+
+    private fun flashAndOpenEditor(uri: Uri) {
+        val canFlash = Settings.canDrawOverlays(this)
+
+        if (canFlash) {
+            Handler(Looper.getMainLooper()).post {
+                if (screenFlash == null) screenFlash = ScreenFlash(this)
+                screenFlash?.flash { launchEditor(uri) }
+            }
+        } else {
+            // No overlay permission — just open editor directly
+            launchEditor(uri)
+        }
+    }
+
+    private fun launchEditor(uri: Uri) {
+        val intent = Intent(this, CropActivity::class.java).apply {
+            data = uri
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        startActivity(intent)
     }
 
     private fun quickSave(uri: Uri) {
@@ -175,24 +197,7 @@ class ScreenshotService : Service() {
         }
     }
 
-    private fun showThumbnailOverlay(uri: Uri) {
-        if (!Settings.canDrawOverlays(this)) return
-
-        try {
-            val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream)
-            } ?: return
-
-            Handler(Looper.getMainLooper()).post {
-                if (overlay == null) overlay = ScreenshotOverlay(this)
-                overlay?.show(bitmap, uri)
-            }
-        } catch (_: Exception) {}
-    }
-
     override fun onDestroy() {
-        overlay?.dismiss()
-        overlay = null
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()

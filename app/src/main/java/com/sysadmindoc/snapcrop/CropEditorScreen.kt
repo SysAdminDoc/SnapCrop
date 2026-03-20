@@ -13,14 +13,18 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -61,6 +65,7 @@ fun CropEditorScreen(
     onSaveCopy: (Rect) -> Unit,
     onShare: (Rect) -> Unit,
     onDiscard: () -> Unit,
+    onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
     onRotate: () -> Unit
@@ -80,6 +85,32 @@ fun CropEditorScreen(
     var activeHandle by remember { mutableStateOf(DragHandle.NONE) }
     var previewMode by remember { mutableStateOf(false) }
     var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
+
+    // Undo/Redo stacks
+    val undoStack = remember { mutableStateListOf<Rect>() }
+    val redoStack = remember { mutableStateListOf<Rect>() }
+
+    fun pushUndo() {
+        undoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
+        redoStack.clear()
+        if (undoStack.size > 30) undoStack.removeAt(0)
+    }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        redoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
+        val prev = undoStack.removeLast()
+        cropLeft = prev.left; cropTop = prev.top
+        cropRight = prev.right; cropBottom = prev.bottom
+    }
+
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        undoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
+        val next = redoStack.removeLast()
+        cropLeft = next.left; cropTop = next.top
+        cropRight = next.right; cropBottom = next.bottom
+    }
 
     LaunchedEffect(initialCropRect) {
         cropLeft = initialCropRect.left
@@ -252,8 +283,18 @@ fun CropEditorScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onDiscard) {
-                Icon(Icons.Default.Close, "Discard", tint = OnSurface)
+            Row {
+                IconButton(onClick = onDiscard) {
+                    Icon(Icons.Default.Close, "Discard", tint = OnSurface)
+                }
+                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty()) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.Undo, "Undo",
+                        tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f))
+                }
+                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty()) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.Redo, "Redo",
+                        tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f))
+                }
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -363,7 +404,10 @@ fun CropEditorScreen(
                         .fillMaxSize()
                         .pointerInput(bitmap) {
                             detectDragGestures(
-                                onDragStart = { pos -> activeHandle = findHandle(pos) },
+                                onDragStart = { pos ->
+                                    activeHandle = findHandle(pos)
+                                    if (activeHandle != DragHandle.NONE) pushUndo()
+                                },
                                 onDragEnd = { activeHandle = DragHandle.NONE },
                                 onDragCancel = { activeHandle = DragHandle.NONE },
                                 onDrag = { change, dragAmount ->
@@ -428,6 +472,15 @@ fun CropEditorScreen(
                     drawCornerHandle(sr, st, handleRadius, true, false)
                     drawCornerHandle(sl, sb, handleRadius, false, true)
                     drawCornerHandle(sr, sb, handleRadius, true, true)
+
+                    // Edge midpoint dots
+                    val midR = handleRadius * 0.5f
+                    val midX = (sl + sr) / 2
+                    val midY = (st + sb) / 2
+                    drawCircle(CropHandle, midR, Offset(midX, st))  // top
+                    drawCircle(CropHandle, midR, Offset(midX, sb))  // bottom
+                    drawCircle(CropHandle, midR, Offset(sl, midY))  // left
+                    drawCircle(CropHandle, midR, Offset(sr, midY))  // right
                 }
             }
         }
@@ -490,11 +543,21 @@ fun CropEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // Save / Share row
+            // Save / Delete row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Delete original
+                OutlinedButton(
+                    onClick = onDelete,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                ) {
+                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                }
+
                 // Save Copy (keep original)
                 OutlinedButton(
                     onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },

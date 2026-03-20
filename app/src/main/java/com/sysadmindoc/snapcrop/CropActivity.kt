@@ -36,7 +36,13 @@ class CropActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        sourceUri = intent.data
+        sourceUri = when {
+            intent.data != null -> intent.data
+            intent.action == Intent.ACTION_SEND ->
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            else -> null
+        }
         if (sourceUri == null) {
             finish()
             return
@@ -55,6 +61,11 @@ class CropActivity : ComponentActivity() {
                         onSaveCopy = { rect -> saveCropped(bmp, rect, deleteOriginal = false) },
                         onShare = { rect -> shareCropped(bmp, rect) },
                         onDiscard = { finish() },
+                        onDelete = {
+                            deleteOriginalFile()
+                            Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                            finish()
+                        },
                         onAutoCrop = {
                             val sbPx = SystemBars.statusBarHeight(resources)
                             val nbPx = SystemBars.navigationBarHeight(resources)

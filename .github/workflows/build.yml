@@ -1,9 +1,6 @@
 name: Build APK
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -12,6 +9,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -28,10 +26,7 @@ jobs:
         run: ./gradlew assembleRelease
 
       - name: Upload APK
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          gh release upload "${{ github.ref_name }}" \
-            app/build/outputs/apk/release/*.apk \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SnapCrop-release
+          path: app/build/outputs/apk/release/*.apk
