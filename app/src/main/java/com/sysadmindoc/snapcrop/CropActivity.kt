@@ -363,7 +363,7 @@ class CropActivity : ComponentActivity() {
                 canvas.clipPath(clipPath)
                 canvas.translate(loupeCx - p.x * zoomFactor, loupeCy - p.y * zoomFactor)
                 canvas.scale(zoomFactor, zoomFactor)
-                canvas.drawBitmap(result, 0f, 0f, null)
+                canvas.drawBitmap(bitmap, 0f, 0f, null)
                 canvas.restore()
 
                 // Ring border
@@ -494,7 +494,7 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f)): Bitmap {
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f)): Bitmap {
         val adjusted = applyAdjustments(bitmap, adj)
         val pixelated = applyPixelate(adjusted, pixRects)
         if (pixelated !== adjusted && adjusted !== bitmap) adjusted.recycle()
