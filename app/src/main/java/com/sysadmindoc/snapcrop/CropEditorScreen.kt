@@ -687,10 +687,12 @@ fun CropEditorScreen(
                             )
                         }
                         .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
-                                panX += pan.x
-                                panY += pan.y
+                            detectTransformGestures(panZoomLock = true) { _, pan, zoom, _ ->
+                                if (zoom != 1f || zoomLevel > 1.05f) {
+                                    zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
+                                    panX += pan.x
+                                    panY += pan.y
+                                }
                             }
                         }
                         .pointerInput(editMode, ocrBlocks, scannedCodes) {
