@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.Settings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
+    private val hasOverlayPermission = mutableStateOf(false)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
 
@@ -85,6 +87,13 @@ class MainActivity : ComponentActivity() {
                     onToggleService = { toggleService() },
                     onRequestPermissions = { requestPermissions() },
                     onPickImage = { pickImageLauncher.launch("image/*") },
+                    hasOverlayPermission = hasOverlayPermission.value,
+                    onRequestOverlay = {
+                        startActivity(Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        ))
+                    },
                     onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                     onOpenCrop = { uri ->
                         startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
@@ -97,8 +106,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
+        hasOverlayPermission.value = Settings.canDrawOverlays(this)
 
-        // Restore service state — if auto_start is on but service died, restart it
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getBoolean("auto_start", false)
         if (shouldRun && hasPermissions.value && !ScreenshotService.isRunning) {
@@ -140,13 +149,21 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", false).apply()
         } else {
-            if (hasPermissions.value) {
-                startMonitoring()
-                getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
-                    .putBoolean("auto_start", true).apply()
-            } else {
+            if (!hasPermissions.value) {
                 requestPermissions()
+                return
             }
+            // Android 12+ needs SYSTEM_ALERT_WINDOW to launch activities from services
+            if (Build.VERSION.SDK_INT >= 31 && !Settings.canDrawOverlays(this)) {
+                startActivity(Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ))
+                return
+            }
+            startMonitoring()
+            getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
+                .putBoolean("auto_start", true).apply()
         }
     }
 
@@ -214,6 +231,8 @@ private fun HomeScreen(
     onToggleService: () -> Unit,
     onRequestPermissions: () -> Unit,
     onPickImage: () -> Unit,
+    hasOverlayPermission: Boolean,
+    onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit
 ) {
@@ -285,6 +304,31 @@ private fun HomeScreen(
                 ) {
                     Text("Grant Permissions", color = Color.Black)
                 }
+            }
+        }
+
+        // Overlay permission (needed on Android 12+ to open editor from background)
+        if (hasPermissions && !hasOverlayPermission && Build.VERSION.SDK_INT >= 31) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Display Over Apps", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("Required to open editor when screenshot is taken",
+                            color = OnSurfaceVariant, fontSize = 13.sp)
+                    }
+                }
+                Button(
+                    onClick = onRequestOverlay,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Grant Permission", color = Color.Black) }
             }
         }
 
