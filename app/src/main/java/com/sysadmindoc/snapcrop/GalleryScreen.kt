@@ -2,7 +2,9 @@ package com.sysadmindoc.snapcrop
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -23,11 +25,15 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,6 +57,26 @@ import kotlinx.coroutines.withContext
 data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
 data class Photo(val id: Long, val uri: Uri, val dateAdded: Long)
 
+private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
+
+object FavoritesStore {
+    private const val PREF_NAME = "snapcrop_favorites"
+
+    fun isFavorite(context: Context, id: Long): Boolean =
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).contains(id.toString())
+
+    fun toggle(context: Context, id: Long): Boolean {
+        val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val isFav = prefs.contains(id.toString())
+        if (isFav) prefs.edit().remove(id.toString()).apply()
+        else prefs.edit().putBoolean(id.toString(), true).apply()
+        return !isFav
+    }
+
+    fun getAllIds(context: Context): Set<Long> =
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys.mapNotNull { it.toLongOrNull() }.toSet()
+}
+
 @Composable
 fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
@@ -67,6 +93,7 @@ fun GalleryScreen(
     var viewerIndex by remember { mutableIntStateOf(-1) }
     val selectedIds = remember { mutableStateListOf<Long>() }
     var searchQuery by remember { mutableStateOf("") }
+    var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -87,8 +114,11 @@ fun GalleryScreen(
             isLoading = true
             selectedIds.clear()
             withContext(Dispatchers.IO) {
-                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver)
-                else loadPhotos(context.contentResolver, path)
+                photos = when (path) {
+                    "__ALL__" -> loadAllPhotos(context.contentResolver)
+                    "__FAVS__" -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context))
+                    else -> loadPhotos(context.contentResolver, path)
+                }
             }
             isLoading = false
         }
@@ -107,11 +137,15 @@ fun GalleryScreen(
                 photos = photos.filter { it.id != photo.id }
                 if (photos.isEmpty()) viewerIndex = -1
                 else viewerIndex = viewerIndex.coerceAtMost(photos.size - 1)
-                // Refresh albums in background
                 CoroutineScope(Dispatchers.IO).launch {
                     val refreshed = loadAlbums(context.contentResolver)
                     withContext(Dispatchers.Main) { albums = refreshed }
                 }
+            },
+            onToggleFavorite = { photo ->
+                val newState = FavoritesStore.toggle(context, photo.id)
+                favIds = FavoritesStore.getAllIds(context)
+                newState
             }
         )
         return
@@ -160,10 +194,11 @@ fun GalleryScreen(
                     Icon(Icons.Default.ArrowBack, "Back", tint = OnSurface)
                 }
                 Text(
-                    text = when {
-                        selectedAlbum == "__ALL__" -> "All Photos"
-                        selectedAlbum != null -> selectedAlbum!!.trimEnd('/').substringAfterLast("/")
-                        else -> "Gallery"
+                    text = when (selectedAlbum) {
+                        "__ALL__" -> "All Photos"
+                        "__FAVS__" -> "Favorites"
+                        null -> "Gallery"
+                        else -> selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
                     modifier = Modifier.weight(1f)
@@ -202,7 +237,9 @@ fun GalleryScreen(
             }
         } else if (selectedAlbum == null) {
             AlbumGrid(albums = filteredAlbums, onAlbumClick = { selectedAlbum = it.path },
-                onAllPhotos = { selectedAlbum = "__ALL__" })
+                onAllPhotos = { selectedAlbum = "__ALL__" },
+                onFavorites = { selectedAlbum = "__FAVS__" },
+                favCount = favIds.size)
         } else {
             PhotoGrid(
                 photos = photos,
@@ -223,7 +260,8 @@ private fun toggleSelection(selectedIds: MutableList<Long>, id: Long) {
 }
 
 @Composable
-private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit) {
+private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit,
+                      onFavorites: () -> Unit, favCount: Int) {
     if (albums.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No albums found", color = OnSurfaceVariant, fontSize = 15.sp)
@@ -250,6 +288,26 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllP
                         Spacer(Modifier.height(8.dp))
                         Text("All Photos", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                         Text("${albums.sumOf { it.count }}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Favorites card
+        if (favCount > 0) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onFavorites() },
+                    colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Favorite, null, Modifier.size(40.dp), tint = Tertiary)
+                            Spacer(Modifier.height(8.dp))
+                            Text("Favorites", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("$favCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                        }
                     }
                 }
             }
@@ -340,12 +398,22 @@ private fun PhotoViewer(
     onClose: () -> Unit,
     onEdit: (Photo) -> Unit,
     onShare: (Photo) -> Unit,
-    onDelete: (Photo) -> Unit
+    onDelete: (Photo) -> Unit,
+    onToggleFavorite: (Photo) -> Boolean // returns new state
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
     val context = LocalContext.current
     var showInfo by remember { mutableStateOf(false) }
     var photoInfo by remember { mutableStateOf("") }
+    var isFav by remember { mutableStateOf(
+        FavoritesStore.isFavorite(context, photos.getOrNull(initialIndex)?.id ?: 0)
+    ) }
+
+    // Update fav state on page change
+    LaunchedEffect(pagerState.currentPage) {
+        val photo = photos.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
+        isFav = FavoritesStore.isFavorite(context, photo.id)
+    }
 
     // Load info for current photo
     LaunchedEffect(pagerState.currentPage) {
@@ -418,6 +486,12 @@ private fun PhotoViewer(
                 .navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
+            IconButton(onClick = {
+                isFav = onToggleFavorite(photos[pagerState.currentPage])
+            }) {
+                Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    "Favorite", tint = if (isFav) Tertiary else Color.White)
+            }
             IconButton(onClick = { onShare(photos[pagerState.currentPage]) }) {
                 Icon(Icons.Default.Share, "Share", tint = Color.White)
             }
@@ -493,6 +567,25 @@ private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
+        }
+    }
+    return photos
+}
+
+private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): List<Photo> {
+    if (favIds.isEmpty()) return emptyList()
+    val photos = mutableListOf<Photo>()
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val selection = "${MediaStore.Images.Media._ID} IN (${favIds.joinToString(",")})"
+    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, null, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         while (cursor.moveToNext()) {
