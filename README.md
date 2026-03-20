@@ -1,50 +1,55 @@
 # SnapCrop
 
-Auto-crop screenshots instantly. Detects when you take a screenshot, opens it in an editor with intelligent edge detection, and lets you crop and save in one tap.
+Auto-crop screenshots instantly on Android. Detects screenshots in real-time, strips system bars using exact device dimensions, and shows a floating thumbnail for quick editing.
 
 ## Features
 
-- **Automatic Screenshot Detection** — Background service monitors for new screenshots and opens the editor immediately
-- **Smart Autocrop** — Multi-strategy detection: uniform border removal, status/nav bar stripping, and ML Kit AI object detection fallback
-- **Notification Quick Actions** — Quick Save (autocrop + save without opening editor), Edit, or Dismiss right from the notification
-- **Manual Crop Adjustment** — Draggable corner and edge handles with rule-of-thirds grid overlay
-- **Preview Mode** — Toggle to see what the final cropped image will look like before saving
-- **Instant Share** — Share cropped images directly from the editor without saving first
-- **AI Crop** — ML Kit Object Detection finds the dominant content when border detection isn't enough
-- **Crop Method Indicator** — Shows whether the crop was detected via border scan, system bars, or AI
-- **Manual Mode** — Pick any image from gallery to crop
-- **AMOLED Dark Theme** — Pure black with Catppuccin accent colors
+- **Floating thumbnail overlay** — When a screenshot is taken, a preview slides in at the bottom-left. Tap to edit, swipe to dismiss, or quick-save with one tap
+- **Smart autocrop** — Multi-strategy: uniform border removal, system bar stripping (exact device pixel heights), and ML Kit AI fallback
+- **Crop editor** — Draggable corner/edge handles with rule-of-thirds grid and dim overlay
+- **Aspect ratio presets** — Free, 1:1, 4:3, 16:9 with constrained handle dragging
+- **Rotate 90°** — Rotate in the editor before cropping
+- **Preview toggle** — See the final cropped result before saving
+- **Save Copy** — Save cropped version while keeping the original, or replace it
+- **Instant share** — Share cropped screenshots directly to any app
+- **AI crop** — ML Kit object detection for content-aware cropping
+- **Boot auto-start** — Service resumes after device reboot
+- **Haptic feedback** — Subtle vibration on screenshot detection
+- **Manual mode** — Pick any image from gallery to crop
+- **AMOLED dark theme** — Pure black with Catppuccin accent colors
 
 ## How It Works
 
 1. Toggle on the Screenshot Monitor from the home screen
-2. Take a screenshot using your device's normal screenshot method
-3. SnapCrop automatically opens with the screenshot and detected crop bounds
-4. A notification also appears with **Quick Save** (one-tap autocrop) or **Edit** options
-5. In the editor: adjust handles, tap **Auto** for border detection, or **AI** for ML Kit smart crop
-6. Tap **Crop & Save** or **Share** — done
+2. Take a screenshot — a floating thumbnail appears in the bottom-left corner
+3. **Tap** the thumbnail to open the crop editor with auto-detected bounds
+4. **Swipe** the thumbnail to dismiss, or tap the crop icon to quick-save
+5. In the editor: adjust handles, choose aspect ratio, rotate, use Auto/AI crop
+6. **Crop & Save** (replaces original) or **Copy** (keeps original) — done
+
+The autocrop engine queries exact system bar heights from Android resources (`status_bar_height`, `navigation_bar_height`), so it works on all Android versions including 12+ where status bars are transparent.
 
 ## Crop Strategies
 
 | Strategy | How It Works | Best For |
 |---|---|---|
-| **Border Scan** | Scans edges inward for uniform-color strips | Memes with white/black borders, solid margins |
-| **System Bar Strip** | Detects status bar (24dp) and nav bar (48dp) by density | Screenshots with captured system UI |
-| **AI (ML Kit)** | Object detection finds dominant content bounding box | Complex screenshots where border scan finds nothing |
+| **Border Scan** | Scans edges for uniform-color strips | Memes with borders, solid margins |
+| **System Bar Strip** | Uses exact device bar pixel heights | Screenshots with status/nav bar |
+| **AI (ML Kit)** | Object detection finds content bounding box | Complex layouts where borders aren't obvious |
+
+## Requirements
+
+- Android 10+ (API 29)
+- Google Play Services (for ML Kit)
+- Permissions: Media access, Overlay (for thumbnail), Notifications (for service)
 
 ## Build
 
 ```bash
 ./gradlew assembleDebug
-# or
 ./gradlew assembleRelease
 ```
 
-Requires JDK 17 and Android SDK with API 35. ML Kit runs via Google Play Services (no additional setup needed).
+## License
 
-## Requirements
-
-- Android 10+ (API 29)
-- Google Play Services (for ML Kit AI crop)
-- Storage permission (to read screenshots)
-- Notification permission (Android 13+, for the monitoring service)
+MIT

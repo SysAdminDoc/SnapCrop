@@ -7,8 +7,12 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
@@ -16,6 +20,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.view.animation.OvershootInterpolator
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
@@ -26,33 +31,51 @@ class ScreenshotOverlay(private val context: Context) {
     private var overlayView: View? = null
     private val handler = Handler(Looper.getMainLooper())
     private var autoDismissRunnable: Runnable? = null
+    private var currentUri: Uri? = null
+    private var thumbnailBitmap: Bitmap? = null
 
     companion object {
         private const val THUMBNAIL_W_DP = 110
         private const val THUMBNAIL_H_DP = 200
         private const val CORNER_RADIUS_DP = 14f
         private const val MARGIN_DP = 16
-        private const val DISPLAY_MS = 4500L
+        private const val DISPLAY_MS = 5000L
         private const val FLING_VELOCITY = 200
         private const val FLING_DISTANCE = 60
+        private const val THUMBNAIL_MAX_PX = 400
     }
 
-    fun show(bitmap: Bitmap, uri: Uri) {
+    fun show(fullBitmap: Bitmap, uri: Uri) {
         dismiss()
+        currentUri = uri
+
+        // Scale down to thumbnail size to avoid holding full-res bitmap
+        thumbnailBitmap = scaleBitmap(fullBitmap)
 
         val density = context.resources.displayMetrics.density
         val widthPx = (THUMBNAIL_W_DP * density).toInt()
         val heightPx = (THUMBNAIL_H_DP * density).toInt()
         val cornerPx = CORNER_RADIUS_DP * density
         val marginPx = (MARGIN_DP * density).toInt()
+        val btnSize = (32 * density).toInt()
+        val btnPad = (6 * density).toInt()
 
-        // Build thumbnail view
-        val container = FrameLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
+        // Root: vertical layout with thumbnail + action row
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // Thumbnail container
+        val thumbContainer = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(widthPx, heightPx)
         }
 
         val imageView = ImageView(context).apply {
-            setImageBitmap(bitmap)
+            setImageBitmap(thumbnailBitmap)
             scaleType = ImageView.ScaleType.CENTER_CROP
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -68,13 +91,64 @@ class ScreenshotOverlay(private val context: Context) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            background = RoundedBorderDrawable(cornerPx, 2 * density, 0xFF333333.toInt())
+            background = RoundedBorderDrawable(cornerPx, 2 * density, 0xFF444444.toInt())
         }
 
-        container.addView(imageView)
-        container.addView(border)
+        thumbContainer.addView(imageView)
+        thumbContainer.addView(border)
+        root.addView(thumbContainer)
 
-        // Gesture handling: tap to edit, fling to dismiss
+        // Action row: quick-crop + close
+        val actionRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                widthPx, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = (6 * density).toInt()
+            }
+        }
+
+        // Quick crop & save button
+        val cropBtn = ImageView(context).apply {
+            setImageResource(R.drawable.ic_crop)
+            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                marginEnd = btnPad
+            }
+            setPadding(btnPad, btnPad, btnPad, btnPad)
+            setBackgroundResource(android.R.drawable.dialog_holo_dark_frame)
+            clipToOutline = true
+            outlineProvider = RoundedOutlineProvider(btnSize / 2f)
+            setOnClickListener {
+                currentUri?.let { u ->
+                    val quickSaveIntent = Intent(context, ScreenshotService::class.java).apply {
+                        action = ScreenshotService.ACTION_QUICK_SAVE
+                        putExtra(ScreenshotService.EXTRA_URI, u.toString())
+                    }
+                    context.startService(quickSaveIntent)
+                }
+                dismiss()
+            }
+        }
+
+        // Close/dismiss button
+        val closeBtn = ImageView(context).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                marginStart = btnPad
+            }
+            setPadding(btnPad, btnPad, btnPad, btnPad)
+            setBackgroundResource(android.R.drawable.dialog_holo_dark_frame)
+            clipToOutline = true
+            outlineProvider = RoundedOutlineProvider(btnSize / 2f)
+            setOnClickListener { animateFadeOut() }
+        }
+
+        actionRow.addView(cropBtn)
+        actionRow.addView(closeBtn)
+        root.addView(actionRow)
+
+        // Gestures on thumbnail: tap to edit, fling to dismiss
         val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
 
@@ -95,23 +169,22 @@ class ScreenshotOverlay(private val context: Context) {
                 e1 ?: return false
                 val dx = e2.x - e1.x
                 val dy = e2.y - e1.y
-                // Fling left or down to dismiss
                 if ((dx < -FLING_DISTANCE && abs(velocityX) > FLING_VELOCITY) ||
                     (dy > FLING_DISTANCE && abs(velocityY) > FLING_VELOCITY)) {
-                    animateSwipeOut(if (abs(dx) > abs(dy)) -1f else 0f,
-                                   if (abs(dy) >= abs(dx)) 1f else 0f)
+                    animateSwipeOut(
+                        if (abs(dx) > abs(dy)) -1f else 0f,
+                        if (abs(dy) >= abs(dx)) 1f else 0f
+                    )
                     return true
                 }
                 return false
             }
         })
 
-        // Track drag for visual feedback
         var startX = 0f
         var startY = 0f
-        container.setOnTouchListener { v, event ->
+        thumbContainer.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
-
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
@@ -122,23 +195,16 @@ class ScreenshotOverlay(private val context: Context) {
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - startX
                     val dy = event.rawY - startY
-                    // Allow dragging left or down with visual feedback
-                    v.translationX = dx.coerceAtMost(0f)
-                    v.translationY = dy.coerceAtLeast(0f)
-                    val dist = Math.hypot(
-                        v.translationX.toDouble(),
-                        v.translationY.toDouble()
-                    ).toFloat()
-                    v.alpha = (1f - dist / (v.width * 2f)).coerceAtLeast(0.3f)
+                    root.translationX = dx.coerceAtMost(0f)
+                    root.translationY = dy.coerceAtLeast(0f)
+                    val dist = Math.hypot(root.translationX.toDouble(), root.translationY.toDouble()).toFloat()
+                    root.alpha = (1f - dist / (v.width * 2f)).coerceAtLeast(0.3f)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    // If not flung, snap back
                     if (overlayView != null) {
-                        v.animate()
-                            .translationX(0f)
-                            .translationY(0f)
-                            .alpha(1f)
+                        root.animate()
+                            .translationX(0f).translationY(0f).alpha(1f)
                             .setDuration(200)
                             .setInterpolator(DecelerateInterpolator())
                             .start()
@@ -151,9 +217,10 @@ class ScreenshotOverlay(private val context: Context) {
         }
 
         // Window params
+        val totalHeight = heightPx + btnSize + (12 * density).toInt()
         val params = WindowManager.LayoutParams(
             widthPx,
-            heightPx,
+            totalHeight,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -164,20 +231,45 @@ class ScreenshotOverlay(private val context: Context) {
             y = marginPx + (56 * density).toInt()
         }
 
-        overlayView = container
-        windowManager.addView(container, params)
+        overlayView = root
+        windowManager.addView(root, params)
 
-        // Slide in from left
-        container.translationX = -(widthPx + marginPx).toFloat()
-        container.alpha = 0f
-        container.animate()
-            .translationX(0f)
-            .alpha(1f)
+        // Slide in + haptic
+        root.translationX = -(widthPx + marginPx).toFloat()
+        root.alpha = 0f
+        root.animate()
+            .translationX(0f).alpha(1f)
             .setDuration(300)
             .setInterpolator(OvershootInterpolator(0.6f))
             .start()
 
+        vibrateShort()
         scheduleAutoDismiss()
+    }
+
+    private fun scaleBitmap(src: Bitmap): Bitmap {
+        val maxDim = THUMBNAIL_MAX_PX
+        if (src.width <= maxDim && src.height <= maxDim) return src
+        val ratio = src.width.toFloat() / src.height
+        val (w, h) = if (ratio > 1) {
+            maxDim to (maxDim / ratio).toInt()
+        } else {
+            (maxDim * ratio).toInt() to maxDim
+        }
+        return Bitmap.createScaledBitmap(src, w.coerceAtLeast(1), h.coerceAtLeast(1), true)
+    }
+
+    private fun vibrateShort() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                val v = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                v.vibrate(VibrationEffect.createOneShot(30, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } catch (_: Exception) {}
     }
 
     private fun scheduleAutoDismiss() {
@@ -195,8 +287,7 @@ class ScreenshotOverlay(private val context: Context) {
         val view = overlayView ?: return
         cancelAutoDismiss()
         view.animate()
-            .alpha(0f)
-            .translationX(-(view.width * 0.3f))
+            .alpha(0f).translationX(-(view.width * 0.3f))
             .setDuration(250)
             .setInterpolator(DecelerateInterpolator())
             .setListener(object : AnimatorListenerAdapter() {
@@ -208,13 +299,11 @@ class ScreenshotOverlay(private val context: Context) {
     private fun animateSwipeOut(dirX: Float, dirY: Float) {
         val view = overlayView ?: return
         cancelAutoDismiss()
-        val density = context.resources.displayMetrics.density
-        val distance = 300 * density
+        val distance = 300 * context.resources.displayMetrics.density
         view.animate()
             .translationX(view.translationX + dirX * distance)
             .translationY(view.translationY + dirY * distance)
-            .alpha(0f)
-            .setDuration(200)
+            .alpha(0f).setDuration(200)
             .setInterpolator(DecelerateInterpolator())
             .setListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) { removeOverlay() }
@@ -232,5 +321,8 @@ class ScreenshotOverlay(private val context: Context) {
             try { windowManager.removeView(it) } catch (_: Exception) {}
         }
         overlayView = null
+        currentUri = null
+        thumbnailBitmap?.recycle()
+        thumbnailBitmap = null
     }
 }

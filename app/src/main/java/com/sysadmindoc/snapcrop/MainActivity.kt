@@ -110,9 +110,13 @@ class MainActivity : ComponentActivity() {
         if (serviceRunning.value) {
             stopService(Intent(this, ScreenshotService::class.java))
             serviceRunning.value = false
+            getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
+                .putBoolean("auto_start", false).apply()
         } else {
             if (hasPermissions.value) {
                 startMonitoring()
+                getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
+                    .putBoolean("auto_start", true).apply()
             } else {
                 requestPermissions()
             }
@@ -171,7 +175,7 @@ private fun HomeScreen(
         )
 
         Text(
-            "v2.1.0",
+            "v2.2.0",
             fontSize = 13.sp,
             color = OnSurfaceVariant
         )

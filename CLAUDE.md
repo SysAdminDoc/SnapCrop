@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v2.1.0
+v2.2.0
 
 ## Version History
+- v2.2.0: Aspect ratio presets (Free/1:1/4:3/16:9), rotate 90°, save copy (keep original), overlay quick-save + close buttons, thumbnail bitmap scaling (prevent OOM), haptic feedback, boot auto-start receiver, proguard rules for ML Kit
 - v2.1.0: Exact system bar heights from device resources (no pixel analysis), floating thumbnail overlay with GestureDetector fling, removed all notifications, overlay permission flow
 - v2.0.0: ML Kit AI crop, notification quick actions, preview toggle, instant share, status bar auto-strip, crop method indicator
 - v1.0.0: Initial release — border scan autocrop, draggable crop editor, screenshot detection service

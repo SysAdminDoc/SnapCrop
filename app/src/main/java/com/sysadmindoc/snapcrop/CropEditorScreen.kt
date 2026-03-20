@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -13,6 +14,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -42,18 +45,27 @@ private enum class DragHandle {
     TOP, BOTTOM, LEFT, RIGHT, CENTER
 }
 
+private enum class AspectRatio(val label: String, val ratio: Float?) {
+    FREE("Free", null),
+    SQUARE("1:1", 1f),
+    RATIO_4_3("4:3", 4f / 3f),
+    RATIO_16_9("16:9", 16f / 9f)
+}
+
 @Composable
 fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
     onSave: (Rect) -> Unit,
+    onSaveCopy: (Rect) -> Unit,
     onShare: (Rect) -> Unit,
     onDiscard: () -> Unit,
     onAutoCrop: () -> Rect,
-    onSmartCrop: () -> Unit
+    onSmartCrop: () -> Unit,
+    onRotate: () -> Unit
 ) {
-    val imageBitmap = remember { bitmap.asImageBitmap() }
+    val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
 
     var scaleX by remember { mutableFloatStateOf(1f) }
     var scaleY by remember { mutableFloatStateOf(1f) }
@@ -67,13 +79,21 @@ fun CropEditorScreen(
 
     var activeHandle by remember { mutableStateOf(DragHandle.NONE) }
     var previewMode by remember { mutableStateOf(false) }
+    var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
 
-    // Update crop when initialCropRect changes (from SmartCrop callback)
     LaunchedEffect(initialCropRect) {
         cropLeft = initialCropRect.left
         cropTop = initialCropRect.top
         cropRight = initialCropRect.right
         cropBottom = initialCropRect.bottom
+    }
+
+    // Re-key on bitmap identity change (rotation)
+    LaunchedEffect(bitmap.width, bitmap.height) {
+        if (cropRight > bitmap.width) cropRight = bitmap.width
+        if (cropBottom > bitmap.height) cropBottom = bitmap.height
+        cropLeft = cropLeft.coerceIn(0, cropRight - 50)
+        cropTop = cropTop.coerceIn(0, cropBottom - 50)
     }
 
     val handleRadius = with(LocalDensity.current) { 14.dp.toPx() }
@@ -107,6 +127,104 @@ fun CropEditorScreen(
         if (pos.x in sl..sr && pos.y in st..sb) return DragHandle.CENTER
 
         return DragHandle.NONE
+    }
+
+    fun applyAspectRatio(ratio: AspectRatio, anchorCenter: Boolean = true) {
+        val r = ratio.ratio ?: return
+        val cw = cropRight - cropLeft
+        val ch = cropBottom - cropTop
+        val cx = cropLeft + cw / 2
+        val cy = cropTop + ch / 2
+
+        // Fit the ratio within current bounds
+        var newW: Int
+        var newH: Int
+        if (cw.toFloat() / ch > r) {
+            newH = ch
+            newW = (ch * r).toInt()
+        } else {
+            newW = cw
+            newH = (cw / r).toInt()
+        }
+
+        newW = newW.coerceAtLeast(50)
+        newH = newH.coerceAtLeast(50)
+
+        if (anchorCenter) {
+            cropLeft = (cx - newW / 2).coerceAtLeast(0)
+            cropTop = (cy - newH / 2).coerceAtLeast(0)
+            cropRight = (cropLeft + newW).coerceAtMost(bitmap.width)
+            cropBottom = (cropTop + newH).coerceAtMost(bitmap.height)
+            // Re-adjust if clamped
+            cropLeft = (cropRight - newW).coerceAtLeast(0)
+            cropTop = (cropBottom - newH).coerceAtLeast(0)
+        }
+    }
+
+    fun constrainToRatio(handle: DragHandle, dx: Int, dy: Int) {
+        val ratio = selectedRatio.ratio
+        val minSize = 50
+
+        when (handle) {
+            DragHandle.CENTER -> {
+                val w = cropRight - cropLeft
+                val h = cropBottom - cropTop
+                var newL = (cropLeft + dx).coerceIn(0, bitmap.width - w)
+                var newT = (cropTop + dy).coerceIn(0, bitmap.height - h)
+                cropLeft = newL; cropTop = newT
+                cropRight = newL + w; cropBottom = newT + h
+            }
+            else -> {
+                // Apply unconstrained first
+                when (handle) {
+                    DragHandle.TOP_LEFT -> {
+                        cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
+                        cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
+                    }
+                    DragHandle.TOP_RIGHT -> {
+                        cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
+                        cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
+                    }
+                    DragHandle.BOTTOM_LEFT -> {
+                        cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
+                        cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
+                    }
+                    DragHandle.BOTTOM_RIGHT -> {
+                        cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
+                        cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
+                    }
+                    DragHandle.TOP -> cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
+                    DragHandle.BOTTOM -> cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
+                    DragHandle.LEFT -> cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
+                    DragHandle.RIGHT -> cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
+                    else -> {}
+                }
+
+                // Re-apply aspect ratio constraint if locked
+                if (ratio != null) {
+                    val cw = cropRight - cropLeft
+                    val ch = cropBottom - cropTop
+                    val currentRatio = cw.toFloat() / ch
+                    if (currentRatio > ratio) {
+                        // Too wide — shrink width
+                        val targetW = (ch * ratio).toInt().coerceAtLeast(minSize)
+                        when (handle) {
+                            DragHandle.TOP_LEFT, DragHandle.BOTTOM_LEFT, DragHandle.LEFT ->
+                                cropLeft = (cropRight - targetW).coerceAtLeast(0)
+                            else -> cropRight = (cropLeft + targetW).coerceAtMost(bitmap.width)
+                        }
+                    } else {
+                        // Too tall — shrink height
+                        val targetH = (cw / ratio).toInt().coerceAtLeast(minSize)
+                        when (handle) {
+                            DragHandle.TOP_LEFT, DragHandle.TOP_RIGHT, DragHandle.TOP ->
+                                cropTop = (cropBottom - targetH).coerceAtLeast(0)
+                            else -> cropBottom = (cropTop + targetH).coerceAtMost(bitmap.height)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     val cropW = cropRight - cropLeft
@@ -158,6 +276,9 @@ fun CropEditorScreen(
             }
 
             Row {
+                IconButton(onClick = onRotate) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface)
+                }
                 IconButton(onClick = { previewMode = !previewMode }) {
                     Icon(
                         if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -171,6 +292,33 @@ fun CropEditorScreen(
             }
         }
 
+        // Aspect ratio chips
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            AspectRatio.entries.forEach { ratio ->
+                val selected = selectedRatio == ratio
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        selectedRatio = ratio
+                        if (ratio.ratio != null) applyAspectRatio(ratio)
+                    },
+                    label = { Text(ratio.label, fontSize = 12.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryContainer,
+                        selectedLabelColor = Primary,
+                        containerColor = SurfaceVariant,
+                        labelColor = OnSurfaceVariant
+                    ),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+        }
+
         // Canvas area
         Box(
             modifier = Modifier
@@ -178,8 +326,7 @@ fun CropEditorScreen(
                 .fillMaxWidth()
         ) {
             if (previewMode) {
-                // Preview mode: show only the cropped portion
-                val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom) {
+                val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap) {
                     try {
                         Bitmap.createBitmap(
                             bitmap,
@@ -211,7 +358,6 @@ fun CropEditorScreen(
                     )
                 }
             } else {
-                // Edit mode: show full image with crop overlay
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
@@ -224,51 +370,7 @@ fun CropEditorScreen(
                                     change.consume()
                                     val dx = (dragAmount.x / scaleX).roundToInt()
                                     val dy = (dragAmount.y / scaleY).roundToInt()
-                                    val minSize = 50
-
-                                    when (activeHandle) {
-                                        DragHandle.TOP_LEFT -> {
-                                            cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
-                                            cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
-                                        }
-                                        DragHandle.TOP_RIGHT -> {
-                                            cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
-                                            cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
-                                        }
-                                        DragHandle.BOTTOM_LEFT -> {
-                                            cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
-                                            cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
-                                        }
-                                        DragHandle.BOTTOM_RIGHT -> {
-                                            cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
-                                            cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
-                                        }
-                                        DragHandle.TOP -> {
-                                            cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
-                                        }
-                                        DragHandle.BOTTOM -> {
-                                            cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
-                                        }
-                                        DragHandle.LEFT -> {
-                                            cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
-                                        }
-                                        DragHandle.RIGHT -> {
-                                            cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
-                                        }
-                                        DragHandle.CENTER -> {
-                                            val w = cropRight - cropLeft
-                                            val h = cropBottom - cropTop
-                                            var newL = cropLeft + dx
-                                            var newT = cropTop + dy
-                                            newL = newL.coerceIn(0, bitmap.width - w)
-                                            newT = newT.coerceIn(0, bitmap.height - h)
-                                            cropLeft = newL
-                                            cropTop = newT
-                                            cropRight = newL + w
-                                            cropBottom = newT + h
-                                        }
-                                        DragHandle.NONE -> {}
-                                    }
+                                    constrainToRatio(activeHandle, dx, dy)
                                 }
                             )
                         }
@@ -330,7 +432,7 @@ fun CropEditorScreen(
             }
         }
 
-        // Bottom toolbar — two rows
+        // Bottom toolbar
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -341,11 +443,11 @@ fun CropEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                // Reset
                 FilledTonalButton(
                     onClick = {
                         cropLeft = 0; cropTop = 0
                         cropRight = bitmap.width; cropBottom = bitmap.height
+                        selectedRatio = AspectRatio.FREE
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp),
@@ -356,12 +458,12 @@ fun CropEditorScreen(
                     Text("Reset", fontSize = 13.sp)
                 }
 
-                // Auto (border scan)
                 FilledTonalButton(
                     onClick = {
                         val rect = onAutoCrop()
                         cropLeft = rect.left; cropTop = rect.top
                         cropRight = rect.right; cropBottom = rect.bottom
+                        selectedRatio = AspectRatio.FREE
                     },
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer),
                     shape = RoundedCornerShape(12.dp),
@@ -372,7 +474,6 @@ fun CropEditorScreen(
                     Text("Auto", fontSize = 13.sp)
                 }
 
-                // AI (ML Kit)
                 FilledTonalButton(
                     onClick = { onSmartCrop() },
                     colors = ButtonDefaults.filledTonalButtonColors(
@@ -394,19 +495,19 @@ fun CropEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Share
+                // Save Copy (keep original)
                 OutlinedButton(
-                    onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                    onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
                 ) {
-                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Share")
+                    Text("Copy", fontSize = 13.sp)
                 }
 
-                // Crop & Save
+                // Crop & Replace
                 Button(
                     onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     modifier = Modifier.weight(1.5f),

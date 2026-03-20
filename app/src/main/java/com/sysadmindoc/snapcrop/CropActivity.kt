@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.FileProvider
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
@@ -24,9 +26,11 @@ import java.io.IOException
 class CropActivity : ComponentActivity() {
 
     private var originalBitmap: Bitmap? = null
+    private val bitmapState = mutableStateOf<Bitmap?>(null)
     private val cropRect = mutableStateOf(Rect(0, 0, 0, 0))
     private val cropMethod = mutableStateOf("")
     private var sourceUri: Uri? = null
+    private val rotationKey = mutableIntStateOf(0) // forces recomposition on rotate
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,12 +46,13 @@ class CropActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
-                originalBitmap?.let { bmp ->
+                bitmapState.value?.let { bmp ->
                     CropEditorScreen(
                         bitmap = bmp,
                         initialCropRect = cropRect.value,
                         cropMethod = cropMethod.value,
-                        onSave = { rect -> saveCropped(bmp, rect) },
+                        onSave = { rect -> saveCropped(bmp, rect, deleteOriginal = true) },
+                        onSaveCopy = { rect -> saveCropped(bmp, rect, deleteOriginal = false) },
                         onShare = { rect -> shareCropped(bmp, rect) },
                         onDiscard = { finish() },
                         onAutoCrop = {
@@ -63,7 +68,8 @@ class CropActivity : ComponentActivity() {
                                 cropRect.value = rect
                                 cropMethod.value = "ai"
                             }
-                        }
+                        },
+                        onRotate = { rotateBitmap() }
                     )
                 }
             }
@@ -74,6 +80,7 @@ class CropActivity : ComponentActivity() {
         try {
             contentResolver.openInputStream(uri)?.use { stream ->
                 originalBitmap = BitmapFactory.decodeStream(stream)
+                bitmapState.value = originalBitmap
                 originalBitmap?.let { bmp ->
                     val statusBarPx = SystemBars.statusBarHeight(resources)
                     val navBarPx = SystemBars.navigationBarHeight(resources)
@@ -88,6 +95,16 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun rotateBitmap() {
+        val current = bitmapState.value ?: return
+        val matrix = Matrix().apply { postRotate(90f) }
+        val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+        bitmapState.value = rotated
+        cropRect.value = Rect(0, 0, rotated.width, rotated.height)
+        cropMethod.value = ""
+        rotationKey.intValue++
+    }
+
     private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect): Bitmap {
         return Bitmap.createBitmap(
             bitmap,
@@ -98,16 +115,15 @@ class CropActivity : ComponentActivity() {
         )
     }
 
-    private fun saveCropped(bitmap: Bitmap, rect: Rect) {
+    private fun saveCropped(bitmap: Bitmap, rect: Rect, deleteOriginal: Boolean) {
         val cropped = createCroppedBitmap(bitmap, rect)
-        saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}")
+        saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}", deleteOriginal)
         cropped.recycle()
     }
 
     private fun shareCropped(bitmap: Bitmap, rect: Rect) {
         val cropped = createCroppedBitmap(bitmap, rect)
 
-        // Save to cache for sharing
         val shareDir = File(cacheDir, "shared_crops")
         shareDir.mkdirs()
         val shareFile = File(shareDir, "snapcrop_share.png")
@@ -137,7 +153,7 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun saveToGallery(bitmap: Bitmap, name: String) {
+    private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean) {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
             put(MediaStore.Images.Media.MIME_TYPE, "image/png")
@@ -158,9 +174,13 @@ class CropActivity : ComponentActivity() {
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
-            Toast.makeText(this, "Saved to Pictures/SnapCrop", Toast.LENGTH_SHORT).show()
 
-            deleteOriginal()
+            if (deleteOriginal) {
+                Toast.makeText(this, "Saved to Pictures/SnapCrop", Toast.LENGTH_SHORT).show()
+                deleteOriginalFile()
+            } else {
+                Toast.makeText(this, "Copy saved to Pictures/SnapCrop", Toast.LENGTH_SHORT).show()
+            }
         } catch (e: IOException) {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
             contentResolver.delete(uri, null, null)
@@ -169,7 +189,7 @@ class CropActivity : ComponentActivity() {
         finish()
     }
 
-    private fun deleteOriginal() {
+    private fun deleteOriginalFile() {
         sourceUri?.let { uri ->
             try {
                 contentResolver.delete(uri, null, null)
