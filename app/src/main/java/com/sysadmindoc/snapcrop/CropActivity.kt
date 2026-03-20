@@ -1,5 +1,7 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
@@ -22,17 +24,21 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.FileProvider
+import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
@@ -46,6 +52,7 @@ class CropActivity : ComponentActivity() {
     private val bitmapState = mutableStateOf<Bitmap?>(null)
     private val cropRect = mutableStateOf(Rect(0, 0, 0, 0))
     private val cropMethod = mutableStateOf("")
+    private val isLoading = mutableStateOf(true)
     private var sourceUri: Uri? = null
     private val rotationKey = mutableIntStateOf(0)
 
@@ -60,29 +67,36 @@ class CropActivity : ComponentActivity() {
                 intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
             else -> null
         }
-        if (sourceUri == null) {
-            finish()
-            return
-        }
+        if (sourceUri == null) { finish(); return }
 
         val showFlash = intent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
-
-        loadBitmap(sourceUri!!)
-
-        // Haptic on screenshot capture
         if (showFlash) vibrateShort()
+
+        // Async bitmap load
+        CoroutineScope(Dispatchers.IO).launch {
+            loadBitmap(sourceUri!!)
+            withContext(Dispatchers.Main) { isLoading.value = false }
+        }
 
         setContent {
             SnapCropTheme {
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    if (isLoading.value) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center),
+                            color = Primary
+                        )
+                    }
+
                     bitmapState.value?.let { bmp ->
                         CropEditorScreen(
                             bitmap = bmp,
                             initialCropRect = cropRect.value,
                             cropMethod = cropMethod.value,
-                            onSave = { rect -> saveCropped(bmp, rect, deleteOriginal = true) },
+                            onSave = { rect -> saveCropped(bmp, rect, deleteOriginal = getDeletePref()) },
                             onSaveCopy = { rect -> saveCropped(bmp, rect, deleteOriginal = false) },
                             onShare = { rect -> shareCropped(bmp, rect) },
+                            onCopyClipboard = { rect -> copyToClipboard(bmp, rect) },
                             onDiscard = { finish() },
                             onDelete = {
                                 deleteOriginalFile()
@@ -109,18 +123,11 @@ class CropActivity : ComponentActivity() {
                         )
                     }
 
-                    // White flash overlay — lives in Compose, can't get stuck
                     if (showFlash) {
                         val flashAlpha = remember { Animatable(0.9f) }
-                        LaunchedEffect(Unit) {
-                            flashAlpha.animateTo(0f, tween(300))
-                        }
+                        LaunchedEffect(Unit) { flashAlpha.animateTo(0f, tween(300)) }
                         if (flashAlpha.value > 0.01f) {
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(Color.White.copy(alpha = flashAlpha.value))
-                            )
+                            Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flashAlpha.value)))
                         }
                     }
                 }
@@ -128,13 +135,23 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun getDeletePref(): Boolean =
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", true)
+
+    private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        return if (prefs.getBoolean("use_jpeg", false)) {
+            Bitmap.CompressFormat.JPEG to prefs.getInt("jpeg_quality", 95)
+        } else {
+            Bitmap.CompressFormat.PNG to 100
+        }
+    }
+
     private fun vibrateShort() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vm = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vm.defaultVibrator.vibrate(
-                    VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE)
-                )
+                vm.defaultVibrator.vibrate(VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")
                 val v = getSystemService(VIBRATOR_SERVICE) as Vibrator
@@ -145,36 +162,38 @@ class CropActivity : ComponentActivity() {
 
     private fun loadBitmap(uri: Uri) {
         try {
-            // First pass: get dimensions only
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, opts)
-            }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
 
-            // Scale down if image is very large (>4096 on any dimension)
             val maxDim = 4096
             var sampleSize = 1
             while (opts.outWidth / sampleSize > maxDim || opts.outHeight / sampleSize > maxDim) {
                 sampleSize *= 2
             }
 
-            // Second pass: decode at target size
             val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            contentResolver.openInputStream(uri)?.use { stream ->
-                originalBitmap = BitmapFactory.decodeStream(stream, null, decodeOpts)
+            contentResolver.openInputStream(uri)?.use {
+                originalBitmap = BitmapFactory.decodeStream(it, null, decodeOpts)
             }
 
-            bitmapState.value = originalBitmap
             originalBitmap?.let { bmp ->
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
                 val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
+                bitmapState.value = bmp
                 cropRect.value = result.rect
                 cropMethod.value = result.method
+            } ?: run {
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
-            finish()
+            runOnUiThread {
+                Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         }
     }
 
@@ -182,12 +201,7 @@ class CropActivity : ComponentActivity() {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { postRotate(90f) }
         val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
-
-        // Recycle old bitmap if it's not the original (was previously rotated)
-        if (current != originalBitmap) {
-            current.recycle()
-        }
-
+        if (current != originalBitmap) current.recycle()
         bitmapState.value = rotated
         cropRect.value = Rect(0, 0, rotated.width, rotated.height)
         cropMethod.value = ""
@@ -196,23 +210,17 @@ class CropActivity : ComponentActivity() {
 
     private fun flipBitmap(horizontal: Boolean) {
         val current = bitmapState.value ?: return
-        val matrix = Matrix().apply {
-            if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f)
-        }
+        val matrix = Matrix().apply { if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f) }
         val flipped = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
         if (current != originalBitmap) current.recycle()
         bitmapState.value = flipped
-        // Flip doesn't change dimensions, keep crop rect
     }
 
     private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect): Bitmap {
-        return Bitmap.createBitmap(
-            bitmap,
-            rect.left.coerceAtLeast(0),
-            rect.top.coerceAtLeast(0),
+        return Bitmap.createBitmap(bitmap,
+            rect.left.coerceAtLeast(0), rect.top.coerceAtLeast(0),
             rect.width().coerceAtMost(bitmap.width - rect.left.coerceAtLeast(0)),
-            rect.height().coerceAtMost(bitmap.height - rect.top.coerceAtLeast(0))
-        )
+            rect.height().coerceAtMost(bitmap.height - rect.top.coerceAtLeast(0)))
     }
 
     private fun saveCropped(bitmap: Bitmap, rect: Rect, deleteOriginal: Boolean) {
@@ -221,32 +229,38 @@ class CropActivity : ComponentActivity() {
         cropped.recycle()
     }
 
+    private fun copyToClipboard(bitmap: Bitmap, rect: Rect) {
+        val cropped = createCroppedBitmap(bitmap, rect)
+        val cacheDir = File(cacheDir, "clipboard")
+        cacheDir.mkdirs()
+        val file = File(cacheDir, "clip.png")
+        try {
+            file.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            cropped.recycle()
+            val clipUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
+            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(clip)
+            Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Copy failed", Toast.LENGTH_SHORT).show()
+            cropped.recycle()
+        }
+    }
+
     private fun shareCropped(bitmap: Bitmap, rect: Rect) {
         val cropped = createCroppedBitmap(bitmap, rect)
-
-        val shareDir = File(cacheDir, "shared_crops")
-        shareDir.mkdirs()
+        val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
         val shareFile = File(shareDir, "snapcrop_share.png")
-
         try {
-            shareFile.outputStream().use { out ->
-                cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
+            shareFile.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
             cropped.recycle()
-
-            val shareUri = FileProvider.getUriForFile(
-                this,
-                "${packageName}.fileprovider",
-                shareFile
-            )
-
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            val shareUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", shareFile)
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "image/png"
                 putExtra(Intent.EXTRA_STREAM, shareUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-
-            startActivity(Intent.createChooser(shareIntent, null))
+            }, null))
         } catch (e: Exception) {
             Toast.makeText(this, "Share failed", Toast.LENGTH_SHORT).show()
             cropped.recycle()
@@ -254,23 +268,22 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean) {
+        val (format, quality) = getSaveFormat()
+        val ext = if (format == Bitmap.CompressFormat.JPEG) "jpg" else "png"
+        val mime = if (format == Bitmap.CompressFormat.JPEG) "image/jpeg" else "image/png"
+
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.$ext")
+            put(MediaStore.Images.Media.MIME_TYPE, mime)
             put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) {
-            Toast.makeText(this, "Failed to save", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (uri == null) { Toast.makeText(this, "Failed to save", Toast.LENGTH_SHORT).show(); return }
 
         try {
-            contentResolver.openOutputStream(uri)?.use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-            }
+            contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
@@ -285,26 +298,17 @@ class CropActivity : ComponentActivity() {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
             contentResolver.delete(uri, null, null)
         }
-
         finish()
     }
 
     private fun deleteOriginalFile() {
-        sourceUri?.let { uri ->
-            try {
-                contentResolver.delete(uri, null, null)
-            } catch (_: Exception) {}
-        }
+        sourceUri?.let { uri -> try { contentResolver.delete(uri, null, null) } catch (_: Exception) {} }
     }
 
     override fun onDestroy() {
-        // Recycle rotated bitmaps (not the original — it may be shared)
         val current = bitmapState.value
-        if (current != null && current != originalBitmap) {
-            current.recycle()
-        }
-        originalBitmap = null
-        bitmapState.value = null
+        if (current != null && current != originalBitmap) current.recycle()
+        originalBitmap = null; bitmapState.value = null
         super.onDestroy()
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
                     onToggleService = { toggleService() },
                     onRequestPermissions = { requestPermissions() },
                     onPickImage = { pickImageLauncher.launch("image/*") },
+                    onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                     onOpenCrop = { uri ->
                         startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
                     }
@@ -212,6 +214,7 @@ private fun HomeScreen(
     onToggleService: () -> Unit,
     onRequestPermissions: () -> Unit,
     onPickImage: () -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit
 ) {
     Column(
@@ -236,18 +239,12 @@ private fun HomeScreen(
                 tint = Primary
             )
             Spacer(Modifier.width(16.dp))
-            Column {
-                Text(
-                    "SnapCrop",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = OnSurface
-                )
-                Text(
-                    "v2.7.0",
-                    fontSize = 13.sp,
-                    color = OnSurfaceVariant
-                )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
+                Text("v2.8.0", fontSize = 13.sp, color = OnSurfaceVariant)
+            }
+            IconButton(onClick = onOpenSettings) {
+                Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
             }
         }
 

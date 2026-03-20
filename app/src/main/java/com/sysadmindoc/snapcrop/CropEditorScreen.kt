@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Psychology
@@ -64,6 +65,7 @@ fun CropEditorScreen(
     onSave: (Rect) -> Unit,
     onSaveCopy: (Rect) -> Unit,
     onShare: (Rect) -> Unit,
+    onCopyClipboard: (Rect) -> Unit,
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -427,28 +429,37 @@ fun CropEditorScreen(
 
             Spacer(Modifier.height(6.dp))
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Icon buttons: delete, share, clipboard
                 OutlinedButton(onClick = onDelete, shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Delete, null, Modifier.size(16.dp)) }
 
                 OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Share, null, Modifier.size(16.dp)) }
 
+                OutlinedButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
+                ) { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)) }
+
+                // Save copy (keep original)
                 OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-                ) { Icon(Icons.Default.Save, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy", fontSize = 13.sp) }
+                ) { Icon(Icons.Default.Save, null, Modifier.size(14.dp)); Spacer(Modifier.width(3.dp)); Text("Copy", fontSize = 12.sp) }
 
+                // Crop & Save
                 Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
-                    modifier = Modifier.weight(1.5f),
+                    modifier = Modifier.weight(1.2f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) { Icon(Icons.Default.Crop, null, Modifier.size(16.dp), tint = Color.Black); Spacer(Modifier.width(4.dp)); Text("Save", color = Color.Black) }
+                ) { Icon(Icons.Default.Crop, null, Modifier.size(14.dp), tint = Color.Black); Spacer(Modifier.width(3.dp)); Text("Save", color = Color.Black, fontSize = 12.sp) }
             }
         }
     }

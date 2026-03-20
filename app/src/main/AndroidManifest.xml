@@ -29,10 +29,16 @@
         </activity>
 
         <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SnapCrop" />
+
+        <activity
             android:name=".CropActivity"
             android:exported="true"
             android:theme="@style/Theme.SnapCrop"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
