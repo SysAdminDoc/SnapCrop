@@ -1,37 +1,63 @@
 # SnapCrop
 
 ## Overview
-Android screenshot autocrop editor with annotation, gallery, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars, provides full annotation toolkit.
+Android screenshot autocrop editor with full annotation toolkit, image adjustments, gallery, stitching, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars, provides 9 draw tools + 5 edit modes.
 
 ## Tech Stack
 - Kotlin, Jetpack Compose, Material 3
-- AMOLED black theme (Catppuccin accent colors)
+- AMOLED black theme (Catppuccin accent colors: blue=primary, green=secondary, pink=tertiary, peach=adjust)
 - ML Kit: Object Detection, Text Recognition, Face Detection, Barcode Scanning
-- Coil for async image loading
-- minSdk 29, targetSdk 35
+- Coil 2.7.0 for async image loading
+- Android PdfDocument for PDF export
+- minSdk 29, targetSdk 35, compileSdk 35
 
 ## Architecture
 - `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects screenshots, launches editor, shows notification with Edit/Share/Quick Crop actions. Falls back to notification if background activity launch fails (Android 12+).
 - `MonitorTileService` - Quick Settings tile to toggle screenshot monitoring on/off.
-- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share via FileProvider.
-- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid. 9 draw tools, pixelate, OCR, brightness/contrast/saturation adjust, crop presets, zoom.
-- `StitchActivity` - Combine 2+ images vertically or horizontally into one stitched image.
-- `AutoCrop` - Multi-strategy: (1) uniform-border scan, (2) system bar strip using exact device heights, (3) full image fallback.
-- `SystemBars` - Queries exact status_bar_height and navigation_bar_height from Android resources.
-- `SmartCropEngine` - ML Kit Object Detection wrapper for content-aware cropping.
-- `GalleryScreen` - Album grid, photo grid with pinch-to-zoom columns, fullscreen viewer, multi-select, favorites, sort, search.
-- `MainActivity` - Home screen with service toggle, permission management, manual pick, batch crop, stitch.
+- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share/clipboard/save via FileProvider. Applies adjustments via ColorMatrixColorFilter on export.
+- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid. 5 edit modes: CROP, PIXELATE, DRAW (9 tools), OCR, ADJUST. Pinch-to-zoom 1-5x, aspect ratio presets, undo/redo.
+- `StitchActivity` - Combine 2+ images vertically or horizontally. Reorder with move up/down buttons.
+- `AutoCrop` - Multi-strategy: (1) uniform-border scan, (2) system bar strip using exact device heights, (3) full image fallback. Edge case validation for scanTop >= scanBottom.
+- `SystemBars` - Queries exact status_bar_height and navigation_bar_height from Android resources via `getIdentifier`.
+- `SmartCropEngine` - ML Kit Object Detection wrapper for content-aware cropping. 2% padding, 10% significance threshold.
+- `GalleryScreen` - Album grid, photo grid with pinch-to-zoom columns (2-6), fullscreen viewer (HorizontalPager), multi-select, favorites, sort (date/name/size), search, PDF export.
+- `MainActivity` - Home screen with service toggle, permission management, manual pick, batch crop, stitch, recent crops gallery.
+- `SettingsActivity` - Delete original, JPEG/PNG format, quality slider, EXIF strip, filename templates, auto-start, cache clear.
 
 ## Key Files
-- `AutoCrop.kt` - Multi-strategy edge detection (border scan + exact system bar strip)
-- `SystemBars.kt` - Device system bar height queries
-- `SmartCropEngine.kt` - ML Kit object detection for AI-powered crop
-- `CropEditorScreen.kt` - Crop UI: Canvas, handles, preview, share, 8 draw tools, OCR, pixelate
-- `ScreenshotService.kt` - Screenshot detection + notification actions + quick save
-- `StitchActivity.kt` - Image stitching (vertical/horizontal combine)
-- `MonitorTileService.kt` - Quick Settings tile for service toggle
-- `CropActivity.kt` - Activity with save/share/delete logic, FileProvider sharing
-- `GalleryScreen.kt` - Gallery with albums, viewer, favorites, multi-select
+| File | Lines | Purpose |
+|------|-------|---------|
+| `CropEditorScreen.kt` | ~1200 | Crop UI, 9 draw tools, 5 edit modes, canvas rendering |
+| `GalleryScreen.kt` | ~690 | Albums, photos, viewer, multi-select, favorites, PDF |
+| `MainActivity.kt` | ~700 | Home screen, permissions, batch crop, stitch, PDF export |
+| `CropActivity.kt` | ~550 | Save/share/delete, bitmap pipeline, adjustments |
+| `ScreenshotService.kt` | ~300 | Screenshot detection, notification actions, quick save |
+| `StitchActivity.kt` | ~260 | Image stitching with reorder |
+| `AutoCrop.kt` | ~230 | Multi-strategy border detection |
+| `SettingsActivity.kt` | ~230 | Settings with filename templates |
+| `SmartCropEngine.kt` | ~85 | ML Kit object detection crop |
+| `MonitorTileService.kt` | ~45 | Quick Settings tile |
+| `FaceDetector.kt` | ~47 | ML Kit face detection for blur |
+| `BarcodeScanner.kt` | ~41 | ML Kit barcode scanning |
+| `TextExtractor.kt` | ~33 | ML Kit text recognition |
+
+## Draw Tools (9)
+1. **Pen** - Freehand with Catmull-Rom smoothing
+2. **Arrow** - Line with arrowhead
+3. **Rect** - Rectangle (optional fill)
+4. **Circle** - Ellipse (optional fill)
+5. **Text** - Tap to place, dialog input
+6. **Highlight** - Semi-transparent wide stroke (40% alpha)
+7. **Callout** - Auto-incrementing numbered circles
+8. **Spotlight** - Dims everything outside selected rectangle
+9. **Magnifier** - 2x zoomed circular inset with crosshair
+
+## Edit Modes (5)
+1. **CROP** - Drag handles, aspect ratios, auto/AI crop, rotate/flip
+2. **PIXELATE** - Draw rectangles to redact, one-tap face blur
+3. **DRAW** - 9 tools above, 6 colors + eyedropper, stroke width slider
+4. **OCR** - ML Kit text recognition + barcode scanning, tap to copy
+5. **ADJUST** - Brightness (-100 to 100), contrast (0.5x-2x), saturation (0-2x)
 
 ## Build
 ```
@@ -44,58 +70,48 @@ Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitig
 v5.3.0
 
 ## Version History
-- v5.3.0: Brightness/contrast/saturation adjustment sliders (ColorMatrix-based, live preview on canvas, applied to export), new ADJUST edit mode with Tune button in toolbar, Peach/orange Catppuccin accent for adjust UI
-- v5.2.0: Magnifier/loupe draw tool (tap to place zoomed circular inset with crosshair, 2x zoom), image-to-PDF export from gallery multi-select, custom filename templates in settings (%timestamp%/%date%/%time%/%counter%), stitch reorder (move up/down buttons), resolveFilename() helper for template expansion
-- v5.1.0: Spotlight/focus draw tool (dims everything outside selected area), image stitching (vertical/horizontal combine 2+ images), Quick Settings tile for monitor toggle, notification actions on screenshot detect (Edit/Share/Quick Crop with 30s auto-dismiss), fixed 6 bitmap memory leaks (rotate/flip/pixelate/destroy), fixed SQL injection in favorites query, fixed applyDraw always copies bitmap (prevents state corruption), added READ_MEDIA_VIDEO permission for gallery video support, AutoCrop edge case validation for scanTop >= scanBottom
-- v5.0.0: Stroke smoothing (Catmull-Rom spline on pen/highlighter paths), video support in gallery (play icon overlay, duration badge, system player launch), video+image mixed albums
-- v4.9.0: More crop presets (3:4, 9:16, 2:1 + scrollable row), eyedropper color picker (tap image to sample pixel color), gallery pinch-to-zoom grid (2-6 columns), current color preview swatch
-- v4.8.0: EXIF metadata stripping on gallery share (re-encodes to clean PNG, setting toggle), gallery sort (date/name/size cycle button), Photo data class extended with name/size fields
-- v4.7.0: Favorites system (SharedPreferences store, heart toggle in viewer, Favorites album card, loadFavoritePhotos query), FavoritesStore utility object, auto-contrast callout numbers
-- v4.6.0: Highlighter tool (semi-transparent wide strokes, 40% alpha), numbered callouts (tap to place circles with auto-incrementing numbers), 7 draw tools total
-- v4.5.0: Fix delete on Android 11+ (MediaStore.createDeleteRequest for scoped storage), viewer share/delete/info buttons, album search bar
-- v4.4.0: Pinch-to-zoom on crop canvas (1-5x, double-tap to reset, zoom indicator badge), photo info panel in gallery viewer
-- v4.3.0: Smart face redaction (ML Kit Face Detection), QR/barcode scanner (ML Kit Barcode Scanning)
-- v4.2.0: OCR text extraction (ML Kit Text Recognition, tap text blocks to copy)
-- v4.1.0: Fullscreen photo viewer (HorizontalPager), multi-select, "All Photos" timeline
-- v4.0.0: Built-in gallery with album grid, Coil AsyncImage, MediaStore queries
-- v3.3.0: Text annotation, filled shapes, haptic undo/redo
-- v3.2.0: Custom icon, batch autocrop, async save, mode indicator
-- v3.1.0: Rectangle/circle shapes, 4 draw tools
-- v3.0.0: Freehand draw, pixelate undo, edit mode system
-- v2.9.0: Pixelate/redact tool, IS_PENDING fix
-- v2.8.0: Settings screen, clipboard copy, async loading
-- v2.7.0: Flip H/V, preview toggle, crop % indicator, undo/redo
-- v2.6.0: Fix infinite loop, OOM protection, bitmap leak fixes
-- v2.5.0: Fix service auto-disabling, recent crops gallery
-- v2.4.0: Flash in CropActivity, dead code cleanup
-- v2.3.0: White flash, undo/redo, share-to-SnapCrop, CI/CD
-- v2.2.0: Aspect ratios, rotate, save copy, haptic, boot receiver
-- v2.1.0: Exact system bar heights, floating overlay
-- v2.0.0: ML Kit AI crop, preview toggle, instant share
+- v5.3.0: Brightness/contrast/saturation adjustment sliders (ColorMatrix, live preview, applied to export), ADJUST edit mode
+- v5.2.0: Magnifier/loupe tool, PDF export from gallery, custom filename templates, stitch reorder
+- v5.1.0: Spotlight tool, image stitching, QS tile, notification actions, 6 bitmap leak fixes, SQL injection fix
+- v5.0.0: Stroke smoothing (Catmull-Rom), video support in gallery
+- v4.9.0: Crop presets (3:4, 9:16, 2:1), eyedropper, gallery pinch-zoom grid
+- v4.8.0: EXIF strip on share, gallery sort
+- v4.7.0: Favorites system
+- v4.6.0: Highlighter, numbered callouts
+- v4.5.0: Fix delete (scoped storage), viewer actions, album search
+- v4.4.0: Pinch-to-zoom crop canvas, photo info panel
+- v4.3.0: Face redaction, QR/barcode scanner
+- v4.2.0: OCR text extraction
+- v4.1.0: Fullscreen viewer, multi-select
+- v4.0.0: Built-in gallery
+- v3.x: Draw tools, pixelate, shapes, text, batch crop, icon
+- v2.x: Settings, flip, preview, undo/redo, OOM fixes, aspect ratios, boot receiver
 - v1.0.0: Initial release
 
 ## Competitor Research (2026-03-20)
-Top open-source competitors: ImageToolbox (12.1k stars, 310+ filters), ScreenshotTile (1.9k stars, QS tile + partial capture), PhotoEditor (10k stars, emoji/stickers).
+Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor (10k).
 
-### High-value features to add next:
-- **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch. Highest demand.
-- **Emoji/sticker overlay** — Draggable, resizable, rotatable image overlays.
-- **Device frame mockup** — Wrap screenshot in phone frame (Pixel/Samsung/iPhone).
-- **Photo filters** — Brightness, contrast, saturation, warmth sliders (GPU-accelerated).
-- **Collage maker** — Grid layouts for combining multiple screenshots.
-- **Image-to-PDF export** — Single or batch conversion.
-- **Background removal** — ML Kit or U2Net for one-tap BG removal.
-- **Custom filename templates** — Date/app/counter placeholders.
+### Remaining high-value features:
+- **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch
+- **Emoji/sticker overlay** — Draggable, resizable, rotatable
+- **Device frame mockup** — Phone frame around screenshot
+- **Collage maker** — Grid layouts
+- **Background removal** — ML Kit subject segmentation
+- **Shape cropping** — Circle, star, heart with transparent BG
+- **Watermark overlay** — Repeating diagonal text stamp
+- **Batch resize** — Bulk resolution change
 
 ## Gotchas
 - `foregroundServiceType="specialUse"` required for Android 14+
 - ContentObserver debounce needed — MediaStore fires multiple events per screenshot
-- ML Kit runs via Google Play Services — no APK size cost, but requires Play Services on device
+- ML Kit runs via Google Play Services — no APK size cost, but requires Play Services
 - FileProvider needed for share intent — cache dir `shared_crops/`
 - SYSTEM_ALERT_WINDOW needed for background activity launch — notification actions serve as fallback
-- Android 12+ edge-to-edge: status bar is transparent, pixel analysis CANNOT detect it. Must use exact device dimensions via `resources.getIdentifier("status_bar_height", "dimen", "android")`
-- `getIdentifier` returns configured height even with gesture nav / hidden bars — correct for screenshots since they capture full framebuffer
-- ContentObserver fires TWICE per screenshot: IS_PENDING=1 (created) and IS_PENDING=0 (finalized). Service validates by attempting to decode the stream.
-- applyDraw() must ALWAYS copy the bitmap — mutating the original causes corruption on subsequent operations
-- Favorites SQL query must use ? placeholders, not direct ID interpolation
-- Bitmap.asImageBitmap() wraps the same native bitmap — do NOT recycle the source Bitmap while ImageBitmap is in use
+- Android 12+: status bar is transparent, pixel analysis CANNOT detect it. Use `resources.getIdentifier("status_bar_height", "dimen", "android")`
+- ContentObserver fires TWICE per screenshot: IS_PENDING=1 then IS_PENDING=0. Validate by decoding stream.
+- applyDraw() must ALWAYS copy bitmap — mutating original causes corruption
+- Favorites SQL must use ? placeholders, not direct ID interpolation
+- Bitmap.asImageBitmap() wraps same native bitmap — do NOT recycle source while ImageBitmap is in use
+- ColorMatrix for adjustments: saturation first, then contrast (scale around mid + offset), then brightness (additive)
+- PdfDocument pages must match bitmap dimensions for 1:1 pixel mapping
+- Filename template: resolveFilename() expands %timestamp%, %date%, %time%, %counter% — counter persisted in SharedPreferences
