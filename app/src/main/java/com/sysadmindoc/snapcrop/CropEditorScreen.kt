@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
+import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
@@ -62,10 +63,10 @@ fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
-    onSave: (Rect) -> Unit,
-    onSaveCopy: (Rect) -> Unit,
-    onShare: (Rect) -> Unit,
-    onCopyClipboard: (Rect) -> Unit,
+    onSave: (Rect, List<Rect>) -> Unit,
+    onSaveCopy: (Rect, List<Rect>) -> Unit,
+    onShare: (Rect, List<Rect>) -> Unit,
+    onCopyClipboard: (Rect, List<Rect>) -> Unit,
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -90,6 +91,12 @@ fun CropEditorScreen(
     var previewMode by remember { mutableStateOf(false) }
     var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
     var aiLoading by remember { mutableStateOf(false) }
+
+    // Pixelate mode
+    var pixelateMode by remember { mutableStateOf(false) }
+    val pixelateRects = remember { mutableStateListOf<Rect>() }
+    var pixDragStart by remember { mutableStateOf<Offset?>(null) }
+    var pixDragCurrent by remember { mutableStateOf<Offset?>(null) }
 
     // Undo/Redo stacks
     val undoStack = remember { mutableStateListOf<Rect>() }
@@ -278,6 +285,11 @@ fun CropEditorScreen(
             Row {
                 IconButton(onClick = onRotate) { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface) }
                 IconButton(onClick = onFlipH) { Icon(Icons.Default.Flip, "Flip H", tint = OnSurface) }
+                IconButton(onClick = { pixelateMode = !pixelateMode }) {
+                    @Suppress("DEPRECATION")
+                    Icon(Icons.Default.BlurOn, "Pixelate",
+                        tint = if (pixelateMode) Tertiary else OnSurface)
+                }
                 IconButton(onClick = { previewMode = !previewMode }) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         "Preview", tint = if (previewMode) Primary else OnSurface)
@@ -335,19 +347,43 @@ fun CropEditorScreen(
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(bitmap) {
+                        .pointerInput(bitmap, pixelateMode) {
                             detectDragGestures(
                                 onDragStart = { pos ->
-                                    activeHandle = findHandle(pos)
-                                    if (activeHandle != DragHandle.NONE) pushUndo()
+                                    if (pixelateMode) {
+                                        pixDragStart = pos
+                                        pixDragCurrent = pos
+                                    } else {
+                                        activeHandle = findHandle(pos)
+                                        if (activeHandle != DragHandle.NONE) pushUndo()
+                                    }
                                 },
-                                onDragEnd = { activeHandle = DragHandle.NONE },
-                                onDragCancel = { activeHandle = DragHandle.NONE },
+                                onDragEnd = {
+                                    if (pixelateMode && pixDragStart != null && pixDragCurrent != null) {
+                                        // Convert screen coords to bitmap coords
+                                        val s = pixDragStart!!; val e = pixDragCurrent!!
+                                        val bx1 = ((minOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                        val by1 = ((minOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                        val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                        val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                        if (bx2 - bx1 > 10 && by2 - by1 > 10) {
+                                            pixelateRects.add(Rect(bx1, by1, bx2, by2))
+                                        }
+                                        pixDragStart = null; pixDragCurrent = null
+                                    } else {
+                                        activeHandle = DragHandle.NONE
+                                    }
+                                },
+                                onDragCancel = { activeHandle = DragHandle.NONE; pixDragStart = null; pixDragCurrent = null },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    constrainToRatio(activeHandle,
-                                        (dragAmount.x / scaleX).roundToInt(),
-                                        (dragAmount.y / scaleY).roundToInt())
+                                    if (pixelateMode) {
+                                        pixDragCurrent = pixDragCurrent?.plus(Offset(dragAmount.x, dragAmount.y))
+                                    } else {
+                                        constrainToRatio(activeHandle,
+                                            (dragAmount.x / scaleX).roundToInt(),
+                                            (dragAmount.y / scaleY).roundToInt())
+                                    }
                                 }
                             )
                         }
@@ -393,6 +429,25 @@ fun CropEditorScreen(
                     drawCircle(CropHandle, midR, Offset((sl + sr) / 2, sb))
                     drawCircle(CropHandle, midR, Offset(sl, (st + sb) / 2))
                     drawCircle(CropHandle, midR, Offset(sr, (st + sb) / 2))
+
+                    // Pixelate region indicators (mosaic pattern)
+                    val pixColor = Tertiary.copy(alpha = 0.35f)
+                    val pixBorder = Tertiary.copy(alpha = 0.7f)
+                    for (pr in pixelateRects) {
+                        val px1 = ox + pr.left * scale; val py1 = oy + pr.top * scale
+                        val px2 = ox + pr.right * scale; val py2 = oy + pr.bottom * scale
+                        drawRect(pixColor, Offset(px1, py1), Size(px2 - px1, py2 - py1))
+                        drawRect(pixBorder, Offset(px1, py1), Size(px2 - px1, py2 - py1), style = Stroke(1.5f.dp.toPx()))
+                    }
+
+                    // Current pixelate drag preview
+                    if (pixelateMode && pixDragStart != null && pixDragCurrent != null) {
+                        val ds = pixDragStart!!; val dc = pixDragCurrent!!
+                        val rx = minOf(ds.x, dc.x); val ry = minOf(ds.y, dc.y)
+                        val rw = kotlin.math.abs(dc.x - ds.x); val rh = kotlin.math.abs(dc.y - ds.y)
+                        drawRect(Tertiary.copy(alpha = 0.25f), Offset(rx, ry), Size(rw, rh))
+                        drawRect(Tertiary, Offset(rx, ry), Size(rw, rh), style = Stroke(2.dp.toPx()))
+                    }
                 }
             }
         }
@@ -436,26 +491,26 @@ fun CropEditorScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Delete, null, Modifier.size(16.dp)) }
 
-                OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Share, null, Modifier.size(16.dp)) }
 
-                OutlinedButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                OutlinedButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)) }
 
                 // Save copy (keep original)
-                OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
                     modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
                 ) { Icon(Icons.Default.Save, null, Modifier.size(14.dp)); Spacer(Modifier.width(3.dp)); Text("Copy", fontSize = 12.sp) }
 
                 // Crop & Save
-                Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
                     modifier = Modifier.weight(1.2f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
