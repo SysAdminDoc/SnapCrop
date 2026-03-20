@@ -1,6 +1,5 @@
 package com.sysadmindoc.snapcrop
 
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ContentValues
@@ -22,9 +21,7 @@ class ScreenshotService : Service() {
 
     companion object {
         const val ACTION_QUICK_SAVE = "com.sysadmindoc.snapcrop.QUICK_SAVE"
-        const val ACTION_DISMISS = "com.sysadmindoc.snapcrop.DISMISS"
         const val EXTRA_URI = "extra_uri"
-        private const val CROP_NOTIFICATION_ID = 100
     }
 
     private var observer: ContentObserver? = null
@@ -41,11 +38,6 @@ class ScreenshotService : Service() {
                 if (uriStr != null) {
                     quickSave(Uri.parse(uriStr))
                 }
-                dismissCropNotification()
-                return START_STICKY
-            }
-            ACTION_DISMISS -> {
-                dismissCropNotification()
                 return START_STICKY
             }
         }
@@ -60,6 +52,7 @@ class ScreenshotService : Service() {
         .setContentText("Monitoring for screenshots...")
         .setSmallIcon(R.drawable.ic_crop)
         .setOngoing(true)
+        .setSilent(true)
         .setContentIntent(
             PendingIntent.getActivity(
                 this, 0,
@@ -113,7 +106,6 @@ class ScreenshotService : Service() {
                     if (isRecent && isScreenshot) {
                         lastProcessedUri = uriStr
                         lastProcessedTime = now
-                        showCropNotification(uri)
                         showThumbnailOverlay(uri)
                     }
                 }
@@ -121,59 +113,6 @@ class ScreenshotService : Service() {
         } catch (_: Exception) {
             // SecurityException or other query failure
         }
-    }
-
-    private fun showCropNotification(uri: Uri) {
-        val uriStr = uri.toString()
-
-        // Quick Save action — crops and saves without opening editor
-        val quickSaveIntent = Intent(this, ScreenshotService::class.java).apply {
-            action = ACTION_QUICK_SAVE
-            putExtra(EXTRA_URI, uriStr)
-        }
-        val quickSavePending = PendingIntent.getService(
-            this, 1, quickSaveIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Edit action — opens the crop editor
-        val editIntent = Intent(this, CropActivity::class.java).apply {
-            data = uri
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        val editPending = PendingIntent.getActivity(
-            this, 2, editIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Dismiss action
-        val dismissIntent = Intent(this, ScreenshotService::class.java).apply {
-            action = ACTION_DISMISS
-        }
-        val dismissPending = PendingIntent.getService(
-            this, 3, dismissIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val notification = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_CROP)
-            .setContentTitle("Screenshot captured")
-            .setContentText("Tap to edit, or quick save autocropped version")
-            .setSmallIcon(R.drawable.ic_crop)
-            .setAutoCancel(true)
-            .setContentIntent(editPending)
-            .addAction(R.drawable.ic_crop, "Quick Save", quickSavePending)
-            .addAction(0, "Edit", editPending)
-            .addAction(0, "Dismiss", dismissPending)
-            .setTimeoutAfter(30000)
-            .build()
-
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(CROP_NOTIFICATION_ID, notification)
-    }
-
-    private fun dismissCropNotification() {
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.cancel(CROP_NOTIFICATION_ID)
     }
 
     private fun quickSave(uri: Uri) {
@@ -188,7 +127,6 @@ class ScreenshotService : Service() {
                     cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
             if (isFullImage) {
-                // No crop detected — keep original, show toast
                 bitmap.recycle()
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(this, "No borders detected — kept original", Toast.LENGTH_SHORT).show()
