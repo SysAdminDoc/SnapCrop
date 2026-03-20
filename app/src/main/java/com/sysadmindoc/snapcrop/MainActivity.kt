@@ -154,7 +154,7 @@ private fun HomeScreen(
         )
 
         Text(
-            "v1.0.0",
+            "v2.0.0",
             fontSize = 13.sp,
             color = OnSurfaceVariant
         )

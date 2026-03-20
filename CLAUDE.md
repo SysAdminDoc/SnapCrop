@@ -1,26 +1,28 @@
 # SnapCrop
 
 ## Overview
-Android screenshot autocrop editor. Detects screenshots via foreground service, opens them in a crop editor with automatic edge detection.
+Android screenshot autocrop editor. Detects screenshots via foreground service, opens them in a crop editor with automatic edge detection and ML Kit AI fallback.
 
 ## Tech Stack
 - Kotlin, Jetpack Compose, Material 3
 - AMOLED black theme (Catppuccin accent colors)
+- ML Kit Object Detection (smart crop fallback)
 - minSdk 29, targetSdk 35
-- Coil for image loading (available but crop editor uses raw Bitmap)
 
 ## Architecture
-- `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects new screenshots by path/name matching and recency check.
-- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable.
-- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid.
-- `AutoCrop` - Scans rows/columns from each edge inward looking for uniform color strips. Uses color tolerance (30) and 85% uniformity threshold.
+- `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects screenshots, shows notification with Quick Save / Edit / Dismiss actions. Handles quick-save (autocrop + save) directly in service.
+- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share via FileProvider.
+- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid. Preview toggle, share button, AI crop button. Shows crop method indicator (Border/System bars/AI).
+- `AutoCrop` - Multi-strategy: (1) uniform-border scan, (2) status/nav bar strip, (3) full image fallback. Uses density-aware system bar height detection.
+- `SmartCropEngine` - ML Kit Object Detection wrapper. Detects dominant objects, returns encompassing bounding box. Used as fallback when border scan finds nothing.
 - `MainActivity` - Home screen with service toggle, permission management, manual image picker.
 
 ## Key Files
-- `app/src/main/java/com/sysadmindoc/snapcrop/AutoCrop.kt` - Edge detection algorithm
-- `app/src/main/java/com/sysadmindoc/snapcrop/CropEditorScreen.kt` - Crop UI with Canvas
-- `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` - Screenshot detection service
-- `app/src/main/java/com/sysadmindoc/snapcrop/CropActivity.kt` - Crop activity with save/delete logic
+- `AutoCrop.kt` - Multi-strategy edge detection (border scan + system bar strip)
+- `SmartCropEngine.kt` - ML Kit object detection for AI-powered crop
+- `CropEditorScreen.kt` - Crop UI: Canvas, handles, preview, share, method indicator
+- `ScreenshotService.kt` - Screenshot detection + notification quick actions
+- `CropActivity.kt` - Activity with save/share/delete logic, FileProvider sharing
 
 ## Build
 ```
@@ -29,10 +31,16 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 ```
 
 ## Version
-v1.0.0
+v2.0.0
+
+## Version History
+- v2.0.0: ML Kit AI crop, notification quick actions, preview toggle, instant share, status bar auto-strip, crop method indicator
+- v1.0.0: Initial release — border scan autocrop, draggable crop editor, screenshot detection service
 
 ## Gotchas
-- `foregroundServiceType="specialUse"` required for Android 14+ (no built-in type for media monitoring)
+- `foregroundServiceType="specialUse"` required for Android 14+
 - ContentObserver debounce needed — MediaStore fires multiple events per screenshot
-- Crop handles use L-shaped corner brackets (not circles) for cleaner look
-- Saved to `Pictures/SnapCrop/`, original screenshot is deleted after crop save
+- ML Kit runs via Google Play Services — no APK size cost, but requires Play Services on device
+- Quick save in ScreenshotService runs on main thread for simplicity — bitmaps are small (screenshots)
+- FileProvider needed for share intent — cache dir `shared_crops/`
+- Preview mode creates a new bitmap each recomposition with crop changes — acceptable for screenshots
