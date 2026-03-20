@@ -12,8 +12,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 17
-        versionName = "4.1.0"
+        versionCode = 18
+        versionName = "4.2.0"
     }
 
     buildTypes {
@@ -54,5 +54,6 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
     implementation(libs.mlkit.objectdetection)
+    implementation(libs.mlkit.textrecognition)
     debugImplementation(libs.androidx.ui.tooling)
 }

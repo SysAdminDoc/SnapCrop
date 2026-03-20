@@ -12,7 +12,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
@@ -52,6 +55,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.snapcrop.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -70,7 +76,7 @@ data class DrawPath(
     val filled: Boolean = false
 )
 
-private enum class EditMode { CROP, PIXELATE, DRAW }
+private enum class EditMode { CROP, PIXELATE, DRAW, OCR }
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text")
 }
@@ -138,6 +144,8 @@ fun CropEditorScreen(
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
     var shapeFilled by remember { mutableStateOf(false) }
+    var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
+    var ocrLoading by remember { mutableStateOf(false) }
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
@@ -354,6 +362,22 @@ fun CropEditorScreen(
                     Icon(Icons.Default.Draw, "Draw",
                         tint = if (editMode == EditMode.DRAW) Secondary else OnSurface)
                 }
+                IconButton(onClick = {
+                    if (editMode == EditMode.OCR) { editMode = EditMode.CROP; ocrBlocks = emptyList() }
+                    else {
+                        editMode = EditMode.OCR
+                        if (ocrBlocks.isEmpty() && !ocrLoading) {
+                            ocrLoading = true
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                ocrBlocks = TextExtractor.extract(bitmap)
+                                ocrLoading = false
+                            }
+                        }
+                    }
+                }) {
+                    Icon(Icons.Default.TextFields, "OCR",
+                        tint = if (editMode == EditMode.OCR) Color(0xFFCBA6F7) else OnSurface)
+                }
                 IconButton(onClick = { previewMode = !previewMode }) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         "Preview", tint = if (previewMode) Primary else OnSurface)
@@ -363,19 +387,20 @@ fun CropEditorScreen(
 
         // Mode indicator
         if (editMode != EditMode.CROP) {
-            Row(Modifier.fillMaxWidth().background(
-                if (editMode == EditMode.PIXELATE) Tertiary.copy(alpha = 0.15f) else Secondary.copy(alpha = 0.15f)
-            ).padding(horizontal = 16.dp, vertical = 4.dp),
+            val (bannerBg, bannerColor, bannerText) = when (editMode) {
+                EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, "PIXELATE — draw rectangles to redact")
+                EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "DRAW — ${drawTool.label.lowercase()}")
+                EditMode.OCR -> Triple(Color(0xFFCBA6F7).copy(alpha = 0.15f), Color(0xFFCBA6F7),
+                    if (ocrLoading) "SCANNING TEXT..." else "OCR — tap text to copy (${ocrBlocks.size} blocks)")
+                else -> Triple(Color.Transparent, Color.Transparent, "")
+            }
+            Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.Center) {
-                Text(
-                    when (editMode) {
-                        EditMode.PIXELATE -> "PIXELATE MODE — draw rectangles to redact"
-                        EditMode.DRAW -> "DRAW MODE — ${drawTool.label.lowercase()}"
-                        else -> ""
-                    },
-                    color = if (editMode == EditMode.PIXELATE) Tertiary else Secondary,
-                    fontSize = 11.sp, fontWeight = FontWeight.Medium
-                )
+                if (ocrLoading && editMode == EditMode.OCR) {
+                    CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
         }
 
@@ -516,6 +541,7 @@ fun CropEditorScreen(
                                             activeHandle = findHandle(pos)
                                             if (activeHandle != DragHandle.NONE) pushUndo()
                                         }
+                                        EditMode.OCR -> {}
                                     }
                                 },
                                 onDragEnd = {
@@ -552,6 +578,7 @@ fun CropEditorScreen(
                                             currentDrawPoints = emptyList()
                                         }
                                         EditMode.CROP -> activeHandle = DragHandle.NONE
+                                        EditMode.OCR -> {}
                                     }
                                 },
                                 onDragCancel = {
@@ -572,11 +599,30 @@ fun CropEditorScreen(
                                         EditMode.CROP -> constrainToRatio(activeHandle,
                                             (dragAmount.x / scaleX).roundToInt(),
                                             (dragAmount.y / scaleY).roundToInt())
+                                        EditMode.OCR -> {}
                                     }
                                 }
                             )
                         }
-                        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { previewMode = true }) }
+                        .pointerInput(editMode, ocrBlocks) {
+                            detectTapGestures(
+                                onDoubleTap = { previewMode = true },
+                                onTap = { pos ->
+                                    if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
+                                        // Find tapped OCR block
+                                        val bx = ((pos.x - offsetX) / scaleX).toInt()
+                                        val by = ((pos.y - offsetY) / scaleY).toInt()
+                                        val tapped = ocrBlocks.find { it.bounds.contains(bx, by) }
+                                        if (tapped != null) {
+                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tapped.text))
+                                            android.widget.Toast.makeText(context, "Copied: ${tapped.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
+                                            haptic()
+                                        }
+                                    }
+                                }
+                            )
+                        }
                 ) {
                     val imgW = bitmap.width.toFloat(); val imgH = bitmap.height.toFloat()
                     val scale = min(size.width / imgW, size.height / imgH)
@@ -706,6 +752,19 @@ fun CropEditorScreen(
                         val rw = kotlin.math.abs(dc.x - ds.x); val rh = kotlin.math.abs(dc.y - ds.y)
                         drawRect(Tertiary.copy(alpha = 0.25f), Offset(rx, ry), Size(rw, rh))
                         drawRect(Tertiary, Offset(rx, ry), Size(rw, rh), style = Stroke(2.dp.toPx()))
+                    }
+
+                    // OCR text block overlays
+                    if (editMode == EditMode.OCR) {
+                        val ocrColor = Color(0xFFCBA6F7)
+                        for (block in ocrBlocks) {
+                            val bl = ox + block.bounds.left * scale
+                            val bt = oy + block.bounds.top * scale
+                            val bw = block.bounds.width() * scale
+                            val bh = block.bounds.height() * scale
+                            drawRect(ocrColor.copy(alpha = 0.15f), Offset(bl, bt), Size(bw, bh))
+                            drawRect(ocrColor.copy(alpha = 0.6f), Offset(bl, bt), Size(bw, bh), style = Stroke(1.5f.dp.toPx()))
+                        }
                     }
                 }
             }
