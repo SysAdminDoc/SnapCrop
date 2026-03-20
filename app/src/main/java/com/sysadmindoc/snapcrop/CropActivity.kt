@@ -7,14 +7,27 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.FileProvider
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import kotlinx.coroutines.CoroutineScope
@@ -25,12 +38,16 @@ import java.io.IOException
 
 class CropActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_SHOW_FLASH = "show_flash"
+    }
+
     private var originalBitmap: Bitmap? = null
     private val bitmapState = mutableStateOf<Bitmap?>(null)
     private val cropRect = mutableStateOf(Rect(0, 0, 0, 0))
     private val cropMethod = mutableStateOf("")
     private var sourceUri: Uri? = null
-    private val rotationKey = mutableIntStateOf(0) // forces recomposition on rotate
+    private val rotationKey = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,43 +65,80 @@ class CropActivity : ComponentActivity() {
             return
         }
 
+        val showFlash = intent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
+
         loadBitmap(sourceUri!!)
+
+        // Haptic on screenshot capture
+        if (showFlash) vibrateShort()
 
         setContent {
             SnapCropTheme {
-                bitmapState.value?.let { bmp ->
-                    CropEditorScreen(
-                        bitmap = bmp,
-                        initialCropRect = cropRect.value,
-                        cropMethod = cropMethod.value,
-                        onSave = { rect -> saveCropped(bmp, rect, deleteOriginal = true) },
-                        onSaveCopy = { rect -> saveCropped(bmp, rect, deleteOriginal = false) },
-                        onShare = { rect -> shareCropped(bmp, rect) },
-                        onDiscard = { finish() },
-                        onDelete = {
-                            deleteOriginalFile()
-                            Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
-                            finish()
-                        },
-                        onAutoCrop = {
-                            val sbPx = SystemBars.statusBarHeight(resources)
-                            val nbPx = SystemBars.navigationBarHeight(resources)
-                            val result = AutoCrop.detectWithMethod(bmp, sbPx, nbPx)
-                            cropMethod.value = result.method
-                            result.rect
-                        },
-                        onSmartCrop = {
-                            CoroutineScope(Dispatchers.Main).launch {
-                                val rect = SmartCropEngine.detect(bmp)
-                                cropRect.value = rect
-                                cropMethod.value = "ai"
-                            }
-                        },
-                        onRotate = { rotateBitmap() }
-                    )
+                Box(Modifier.fillMaxSize()) {
+                    bitmapState.value?.let { bmp ->
+                        CropEditorScreen(
+                            bitmap = bmp,
+                            initialCropRect = cropRect.value,
+                            cropMethod = cropMethod.value,
+                            onSave = { rect -> saveCropped(bmp, rect, deleteOriginal = true) },
+                            onSaveCopy = { rect -> saveCropped(bmp, rect, deleteOriginal = false) },
+                            onShare = { rect -> shareCropped(bmp, rect) },
+                            onDiscard = { finish() },
+                            onDelete = {
+                                deleteOriginalFile()
+                                Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                                finish()
+                            },
+                            onAutoCrop = {
+                                val sbPx = SystemBars.statusBarHeight(resources)
+                                val nbPx = SystemBars.navigationBarHeight(resources)
+                                val result = AutoCrop.detectWithMethod(bmp, sbPx, nbPx)
+                                cropMethod.value = result.method
+                                result.rect
+                            },
+                            onSmartCrop = {
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    val rect = SmartCropEngine.detect(bmp)
+                                    cropRect.value = rect
+                                    cropMethod.value = "ai"
+                                }
+                            },
+                            onRotate = { rotateBitmap() }
+                        )
+                    }
+
+                    // White flash overlay — lives in Compose, can't get stuck
+                    if (showFlash) {
+                        val flashAlpha = remember { Animatable(0.9f) }
+                        LaunchedEffect(Unit) {
+                            flashAlpha.animateTo(0f, tween(300))
+                        }
+                        if (flashAlpha.value > 0.01f) {
+                            Box(
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White.copy(alpha = flashAlpha.value))
+                            )
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun vibrateShort() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(
+                    VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val v = getSystemService(VIBRATOR_SERVICE) as Vibrator
+                v.vibrate(VibrationEffect.createOneShot(25, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } catch (_: Exception) {}
     }
 
     private fun loadBitmap(uri: Uri) {

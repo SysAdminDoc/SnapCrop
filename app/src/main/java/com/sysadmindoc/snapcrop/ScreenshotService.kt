@@ -12,7 +12,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.MediaStore
-import android.provider.Settings
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import java.io.IOException
@@ -27,7 +26,6 @@ class ScreenshotService : Service() {
     private var observer: ContentObserver? = null
     private var lastProcessedUri: String? = null
     private var lastProcessedTime = 0L
-    private var screenFlash: ScreenFlash? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -80,7 +78,9 @@ class ScreenshotService : Service() {
     private fun handleNewImage(uri: Uri) {
         val now = System.currentTimeMillis()
         val uriStr = uri.toString()
-        if (uriStr == lastProcessedUri && now - lastProcessedTime < 1000) return
+
+        // Debounce — MediaStore fires multiple events per screenshot
+        if (uriStr == lastProcessedUri && now - lastProcessedTime < 2000) return
 
         val projection = arrayOf(
             MediaStore.Images.Media.DISPLAY_NAME,
@@ -104,30 +104,17 @@ class ScreenshotService : Service() {
                     if (isRecent && isScreenshot) {
                         lastProcessedUri = uriStr
                         lastProcessedTime = now
-                        flashAndOpenEditor(uri)
+                        launchEditor(uri)
                     }
                 }
             }
         } catch (_: Exception) {}
     }
 
-    private fun flashAndOpenEditor(uri: Uri) {
-        val canFlash = Settings.canDrawOverlays(this)
-
-        if (canFlash) {
-            Handler(Looper.getMainLooper()).post {
-                if (screenFlash == null) screenFlash = ScreenFlash(this)
-                screenFlash?.flash { launchEditor(uri) }
-            }
-        } else {
-            // No overlay permission — just open editor directly
-            launchEditor(uri)
-        }
-    }
-
     private fun launchEditor(uri: Uri) {
         val intent = Intent(this, CropActivity::class.java).apply {
             data = uri
+            putExtra(CropActivity.EXTRA_SHOW_FLASH, true)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         startActivity(intent)
