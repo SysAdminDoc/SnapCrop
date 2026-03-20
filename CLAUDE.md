@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v3.0.0
+v3.1.0
 
 ## Version History
+- v3.1.0: Rectangle + circle shape tools, 4 draw tools (pen/arrow/rect/circle), shapes render on export, delete confirmation toast, README overhaul, settings about version bump
 - v3.0.0: Freehand draw tool (6 colors, anti-aliased, undo/clear), pixelate undo/clear, edit mode system (crop/pixelate/draw), draw paths rendered on export, notification channel fix for existing installs
 - v2.9.0: Pixelate/redact tool, IS_PENDING=0 fix for screenshot detection (file fully written before opening), removed retry loop/delay bandaids, widened recency window to 10s
 - v2.8.0: Settings screen (delete original, JPEG/PNG format, quality slider, auto-start), copy to clipboard, async bitmap loading with spinner, landscape lock on CropActivity, settings gear on home screen

@@ -101,7 +101,10 @@ class MainActivity : ComponentActivity() {
                         startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
                     },
                     onDeleteCrop = { uri ->
-                        try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                        try {
+                            contentResolver.delete(uri, null, null)
+                            android.widget.Toast.makeText(this, "Deleted", android.widget.Toast.LENGTH_SHORT).show()
+                        } catch (_: Exception) {}
                         loadRecentCrops()
                     }
                 )
@@ -267,7 +270,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v3.0.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v3.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

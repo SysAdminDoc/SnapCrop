@@ -260,6 +260,24 @@ class CropActivity : ComponentActivity() {
             if (dp.points.size < 2) continue
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
+
+            // Shape types
+            if (dp.shapeType == "rect" && dp.points.size >= 2) {
+                val p1 = dp.points.first(); val p2 = dp.points.last()
+                val l = minOf(p1.x, p2.x); val t = minOf(p1.y, p2.y)
+                val r = maxOf(p1.x, p2.x); val b = maxOf(p1.y, p2.y)
+                canvas.drawRect(l, t, r, b, paint)
+                continue
+            }
+            if (dp.shapeType == "circle" && dp.points.size >= 2) {
+                val p1 = dp.points.first(); val p2 = dp.points.last()
+                val l = minOf(p1.x, p2.x); val t = minOf(p1.y, p2.y)
+                val r = maxOf(p1.x, p2.x); val b = maxOf(p1.y, p2.y)
+                canvas.drawOval(l, t, r, b, paint)
+                continue
+            }
+
+            // Freehand path
             val path = Path()
             path.moveTo(dp.points[0].x, dp.points[0].y)
             for (i in 1 until dp.points.size) {
@@ -275,13 +293,12 @@ class CropActivity : ComponentActivity() {
                 val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                 if (len > 0) {
                     val ux = dx / len; val uy = dy / len
-                    val headLen = dp.strokeWidth * 4
-                    val headW = dp.strokeWidth * 2.5f
+                    val hl = dp.strokeWidth * 4; val hw = dp.strokeWidth * 2.5f
                     val arrowPath = Path()
                     arrowPath.moveTo(last.x, last.y)
-                    arrowPath.lineTo(last.x - ux * headLen + uy * headW, last.y - uy * headLen - ux * headW)
+                    arrowPath.lineTo(last.x - ux * hl + uy * hw, last.y - uy * hl - ux * hw)
                     arrowPath.moveTo(last.x, last.y)
-                    arrowPath.lineTo(last.x - ux * headLen - uy * headW, last.y - uy * headLen + ux * headW)
+                    arrowPath.lineTo(last.x - ux * hl - uy * hw, last.y - uy * hl + ux * hw)
                     canvas.drawPath(arrowPath, paint)
                 }
             }

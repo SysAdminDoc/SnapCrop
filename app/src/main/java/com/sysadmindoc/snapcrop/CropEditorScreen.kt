@@ -58,11 +58,14 @@ data class DrawPath(
     val points: List<PointF>,
     val color: Int,
     val strokeWidth: Float,
-    val isArrow: Boolean = false
+    val isArrow: Boolean = false,
+    val shapeType: String? = null // "rect" or "circle"
 )
 
 private enum class EditMode { CROP, PIXELATE, DRAW }
-private enum class DrawTool { PEN, ARROW }
+private enum class DrawTool(val label: String) {
+    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle")
+}
 
 private val drawColors = listOf(
     0xFFFF0000.toInt() to "Red",
@@ -373,27 +376,20 @@ fun CropEditorScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Pen / Arrow toggle
-                    FilterChip(selected = drawTool == DrawTool.PEN,
-                        onClick = { drawTool = DrawTool.PEN },
-                        label = { Text("Pen", fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
-                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp))
-                    FilterChip(selected = drawTool == DrawTool.ARROW,
-                        onClick = { drawTool = DrawTool.ARROW },
-                        label = { Text("Arrow", fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
-                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp))
-                    // Colors
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    DrawTool.entries.forEach { tool ->
+                        FilterChip(selected = drawTool == tool,
+                            onClick = { drawTool = tool },
+                            label = { Text(tool.label, fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp))
+                    }
                     drawColors.forEach { (color, _) ->
                         Box(Modifier
-                            .size(if (drawColor == color) 26.dp else 20.dp)
-                            .background(Color(color), RoundedCornerShape(4.dp))
+                            .size(if (drawColor == color) 24.dp else 18.dp)
+                            .background(Color(color), RoundedCornerShape(3.dp))
                             .pointerInput(color) { detectTapGestures { drawColor = color } })
                     }
                 }
@@ -477,9 +473,19 @@ fun CropEditorScreen(
                                             pixDragStart = null; pixDragCurrent = null
                                         }
                                         EditMode.DRAW -> {
-                                            if (currentDrawPoints.size > 1) {
-                                                drawPaths.add(DrawPath(currentDrawPoints.toList(), drawColor, drawStrokeWidth,
-                                                    isArrow = drawTool == DrawTool.ARROW))
+                                            if (currentDrawPoints.size >= 2) {
+                                                val shape = when (drawTool) {
+                                                    DrawTool.RECT -> "rect"
+                                                    DrawTool.CIRCLE -> "circle"
+                                                    else -> null
+                                                }
+                                                drawPaths.add(DrawPath(
+                                                    points = if (shape != null) listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints.toList(),
+                                                    color = drawColor,
+                                                    strokeWidth = drawStrokeWidth,
+                                                    isArrow = drawTool == DrawTool.ARROW,
+                                                    shapeType = shape
+                                                ))
                                             }
                                             currentDrawPoints = emptyList()
                                         }
@@ -561,44 +567,54 @@ fun CropEditorScreen(
                         drawRect(pixBorder, Offset(px1, py1), Size(px2 - px1, py2 - py1), style = Stroke(1.5f.dp.toPx()))
                     }
 
-                    // Draw paths + arrows
-                    fun drawPathOnCanvas(pts: List<PointF>, color: Color, sw: Float, arrow: Boolean) {
+                    // Draw paths + shapes
+                    fun drawShapeOnCanvas(dp: DrawPath, pts: List<PointF>, color: Color, sw: Float) {
+                        val shape = dp.shapeType
+                        if (shape != null && pts.size >= 2) {
+                            val p1 = pts.first(); val p2 = pts.last()
+                            val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
+                            val sx2 = ox + p2.x * scale; val sy2 = oy + p2.y * scale
+                            when (shape) {
+                                "rect" -> drawRect(color, Offset(minOf(sx1, sx2), minOf(sy1, sy2)),
+                                    Size(kotlin.math.abs(sx2 - sx1), kotlin.math.abs(sy2 - sy1)), style = Stroke(sw))
+                                "circle" -> {
+                                    val cx = (sx1 + sx2) / 2; val cy = (sy1 + sy2) / 2
+                                    val rx = kotlin.math.abs(sx2 - sx1) / 2; val ry = kotlin.math.abs(sy2 - sy1) / 2
+                                    drawOval(color, Offset(cx - rx, cy - ry), Size(rx * 2, ry * 2), style = Stroke(sw))
+                                }
+                            }
+                            return
+                        }
                         if (pts.size < 2) return
                         for (i in 1 until pts.size) {
-                            val p1 = pts[i - 1]; val p2 = pts[i]
-                            drawLine(color,
-                                Offset(ox + p1.x * scale, oy + p1.y * scale),
-                                Offset(ox + p2.x * scale, oy + p2.y * scale),
-                                strokeWidth = sw)
+                            val a = pts[i - 1]; val b = pts[i]
+                            drawLine(color, Offset(ox + a.x * scale, oy + a.y * scale),
+                                Offset(ox + b.x * scale, oy + b.y * scale), strokeWidth = sw)
                         }
-                        if (arrow && pts.size >= 2) {
+                        if (dp.isArrow && pts.size >= 2) {
                             val last = pts.last(); val prev = pts[pts.size - 2]
                             val dx = last.x - prev.x; val dy = last.y - prev.y
                             val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                             if (len > 0) {
                                 val ux = dx / len; val uy = dy / len
-                                val headLen = sw / scale * 4
-                                val headW = sw / scale * 2.5f
+                                val hl = sw / scale * 4; val hw = sw / scale * 2.5f
                                 val tip = Offset(ox + last.x * scale, oy + last.y * scale)
-                                val l1 = Offset(
-                                    ox + (last.x - ux * headLen + uy * headW) * scale,
-                                    oy + (last.y - uy * headLen - ux * headW) * scale)
-                                val l2 = Offset(
-                                    ox + (last.x - ux * headLen - uy * headW) * scale,
-                                    oy + (last.y - uy * headLen + ux * headW) * scale)
-                                drawLine(color, tip, l1, strokeWidth = sw)
-                                drawLine(color, tip, l2, strokeWidth = sw)
+                                drawLine(color, tip, Offset(ox + (last.x - ux * hl + uy * hw) * scale, oy + (last.y - uy * hl - ux * hw) * scale), strokeWidth = sw)
+                                drawLine(color, tip, Offset(ox + (last.x - ux * hl - uy * hw) * scale, oy + (last.y - uy * hl + ux * hw) * scale), strokeWidth = sw)
                             }
                         }
                     }
 
                     for (dp in drawPaths) {
-                        drawPathOnCanvas(dp.points, Color(dp.color), dp.strokeWidth * scale, dp.isArrow)
+                        drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
                     }
 
                     // Current draw stroke
                     if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
-                        drawPathOnCanvas(currentDrawPoints, Color(drawColor), drawStrokeWidth * scale, drawTool == DrawTool.ARROW)
+                        val curShape = when (drawTool) { DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"; else -> null }
+                        val curPts = if (curShape != null) listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
+                        drawShapeOnCanvas(DrawPath(curPts, drawColor, drawStrokeWidth, drawTool == DrawTool.ARROW, curShape),
+                            curPts, Color(drawColor), drawStrokeWidth * scale)
                     }
 
                     // Current pixelate drag preview
