@@ -7,6 +7,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -117,10 +118,21 @@ fun CropEditorScreen(
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
 
-    var scaleX by remember { mutableFloatStateOf(1f) }
-    var scaleY by remember { mutableFloatStateOf(1f) }
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    // Base scale/offset (fit image to canvas)
+    var baseScale by remember { mutableFloatStateOf(1f) }
+    var baseOx by remember { mutableFloatStateOf(0f) }
+    var baseOy by remember { mutableFloatStateOf(0f) }
+
+    // Zoom/pan (user-controlled, multiplicative on top of base)
+    var zoomLevel by remember { mutableFloatStateOf(1f) }
+    var panX by remember { mutableFloatStateOf(0f) }
+    var panY by remember { mutableFloatStateOf(0f) }
+
+    // Effective scale/offset used by all coordinate math
+    val scaleX = baseScale * zoomLevel
+    val scaleY = baseScale * zoomLevel
+    val offsetX = baseOx * zoomLevel + panX
+    val offsetY = baseOy * zoomLevel + panY
 
     var cropLeft by remember { mutableIntStateOf(initialCropRect.left) }
     var cropTop by remember { mutableIntStateOf(initialCropRect.top) }
@@ -542,6 +554,19 @@ fun CropEditorScreen(
 
         // Canvas area
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Zoom indicator
+            if (zoomLevel > 1.05f) {
+                Surface(
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                    color = Color.Black.copy(alpha = 0.6f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text("${String.format("%.1f", zoomLevel)}x",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
             if (previewMode) {
                 val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap) {
                     try {
@@ -648,9 +673,19 @@ fun CropEditorScreen(
                                 }
                             )
                         }
-                        .pointerInput(editMode, ocrBlocks) {
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
+                                panX += pan.x
+                                panY += pan.y
+                            }
+                        }
+                        .pointerInput(editMode, ocrBlocks, scannedCodes) {
                             detectTapGestures(
-                                onDoubleTap = { previewMode = true },
+                                onDoubleTap = {
+                                    if (zoomLevel > 1.05f) { zoomLevel = 1f; panX = 0f; panY = 0f }
+                                    else previewMode = true
+                                },
                                 onTap = { pos ->
                                     if (editMode == EditMode.OCR) {
                                         val bx = ((pos.x - offsetX) / scaleX).toInt()
@@ -680,10 +715,15 @@ fun CropEditorScreen(
                         }
                 ) {
                     val imgW = bitmap.width.toFloat(); val imgH = bitmap.height.toFloat()
-                    val scale = min(size.width / imgW, size.height / imgH)
+                    val fitScale = min(size.width / imgW, size.height / imgH)
+                    val fitW = imgW * fitScale; val fitH = imgH * fitScale
+                    val fitOx = (size.width - fitW) / 2; val fitOy = (size.height - fitH) / 2
+                    baseScale = fitScale; baseOx = fitOx; baseOy = fitOy
+
+                    // Effective (zoomed) image position
+                    val ox = offsetX; val oy = offsetY
+                    val scale = scaleX
                     val drawW = imgW * scale; val drawH = imgH * scale
-                    val ox = (size.width - drawW) / 2; val oy = (size.height - drawH) / 2
-                    scaleX = scale; scaleY = scale; offsetX = ox; offsetY = oy
 
                     drawImage(imageBitmap, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
                         dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()))

@@ -305,6 +305,42 @@ private fun PhotoViewer(
     onEdit: (Photo) -> Unit
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
+    val context = LocalContext.current
+    var showInfo by remember { mutableStateOf(false) }
+    var photoInfo by remember { mutableStateOf("") }
+
+    // Load info for current photo
+    LaunchedEffect(pagerState.currentPage) {
+        val photo = photos.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val projection = arrayOf(
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.WIDTH,
+                MediaStore.Images.Media.HEIGHT,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.RELATIVE_PATH
+            )
+            context.contentResolver.query(photo.uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val name = cursor.getString(0) ?: "Unknown"
+                    val size = cursor.getLong(1)
+                    val w = cursor.getInt(2)
+                    val h = cursor.getInt(3)
+                    val date = cursor.getLong(4)
+                    val path = cursor.getString(5) ?: ""
+                    val sizeStr = when {
+                        size > 1_000_000 -> "${size / 1_000_000}MB"
+                        size > 1_000 -> "${size / 1_000}KB"
+                        else -> "${size}B"
+                    }
+                    val dateStr = java.text.SimpleDateFormat("MMM d, yyyy  HH:mm", java.util.Locale.getDefault())
+                        .format(java.util.Date(date * 1000))
+                    photoInfo = "$name\n${w}x${h}  $sizeStr\n$path\n$dateStr"
+                }
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
@@ -312,7 +348,7 @@ private fun PhotoViewer(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(photos[page].uri).crossfade(true).build(),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().clickable { showInfo = !showInfo },
                 contentScale = ContentScale.Fit
             )
         }
@@ -332,6 +368,17 @@ private fun PhotoViewer(
                 color = Color.White, fontSize = 14.sp)
             IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
                 Icon(Icons.Default.Crop, "Edit", tint = Primary)
+            }
+        }
+
+        // Info panel at bottom (tap photo to toggle)
+        if (showInfo && photoInfo.isNotEmpty()) {
+            Box(
+                Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .navigationBarsPadding().padding(12.dp)
+            ) {
+                Text(photoInfo, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
             }
         }
     }
