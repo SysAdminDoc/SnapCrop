@@ -119,6 +119,43 @@ class SettingsActivity : ComponentActivity() {
                             prefs.edit().putBoolean("auto_start", it).apply()
                         }
                     )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Storage section
+                    Text("Storage", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp),
+                        onClick = {
+                            cacheDir.deleteRecursively()
+                            android.widget.Toast.makeText(this@SettingsActivity,
+                                "Cache cleared", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Clear cache", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text("Remove temporary share/clipboard files", color = OnSurfaceVariant, fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // About
+                    Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    Text("SnapCrop v3.0.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Auto-crop, annotate, and redact screenshots instantly.",
+                        color = OnSurfaceVariant, fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text("github.com/SysAdminDoc/SnapCrop",
+                        color = Primary, fontSize = 12.sp)
                 }
             }
         }

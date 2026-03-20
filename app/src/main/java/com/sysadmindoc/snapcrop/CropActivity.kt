@@ -266,6 +266,25 @@ class CropActivity : ComponentActivity() {
                 path.lineTo(dp.points[i].x, dp.points[i].y)
             }
             canvas.drawPath(path, paint)
+
+            // Arrow head
+            if (dp.isArrow && dp.points.size >= 2) {
+                val last = dp.points.last()
+                val prev = dp.points[dp.points.size - 2]
+                val dx = last.x - prev.x; val dy = last.y - prev.y
+                val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                if (len > 0) {
+                    val ux = dx / len; val uy = dy / len
+                    val headLen = dp.strokeWidth * 4
+                    val headW = dp.strokeWidth * 2.5f
+                    val arrowPath = Path()
+                    arrowPath.moveTo(last.x, last.y)
+                    arrowPath.lineTo(last.x - ux * headLen + uy * headW, last.y - uy * headLen - ux * headW)
+                    arrowPath.moveTo(last.x, last.y)
+                    arrowPath.lineTo(last.x - ux * headLen - uy * headW, last.y - uy * headLen + ux * headW)
+                    canvas.drawPath(arrowPath, paint)
+                }
+            }
         }
         return result
     }

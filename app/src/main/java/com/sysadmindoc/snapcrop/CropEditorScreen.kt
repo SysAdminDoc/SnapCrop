@@ -54,9 +54,15 @@ private enum class DragHandle {
     TOP, BOTTOM, LEFT, RIGHT, CENTER
 }
 
-data class DrawPath(val points: List<PointF>, val color: Int, val strokeWidth: Float)
+data class DrawPath(
+    val points: List<PointF>,
+    val color: Int,
+    val strokeWidth: Float,
+    val isArrow: Boolean = false
+)
 
 private enum class EditMode { CROP, PIXELATE, DRAW }
+private enum class DrawTool { PEN, ARROW }
 
 private val drawColors = listOf(
     0xFFFF0000.toInt() to "Red",
@@ -118,7 +124,8 @@ fun CropEditorScreen(
     val drawPaths = remember { mutableStateListOf<DrawPath>() }
     var currentDrawPoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
-    val drawStrokeWidth = 6f // bitmap pixels
+    var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
+    var drawTool by remember { mutableStateOf(DrawTool.PEN) }
 
     // Undo/Redo stacks
     val undoStack = remember { mutableStateListOf<Rect>() }
@@ -362,33 +369,54 @@ fun CropEditorScreen(
         }
 
         if (editMode == EditMode.DRAW) {
+            // Tool + color row
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Pen / Arrow toggle
+                    FilterChip(selected = drawTool == DrawTool.PEN,
+                        onClick = { drawTool = DrawTool.PEN },
+                        label = { Text("Pen", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp))
+                    FilterChip(selected = drawTool == DrawTool.ARROW,
+                        onClick = { drawTool = DrawTool.ARROW },
+                        label = { Text("Arrow", fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp))
+                    // Colors
                     drawColors.forEach { (color, _) ->
-                        val selected = drawColor == color
-                        Box(
-                            Modifier
-                                .size(if (selected) 28.dp else 22.dp)
-                                .background(Color(color), RoundedCornerShape(if (selected) 6.dp else 4.dp))
-                                .then(if (selected) Modifier.padding(0.dp) else Modifier)
-                                .pointerInput(color) {
-                                    detectTapGestures { drawColor = color }
-                                }
-                        )
+                        Box(Modifier
+                            .size(if (drawColor == color) 26.dp else 20.dp)
+                            .background(Color(color), RoundedCornerShape(4.dp))
+                            .pointerInput(color) { detectTapGestures { drawColor = color } })
                     }
                 }
                 Row {
                     if (drawPaths.isNotEmpty()) {
                         TextButton(onClick = { drawPaths.removeLastOrNull() }) {
-                            Text("Undo", color = Secondary, fontSize = 12.sp)
+                            Text("Undo", color = Secondary, fontSize = 11.sp)
                         }
                         TextButton(onClick = { drawPaths.clear() }) {
-                            Text("Clear", color = Secondary, fontSize = 12.sp)
+                            Text("Clear", color = Secondary, fontSize = 11.sp)
                         }
                     }
                 }
+            }
+            // Stroke width slider
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("${drawStrokeWidth.toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp,
+                    modifier = Modifier.width(32.dp))
+                Slider(value = drawStrokeWidth, onValueChange = { drawStrokeWidth = it },
+                    valueRange = 2f..20f, modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
+                        inactiveTrackColor = SurfaceVariant))
             }
         }
 
@@ -450,7 +478,8 @@ fun CropEditorScreen(
                                         }
                                         EditMode.DRAW -> {
                                             if (currentDrawPoints.size > 1) {
-                                                drawPaths.add(DrawPath(currentDrawPoints.toList(), drawColor, drawStrokeWidth))
+                                                drawPaths.add(DrawPath(currentDrawPoints.toList(), drawColor, drawStrokeWidth,
+                                                    isArrow = drawTool == DrawTool.ARROW))
                                             }
                                             currentDrawPoints = emptyList()
                                         }
@@ -532,31 +561,44 @@ fun CropEditorScreen(
                         drawRect(pixBorder, Offset(px1, py1), Size(px2 - px1, py2 - py1), style = Stroke(1.5f.dp.toPx()))
                     }
 
-                    // Draw paths
-                    for (dp in drawPaths) {
-                        if (dp.points.size < 2) continue
-                        val pathColor = Color(dp.color)
-                        val sw = dp.strokeWidth * scale
-                        for (i in 1 until dp.points.size) {
-                            val p1 = dp.points[i - 1]; val p2 = dp.points[i]
-                            drawLine(pathColor,
+                    // Draw paths + arrows
+                    fun drawPathOnCanvas(pts: List<PointF>, color: Color, sw: Float, arrow: Boolean) {
+                        if (pts.size < 2) return
+                        for (i in 1 until pts.size) {
+                            val p1 = pts[i - 1]; val p2 = pts[i]
+                            drawLine(color,
                                 Offset(ox + p1.x * scale, oy + p1.y * scale),
                                 Offset(ox + p2.x * scale, oy + p2.y * scale),
                                 strokeWidth = sw)
                         }
+                        if (arrow && pts.size >= 2) {
+                            val last = pts.last(); val prev = pts[pts.size - 2]
+                            val dx = last.x - prev.x; val dy = last.y - prev.y
+                            val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                            if (len > 0) {
+                                val ux = dx / len; val uy = dy / len
+                                val headLen = sw / scale * 4
+                                val headW = sw / scale * 2.5f
+                                val tip = Offset(ox + last.x * scale, oy + last.y * scale)
+                                val l1 = Offset(
+                                    ox + (last.x - ux * headLen + uy * headW) * scale,
+                                    oy + (last.y - uy * headLen - ux * headW) * scale)
+                                val l2 = Offset(
+                                    ox + (last.x - ux * headLen - uy * headW) * scale,
+                                    oy + (last.y - uy * headLen + ux * headW) * scale)
+                                drawLine(color, tip, l1, strokeWidth = sw)
+                                drawLine(color, tip, l2, strokeWidth = sw)
+                            }
+                        }
+                    }
+
+                    for (dp in drawPaths) {
+                        drawPathOnCanvas(dp.points, Color(dp.color), dp.strokeWidth * scale, dp.isArrow)
                     }
 
                     // Current draw stroke
                     if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
-                        val pathColor = Color(drawColor)
-                        val sw = drawStrokeWidth * scale
-                        for (i in 1 until currentDrawPoints.size) {
-                            val p1 = currentDrawPoints[i - 1]; val p2 = currentDrawPoints[i]
-                            drawLine(pathColor,
-                                Offset(ox + p1.x * scale, oy + p1.y * scale),
-                                Offset(ox + p2.x * scale, oy + p2.y * scale),
-                                strokeWidth = sw)
-                        }
+                        drawPathOnCanvas(currentDrawPoints, Color(drawColor), drawStrokeWidth * scale, drawTool == DrawTool.ARROW)
                     }
 
                     // Current pixelate drag preview

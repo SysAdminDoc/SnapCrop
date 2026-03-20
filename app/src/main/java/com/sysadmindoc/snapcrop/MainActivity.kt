@@ -20,7 +20,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -97,6 +99,10 @@ class MainActivity : ComponentActivity() {
                     onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                     onOpenCrop = { uri ->
                         startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
+                    },
+                    onDeleteCrop = { uri ->
+                        try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                        loadRecentCrops()
                     }
                 )
             }
@@ -234,7 +240,8 @@ private fun HomeScreen(
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenCrop: (Uri) -> Unit
+    onOpenCrop: (Uri) -> Unit,
+    onDeleteCrop: (Uri) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -411,13 +418,17 @@ private fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(recentCrops) { crop ->
+                    @OptIn(ExperimentalFoundationApi::class)
                     Image(
                         bitmap = crop.thumbBitmap,
                         contentDescription = null,
                         modifier = Modifier
                             .size(80.dp, 140.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable { onOpenCrop(crop.uri) },
+                            .combinedClickable(
+                                onClick = { onOpenCrop(crop.uri) },
+                                onLongClick = { onDeleteCrop(crop.uri) }
+                            ),
                         contentScale = ContentScale.Crop
                     )
                 }
