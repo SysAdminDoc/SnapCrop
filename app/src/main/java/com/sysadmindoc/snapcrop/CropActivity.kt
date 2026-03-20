@@ -143,16 +143,32 @@ class CropActivity : ComponentActivity() {
 
     private fun loadBitmap(uri: Uri) {
         try {
+            // First pass: get dimensions only
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             contentResolver.openInputStream(uri)?.use { stream ->
-                originalBitmap = BitmapFactory.decodeStream(stream)
-                bitmapState.value = originalBitmap
-                originalBitmap?.let { bmp ->
-                    val statusBarPx = SystemBars.statusBarHeight(resources)
-                    val navBarPx = SystemBars.navigationBarHeight(resources)
-                    val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
-                    cropRect.value = result.rect
-                    cropMethod.value = result.method
-                }
+                BitmapFactory.decodeStream(stream, null, opts)
+            }
+
+            // Scale down if image is very large (>4096 on any dimension)
+            val maxDim = 4096
+            var sampleSize = 1
+            while (opts.outWidth / sampleSize > maxDim || opts.outHeight / sampleSize > maxDim) {
+                sampleSize *= 2
+            }
+
+            // Second pass: decode at target size
+            val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            contentResolver.openInputStream(uri)?.use { stream ->
+                originalBitmap = BitmapFactory.decodeStream(stream, null, decodeOpts)
+            }
+
+            bitmapState.value = originalBitmap
+            originalBitmap?.let { bmp ->
+                val statusBarPx = SystemBars.statusBarHeight(resources)
+                val navBarPx = SystemBars.navigationBarHeight(resources)
+                val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
+                cropRect.value = result.rect
+                cropMethod.value = result.method
             }
         } catch (e: Exception) {
             Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
@@ -164,6 +180,12 @@ class CropActivity : ComponentActivity() {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { postRotate(90f) }
         val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+
+        // Recycle old bitmap if it's not the original (was previously rotated)
+        if (current != originalBitmap) {
+            current.recycle()
+        }
+
         bitmapState.value = rotated
         cropRect.value = Rect(0, 0, rotated.width, rotated.height)
         cropMethod.value = ""
@@ -260,5 +282,16 @@ class CropActivity : ComponentActivity() {
                 contentResolver.delete(uri, null, null)
             } catch (_: Exception) {}
         }
+    }
+
+    override fun onDestroy() {
+        // Recycle rotated bitmaps (not the original — it may be shared)
+        val current = bitmapState.value
+        if (current != null && current != originalBitmap) {
+            current.recycle()
+        }
+        originalBitmap = null
+        bitmapState.value = null
+        super.onDestroy()
     }
 }

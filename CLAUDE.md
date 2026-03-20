@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v2.5.0
+v2.6.0
 
 ## Version History
+- v2.6.0: Fix infinite loop (exclude own saves from ContentObserver), fix bitmap memory leak on rotate (recycle old), OOM protection (scale down images >4096px), AI crop loading spinner, async recent crops query, onDestroy bitmap cleanup, time-based debounce
 - v2.5.0: Fix service auto-disabling (static isRunning flag + auto_start pref check on resume, auto-restarts if killed), recent crops gallery on home screen (LazyRow thumbnails), crop count stat, redesigned home layout
 - v2.4.0: Move flash into CropActivity (Compose Animatable, can't get stuck), delete ScreenFlash/ScreenshotOverlay/RoundedOutlineProvider/RoundedBorderDrawable dead code, remove SYSTEM_ALERT_WINDOW requirement, increase debounce to 2s, simplify ScreenshotService to just launch editor directly
 - v2.3.0: White screen flash on screenshot + auto-open editor, undo/redo crop history, edge midpoint handle dots, delete button, share-to-SnapCrop intent, GitHub Actions CI/CD

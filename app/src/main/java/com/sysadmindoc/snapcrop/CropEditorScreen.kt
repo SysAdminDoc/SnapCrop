@@ -85,6 +85,7 @@ fun CropEditorScreen(
     var activeHandle by remember { mutableStateOf(DragHandle.NONE) }
     var previewMode by remember { mutableStateOf(false) }
     var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
+    var aiLoading by remember { mutableStateOf(false) }
 
     // Undo/Redo stacks
     val undoStack = remember { mutableStateListOf<Rect>() }
@@ -117,6 +118,7 @@ fun CropEditorScreen(
         cropTop = initialCropRect.top
         cropRight = initialCropRect.right
         cropBottom = initialCropRect.bottom
+        aiLoading = false
     }
 
     // Re-key on bitmap identity change (rotation)
@@ -528,14 +530,28 @@ fun CropEditorScreen(
                 }
 
                 FilledTonalButton(
-                    onClick = { onSmartCrop() },
+                    onClick = {
+                        if (!aiLoading) {
+                            aiLoading = true
+                            onSmartCrop()
+                        }
+                    },
+                    enabled = !aiLoading,
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = Tertiary.copy(alpha = 0.2f)
                     ),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(Icons.Default.Psychology, null, modifier = Modifier.size(16.dp), tint = Tertiary)
+                    if (aiLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = Tertiary
+                        )
+                    } else {
+                        Icon(Icons.Default.Psychology, null, modifier = Modifier.size(16.dp), tint = Tertiary)
+                    }
                     Spacer(Modifier.width(4.dp))
                     Text("AI", fontSize = 13.sp, color = Tertiary)
                 }

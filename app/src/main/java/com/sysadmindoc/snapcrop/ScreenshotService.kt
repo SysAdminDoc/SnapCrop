@@ -83,7 +83,8 @@ class ScreenshotService : Service() {
         val uriStr = uri.toString()
 
         // Debounce — MediaStore fires multiple events per screenshot
-        if (uriStr == lastProcessedUri && now - lastProcessedTime < 2000) return
+        // URI check OR time-based (some devices fire different URIs for same screenshot)
+        if (now - lastProcessedTime < 2000) return
 
         val projection = arrayOf(
             MediaStore.Images.Media.DISPLAY_NAME,
@@ -104,7 +105,11 @@ class ScreenshotService : Service() {
                             name.contains("screenshot", ignoreCase = true) ||
                             name.contains("Screen", ignoreCase = true)
 
-                    if (isRecent && isScreenshot) {
+                    // Exclude our own saved crops to prevent infinite loop
+                    val isOurSave = path.contains("SnapCrop", ignoreCase = false) ||
+                            name.startsWith("SnapCrop_")
+
+                    if (isRecent && isScreenshot && !isOurSave) {
                         lastProcessedUri = uriStr
                         lastProcessedTime = now
                         launchEditor(uri)

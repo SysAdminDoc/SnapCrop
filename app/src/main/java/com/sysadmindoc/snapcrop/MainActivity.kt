@@ -8,6 +8,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -149,45 +153,51 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadRecentCrops() {
-        try {
-            val crops = mutableListOf<RecentCrop>()
-            val projection = arrayOf(
-                MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.DISPLAY_NAME
-            )
-            val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-            val selectionArgs = arrayOf("Pictures/SnapCrop%")
-            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val crops = mutableListOf<RecentCrop>()
+                val projection = arrayOf(
+                    MediaStore.Images.Media._ID,
+                    MediaStore.Images.Media.DISPLAY_NAME
+                )
+                val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+                val selectionArgs = arrayOf("Pictures/SnapCrop%")
+                val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-            contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection, selection, selectionArgs, sortOrder
-            )?.use { cursor ->
-                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-                var count = 0
-                while (cursor.moveToNext()) {
-                    count++
-                    if (crops.size < 10) {
-                        val id = cursor.getLong(idCol)
-                        val uri = Uri.withAppendedPath(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
-                        )
-                        try {
-                            val opts = BitmapFactory.Options().apply {
-                                inSampleSize = 8
-                            }
-                            contentResolver.openInputStream(uri)?.use { stream ->
-                                BitmapFactory.decodeStream(stream, null, opts)?.let { thumb ->
-                                    crops.add(RecentCrop(uri, thumb.asImageBitmap()))
+                contentResolver.query(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    projection, selection, selectionArgs, sortOrder
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                    var count = 0
+                    while (cursor.moveToNext()) {
+                        count++
+                        if (crops.size < 10) {
+                            val id = cursor.getLong(idCol)
+                            val uri = Uri.withAppendedPath(
+                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
+                            )
+                            try {
+                                val opts = BitmapFactory.Options().apply {
+                                    inSampleSize = 8
                                 }
-                            }
-                        } catch (_: Exception) {}
+                                contentResolver.openInputStream(uri)?.use { stream ->
+                                    BitmapFactory.decodeStream(stream, null, opts)?.let { thumb ->
+                                        crops.add(RecentCrop(uri, thumb.asImageBitmap()))
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    withContext(Dispatchers.Main) {
+                        cropCount.value = count
                     }
                 }
-                cropCount.value = count
-            }
-            recentCrops.value = crops
-        } catch (_: Exception) {}
+                withContext(Dispatchers.Main) {
+                    recentCrops.value = crops
+                }
+            } catch (_: Exception) {}
+        }
     }
 }
 
@@ -231,7 +241,7 @@ private fun HomeScreen(
                     color = OnSurface
                 )
                 Text(
-                    "v2.5.0",
+                    "v2.6.0",
                     fontSize = 13.sp,
                     color = OnSurfaceVariant
                 )
