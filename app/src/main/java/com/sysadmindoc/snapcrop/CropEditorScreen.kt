@@ -83,6 +83,39 @@ data class DrawPath(
 )
 
 private enum class EditMode { CROP, PIXELATE, DRAW, OCR }
+
+/** Simplifies a path by removing points that are too close together, then
+ *  applies Catmull-Rom interpolation for smooth curves. */
+private fun smoothPath(points: List<PointF>): List<PointF> {
+    if (points.size < 4) return points
+    // Step 1: Reduce — skip points within 2px of previous
+    val reduced = mutableListOf(points.first())
+    for (i in 1 until points.size) {
+        val prev = reduced.last(); val cur = points[i]
+        val dist = kotlin.math.sqrt(((cur.x - prev.x) * (cur.x - prev.x) + (cur.y - prev.y) * (cur.y - prev.y)).toDouble())
+        if (dist > 2.0) reduced.add(cur)
+    }
+    if (reduced.size < 4) return reduced
+
+    // Step 2: Catmull-Rom interpolation
+    val smooth = mutableListOf<PointF>()
+    for (i in 0 until reduced.size - 1) {
+        val p0 = reduced[(i - 1).coerceAtLeast(0)]
+        val p1 = reduced[i]
+        val p2 = reduced[(i + 1).coerceAtMost(reduced.size - 1)]
+        val p3 = reduced[(i + 2).coerceAtMost(reduced.size - 1)]
+        val steps = 4
+        for (s in 0 until steps) {
+            val t = s.toFloat() / steps
+            val t2 = t * t; val t3 = t2 * t
+            val x = 0.5f * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3)
+            val y = 0.5f * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+            smooth.add(PointF(x, y))
+        }
+    }
+    smooth.add(reduced.last())
+    return smooth
+}
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
     HIGHLIGHT("Mark"), CALLOUT("#")
@@ -669,7 +702,11 @@ fun CropEditorScreen(
                                                     else -> null
                                                 }
                                                 drawPaths.add(DrawPath(
-                                                    points = if (shape == "rect" || shape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints.toList(),
+                                                    points = when {
+                                                        shape == "rect" || shape == "circle" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                        drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT -> smoothPath(currentDrawPoints)
+                                                        else -> currentDrawPoints.toList()
+                                                    },
                                                     color = drawColor,
                                                     strokeWidth = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth,
                                                     isArrow = drawTool == DrawTool.ARROW,

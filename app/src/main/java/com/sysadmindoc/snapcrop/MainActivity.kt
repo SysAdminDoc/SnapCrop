@@ -211,6 +211,12 @@ class MainActivity : ComponentActivity() {
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
+                                onPlayVideo = { uri ->
+                                    startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                        setDataAndType(uri, "video/*")
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    })
+                                },
                                 onShareUris = { uris -> shareImages(uris) },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
                                 onBack = { selectedTab = 0 }
@@ -459,7 +465,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v4.9.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v5.0.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

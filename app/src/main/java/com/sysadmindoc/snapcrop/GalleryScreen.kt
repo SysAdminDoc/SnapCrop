@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -57,7 +58,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
-data class Photo(val id: Long, val uri: Uri, val dateAdded: Long, val name: String = "", val size: Long = 0)
+data class Photo(val id: Long, val uri: Uri, val dateAdded: Long, val name: String = "", val size: Long = 0, val isVideo: Boolean = false, val duration: Long = 0)
 
 private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
 
@@ -82,6 +83,7 @@ object FavoritesStore {
 @Composable
 fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
+    onPlayVideo: (Uri) -> Unit,
     onShareUris: (List<Uri>) -> Unit,
     onDeleteUris: (List<Uri>) -> Unit,
     onBack: () -> Unit,
@@ -270,6 +272,7 @@ fun GalleryScreen(
                 selectionMode = selectionMode,
                 onPhotoClick = { photo, index ->
                     if (selectionMode) toggleSelection(selectedIds, photo.id)
+                    else if (photo.isVideo) onPlayVideo(photo.uri)
                     else viewerIndex = index
                 },
                 onPhotoLongClick = { photo -> toggleSelection(selectedIds, photo.id) },
@@ -419,6 +422,20 @@ private fun PhotoGrid(
                         ),
                     contentScale = ContentScale.Crop
                 )
+                if (photo.isVideo) {
+                    // Play icon + duration
+                    Icon(Icons.Default.PlayCircle, null,
+                        modifier = Modifier.align(Alignment.Center).size(32.dp),
+                        tint = Color.White.copy(alpha = 0.8f))
+                    if (photo.duration > 0) {
+                        val secs = (photo.duration / 1000).toInt()
+                        val durText = "${secs / 60}:${String.format("%02d", secs % 60)}"
+                        Text(durText, color = Color.White, fontSize = 10.sp,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp))
+                    }
+                }
                 if (isSelected) {
                     Icon(Icons.Default.CheckCircle, null,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
@@ -583,13 +600,14 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
 
 private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo> {
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+
+    // Images
+    val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
+        "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -600,7 +618,27 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
         }
     }
-    return photos
+
+    // Videos
+    val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
+        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
+    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
+        "${MediaStore.Video.Media.RELATIVE_PATH} = ?", selectionArgs,
+        "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+        val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+        val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
+                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol)))
+        }
+    }
+
+    return photos.sortedByDescending { it.dateAdded }
 }
 
 private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {

@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v4.9.0
+v5.0.0
 
 ## Version History
+- v5.0.0: Stroke smoothing (Catmull-Rom spline on pen/highlighter paths), video support in gallery (play icon overlay, duration badge, system player launch), video+image mixed albums
 - v4.9.0: More crop presets (3:4, 9:16, 2:1 + scrollable row), eyedropper color picker (tap image to sample pixel color), gallery pinch-to-zoom grid (2-6 columns), current color preview swatch
 - v4.8.0: EXIF metadata stripping on gallery share (re-encodes to clean PNG, setting toggle), gallery sort (date/name/size cycle button), Photo data class extended with name/size fields
 - v4.7.0: Favorites system (SharedPreferences store, heart toggle in viewer, Favorites album card, loadFavoritePhotos query), FavoritesStore utility object, auto-contrast callout numbers
