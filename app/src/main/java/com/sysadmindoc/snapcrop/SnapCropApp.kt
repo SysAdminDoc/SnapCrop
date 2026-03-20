@@ -6,20 +6,24 @@ import android.app.NotificationManager
 
 class SnapCropApp : Application() {
     companion object {
-        const val CHANNEL_ID = "snapcrop_service"
+        const val CHANNEL_ID = "snapcrop_bg"
     }
 
     override fun onCreate() {
         super.onCreate()
         val manager = getSystemService(NotificationManager::class.java)
 
+        // Delete old channel (had higher importance) so Android picks up the new one
+        manager.deleteNotificationChannel("snapcrop_service")
+        manager.deleteNotificationChannel("snapcrop_crop")
+
         manager.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_ID,
-                "Screenshot Monitor",
-                NotificationManager.IMPORTANCE_MIN // Minimal visibility — no sound, no peek, tiny icon
+                "Background Monitor",
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "Background screenshot monitoring"
+                description = "Screenshot monitoring service"
                 setShowBadge(false)
             }
         )

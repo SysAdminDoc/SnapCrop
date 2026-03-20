@@ -8,6 +8,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -94,10 +96,10 @@ class CropActivity : ComponentActivity() {
                             bitmap = bmp,
                             initialCropRect = cropRect.value,
                             cropMethod = cropMethod.value,
-                            onSave = { rect, pix -> saveCropped(bmp, rect, pix, deleteOriginal = getDeletePref()) },
-                            onSaveCopy = { rect, pix -> saveCropped(bmp, rect, pix, deleteOriginal = false) },
-                            onShare = { rect, pix -> shareCropped(bmp, rect, pix) },
-                            onCopyClipboard = { rect, pix -> copyToClipboard(bmp, rect, pix) },
+                            onSave = { rect, pix, draw -> saveCropped(bmp, rect, pix, draw, deleteOriginal = getDeletePref()) },
+                            onSaveCopy = { rect, pix, draw -> saveCropped(bmp, rect, pix, draw, deleteOriginal = false) },
+                            onShare = { rect, pix, draw -> shareCropped(bmp, rect, pix, draw) },
+                            onCopyClipboard = { rect, pix, draw -> copyToClipboard(bmp, rect, pix, draw) },
                             onDiscard = { finish() },
                             onDelete = {
                                 deleteOriginalFile()
@@ -245,24 +247,48 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>): Bitmap {
-        val pixelated = applyPixelate(bitmap, pixRects)
-        val cropped = Bitmap.createBitmap(pixelated,
+    private fun applyDraw(bitmap: Bitmap, paths: List<DrawPath>): Bitmap {
+        if (paths.isEmpty()) return bitmap
+        val result = if (bitmap.isMutable) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        for (dp in paths) {
+            if (dp.points.size < 2) continue
+            paint.color = dp.color
+            paint.strokeWidth = dp.strokeWidth
+            val path = Path()
+            path.moveTo(dp.points[0].x, dp.points[0].y)
+            for (i in 1 until dp.points.size) {
+                path.lineTo(dp.points[i].x, dp.points[i].y)
+            }
+            canvas.drawPath(path, paint)
+        }
+        return result
+    }
+
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>): Bitmap {
+        var working = applyPixelate(bitmap, pixRects)
+        working = applyDraw(working, drawPaths)
+        val cropped = Bitmap.createBitmap(working,
             rect.left.coerceAtLeast(0), rect.top.coerceAtLeast(0),
-            rect.width().coerceAtMost(pixelated.width - rect.left.coerceAtLeast(0)),
-            rect.height().coerceAtMost(pixelated.height - rect.top.coerceAtLeast(0)))
-        if (pixelated !== bitmap) pixelated.recycle()
+            rect.width().coerceAtMost(working.width - rect.left.coerceAtLeast(0)),
+            rect.height().coerceAtMost(working.height - rect.top.coerceAtLeast(0)))
+        if (working !== bitmap) working.recycle()
         return cropped
     }
 
-    private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, deleteOriginal: Boolean) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects)
+    private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, deleteOriginal: Boolean) {
+        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
         saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}", deleteOriginal)
         cropped.recycle()
     }
 
-    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects)
+    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>) {
+        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
         val cacheDir = File(cacheDir, "clipboard")
         cacheDir.mkdirs()
         val file = File(cacheDir, "clip.png")
@@ -280,8 +306,8 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects)
+    private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>) {
+        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
         val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
         val shareFile = File(shareDir, "snapcrop_share.png")
         try {

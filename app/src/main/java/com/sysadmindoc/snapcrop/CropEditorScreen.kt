@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -9,7 +10,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
@@ -51,6 +54,19 @@ private enum class DragHandle {
     TOP, BOTTOM, LEFT, RIGHT, CENTER
 }
 
+data class DrawPath(val points: List<PointF>, val color: Int, val strokeWidth: Float)
+
+private enum class EditMode { CROP, PIXELATE, DRAW }
+
+private val drawColors = listOf(
+    0xFFFF0000.toInt() to "Red",
+    0xFFFFFF00.toInt() to "Yellow",
+    0xFF00FF00.toInt() to "Green",
+    0xFF89B4FA.toInt() to "Blue",
+    0xFFFFFFFF.toInt() to "White",
+    0xFF000000.toInt() to "Black"
+)
+
 private enum class AspectRatio(val label: String, val ratio: Float?) {
     FREE("Free", null),
     SQUARE("1:1", 1f),
@@ -63,10 +79,10 @@ fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
-    onSave: (Rect, List<Rect>) -> Unit,
-    onSaveCopy: (Rect, List<Rect>) -> Unit,
-    onShare: (Rect, List<Rect>) -> Unit,
-    onCopyClipboard: (Rect, List<Rect>) -> Unit,
+    onSave: (Rect, List<Rect>, List<DrawPath>) -> Unit,
+    onSaveCopy: (Rect, List<Rect>, List<DrawPath>) -> Unit,
+    onShare: (Rect, List<Rect>, List<DrawPath>) -> Unit,
+    onCopyClipboard: (Rect, List<Rect>, List<DrawPath>) -> Unit,
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -92,11 +108,17 @@ fun CropEditorScreen(
     var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
     var aiLoading by remember { mutableStateOf(false) }
 
-    // Pixelate mode
-    var pixelateMode by remember { mutableStateOf(false) }
+    // Edit modes
+    var editMode by remember { mutableStateOf(EditMode.CROP) }
     val pixelateRects = remember { mutableStateListOf<Rect>() }
     var pixDragStart by remember { mutableStateOf<Offset?>(null) }
     var pixDragCurrent by remember { mutableStateOf<Offset?>(null) }
+
+    // Draw mode
+    val drawPaths = remember { mutableStateListOf<DrawPath>() }
+    var currentDrawPoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
+    var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
+    val drawStrokeWidth = 6f // bitmap pixels
 
     // Undo/Redo stacks
     val undoStack = remember { mutableStateListOf<Rect>() }
@@ -284,11 +306,15 @@ fun CropEditorScreen(
 
             Row {
                 IconButton(onClick = onRotate) { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface) }
-                IconButton(onClick = onFlipH) { Icon(Icons.Default.Flip, "Flip H", tint = OnSurface) }
-                IconButton(onClick = { pixelateMode = !pixelateMode }) {
+                IconButton(onClick = onFlipH) { Icon(Icons.Default.Flip, "Flip", tint = OnSurface) }
+                IconButton(onClick = { editMode = if (editMode == EditMode.PIXELATE) EditMode.CROP else EditMode.PIXELATE }) {
                     @Suppress("DEPRECATION")
                     Icon(Icons.Default.BlurOn, "Pixelate",
-                        tint = if (pixelateMode) Tertiary else OnSurface)
+                        tint = if (editMode == EditMode.PIXELATE) Tertiary else OnSurface)
+                }
+                IconButton(onClick = { editMode = if (editMode == EditMode.DRAW) EditMode.CROP else EditMode.DRAW }) {
+                    Icon(Icons.Default.Draw, "Draw",
+                        tint = if (editMode == EditMode.DRAW) Secondary else OnSurface)
                 }
                 IconButton(onClick = { previewMode = !previewMode }) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -322,6 +348,50 @@ fun CropEditorScreen(
             }
         }
 
+        // Tool options row (pixelate/draw mode)
+        if (editMode == EditMode.PIXELATE && pixelateRects.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { pixelateRects.removeLastOrNull() }) {
+                    Text("Undo last", color = Tertiary, fontSize = 12.sp)
+                }
+                TextButton(onClick = { pixelateRects.clear() }) {
+                    Text("Clear all", color = Tertiary, fontSize = 12.sp)
+                }
+            }
+        }
+
+        if (editMode == EditMode.DRAW) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    drawColors.forEach { (color, _) ->
+                        val selected = drawColor == color
+                        Box(
+                            Modifier
+                                .size(if (selected) 28.dp else 22.dp)
+                                .background(Color(color), RoundedCornerShape(if (selected) 6.dp else 4.dp))
+                                .then(if (selected) Modifier.padding(0.dp) else Modifier)
+                                .pointerInput(color) {
+                                    detectTapGestures { drawColor = color }
+                                }
+                        )
+                    }
+                }
+                Row {
+                    if (drawPaths.isNotEmpty()) {
+                        TextButton(onClick = { drawPaths.removeLastOrNull() }) {
+                            Text("Undo", color = Secondary, fontSize = 12.sp)
+                        }
+                        TextButton(onClick = { drawPaths.clear() }) {
+                            Text("Clear", color = Secondary, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
+
         // Canvas area
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (previewMode) {
@@ -347,40 +417,62 @@ fun CropEditorScreen(
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(bitmap, pixelateMode) {
+                        .pointerInput(bitmap, editMode) {
                             detectDragGestures(
                                 onDragStart = { pos ->
-                                    if (pixelateMode) {
-                                        pixDragStart = pos
-                                        pixDragCurrent = pos
-                                    } else {
-                                        activeHandle = findHandle(pos)
-                                        if (activeHandle != DragHandle.NONE) pushUndo()
+                                    when (editMode) {
+                                        EditMode.PIXELATE -> { pixDragStart = pos; pixDragCurrent = pos }
+                                        EditMode.DRAW -> {
+                                            val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
+                                            val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                            currentDrawPoints = listOf(PointF(bx, by))
+                                        }
+                                        EditMode.CROP -> {
+                                            activeHandle = findHandle(pos)
+                                            if (activeHandle != DragHandle.NONE) pushUndo()
+                                        }
                                     }
                                 },
                                 onDragEnd = {
-                                    if (pixelateMode && pixDragStart != null && pixDragCurrent != null) {
-                                        // Convert screen coords to bitmap coords
-                                        val s = pixDragStart!!; val e = pixDragCurrent!!
-                                        val bx1 = ((minOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
-                                        val by1 = ((minOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
-                                        val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
-                                        val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
-                                        if (bx2 - bx1 > 10 && by2 - by1 > 10) {
-                                            pixelateRects.add(Rect(bx1, by1, bx2, by2))
+                                    when (editMode) {
+                                        EditMode.PIXELATE -> {
+                                            if (pixDragStart != null && pixDragCurrent != null) {
+                                                val s = pixDragStart!!; val e = pixDragCurrent!!
+                                                val bx1 = ((minOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                                val by1 = ((minOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                                val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                                val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                                if (bx2 - bx1 > 10 && by2 - by1 > 10) {
+                                                    pixelateRects.add(Rect(bx1, by1, bx2, by2))
+                                                }
+                                            }
+                                            pixDragStart = null; pixDragCurrent = null
                                         }
-                                        pixDragStart = null; pixDragCurrent = null
-                                    } else {
-                                        activeHandle = DragHandle.NONE
+                                        EditMode.DRAW -> {
+                                            if (currentDrawPoints.size > 1) {
+                                                drawPaths.add(DrawPath(currentDrawPoints.toList(), drawColor, drawStrokeWidth))
+                                            }
+                                            currentDrawPoints = emptyList()
+                                        }
+                                        EditMode.CROP -> activeHandle = DragHandle.NONE
                                     }
                                 },
-                                onDragCancel = { activeHandle = DragHandle.NONE; pixDragStart = null; pixDragCurrent = null },
+                                onDragCancel = {
+                                    activeHandle = DragHandle.NONE
+                                    pixDragStart = null; pixDragCurrent = null
+                                    currentDrawPoints = emptyList()
+                                },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    if (pixelateMode) {
-                                        pixDragCurrent = pixDragCurrent?.plus(Offset(dragAmount.x, dragAmount.y))
-                                    } else {
-                                        constrainToRatio(activeHandle,
+                                    when (editMode) {
+                                        EditMode.PIXELATE -> pixDragCurrent = pixDragCurrent?.plus(Offset(dragAmount.x, dragAmount.y))
+                                        EditMode.DRAW -> {
+                                            val pos = change.position
+                                            val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
+                                            val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                            currentDrawPoints = currentDrawPoints + PointF(bx, by)
+                                        }
+                                        EditMode.CROP -> constrainToRatio(activeHandle,
                                             (dragAmount.x / scaleX).roundToInt(),
                                             (dragAmount.y / scaleY).roundToInt())
                                     }
@@ -440,8 +532,35 @@ fun CropEditorScreen(
                         drawRect(pixBorder, Offset(px1, py1), Size(px2 - px1, py2 - py1), style = Stroke(1.5f.dp.toPx()))
                     }
 
+                    // Draw paths
+                    for (dp in drawPaths) {
+                        if (dp.points.size < 2) continue
+                        val pathColor = Color(dp.color)
+                        val sw = dp.strokeWidth * scale
+                        for (i in 1 until dp.points.size) {
+                            val p1 = dp.points[i - 1]; val p2 = dp.points[i]
+                            drawLine(pathColor,
+                                Offset(ox + p1.x * scale, oy + p1.y * scale),
+                                Offset(ox + p2.x * scale, oy + p2.y * scale),
+                                strokeWidth = sw)
+                        }
+                    }
+
+                    // Current draw stroke
+                    if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
+                        val pathColor = Color(drawColor)
+                        val sw = drawStrokeWidth * scale
+                        for (i in 1 until currentDrawPoints.size) {
+                            val p1 = currentDrawPoints[i - 1]; val p2 = currentDrawPoints[i]
+                            drawLine(pathColor,
+                                Offset(ox + p1.x * scale, oy + p1.y * scale),
+                                Offset(ox + p2.x * scale, oy + p2.y * scale),
+                                strokeWidth = sw)
+                        }
+                    }
+
                     // Current pixelate drag preview
-                    if (pixelateMode && pixDragStart != null && pixDragCurrent != null) {
+                    if (editMode == EditMode.PIXELATE && pixDragStart != null && pixDragCurrent != null) {
                         val ds = pixDragStart!!; val dc = pixDragCurrent!!
                         val rx = minOf(ds.x, dc.x); val ry = minOf(ds.y, dc.y)
                         val rw = kotlin.math.abs(dc.x - ds.x); val rh = kotlin.math.abs(dc.y - ds.y)
@@ -491,26 +610,26 @@ fun CropEditorScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Delete, null, Modifier.size(16.dp)) }
 
-                OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
+                OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.Share, null, Modifier.size(16.dp)) }
 
-                OutlinedButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
+                OutlinedButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 12.dp)
                 ) { Icon(Icons.Default.ContentCopy, null, Modifier.size(16.dp)) }
 
                 // Save copy (keep original)
-                OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
+                OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) },
                     modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
                 ) { Icon(Icons.Default.Save, null, Modifier.size(14.dp)); Spacer(Modifier.width(3.dp)); Text("Copy", fontSize = 12.sp) }
 
                 // Crop & Save
-                Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList()) },
+                Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) },
                     modifier = Modifier.weight(1.2f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
