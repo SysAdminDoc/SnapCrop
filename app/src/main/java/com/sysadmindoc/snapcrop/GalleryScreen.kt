@@ -55,7 +55,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
-data class Photo(val id: Long, val uri: Uri, val dateAdded: Long)
+data class Photo(val id: Long, val uri: Uri, val dateAdded: Long, val name: String = "", val size: Long = 0)
 
 private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
 
@@ -94,6 +94,7 @@ fun GalleryScreen(
     val selectedIds = remember { mutableStateListOf<Long>() }
     var searchQuery by remember { mutableStateOf("") }
     var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
+    var sortMode by remember { mutableStateOf(SortMode.DATE) }
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -206,6 +207,17 @@ fun GalleryScreen(
                 if (selectedAlbum == null) {
                     Text("${albums.sumOf { it.count }} photos", color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
+                } else {
+                    // Sort button when viewing photos
+                    IconButton(onClick = {
+                        sortMode = when (sortMode) {
+                            SortMode.DATE -> SortMode.NAME
+                            SortMode.NAME -> SortMode.SIZE
+                            SortMode.SIZE -> SortMode.DATE
+                        }
+                    }) {
+                        Icon(Icons.Default.SortByAlpha, "Sort: ${sortMode.label}", tint = OnSurfaceVariant)
+                    }
                 }
             }
         }
@@ -241,8 +253,15 @@ fun GalleryScreen(
                 onFavorites = { selectedAlbum = "__FAVS__" },
                 favCount = favIds.size)
         } else {
+            val sortedPhotos = remember(photos, sortMode) {
+                when (sortMode) {
+                    SortMode.DATE -> photos
+                    SortMode.NAME -> photos.sortedBy { it.name.lowercase() }
+                    SortMode.SIZE -> photos.sortedByDescending { it.size }
+                }
+            }
             PhotoGrid(
-                photos = photos,
+                photos = sortedPhotos,
                 selectedIds = selectedIds,
                 selectionMode = selectionMode,
                 onPhotoClick = { photo, index ->
@@ -544,7 +563,8 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
 
 private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo> {
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
@@ -552,10 +572,12 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
         }
     }
     return photos
@@ -563,16 +585,19 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
 
 private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
         }
     }
     return photos
@@ -581,17 +606,20 @@ private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
 private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): List<Photo> {
     if (favIds.isEmpty()) return emptyList()
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
     val selection = "${MediaStore.Images.Media._ID} IN (${favIds.joinToString(",")})"
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, null, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol)))
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
         }
     }
     return photos

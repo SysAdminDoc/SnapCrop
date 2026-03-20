@@ -211,14 +211,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
-                                onShareUris = { uris ->
-                                    val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                                        type = "image/*"
-                                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    startActivity(Intent.createChooser(shareIntent, null))
-                                },
+                                onShareUris = { uris -> shareImages(uris) },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
                                 onBack = { selectedTab = 0 }
                             )
@@ -267,6 +260,47 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    private fun shareImages(uris: List<Uri>) {
+        val stripExif = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("strip_exif", false)
+
+        if (stripExif) {
+            // Re-encode to strip EXIF metadata
+            CoroutineScope(Dispatchers.IO).launch {
+                val shareDir = java.io.File(cacheDir, "share_clean")
+                shareDir.mkdirs()
+                shareDir.listFiles()?.forEach { it.delete() } // clean old
+                val cleanUris = mutableListOf<Uri>()
+                for ((i, uri) in uris.withIndex()) {
+                    try {
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            val bmp = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
+                            val file = java.io.File(shareDir, "share_${i}.png")
+                            file.outputStream().use { out -> bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out) }
+                            bmp.recycle()
+                            cleanUris.add(androidx.core.content.FileProvider.getUriForFile(
+                                this@MainActivity, "${packageName}.fileprovider", file))
+                        }
+                    } catch (_: Exception) { cleanUris.add(uri) } // fallback to original
+                }
+                withContext(Dispatchers.Main) {
+                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                        type = "image/*"
+                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(cleanUris))
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(Intent.createChooser(intent, null))
+                }
+            }
+        } else {
+            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = "image/*"
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, null))
+        }
     }
 
     private fun requestDeleteUris(uris: List<Uri>) {
@@ -425,7 +459,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v4.7.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v4.8.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

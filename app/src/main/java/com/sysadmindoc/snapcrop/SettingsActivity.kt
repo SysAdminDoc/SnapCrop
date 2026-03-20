@@ -104,6 +104,15 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    Spacer(Modifier.height(8.dp))
+
+                    SettingToggle(
+                        title = "Strip metadata on share",
+                        subtitle = "Remove EXIF data (location, device info) when sharing for privacy",
+                        checked = prefs.getBoolean("strip_exif", false),
+                        onCheckedChange = { prefs.edit().putBoolean("strip_exif", it).apply() }
+                    )
+
                     Spacer(Modifier.height(20.dp))
 
                     // Service section
@@ -149,7 +158,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v4.7.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v4.8.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

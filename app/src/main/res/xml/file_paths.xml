@@ -2,4 +2,5 @@
 <paths>
     <cache-path name="shared_crops" path="shared_crops/" />
     <cache-path name="clipboard" path="clipboard/" />
+    <cache-path name="share_clean" path="share_clean/" />
 </paths>
