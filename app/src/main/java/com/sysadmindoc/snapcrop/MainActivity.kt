@@ -21,6 +21,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -217,6 +219,7 @@ private fun HomeScreen(
             .fillMaxSize()
             .background(Color.Black)
             .systemBarsPadding()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
     ) {
         Spacer(Modifier.height(48.dp))
@@ -241,7 +244,7 @@ private fun HomeScreen(
                     color = OnSurface
                 )
                 Text(
-                    "v2.6.0",
+                    "v2.7.0",
                     fontSize = 13.sp,
                     color = OnSurfaceVariant
                 )
@@ -380,7 +383,7 @@ private fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.height(32.dp))
 
         Text(
             "Screenshots are detected automatically when the monitor is active.\nCropped images are saved to Pictures/SnapCrop.",

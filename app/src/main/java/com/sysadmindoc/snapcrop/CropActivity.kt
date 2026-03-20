@@ -103,7 +103,9 @@ class CropActivity : ComponentActivity() {
                                     cropMethod.value = "ai"
                                 }
                             },
-                            onRotate = { rotateBitmap() }
+                            onRotate = { rotateBitmap() },
+                            onFlipH = { flipBitmap(horizontal = true) },
+                            onFlipV = { flipBitmap(horizontal = false) }
                         )
                     }
 
@@ -190,6 +192,17 @@ class CropActivity : ComponentActivity() {
         cropRect.value = Rect(0, 0, rotated.width, rotated.height)
         cropMethod.value = ""
         rotationKey.intValue++
+    }
+
+    private fun flipBitmap(horizontal: Boolean) {
+        val current = bitmapState.value ?: return
+        val matrix = Matrix().apply {
+            if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f)
+        }
+        val flipped = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+        if (current != originalBitmap) current.recycle()
+        bitmapState.value = flipped
+        // Flip doesn't change dimensions, keep crop rect
     }
 
     private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect): Bitmap {

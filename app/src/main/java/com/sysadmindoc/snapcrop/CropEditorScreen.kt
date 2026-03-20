@@ -1,11 +1,11 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
-import android.graphics.Matrix
 import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.RotateRight
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -68,7 +68,9 @@ fun CropEditorScreen(
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
-    onRotate: () -> Unit
+    onRotate: () -> Unit,
+    onFlipH: () -> Unit,
+    onFlipV: () -> Unit
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
 
@@ -121,7 +123,6 @@ fun CropEditorScreen(
         aiLoading = false
     }
 
-    // Re-key on bitmap identity change (rotation)
     LaunchedEffect(bitmap.width, bitmap.height) {
         if (cropRight > bitmap.width) cropRight = bitmap.width
         if (cropBottom > bitmap.height) cropBottom = bitmap.height
@@ -142,116 +143,73 @@ fun CropEditorScreen(
             DragHandle.BOTTOM_LEFT to Offset(bitmapToScreenX(cropLeft), bitmapToScreenY(cropBottom)),
             DragHandle.BOTTOM_RIGHT to Offset(bitmapToScreenX(cropRight), bitmapToScreenY(cropBottom)),
         )
-
         for ((handle, corner) in corners) {
             if ((pos - corner).getDistance() < hitRadius) return handle
         }
-
         val sl = bitmapToScreenX(cropLeft)
         val sr = bitmapToScreenX(cropRight)
         val st = bitmapToScreenY(cropTop)
         val sb = bitmapToScreenY(cropBottom)
-
         if (pos.x in sl..sr && kotlin.math.abs(pos.y - st) < hitRadius) return DragHandle.TOP
         if (pos.x in sl..sr && kotlin.math.abs(pos.y - sb) < hitRadius) return DragHandle.BOTTOM
         if (pos.y in st..sb && kotlin.math.abs(pos.x - sl) < hitRadius) return DragHandle.LEFT
         if (pos.y in st..sb && kotlin.math.abs(pos.x - sr) < hitRadius) return DragHandle.RIGHT
-
         if (pos.x in sl..sr && pos.y in st..sb) return DragHandle.CENTER
-
         return DragHandle.NONE
     }
 
-    fun applyAspectRatio(ratio: AspectRatio, anchorCenter: Boolean = true) {
+    fun applyAspectRatio(ratio: AspectRatio) {
         val r = ratio.ratio ?: return
         val cw = cropRight - cropLeft
         val ch = cropBottom - cropTop
         val cx = cropLeft + cw / 2
         val cy = cropTop + ch / 2
-
-        // Fit the ratio within current bounds
-        var newW: Int
-        var newH: Int
-        if (cw.toFloat() / ch > r) {
-            newH = ch
-            newW = (ch * r).toInt()
-        } else {
-            newW = cw
-            newH = (cw / r).toInt()
-        }
-
-        newW = newW.coerceAtLeast(50)
-        newH = newH.coerceAtLeast(50)
-
-        if (anchorCenter) {
-            cropLeft = (cx - newW / 2).coerceAtLeast(0)
-            cropTop = (cy - newH / 2).coerceAtLeast(0)
-            cropRight = (cropLeft + newW).coerceAtMost(bitmap.width)
-            cropBottom = (cropTop + newH).coerceAtMost(bitmap.height)
-            // Re-adjust if clamped
-            cropLeft = (cropRight - newW).coerceAtLeast(0)
-            cropTop = (cropBottom - newH).coerceAtLeast(0)
-        }
+        var newW: Int; var newH: Int
+        if (cw.toFloat() / ch > r) { newH = ch; newW = (ch * r).toInt() }
+        else { newW = cw; newH = (cw / r).toInt() }
+        newW = newW.coerceAtLeast(50); newH = newH.coerceAtLeast(50)
+        cropLeft = (cx - newW / 2).coerceAtLeast(0)
+        cropTop = (cy - newH / 2).coerceAtLeast(0)
+        cropRight = (cropLeft + newW).coerceAtMost(bitmap.width)
+        cropBottom = (cropTop + newH).coerceAtMost(bitmap.height)
+        cropLeft = (cropRight - newW).coerceAtLeast(0)
+        cropTop = (cropBottom - newH).coerceAtLeast(0)
     }
 
     fun constrainToRatio(handle: DragHandle, dx: Int, dy: Int) {
         val ratio = selectedRatio.ratio
         val minSize = 50
-
         when (handle) {
             DragHandle.CENTER -> {
-                val w = cropRight - cropLeft
-                val h = cropBottom - cropTop
-                var newL = (cropLeft + dx).coerceIn(0, bitmap.width - w)
-                var newT = (cropTop + dy).coerceIn(0, bitmap.height - h)
-                cropLeft = newL; cropTop = newT
-                cropRight = newL + w; cropBottom = newT + h
+                val w = cropRight - cropLeft; val h = cropBottom - cropTop
+                val newL = (cropLeft + dx).coerceIn(0, bitmap.width - w)
+                val newT = (cropTop + dy).coerceIn(0, bitmap.height - h)
+                cropLeft = newL; cropTop = newT; cropRight = newL + w; cropBottom = newT + h
             }
             else -> {
-                // Apply unconstrained first
                 when (handle) {
-                    DragHandle.TOP_LEFT -> {
-                        cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
-                        cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
-                    }
-                    DragHandle.TOP_RIGHT -> {
-                        cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
-                        cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
-                    }
-                    DragHandle.BOTTOM_LEFT -> {
-                        cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
-                        cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
-                    }
-                    DragHandle.BOTTOM_RIGHT -> {
-                        cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
-                        cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
-                    }
+                    DragHandle.TOP_LEFT -> { cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize); cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize) }
+                    DragHandle.TOP_RIGHT -> { cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width); cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize) }
+                    DragHandle.BOTTOM_LEFT -> { cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize); cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height) }
+                    DragHandle.BOTTOM_RIGHT -> { cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width); cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height) }
                     DragHandle.TOP -> cropTop = (cropTop + dy).coerceIn(0, cropBottom - minSize)
                     DragHandle.BOTTOM -> cropBottom = (cropBottom + dy).coerceIn(cropTop + minSize, bitmap.height)
                     DragHandle.LEFT -> cropLeft = (cropLeft + dx).coerceIn(0, cropRight - minSize)
                     DragHandle.RIGHT -> cropRight = (cropRight + dx).coerceIn(cropLeft + minSize, bitmap.width)
                     else -> {}
                 }
-
-                // Re-apply aspect ratio constraint if locked
                 if (ratio != null) {
-                    val cw = cropRight - cropLeft
-                    val ch = cropBottom - cropTop
-                    val currentRatio = cw.toFloat() / ch
-                    if (currentRatio > ratio) {
-                        // Too wide — shrink width
+                    val cw = cropRight - cropLeft; val ch = cropBottom - cropTop
+                    if (cw.toFloat() / ch > ratio) {
                         val targetW = (ch * ratio).toInt().coerceAtLeast(minSize)
                         when (handle) {
-                            DragHandle.TOP_LEFT, DragHandle.BOTTOM_LEFT, DragHandle.LEFT ->
-                                cropLeft = (cropRight - targetW).coerceAtLeast(0)
+                            DragHandle.TOP_LEFT, DragHandle.BOTTOM_LEFT, DragHandle.LEFT -> cropLeft = (cropRight - targetW).coerceAtLeast(0)
                             else -> cropRight = (cropLeft + targetW).coerceAtMost(bitmap.width)
                         }
                     } else {
-                        // Too tall — shrink height
                         val targetH = (cw / ratio).toInt().coerceAtLeast(minSize)
                         when (handle) {
-                            DragHandle.TOP_LEFT, DragHandle.TOP_RIGHT, DragHandle.TOP ->
-                                cropTop = (cropBottom - targetH).coerceAtLeast(0)
+                            DragHandle.TOP_LEFT, DragHandle.TOP_RIGHT, DragHandle.TOP -> cropTop = (cropBottom - targetH).coerceAtLeast(0)
                             else -> cropBottom = (cropTop + targetH).coerceAtMost(bitmap.height)
                         }
                     }
@@ -262,13 +220,14 @@ fun CropEditorScreen(
 
     val cropW = cropRight - cropLeft
     val cropH = cropBottom - cropTop
-    val cropInfo = "${cropW} x ${cropH}"
+    val cropPct = if (bitmap.width > 0 && bitmap.height > 0) {
+        val origArea = bitmap.width.toLong() * bitmap.height
+        val cropArea = cropW.toLong() * cropH
+        ((origArea - cropArea) * 100 / origArea).toInt()
+    } else 0
 
     val methodLabel = when (cropMethod) {
-        "border" -> "Border"
-        "statusbar" -> "System bars"
-        "ai" -> "AI"
-        else -> ""
+        "border" -> "Border"; "statusbar" -> "Bars"; "ai" -> "AI"; else -> ""
     }
 
     Column(
@@ -281,14 +240,12 @@ fun CropEditorScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row {
-                IconButton(onClick = onDiscard) {
-                    Icon(Icons.Default.Close, "Discard", tint = OnSurface)
-                }
+                IconButton(onClick = onDiscard) { Icon(Icons.Default.Close, "Close", tint = OnSurface) }
                 IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty()) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.Undo, "Undo",
                         tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f))
@@ -299,38 +256,29 @@ fun CropEditorScreen(
                 }
             }
 
+            // Info: dimensions + method + crop %
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (methodLabel.isNotEmpty()) {
-                    Surface(
-                        color = SurfaceVariant,
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            methodLabel,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            color = Primary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                    Surface(color = SurfaceVariant, shape = RoundedCornerShape(6.dp)) {
+                        Text(methodLabel, Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = Primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                     }
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                 }
-                Text(cropInfo, color = OnSurfaceVariant, fontSize = 13.sp)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${cropW}x${cropH}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    if (cropPct > 0) {
+                        Text("-${cropPct}%", color = Secondary, fontSize = 10.sp)
+                    }
+                }
             }
 
             Row {
-                IconButton(onClick = onRotate) {
-                    Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface)
-                }
+                IconButton(onClick = onRotate) { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface) }
+                IconButton(onClick = onFlipH) { Icon(Icons.Default.Flip, "Flip H", tint = OnSurface) }
                 IconButton(onClick = { previewMode = !previewMode }) {
-                    Icon(
-                        if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        "Preview",
-                        tint = if (previewMode) Primary else OnSurface
-                    )
-                }
-                IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom)) }) {
-                    Icon(Icons.Default.Share, "Share", tint = OnSurface)
+                    Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        "Preview", tint = if (previewMode) Primary else OnSurface)
                 }
             }
         }
@@ -343,19 +291,17 @@ fun CropEditorScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             AspectRatio.entries.forEach { ratio ->
-                val selected = selectedRatio == ratio
                 FilterChip(
-                    selected = selected,
+                    selected = selectedRatio == ratio,
                     onClick = {
+                        pushUndo()
                         selectedRatio = ratio
                         if (ratio.ratio != null) applyAspectRatio(ratio)
                     },
                     label = { Text(ratio.label, fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = PrimaryContainer,
-                        selectedLabelColor = Primary,
-                        containerColor = SurfaceVariant,
-                        labelColor = OnSurfaceVariant
+                        selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )
@@ -363,42 +309,25 @@ fun CropEditorScreen(
         }
 
         // Canvas area
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (previewMode) {
                 val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap) {
                     try {
-                        Bitmap.createBitmap(
-                            bitmap,
-                            cropLeft.coerceAtLeast(0),
-                            cropTop.coerceAtLeast(0),
+                        Bitmap.createBitmap(bitmap, cropLeft.coerceAtLeast(0), cropTop.coerceAtLeast(0),
                             cropW.coerceAtMost(bitmap.width - cropLeft.coerceAtLeast(0)),
                             cropH.coerceAtMost(bitmap.height - cropTop.coerceAtLeast(0))
                         ).asImageBitmap()
-                    } catch (_: Exception) {
-                        imageBitmap
-                    }
+                    } catch (_: Exception) { imageBitmap }
                 }
-
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val canvasW = size.width
-                    val canvasH = size.height
-                    val imgW = croppedPreview.width.toFloat()
-                    val imgH = croppedPreview.height.toFloat()
-                    val scale = min(canvasW / imgW, canvasH / imgH)
-                    val drawW = imgW * scale
-                    val drawH = imgH * scale
-                    val ox = (canvasW - drawW) / 2
-                    val oy = (canvasH - drawH) / 2
-
-                    drawImage(
-                        image = croppedPreview,
-                        dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
-                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt())
-                    )
+                Canvas(modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) { detectTapGestures(onDoubleTap = { previewMode = false }) }
+                ) {
+                    val s = min(size.width / croppedPreview.width, size.height / croppedPreview.height)
+                    val dw = croppedPreview.width * s; val dh = croppedPreview.height * s
+                    val ox = (size.width - dw) / 2; val oy = (size.height - dh) / 2
+                    drawImage(croppedPreview, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+                        dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
                 }
             } else {
                 Canvas(
@@ -414,59 +343,40 @@ fun CropEditorScreen(
                                 onDragCancel = { activeHandle = DragHandle.NONE },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val dx = (dragAmount.x / scaleX).roundToInt()
-                                    val dy = (dragAmount.y / scaleY).roundToInt()
-                                    constrainToRatio(activeHandle, dx, dy)
+                                    constrainToRatio(activeHandle,
+                                        (dragAmount.x / scaleX).roundToInt(),
+                                        (dragAmount.y / scaleY).roundToInt())
                                 }
                             )
                         }
+                        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { previewMode = true }) }
                 ) {
-                    val canvasW = size.width
-                    val canvasH = size.height
-                    val imgW = bitmap.width.toFloat()
-                    val imgH = bitmap.height.toFloat()
+                    val imgW = bitmap.width.toFloat(); val imgH = bitmap.height.toFloat()
+                    val scale = min(size.width / imgW, size.height / imgH)
+                    val drawW = imgW * scale; val drawH = imgH * scale
+                    val ox = (size.width - drawW) / 2; val oy = (size.height - drawH) / 2
+                    scaleX = scale; scaleY = scale; offsetX = ox; offsetY = oy
 
-                    val scale = min(canvasW / imgW, canvasH / imgH)
-                    val drawW = imgW * scale
-                    val drawH = imgH * scale
-                    val ox = (canvasW - drawW) / 2
-                    val oy = (canvasH - drawH) / 2
+                    drawImage(imageBitmap, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()))
 
-                    scaleX = scale
-                    scaleY = scale
-                    offsetX = ox
-                    offsetY = oy
+                    val sl = ox + cropLeft * scale; val st = oy + cropTop * scale
+                    val sr = ox + cropRight * scale; val sb = oy + cropBottom * scale
 
-                    drawImage(
-                        image = imageBitmap,
-                        dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
-                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt())
-                    )
-
-                    val sl = ox + cropLeft * scale
-                    val st = oy + cropTop * scale
-                    val sr = ox + cropRight * scale
-                    val sb = oy + cropBottom * scale
-
-                    // Dim overlay outside crop
+                    // Dim overlay
                     drawRect(DimOverlay, Offset(ox, oy), Size(drawW, st - oy))
                     drawRect(DimOverlay, Offset(ox, sb), Size(drawW, oy + drawH - sb))
                     drawRect(DimOverlay, Offset(ox, st), Size(sl - ox, sb - st))
                     drawRect(DimOverlay, Offset(sr, st), Size(ox + drawW - sr, sb - st))
 
-                    // Crop border
-                    drawRect(
-                        CropBorder, Offset(sl, st), Size(sr - sl, sb - st),
-                        style = Stroke(2.dp.toPx())
-                    )
+                    drawRect(CropBorder, Offset(sl, st), Size(sr - sl, sb - st), style = Stroke(2.dp.toPx()))
 
                     // Rule of thirds
-                    val thirdW = (sr - sl) / 3
-                    val thirdH = (sb - st) / 3
                     val gridColor = CropBorder.copy(alpha = 0.3f)
+                    val tw = (sr - sl) / 3; val th = (sb - st) / 3
                     for (i in 1..2) {
-                        drawLine(gridColor, Offset(sl + thirdW * i, st), Offset(sl + thirdW * i, sb), 1f)
-                        drawLine(gridColor, Offset(sl, st + thirdH * i), Offset(sr, st + thirdH * i), 1f)
+                        drawLine(gridColor, Offset(sl + tw * i, st), Offset(sl + tw * i, sb), 1f)
+                        drawLine(gridColor, Offset(sl, st + th * i), Offset(sr, st + th * i), 1f)
                     }
 
                     // Corner handles
@@ -477,140 +387,76 @@ fun CropEditorScreen(
 
                     // Edge midpoint dots
                     val midR = handleRadius * 0.5f
-                    val midX = (sl + sr) / 2
-                    val midY = (st + sb) / 2
-                    drawCircle(CropHandle, midR, Offset(midX, st))  // top
-                    drawCircle(CropHandle, midR, Offset(midX, sb))  // bottom
-                    drawCircle(CropHandle, midR, Offset(sl, midY))  // left
-                    drawCircle(CropHandle, midR, Offset(sr, midY))  // right
+                    drawCircle(CropHandle, midR, Offset((sl + sr) / 2, st))
+                    drawCircle(CropHandle, midR, Offset((sl + sr) / 2, sb))
+                    drawCircle(CropHandle, midR, Offset(sl, (st + sb) / 2))
+                    drawCircle(CropHandle, midR, Offset(sr, (st + sb) / 2))
                 }
             }
         }
 
         // Bottom toolbar
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-        ) {
-            // Crop method buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 FilledTonalButton(
-                    onClick = {
-                        cropLeft = 0; cropTop = 0
-                        cropRight = bitmap.width; cropBottom = bitmap.height
-                        selectedRatio = AspectRatio.FREE
-                    },
+                    onClick = { pushUndo(); cropLeft = 0; cropTop = 0; cropRight = bitmap.width; cropBottom = bitmap.height; selectedRatio = AspectRatio.FREE },
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.CropFree, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Reset", fontSize = 13.sp)
-                }
+                ) { Icon(Icons.Default.CropFree, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Reset", fontSize = 13.sp) }
 
                 FilledTonalButton(
-                    onClick = {
-                        val rect = onAutoCrop()
-                        cropLeft = rect.left; cropTop = rect.top
-                        cropRight = rect.right; cropBottom = rect.bottom
-                        selectedRatio = AspectRatio.FREE
-                    },
+                    onClick = { pushUndo(); val r = onAutoCrop(); cropLeft = r.left; cropTop = r.top; cropRight = r.right; cropBottom = r.bottom; selectedRatio = AspectRatio.FREE },
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.AutoFixHigh, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Auto", fontSize = 13.sp)
-                }
+                ) { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Auto", fontSize = 13.sp) }
 
                 FilledTonalButton(
-                    onClick = {
-                        if (!aiLoading) {
-                            aiLoading = true
-                            onSmartCrop()
-                        }
-                    },
+                    onClick = { if (!aiLoading) { pushUndo(); aiLoading = true; onSmartCrop() } },
                     enabled = !aiLoading,
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Tertiary.copy(alpha = 0.2f)
-                    ),
+                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(12.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    if (aiLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = Tertiary
-                        )
-                    } else {
-                        Icon(Icons.Default.Psychology, null, modifier = Modifier.size(16.dp), tint = Tertiary)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Text("AI", fontSize = 13.sp, color = Tertiary)
+                    if (aiLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Tertiary)
+                    else Icon(Icons.Default.Psychology, null, Modifier.size(16.dp), tint = Tertiary)
+                    Spacer(Modifier.width(4.dp)); Text("AI", fontSize = 13.sp, color = Tertiary)
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
 
-            // Save / Delete row
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Delete original
-                OutlinedButton(
-                    onClick = onDelete,
-                    shape = RoundedCornerShape(12.dp),
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onDelete, shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
-                ) {
-                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                }
+                ) { Icon(Icons.Default.Delete, null, Modifier.size(16.dp)) }
 
-                // Save Copy (keep original)
-                OutlinedButton(
-                    onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
-                    modifier = Modifier.weight(1f),
+                OutlinedButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-                ) {
-                    Icon(Icons.Default.Save, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Copy", fontSize = 13.sp)
-                }
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
+                ) { Icon(Icons.Default.Share, null, Modifier.size(16.dp)) }
 
-                // Crop & Replace
-                Button(
-                    onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                OutlinedButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
+                    modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+                ) { Icon(Icons.Default.Save, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Copy", fontSize = 13.sp) }
+
+                Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom)) },
                     modifier = Modifier.weight(1.5f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Crop, null, modifier = Modifier.size(16.dp), tint = Color.Black)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Crop & Save", color = Color.Black)
-                }
+                ) { Icon(Icons.Default.Crop, null, Modifier.size(16.dp), tint = Color.Black); Spacer(Modifier.width(4.dp)); Text("Save", color = Color.Black) }
             }
         }
     }
 }
 
-private fun DrawScope.drawCornerHandle(
-    x: Float, y: Float, radius: Float,
-    isRight: Boolean, isBottom: Boolean
-) {
-    val len = radius * 2
-    val stroke = 4.dp.toPx()
-    val hDir = if (isRight) -1f else 1f
-    val vDir = if (isBottom) -1f else 1f
-
+private fun DrawScope.drawCornerHandle(x: Float, y: Float, radius: Float, isRight: Boolean, isBottom: Boolean) {
+    val len = radius * 2; val stroke = 4.dp.toPx()
+    val hDir = if (isRight) -1f else 1f; val vDir = if (isBottom) -1f else 1f
     drawLine(CropHandle, Offset(x, y), Offset(x + len * hDir, y), strokeWidth = stroke)
     drawLine(CropHandle, Offset(x, y), Offset(x, y + len * vDir), strokeWidth = stroke)
 }
