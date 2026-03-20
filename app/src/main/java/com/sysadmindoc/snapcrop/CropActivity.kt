@@ -57,30 +57,44 @@ class CropActivity : ComponentActivity() {
     private val cropMethod = mutableStateOf("")
     private val isLoading = mutableStateOf(true)
     private val isSaving = mutableStateOf(false)
+    private val showFlash = mutableStateOf(false)
     private var sourceUri: Uri? = null
     private val rotationKey = mutableIntStateOf(0)
+
+    private fun handleIntent(incomingIntent: Intent) {
+        val newUri = when {
+            incomingIntent.data != null -> incomingIntent.data
+            incomingIntent.action == Intent.ACTION_SEND ->
+                @Suppress("DEPRECATION")
+                incomingIntent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            else -> null
+        }
+        if (newUri == null) { finish(); return }
+
+        // Reset state for the new image
+        sourceUri = newUri
+        isLoading.value = true
+        bitmapState.value = null
+        cropMethod.value = ""
+
+        showFlash.value = incomingIntent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
+        if (showFlash.value) vibrateShort()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            loadBitmap(newUri)
+            withContext(Dispatchers.Main) { isLoading.value = false }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
-        sourceUri = when {
-            intent.data != null -> intent.data
-            intent.action == Intent.ACTION_SEND ->
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
-            else -> null
-        }
-        if (sourceUri == null) { finish(); return }
-
-        val showFlash = intent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
-        if (showFlash) vibrateShort()
-
-        // Async bitmap load
-        CoroutineScope(Dispatchers.IO).launch {
-            loadBitmap(sourceUri!!)
-            withContext(Dispatchers.Main) { isLoading.value = false }
-        }
+        handleIntent(intent)
 
         setContent {
             SnapCropTheme {
@@ -135,7 +149,7 @@ class CropActivity : ComponentActivity() {
                         }
                     }
 
-                    if (showFlash) {
+                    if (showFlash.value) {
                         val flashAlpha = remember { Animatable(0.9f) }
                         LaunchedEffect(Unit) { flashAlpha.animateTo(0f, tween(300)) }
                         if (flashAlpha.value > 0.01f) {
