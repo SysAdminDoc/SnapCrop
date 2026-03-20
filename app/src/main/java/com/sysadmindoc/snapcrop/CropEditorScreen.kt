@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -49,6 +50,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
@@ -82,7 +85,7 @@ data class DrawPath(
     val filled: Boolean = false
 )
 
-private enum class EditMode { CROP, PIXELATE, DRAW, OCR }
+private enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
 
 /** Simplifies a path by removing points that are too close together, then
  *  applies Catmull-Rom interpolation for smooth curves. */
@@ -145,10 +148,10 @@ fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
-    onSave: (Rect, List<Rect>, List<DrawPath>) -> Unit,
-    onSaveCopy: (Rect, List<Rect>, List<DrawPath>) -> Unit,
-    onShare: (Rect, List<Rect>, List<DrawPath>) -> Unit,
-    onCopyClipboard: (Rect, List<Rect>, List<DrawPath>) -> Unit,
+    onSave: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
+    onSaveCopy: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
+    onShare: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
+    onCopyClipboard: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -207,6 +210,11 @@ fun CropEditorScreen(
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
+
+    // Adjust mode (brightness/contrast/saturation)
+    var brightness by remember { mutableFloatStateOf(0f) }    // -100 to 100
+    var contrast by remember { mutableFloatStateOf(1f) }      // 0.5 to 2.0
+    var saturation by remember { mutableFloatStateOf(1f) }    // 0.0 to 2.0
 
     val context = LocalContext.current
     fun haptic() {
@@ -439,6 +447,12 @@ fun CropEditorScreen(
                     Icon(Icons.Default.TextFields, "OCR",
                         tint = if (editMode == EditMode.OCR) Color(0xFFCBA6F7) else OnSurface)
                 }
+                IconButton(onClick = {
+                    editMode = if (editMode == EditMode.ADJUST) EditMode.CROP else EditMode.ADJUST
+                }) {
+                    Icon(Icons.Default.Tune, "Adjust",
+                        tint = if (editMode == EditMode.ADJUST) Color(0xFFFAB387) else OnSurface)
+                }
                 IconButton(onClick = { previewMode = !previewMode }) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         "Preview", tint = if (previewMode) Primary else OnSurface)
@@ -459,6 +473,7 @@ fun CropEditorScreen(
                     }
                     Triple(Color(0xFFCBA6F7).copy(alpha = 0.15f), Color(0xFFCBA6F7), info)
                 }
+                EditMode.ADJUST -> Triple(Color(0xFFFAB387).copy(alpha = 0.15f), Color(0xFFFAB387), "ADJUST — brightness, contrast, saturation")
                 else -> Triple(Color.Transparent, Color.Transparent, "")
             }
             Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 16.dp, vertical = 4.dp),
@@ -607,6 +622,39 @@ fun CropEditorScreen(
             }
         }
 
+        // Adjust mode sliders
+        if (editMode == EditMode.ADJUST) {
+            val adjustColor = Color(0xFFFAB387)
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Brightness", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = brightness, onValueChange = { brightness = it },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${brightness.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Contrast", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = contrast, onValueChange = { contrast = it },
+                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${String.format("%.1f", contrast)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Saturation", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = saturation, onValueChange = { saturation = it },
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${String.format("%.1f", saturation)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f }) {
+                        Text("Reset", color = adjustColor, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
         // Canvas area
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             // Zoom indicator
@@ -684,7 +732,7 @@ fun CropEditorScreen(
                                             activeHandle = findHandle(pos)
                                             if (activeHandle != DragHandle.NONE) pushUndo()
                                         }
-                                        EditMode.OCR -> {}
+                                        EditMode.OCR, EditMode.ADJUST -> {}
                                     }
                                 },
                                 onDragEnd = {
@@ -727,7 +775,7 @@ fun CropEditorScreen(
                                             currentDrawPoints = emptyList()
                                         }
                                         EditMode.CROP -> activeHandle = DragHandle.NONE
-                                        EditMode.OCR -> {}
+                                        EditMode.OCR, EditMode.ADJUST -> {}
                                     }
                                 },
                                 onDragCancel = {
@@ -748,7 +796,7 @@ fun CropEditorScreen(
                                         EditMode.CROP -> constrainToRatio(activeHandle,
                                             (dragAmount.x / scaleX).roundToInt(),
                                             (dragAmount.y / scaleY).roundToInt())
-                                        EditMode.OCR -> {}
+                                        EditMode.OCR, EditMode.ADJUST -> {}
                                     }
                                 }
                             )
@@ -817,8 +865,36 @@ fun CropEditorScreen(
                     val scale = scaleX
                     val drawW = imgW * scale; val drawH = imgH * scale
 
+                    // Build color adjustment matrix
+                    val adjustFilter = if (brightness != 0f || contrast != 1f || saturation != 1f) {
+                        val cm = ColorMatrix()
+                        // Saturation
+                        if (saturation != 1f) cm.timesAssign(ColorMatrix().apply { setToSaturation(saturation) })
+                        // Contrast: scale around 0.5
+                        if (contrast != 1f) {
+                            val t = (1f - contrast) / 2f * 255f
+                            cm.timesAssign(ColorMatrix(floatArrayOf(
+                                contrast, 0f, 0f, 0f, t,
+                                0f, contrast, 0f, 0f, t,
+                                0f, 0f, contrast, 0f, t,
+                                0f, 0f, 0f, 1f, 0f
+                            )))
+                        }
+                        // Brightness: additive offset
+                        if (brightness != 0f) {
+                            cm.timesAssign(ColorMatrix(floatArrayOf(
+                                1f, 0f, 0f, 0f, brightness,
+                                0f, 1f, 0f, 0f, brightness,
+                                0f, 0f, 1f, 0f, brightness,
+                                0f, 0f, 0f, 1f, 0f
+                            )))
+                        }
+                        ColorFilter.colorMatrix(cm)
+                    } else null
+
                     drawImage(imageBitmap, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
-                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()))
+                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                        colorFilter = adjustFilter)
 
                     val sl = ox + cropLeft * scale; val st = oy + cropTop * scale
                     val sr = ox + cropRight * scale; val sb = oy + cropBottom * scale
@@ -1087,16 +1163,17 @@ fun CropEditorScreen(
             // Action icons row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
-                IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) }) {
+                val adj = floatArrayOf(brightness, contrast, saturation)
+                IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
-                IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) }) {
+                IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.ContentCopy, "Clipboard", tint = OnSurface) }
-                IconButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) }) {
+                IconButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Save, "Save Copy", tint = OnSurface) }
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList()) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
