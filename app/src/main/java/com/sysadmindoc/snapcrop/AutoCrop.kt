@@ -16,11 +16,6 @@ object AutoCrop {
         val method: String // "border", "statusbar", "full"
     )
 
-    /**
-     * Multi-strategy autocrop using exact system bar heights from the device.
-     * @param statusBarPx exact status bar height in pixels (from resources)
-     * @param navBarPx exact navigation bar height in pixels (from resources)
-     */
     fun detect(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): Rect {
         return detectWithMethod(bitmap, statusBarPx, navBarPx).rect
     }
@@ -29,81 +24,77 @@ object AutoCrop {
         val w = bitmap.width
         val h = bitmap.height
 
-        // Strategy 1: Uniform border detection (meme borders, solid margins)
-        val borderRect = detectBorders(bitmap, w, h)
-        val hasBorders = borderRect.left > 0 || borderRect.top > 0 ||
-                borderRect.right < w || borderRect.bottom < h
+        // Step 1: ALWAYS strip system bars first.
+        // This removes the status bar (with icons that confuse border detection)
+        // and the nav bar, giving us the clean content area to analyze.
+        var contentTop = 0
+        var contentBottom = h
+
+        if (statusBarPx > 0 && statusBarPx < h / 4) {
+            contentTop = statusBarPx
+        }
+        if (navBarPx > 0 && navBarPx < h / 4) {
+            contentBottom = h - navBarPx
+        }
+
+        val strippedBars = contentTop > 0 || contentBottom < h
+
+        // Step 2: Run border detection WITHIN the content area (skipping system bars).
+        // This way findTopEdge starts below the status bar, so it correctly
+        // finds black borders between the status bar and the actual content.
+        val borderRect = detectBorders(bitmap, w, contentTop, contentBottom)
+        val hasBorders = borderRect.left > 0 || borderRect.top > contentTop ||
+                borderRect.right < w || borderRect.bottom < contentBottom
 
         if (hasBorders) {
-            // Also strip system bars within the border crop
-            val combined = stripSystemBars(borderRect, w, h, statusBarPx, navBarPx)
-            return CropResult(combined, "border")
+            return CropResult(borderRect, if (strippedBars) "border" else "border")
         }
 
-        // Strategy 2: System bar stripping using exact device dimensions
-        // On modern Android (12+), status bar is transparent — no pixel analysis works.
-        // We use the known system bar pixel heights from the device to always strip.
-        if (statusBarPx > 0 || navBarPx > 0) {
-            val stripped = stripSystemBars(Rect(0, 0, w, h), w, h, statusBarPx, navBarPx)
-            val hasStrip = stripped.top > 0 || stripped.bottom < h
-            if (hasStrip) {
-                return CropResult(stripped, "statusbar")
-            }
+        // Step 3: If no borders found but we stripped bars, return stripped result
+        if (strippedBars) {
+            return CropResult(Rect(0, contentTop, w, contentBottom), "statusbar")
         }
 
-        // Strategy 3: No crop detected
+        // Step 4: No crop detected
         return CropResult(Rect(0, 0, w, h), "full")
     }
 
     /**
-     * Strips system bars using exact pixel heights from the device.
-     * Always strips — no pixel analysis needed since screenshots always
-     * capture the full framebuffer including bar regions.
+     * Detects uniform-color borders within a vertical range.
+     * @param scanTop where to start scanning (below status bar)
+     * @param scanBottom where to stop scanning (above nav bar)
      */
-    private fun stripSystemBars(
-        rect: Rect, imgW: Int, imgH: Int, statusBarPx: Int, navBarPx: Int
-    ): Rect {
-        var top = rect.top
-        var bottom = rect.bottom
-
-        // Strip status bar if the rect starts at the very top
-        if (top == 0 && statusBarPx > 0 && statusBarPx < imgH / 4) {
-            top = statusBarPx
-        }
-
-        // Strip nav bar if the rect extends to the very bottom
-        if (bottom == imgH && navBarPx > 0 && navBarPx < imgH / 4) {
-            bottom = imgH - navBarPx
-        }
-
-        return Rect(rect.left, top, rect.right, bottom)
-    }
-
-    private fun detectBorders(bitmap: Bitmap, w: Int, h: Int): Rect {
-        val top = findTopEdge(bitmap, w, h)
-        val bottom = findBottomEdge(bitmap, w, h)
-        val left = findLeftEdge(bitmap, w, h, top, bottom)
-        val right = findRightEdge(bitmap, w, h, top, bottom)
+    private fun detectBorders(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Rect {
+        val top = findTopEdge(bitmap, w, scanTop, scanBottom)
+        val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom)
+        val left = findLeftEdge(bitmap, w, top, bottom)
+        val right = findRightEdge(bitmap, w, top, bottom)
 
         val cropLeft = max(0, left - PADDING)
-        val cropTop = max(0, top - PADDING)
+        val cropTop = max(scanTop, top - PADDING)
         val cropRight = min(w, right + PADDING)
-        val cropBottom = min(h, bottom + PADDING)
+        val cropBottom = min(scanBottom, bottom + PADDING)
 
         val minW = (w * 0.1f).toInt()
-        val minH = (h * 0.1f).toInt()
+        val minH = ((scanBottom - scanTop) * 0.1f).toInt()
 
         return if (cropRight - cropLeft < minW || cropBottom - cropTop < minH) {
-            Rect(0, 0, w, h)
+            Rect(0, scanTop, w, scanBottom)
         } else {
             Rect(cropLeft, cropTop, cropRight, cropBottom)
         }
     }
 
-    private fun findTopEdge(bitmap: Bitmap, w: Int, h: Int): Int {
+    /**
+     * Scans downward from scanTop looking for the first non-uniform row.
+     * Rows that are all one color (like black bars) are "uniform" — skip them.
+     * The first row with actual content (non-uniform) is the top edge.
+     */
+    private fun findTopEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Int {
         val sampleX = IntArray(5) { (w * (it + 1) / 6f).toInt().coerceIn(0, w - 1) }
+        val limit = scanTop + ((scanBottom - scanTop) * 0.45f).toInt()
 
-        for (y in 0 until (h * 0.45f).toInt()) {
+        for (y in scanTop until limit) {
             val refColor = bitmap.getPixel(sampleX[0], y)
             var nonUniform = 0
 
@@ -114,16 +105,20 @@ object AutoCrop {
             }
 
             if (nonUniform >= 2 || !isRowUniform(bitmap, y, w)) {
-                return max(0, y)
+                return max(scanTop, y)
             }
         }
-        return 0
+        return scanTop
     }
 
-    private fun findBottomEdge(bitmap: Bitmap, w: Int, h: Int): Int {
+    /**
+     * Scans upward from scanBottom looking for the first non-uniform row.
+     */
+    private fun findBottomEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Int {
         val sampleX = IntArray(5) { (w * (it + 1) / 6f).toInt().coerceIn(0, w - 1) }
+        val limit = scanTop + ((scanBottom - scanTop) * 0.55f).toInt()
 
-        for (y in h - 1 downTo (h * 0.55f).toInt()) {
+        for (y in scanBottom - 1 downTo limit) {
             val refColor = bitmap.getPixel(sampleX[0], y)
             var nonUniform = 0
 
@@ -134,13 +129,13 @@ object AutoCrop {
             }
 
             if (nonUniform >= 2 || !isRowUniform(bitmap, y, w)) {
-                return min(h, y + 1)
+                return min(scanBottom, y + 1)
             }
         }
-        return h
+        return scanBottom
     }
 
-    private fun findLeftEdge(bitmap: Bitmap, w: Int, h: Int, top: Int, bottom: Int): Int {
+    private fun findLeftEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int): Int {
         val sampleY = IntArray(5) {
             (top + (bottom - top) * (it + 1) / 6f).toInt().coerceIn(top, max(top, bottom - 1))
         }
@@ -162,7 +157,7 @@ object AutoCrop {
         return 0
     }
 
-    private fun findRightEdge(bitmap: Bitmap, w: Int, h: Int, top: Int, bottom: Int): Int {
+    private fun findRightEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int): Int {
         val sampleY = IntArray(5) {
             (top + (bottom - top) * (it + 1) / 6f).toInt().coerceIn(top, max(top, bottom - 1))
         }
@@ -193,9 +188,7 @@ object AutoCrop {
         var x = 0
         while (x < w) {
             total++
-            if (colorsMatch(bitmap.getPixel(x, y), refColor)) {
-                matches++
-            }
+            if (colorsMatch(bitmap.getPixel(x, y), refColor)) matches++
             x += step
         }
 
@@ -213,9 +206,7 @@ object AutoCrop {
         var y = top
         while (y < bottom) {
             total++
-            if (colorsMatch(bitmap.getPixel(x, y), refColor)) {
-                matches++
-            }
+            if (colorsMatch(bitmap.getPixel(x, y), refColor)) matches++
             y += step
         }
 
