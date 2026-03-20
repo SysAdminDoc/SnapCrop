@@ -149,7 +149,8 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     RATIO_16_9("16:9", 16f / 9f),
     RATIO_9_16("9:16", 9f / 16f),
     RATIO_2_1("2:1", 2f / 1f),
-    CIRCLE("Circle", 1f)
+    CIRCLE("Circle", 1f),
+    ROUNDED("Rounded", null)
 }
 
 @Composable
@@ -205,6 +206,7 @@ fun CropEditorScreen(
 
     // Draw mode
     val drawPaths = remember { mutableStateListOf<DrawPath>() }
+    val drawRedoStack = remember { mutableStateListOf<DrawPath>() }
     var currentDrawPoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
@@ -228,6 +230,7 @@ fun CropEditorScreen(
     var contrast by remember { mutableFloatStateOf(1f) }      // 0.5 to 2.0
     var saturation by remember { mutableFloatStateOf(1f) }    // 0.0 to 2.0
     var warmth by remember { mutableFloatStateOf(0f) }        // -50 to 50 (red/blue shift)
+    var vignette by remember { mutableFloatStateOf(0f) }     // 0 to 1 (edge darkening)
 
     val context = LocalContext.current
     fun haptic() {
@@ -614,10 +617,17 @@ fun CropEditorScreen(
                 }
                 Row {
                     if (drawPaths.isNotEmpty()) {
-                        TextButton(onClick = { drawPaths.removeLastOrNull() }) {
-                            Text("Undo", color = Secondary, fontSize = 11.sp)
-                        }
-                        TextButton(onClick = { drawPaths.clear() }) {
+                        TextButton(onClick = {
+                            drawPaths.removeLastOrNull()?.let { drawRedoStack.add(it) }
+                        }) { Text("Undo", color = Secondary, fontSize = 11.sp) }
+                    }
+                    if (drawRedoStack.isNotEmpty()) {
+                        TextButton(onClick = {
+                            drawRedoStack.removeLastOrNull()?.let { drawPaths.add(it) }
+                        }) { Text("Redo", color = Secondary, fontSize = 11.sp) }
+                    }
+                    if (drawPaths.isNotEmpty()) {
+                        TextButton(onClick = { drawPaths.clear(); drawRedoStack.clear() }) {
                             Text("Clear", color = Secondary, fontSize = 11.sp)
                         }
                     }
@@ -687,8 +697,15 @@ fun CropEditorScreen(
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${warmth.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Vignette", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = vignette, onValueChange = { vignette = it },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${(vignette * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f }) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -739,6 +756,7 @@ fun CropEditorScreen(
                                     when (editMode) {
                                         EditMode.PIXELATE -> { pixDragStart = pos; pixDragCurrent = pos }
                                         EditMode.DRAW -> {
+                                            drawRedoStack.clear()
                                             val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
                                             val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
                                             if (drawTool == DrawTool.TEXT) {
@@ -955,6 +973,22 @@ fun CropEditorScreen(
                         dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
                         colorFilter = adjustFilter)
 
+                    // Vignette overlay (radial gradient from transparent to black)
+                    if (vignette > 0.01f) {
+                        drawContext.canvas.nativeCanvas.apply {
+                            val vigPaint = android.graphics.Paint().apply {
+                                shader = android.graphics.RadialGradient(
+                                    ox + drawW / 2, oy + drawH / 2,
+                                    maxOf(drawW, drawH) * 0.7f,
+                                    intArrayOf(0x00000000, (vignette * 200).toInt().coerceAtMost(200) shl 24),
+                                    floatArrayOf(0.4f, 1f),
+                                    android.graphics.Shader.TileMode.CLAMP
+                                )
+                            }
+                            drawRect(ox, oy, ox + drawW, oy + drawH, vigPaint)
+                        }
+                    }
+
                     val sl = ox + cropLeft * scale; val st = oy + cropTop * scale
                     val sr = ox + cropRight * scale; val sb = oy + cropBottom * scale
 
@@ -987,11 +1021,14 @@ fun CropEditorScreen(
                     drawCircle(CropHandle, midR, Offset(sl, (st + sb) / 2))
                     drawCircle(CropHandle, midR, Offset(sr, (st + sb) / 2))
 
-                    // Circle crop preview overlay
+                    // Shape crop preview overlay
                     if (selectedRatio == AspectRatio.CIRCLE) {
                         val cx = (sl + sr) / 2; val cy = (st + sb) / 2
                         val radius = minOf(sr - sl, sb - st) / 2
                         drawCircle(CropBorder.copy(alpha = 0.5f), radius, Offset(cx, cy), style = Stroke(2.dp.toPx()))
+                    } else if (selectedRatio == AspectRatio.ROUNDED) {
+                        drawRoundRect(CropBorder.copy(alpha = 0.5f), Offset(sl, st), Size(sr - sl, sb - st),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), style = Stroke(2.dp.toPx()))
                     }
 
                     // Pixelate region indicators (mosaic pattern)
@@ -1240,8 +1277,8 @@ fun CropEditorScreen(
             // Action icons row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
-                val circleCrop = if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f
-                val adj = floatArrayOf(brightness, contrast, saturation, circleCrop, warmth)
+                val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; else -> 0f }
+                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -1251,7 +1288,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f, warmth)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; else -> 0f }, warmth, vignette)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)

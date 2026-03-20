@@ -15,6 +15,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -459,7 +460,8 @@ class CropActivity : ComponentActivity() {
     private fun applyAdjustments(bitmap: Bitmap, adj: FloatArray): Bitmap {
         val brightness = adj[0]; val contrast = adj[1]; val saturation = adj[2]
         val warmth = if (adj.size > 4) adj[4] else 0f
-        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f) return bitmap
+        val vignetteAmt = if (adj.size > 5) adj[5] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
@@ -476,6 +478,19 @@ class CropActivity : ComponentActivity() {
         }
         val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
         canvas.drawBitmap(bitmap, 0f, 0f, paint)
+        // Vignette: radial gradient overlay
+        if (vignetteAmt > 0.01f) {
+            val vigPaint = Paint().apply {
+                shader = android.graphics.RadialGradient(
+                    result.width / 2f, result.height / 2f,
+                    maxOf(result.width, result.height) * 0.7f,
+                    intArrayOf(0x00000000, (vignetteAmt * 200).toInt().coerceAtMost(200) shl 24),
+                    floatArrayOf(0.4f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+            }
+            canvas.drawRect(0f, 0f, result.width.toFloat(), result.height.toFloat(), vigPaint)
+        }
         return result
     }
 
@@ -491,20 +506,30 @@ class CropActivity : ComponentActivity() {
             rect.height().coerceAtMost(drawn.height - rect.top.coerceAtLeast(0)))
         if (drawn !== bitmap && drawn !== adjusted) drawn.recycle()
 
-        // Circle crop masking (adj[3] == 1f)
-        val isCircle = adj.size > 3 && adj[3] == 1f
-        if (isCircle) {
+        // Shape crop masking
+        val shapeType = if (adj.size > 3) adj[3] else 0f
+        if (shapeType == 1f) {
+            // Circle
             val size = minOf(cropped.width, cropped.height)
-            val circled = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val c = Canvas(circled)
-            val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-            c.drawCircle(size / 2f, size / 2f, size / 2f, circlePaint)
-            circlePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
-            val offsetX = (cropped.width - size) / 2
-            val offsetY = (cropped.height - size) / 2
-            c.drawBitmap(cropped, -offsetX.toFloat(), -offsetY.toFloat(), circlePaint)
+            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(shaped)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            c.drawCircle(size / 2f, size / 2f, size / 2f, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
             cropped.recycle()
-            return circled
+            return shaped
+        } else if (shapeType == 2f) {
+            // Rounded rect
+            val shaped = Bitmap.createBitmap(cropped.width, cropped.height, Bitmap.Config.ARGB_8888)
+            val c = Canvas(shaped)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val radius = minOf(cropped.width, cropped.height) * 0.08f // 8% corner radius
+            c.drawRoundRect(RectF(0f, 0f, cropped.width.toFloat(), cropped.height.toFloat()), radius, radius, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, 0f, 0f, shapePaint)
+            cropped.recycle()
+            return shaped
         }
 
         return cropped
@@ -518,9 +543,9 @@ class CropActivity : ComponentActivity() {
             val watermarked = applyWatermark(cropped)
             if (watermarked !== cropped) cropped.recycle()
             cropped = watermarked
-            val isCircle = adj.size > 3 && adj[3] == 1f
+            val hasShapeCrop = adj.size > 3 && adj[3] > 0f
             withContext(Dispatchers.Main) {
-                saveToGallery(cropped, resolveFilename(), deleteOriginal, forcePng = isCircle)
+                saveToGallery(cropped, resolveFilename(), deleteOriginal, forcePng = hasShapeCrop)
                 cropped.recycle()
                 isSaving.value = false
             }

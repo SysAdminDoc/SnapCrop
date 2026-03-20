@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MergeType
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
@@ -199,6 +200,7 @@ class MainActivity : ComponentActivity() {
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
+                                onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
                                 batchProgress = batchProgress.value,
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = {
@@ -581,6 +583,7 @@ private fun HomeScreen(
     onBatchCrop: () -> Unit,
     onStitch: () -> Unit,
     onCollage: () -> Unit,
+    onDeviceFrame: () -> Unit,
     batchProgress: String,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
@@ -612,7 +615,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v5.5.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v5.6.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -778,6 +781,20 @@ private fun HomeScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("Collage")
             }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Device frame
+        OutlinedButton(
+            onClick = onDeviceFrame,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+        ) {
+            Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Device Mockup")
         }
 
         // Stats
