@@ -21,6 +21,8 @@ class ScreenshotService : Service() {
     companion object {
         const val ACTION_QUICK_SAVE = "com.sysadmindoc.snapcrop.QUICK_SAVE"
         const val EXTRA_URI = "extra_uri"
+        @Volatile var isRunning = false
+            private set
     }
 
     private var observer: ContentObserver? = null
@@ -40,6 +42,7 @@ class ScreenshotService : Service() {
 
         startForeground(1, buildServiceNotification())
         registerObserver()
+        isRunning = true
         return START_STICKY
     }
 
@@ -185,6 +188,7 @@ class ScreenshotService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()

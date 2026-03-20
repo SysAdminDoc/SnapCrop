@@ -3,15 +3,22 @@ package com.sysadmindoc.snapcrop
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CropOriginal
@@ -21,17 +28,24 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.ui.theme.*
 
+data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
+
 class MainActivity : ComponentActivity() {
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
+    private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
+    private val cropCount = mutableStateOf(0)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -59,9 +73,14 @@ class MainActivity : ComponentActivity() {
                 HomeScreen(
                     isRunning = serviceRunning.value,
                     hasPermissions = hasPermissions.value,
+                    recentCrops = recentCrops.value,
+                    cropCount = cropCount.value,
                     onToggleService = { toggleService() },
                     onRequestPermissions = { requestPermissions() },
-                    onPickImage = { pickImageLauncher.launch("image/*") }
+                    onPickImage = { pickImageLauncher.launch("image/*") },
+                    onOpenCrop = { uri ->
+                        startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
+                    }
                 )
             }
         }
@@ -70,6 +89,16 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
+
+        // Restore service state — if auto_start is on but service died, restart it
+        val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            .getBoolean("auto_start", false)
+        if (shouldRun && hasPermissions.value && !ScreenshotService.isRunning) {
+            startMonitoring()
+        }
+        serviceRunning.value = ScreenshotService.isRunning || shouldRun
+
+        if (hasPermissions.value) loadRecentCrops()
     }
 
     private fun checkPermissions() {
@@ -118,57 +147,98 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, intent)
         serviceRunning.value = true
     }
+
+    private fun loadRecentCrops() {
+        try {
+            val crops = mutableListOf<RecentCrop>()
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME
+            )
+            val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
+            val selectionArgs = arrayOf("Pictures/SnapCrop%")
+            val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection, selection, selectionArgs, sortOrder
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                var count = 0
+                while (cursor.moveToNext()) {
+                    count++
+                    if (crops.size < 10) {
+                        val id = cursor.getLong(idCol)
+                        val uri = Uri.withAppendedPath(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
+                        )
+                        try {
+                            val opts = BitmapFactory.Options().apply {
+                                inSampleSize = 8
+                            }
+                            contentResolver.openInputStream(uri)?.use { stream ->
+                                BitmapFactory.decodeStream(stream, null, opts)?.let { thumb ->
+                                    crops.add(RecentCrop(uri, thumb.asImageBitmap()))
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                }
+                cropCount.value = count
+            }
+            recentCrops.value = crops
+        } catch (_: Exception) {}
+    }
 }
 
 @Composable
 private fun HomeScreen(
     isRunning: Boolean,
     hasPermissions: Boolean,
+    recentCrops: List<RecentCrop>,
+    cropCount: Int,
     onToggleService: () -> Unit,
     onRequestPermissions: () -> Unit,
-    onPickImage: () -> Unit
+    onPickImage: () -> Unit,
+    onOpenCrop: (Uri) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .systemBarsPadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 24.dp)
     ) {
         Spacer(Modifier.height(48.dp))
 
-        Icon(
-            Icons.Default.CropOriginal,
-            contentDescription = null,
-            modifier = Modifier.size(72.dp),
-            tint = Primary
-        )
+        // Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.CropOriginal,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = Primary
+            )
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(
+                    "SnapCrop",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = OnSurface
+                )
+                Text(
+                    "v2.5.0",
+                    fontSize = 13.sp,
+                    color = OnSurfaceVariant
+                )
+            }
+        }
 
-        Spacer(Modifier.height(16.dp))
-
-        Text(
-            "SnapCrop",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = OnSurface
-        )
-
-        Text(
-            "v2.4.0",
-            fontSize = 13.sp,
-            color = OnSurfaceVariant
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            "Auto-crop screenshots instantly",
-            fontSize = 15.sp,
-            color = OnSurfaceVariant
-        )
-
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(24.dp))
 
         // Permission warning
         AnimatedVisibility(visible = !hasPermissions) {
@@ -263,6 +333,43 @@ private fun HomeScreen(
             Text("Pick Image to Crop")
         }
 
+        // Stats
+        if (cropCount > 0) {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "$cropCount screenshots cropped",
+                color = OnSurfaceVariant,
+                fontSize = 13.sp
+            )
+        }
+
+        // Recent crops gallery
+        if (recentCrops.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Recent",
+                color = OnSurface,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(8.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(recentCrops) { crop ->
+                    Image(
+                        bitmap = crop.thumbBitmap,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(80.dp, 140.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onOpenCrop(crop.uri) },
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+        }
+
         Spacer(Modifier.weight(1f))
 
         Text(
@@ -271,5 +378,7 @@ private fun HomeScreen(
             fontSize = 12.sp,
             lineHeight = 18.sp
         )
+
+        Spacer(Modifier.height(16.dp))
     }
 }
