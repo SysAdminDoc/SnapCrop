@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -35,6 +36,11 @@
             android:theme="@style/Theme.SnapCrop" />
 
         <activity
+            android:name=".StitchActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SnapCrop" />
+
+        <activity
             android:name=".CropActivity"
             android:exported="true"
             android:theme="@style/Theme.SnapCrop"
@@ -54,6 +60,17 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="screenshot_monitoring" />
+        </service>
+
+        <service
+            android:name=".MonitorTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_crop"
+            android:label="SnapCrop"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
         </service>
 
         <receiver

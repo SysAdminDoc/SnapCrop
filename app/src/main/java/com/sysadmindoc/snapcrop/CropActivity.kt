@@ -232,7 +232,12 @@ class CropActivity : ComponentActivity() {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { postRotate(90f) }
         val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
-        if (current != originalBitmap) current.recycle()
+        // Recycle the old bitmap (including originalBitmap if it was the current one)
+        if (rotated !== current) current.recycle()
+        if (originalBitmap != null && originalBitmap !== current && originalBitmap !== rotated) {
+            originalBitmap?.recycle()
+        }
+        originalBitmap = null
         bitmapState.value = rotated
         cropRect.value = Rect(0, 0, rotated.width, rotated.height)
         cropMethod.value = ""
@@ -243,7 +248,11 @@ class CropActivity : ComponentActivity() {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f) }
         val flipped = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
-        if (current != originalBitmap) current.recycle()
+        if (flipped !== current) current.recycle()
+        if (originalBitmap != null && originalBitmap !== current && originalBitmap !== flipped) {
+            originalBitmap?.recycle()
+        }
+        originalBitmap = null
         bitmapState.value = flipped
     }
 
@@ -258,21 +267,26 @@ class CropActivity : ComponentActivity() {
             val r = pr.right.coerceIn(0, result.width)
             val b = pr.bottom.coerceIn(0, result.height)
             if (r - l < 2 || b - t < 2) continue
-            // Scale down then back up for mosaic effect
-            val region = Bitmap.createBitmap(result, l, t, r - l, b - t)
-            val tiny = Bitmap.createScaledBitmap(region,
-                ((r - l) / blockSize).coerceAtLeast(1),
-                ((b - t) / blockSize).coerceAtLeast(1), false)
-            val mosaic = Bitmap.createScaledBitmap(tiny, r - l, b - t, false)
-            canvas.drawBitmap(mosaic, l.toFloat(), t.toFloat(), null)
-            region.recycle(); tiny.recycle(); mosaic.recycle()
+            var region: Bitmap? = null
+            var tiny: Bitmap? = null
+            var mosaic: Bitmap? = null
+            try {
+                region = Bitmap.createBitmap(result, l, t, r - l, b - t)
+                tiny = Bitmap.createScaledBitmap(region,
+                    ((r - l) / blockSize).coerceAtLeast(1),
+                    ((b - t) / blockSize).coerceAtLeast(1), false)
+                mosaic = Bitmap.createScaledBitmap(tiny, r - l, b - t, false)
+                canvas.drawBitmap(mosaic, l.toFloat(), t.toFloat(), null)
+            } finally {
+                region?.recycle(); tiny?.recycle(); mosaic?.recycle()
+            }
         }
         return result
     }
 
     private fun applyDraw(bitmap: Bitmap, paths: List<DrawPath>): Bitmap {
         if (paths.isEmpty()) return bitmap
-        val result = if (bitmap.isMutable) bitmap else bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -311,6 +325,23 @@ class CropActivity : ComponentActivity() {
                 for (i in 1 until dp.points.size) path.lineTo(dp.points[i].x, dp.points[i].y)
                 canvas.drawPath(path, paint)
                 paint.alpha = 255
+                continue
+            }
+
+            // Spotlight — dim entire image except the selected rectangle
+            if (dp.shapeType == "spotlight" && dp.points.size >= 2) {
+                val p1 = dp.points.first(); val p2 = dp.points.last()
+                val sl = minOf(p1.x, p2.x); val st = minOf(p1.y, p2.y)
+                val sr = maxOf(p1.x, p2.x); val sb = maxOf(p1.y, p2.y)
+                val dimPaint = Paint().apply { color = 0x99000000.toInt(); style = Paint.Style.FILL }
+                canvas.drawRect(0f, 0f, result.width.toFloat(), st, dimPaint)
+                canvas.drawRect(0f, sb, result.width.toFloat(), result.height.toFloat(), dimPaint)
+                canvas.drawRect(0f, st, sl, sb, dimPaint)
+                canvas.drawRect(sr, st, result.width.toFloat(), sb, dimPaint)
+                val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xCCFFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 3f
+                }
+                canvas.drawRect(sl, st, sr, sb, borderPaint)
                 continue
             }
 
@@ -374,13 +405,15 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>): Bitmap {
-        var working = applyPixelate(bitmap, pixRects)
-        working = applyDraw(working, drawPaths)
-        val cropped = Bitmap.createBitmap(working,
+        val pixelated = applyPixelate(bitmap, pixRects)
+        val drawn = applyDraw(pixelated, drawPaths)
+        // Recycle intermediate if it's a different bitmap
+        if (drawn !== pixelated && pixelated !== bitmap) pixelated.recycle()
+        val cropped = Bitmap.createBitmap(drawn,
             rect.left.coerceAtLeast(0), rect.top.coerceAtLeast(0),
-            rect.width().coerceAtMost(working.width - rect.left.coerceAtLeast(0)),
-            rect.height().coerceAtMost(working.height - rect.top.coerceAtLeast(0)))
-        if (working !== bitmap) working.recycle()
+            rect.width().coerceAtMost(drawn.width - rect.left.coerceAtLeast(0)),
+            rect.height().coerceAtMost(drawn.height - rect.top.coerceAtLeast(0)))
+        if (drawn !== bitmap) drawn.recycle()
         return cropped
     }
 
@@ -487,7 +520,8 @@ class CropActivity : ComponentActivity() {
 
     override fun onDestroy() {
         val current = bitmapState.value
-        if (current != null && current != originalBitmap) current.recycle()
+        if (current != null && current !== originalBitmap) current.recycle()
+        originalBitmap?.recycle()
         originalBitmap = null; bitmapState.value = null
         super.onDestroy()
     }

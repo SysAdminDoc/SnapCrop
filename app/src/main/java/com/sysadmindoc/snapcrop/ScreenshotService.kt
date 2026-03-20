@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ContentValues
@@ -22,7 +23,10 @@ class ScreenshotService : Service() {
 
     companion object {
         const val ACTION_QUICK_SAVE = "com.sysadmindoc.snapcrop.QUICK_SAVE"
+        const val ACTION_SHARE = "com.sysadmindoc.snapcrop.SHARE"
+        const val ACTION_DISMISS = "com.sysadmindoc.snapcrop.DISMISS_NOTIF"
         const val EXTRA_URI = "extra_uri"
+        private const val DETECTED_NOTIF_ID = 2
         @Volatile var isRunning = false
             private set
     }
@@ -39,6 +43,24 @@ class ScreenshotService : Service() {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
                 if (uriStr != null) quickSave(Uri.parse(uriStr))
+                dismissDetectedNotification()
+                return START_STICKY
+            }
+            ACTION_SHARE -> {
+                val uriStr = intent.getStringExtra(EXTRA_URI)
+                if (uriStr != null) {
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "image/*"
+                        putExtra(Intent.EXTRA_STREAM, Uri.parse(uriStr))
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(Intent.createChooser(shareIntent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                dismissDetectedNotification()
+                return START_STICKY
+            }
+            ACTION_DISMISS -> {
+                dismissDetectedNotification()
                 return START_STICKY
             }
         }
@@ -176,12 +198,21 @@ class ScreenshotService : Service() {
     }
 
     private fun launchEditor(uri: Uri) {
+        // Show notification with action buttons as fallback
+        showDetectedNotification(uri)
+
         val intent = Intent(this, CropActivity::class.java).apply {
             data = uri
             putExtra(CropActivity.EXTRA_SHOW_FLASH, true)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        startActivity(intent)
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            // On Android 12+ without SYSTEM_ALERT_WINDOW, background activity launch may fail.
+            // The notification actions serve as the fallback.
+            handler.post { Toast.makeText(this, "Screenshot detected — tap notification to edit", Toast.LENGTH_SHORT).show() }
+        }
     }
 
     private fun quickSave(uri: Uri) {
@@ -242,11 +273,56 @@ class ScreenshotService : Service() {
         }
     }
 
+    private fun showDetectedNotification(uri: Uri) {
+        val editIntent = PendingIntent.getActivity(this, 10,
+            Intent(this, CropActivity::class.java).apply {
+                data = uri; putExtra(CropActivity.EXTRA_SHOW_FLASH, false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val shareIntent = PendingIntent.getService(this, 11,
+            Intent(this, ScreenshotService::class.java).apply {
+                action = ACTION_SHARE; putExtra(EXTRA_URI, uri.toString())
+            }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val quickSaveIntent = PendingIntent.getService(this, 12,
+            Intent(this, ScreenshotService::class.java).apply {
+                action = ACTION_QUICK_SAVE; putExtra(EXTRA_URI, uri.toString())
+            }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val dismissIntent = PendingIntent.getService(this, 13,
+            Intent(this, ScreenshotService::class.java).apply { action = ACTION_DISMISS },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val notification = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
+            .setContentTitle("Screenshot detected")
+            .setContentText("Tap to edit")
+            .setSmallIcon(R.drawable.ic_crop)
+            .setContentIntent(editIntent)
+            .setAutoCancel(true)
+            .setDeleteIntent(dismissIntent)
+            .addAction(0, "Edit", editIntent)
+            .addAction(0, "Share", shareIntent)
+            .addAction(0, "Quick Crop", quickSaveIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setTimeoutAfter(30_000)
+            .build()
+
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.notify(DETECTED_NOTIF_ID, notification)
+    }
+
+    private fun dismissDetectedNotification() {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.cancel(DETECTED_NOTIF_ID)
+    }
+
     override fun onDestroy() {
         isRunning = false
         handler.removeCallbacksAndMessages(null)
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
+        dismissDetectedNotification()
         super.onDestroy()
     }
 }

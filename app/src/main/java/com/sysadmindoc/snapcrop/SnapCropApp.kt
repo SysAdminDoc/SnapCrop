@@ -7,6 +7,7 @@ import android.app.NotificationManager
 class SnapCropApp : Application() {
     companion object {
         const val CHANNEL_ID = "snapcrop_bg"
+        const val CHANNEL_DETECTED = "snapcrop_detected"
     }
 
     override fun onCreate() {
@@ -24,6 +25,17 @@ class SnapCropApp : Application() {
                 NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Screenshot monitoring service"
+                setShowBadge(false)
+            }
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_DETECTED,
+                "Screenshot Detected",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Actions for detected screenshots"
                 setShowBadge(false)
             }
         )

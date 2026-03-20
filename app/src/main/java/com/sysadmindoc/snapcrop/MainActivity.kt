@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
@@ -192,6 +193,7 @@ class MainActivity : ComponentActivity() {
                                 onRequestPermissions = { requestPermissions() },
                                 onPickImage = { pickImageLauncher.launch("image/*") },
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
+                                onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 batchProgress = batchProgress.value,
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = {
@@ -248,6 +250,7 @@ class MainActivity : ComponentActivity() {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) {
             needed.add(Manifest.permission.READ_MEDIA_IMAGES)
+            needed.add(Manifest.permission.READ_MEDIA_VIDEO)
             needed.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -261,6 +264,7 @@ class MainActivity : ComponentActivity() {
         val needed = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) {
             needed.add(Manifest.permission.READ_MEDIA_IMAGES)
+            needed.add(Manifest.permission.READ_MEDIA_VIDEO)
             needed.add(Manifest.permission.POST_NOTIFICATIONS)
         } else {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -434,6 +438,7 @@ private fun HomeScreen(
     onRequestPermissions: () -> Unit,
     onPickImage: () -> Unit,
     onBatchCrop: () -> Unit,
+    onStitch: () -> Unit,
     batchProgress: String,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
@@ -465,7 +470,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v5.0.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v5.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -605,6 +610,20 @@ private fun HomeScreen(
             Icon(Icons.Default.BurstMode, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text(if (batchProgress.isNotEmpty()) batchProgress else "Batch Autocrop")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Stitch images
+        OutlinedButton(
+            onClick = onStitch,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+        ) {
+            Icon(Icons.Default.MergeType, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Stitch Images")
         }
 
         // Stats

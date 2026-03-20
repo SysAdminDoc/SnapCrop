@@ -118,7 +118,7 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
 }
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
-    HIGHLIGHT("Mark"), CALLOUT("#")
+    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus")
 }
 
 private val drawColors = listOf(
@@ -699,11 +699,12 @@ fun CropEditorScreen(
                                                     DrawTool.RECT -> "rect"
                                                     DrawTool.CIRCLE -> "circle"
                                                     DrawTool.HIGHLIGHT -> "highlight"
+                                                    DrawTool.SPOTLIGHT -> "spotlight"
                                                     else -> null
                                                 }
                                                 drawPaths.add(DrawPath(
                                                     points = when {
-                                                        shape == "rect" || shape == "circle" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                        shape == "rect" || shape == "circle" || shape == "spotlight" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
                                                         drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT -> smoothPath(currentDrawPoints)
                                                         else -> currentDrawPoints.toList()
                                                     },
@@ -897,6 +898,27 @@ fun CropEditorScreen(
                             return
                         }
 
+                        // Spotlight — dim entire image except the selected rectangle
+                        if (shape == "spotlight" && pts.size >= 2) {
+                            val p1 = pts.first(); val p2 = pts.last()
+                            val sx1 = ox + minOf(p1.x, p2.x) * scale
+                            val sy1 = oy + minOf(p1.y, p2.y) * scale
+                            val sx2 = ox + maxOf(p1.x, p2.x) * scale
+                            val sy2 = oy + maxOf(p1.y, p2.y) * scale
+                            val spotDim = Color.Black.copy(alpha = 0.6f)
+                            // Top strip
+                            drawRect(spotDim, Offset(ox, oy), Size(drawW, sy1 - oy))
+                            // Bottom strip
+                            drawRect(spotDim, Offset(ox, sy2), Size(drawW, oy + drawH - sy2))
+                            // Left strip
+                            drawRect(spotDim, Offset(ox, sy1), Size(sx1 - ox, sy2 - sy1))
+                            // Right strip
+                            drawRect(spotDim, Offset(sx2, sy1), Size(ox + drawW - sx2, sy2 - sy1))
+                            // Border around spotlight area
+                            drawRect(Color.White.copy(alpha = 0.8f), Offset(sx1, sy1), Size(sx2 - sx1, sy2 - sy1), style = Stroke(2.dp.toPx()))
+                            return
+                        }
+
                         if (shape != null && pts.size >= 2) {
                             val p1 = pts.first(); val p2 = pts.last()
                             val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
@@ -947,7 +969,7 @@ fun CropEditorScreen(
                     if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
                         val curShape = when (drawTool) {
                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
-                            DrawTool.HIGHLIGHT -> "highlight"; else -> null
+                            DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"; else -> null
                         }
                         val curSw = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth
                         val curPts = if (curShape == "rect" || curShape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints

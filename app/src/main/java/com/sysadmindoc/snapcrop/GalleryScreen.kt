@@ -666,10 +666,12 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): Li
     val photos = mutableListOf<Photo>()
     val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
-    val selection = "${MediaStore.Images.Media._ID} IN (${favIds.joinToString(",")})"
+    val placeholders = favIds.joinToString(",") { "?" }
+    val selection = "${MediaStore.Images.Media._ID} IN ($placeholders)"
+    val selectionArgs = favIds.map { it.toString() }.toTypedArray()
     val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, null, sortOrder)?.use { cursor ->
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)

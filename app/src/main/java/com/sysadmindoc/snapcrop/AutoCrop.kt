@@ -65,6 +65,7 @@ object AutoCrop {
      * @param scanBottom where to stop scanning (above nav bar)
      */
     private fun detectBorders(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Rect {
+        if (scanTop >= scanBottom || w <= 0) return Rect(0, scanTop, w, scanBottom)
         val top = findTopEdge(bitmap, w, scanTop, scanBottom)
         val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom)
         val left = findLeftEdge(bitmap, w, top, bottom)
