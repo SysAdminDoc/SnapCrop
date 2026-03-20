@@ -41,24 +41,25 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 | `BarcodeScanner.kt` | ~41 | ML Kit barcode scanning |
 | `TextExtractor.kt` | ~33 | ML Kit text recognition |
 
-## Draw Tools (9)
-1. **Pen** - Freehand with Catmull-Rom smoothing
-2. **Arrow** - Line with arrowhead
-3. **Rect** - Rectangle (optional fill)
-4. **Circle** - Ellipse (optional fill)
+## Draw Tools (11)
+1. **Pen** - Freehand with Catmull-Rom smoothing + optional dashed
+2. **Arrow** - Line with arrowhead + optional dashed
+3. **Rect** - Rectangle (optional fill, optional dashed)
+4. **Circle** - Ellipse (optional fill, optional dashed)
 5. **Text** - Tap to place, dialog input
 6. **Highlight** - Semi-transparent wide stroke (40% alpha)
 7. **Callout** - Auto-incrementing numbered circles
 8. **Spotlight** - Dims everything outside selected rectangle
 9. **Magnifier** - 2x zoomed circular inset with crosshair
 10. **Emoji** - 20 common emojis, scrollable picker, tap to place
+11. **Neon** - 3-layer glow pen (BlurMaskFilter outer + colored mid + white core)
 
 ## Edit Modes (5)
-1. **CROP** - Drag handles, aspect ratios, auto/AI crop, rotate/flip
+1. **CROP** - Drag handles, aspect ratios (incl. circle/rounded/star/heart), auto/AI crop, rotate/flip, resize
 2. **PIXELATE** - Draw rectangles to redact, one-tap face blur
-3. **DRAW** - 9 tools above, 6 colors + eyedropper, stroke width slider
+3. **DRAW** - 11 tools above, 6 colors + eyedropper, stroke width slider, dashed toggle
 4. **OCR** - ML Kit text recognition + barcode scanning, tap to copy
-5. **ADJUST** - Brightness (-100 to 100), contrast (0.5x-2x), saturation (0-2x)
+5. **ADJUST** - Brightness, contrast, saturation, warmth, vignette (5 sliders)
 
 ## Build
 ```
@@ -68,9 +69,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.8.0
+v5.9.0
 
 ## Version History
+- v5.9.0: Neon glow pen (11th draw tool, BlurMaskFilter 3-layer glow), image resize in editor (5 presets, dialog), save location picker (Pictures/DCIM/Downloads), gallery photo count in album view
 - v5.8.0: Dashed line style toggle for pen/arrow/rect/circle (DashPathEffect on canvas + export), star + heart shape crops (5-point star path, cubic bezier heart, PorterDuff masking), 4 shape crop options total (circle/rounded/star/heart)
 - v5.7.0: Background removal (ML Kit Subject Segmentation via Play Services, one-tap BG remove in editor), color palette extraction (6 dominant colors with hex codes + percentages, tap to copy), gallery date section headers (grouped by date in All Photos view), collage background color picker (6 color options), 5th ML Kit engine
 - v5.6.1: Bug audit + fixes — magnifier tool was drawing result bitmap into itself causing recursive rendering (now draws source bitmap), BootReceiver auto_start default was true (should be false, mismatched with all other code), adj FloatArray default expanded to 6 elements to prevent index bounds issues
@@ -100,9 +102,9 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 
 ### Remaining high-value features:
 - **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch
-- **Neon glow pen** — Pen stroke with neon glow effect
-- **Save location picker** — Custom output folder
-- **Image resize in editor** — Scale before cropping
+- **Gradient background fill** — Replace transparent areas with gradient
+- **Layer system** — Independent movable/resizable annotation layers
+- **Undo history panel** — Visual timeline of all edits
 
 ## Gotchas
 - `foregroundServiceType="specialUse"` required for Android 14+

@@ -226,6 +226,9 @@ fun GalleryScreen(
                     Text("${albums.sumOf { it.count }} photos", color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
                 } else {
+                    // Photo count
+                    Text("${photos.size}", color = OnSurfaceVariant, fontSize = 12.sp,
+                        modifier = Modifier.padding(end = 4.dp))
                     // Sort button when viewing photos
                     IconButton(onClick = {
                         sortMode = when (sortMode) {

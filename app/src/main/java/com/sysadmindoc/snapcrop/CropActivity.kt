@@ -140,6 +140,19 @@ class CropActivity : ComponentActivity() {
                                     cropMethod.value = "ai"
                                 }
                             },
+                            onResize = { maxDim ->
+                                val current = bitmapState.value ?: return@CropEditorScreen
+                                if (current.width <= maxDim && current.height <= maxDim) return@CropEditorScreen
+                                val scale = maxDim.toFloat() / maxOf(current.width, current.height)
+                                val newW = (current.width * scale).toInt()
+                                val newH = (current.height * scale).toInt()
+                                val resized = Bitmap.createScaledBitmap(current, newW, newH, true)
+                                if (current !== originalBitmap) current.recycle()
+                                originalBitmap?.recycle(); originalBitmap = null
+                                bitmapState.value = resized
+                                cropRect.value = Rect(0, 0, newW, newH)
+                                cropMethod.value = ""
+                            },
                             onRemoveBg = {
                                 CoroutineScope(Dispatchers.Main).launch {
                                     val result = BackgroundRemover.remove(bmp)
@@ -343,6 +356,33 @@ class CropActivity : ComponentActivity() {
                     style = Paint.Style.FILL
                 }
                 canvas.drawText(dp.text, p.x, p.y + radius * 0.4f, textPaint)
+                continue
+            }
+
+            // Neon glow pen
+            if (dp.shapeType == "neon" && dp.points.size >= 2) {
+                val neonPath = Path()
+                neonPath.moveTo(dp.points[0].x, dp.points[0].y)
+                for (i in 1 until dp.points.size) neonPath.lineTo(dp.points[i].x, dp.points[i].y)
+                // Outer glow
+                val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color; strokeWidth = dp.strokeWidth * 3; style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND; alpha = 80
+                    maskFilter = android.graphics.BlurMaskFilter(dp.strokeWidth * 2, android.graphics.BlurMaskFilter.Blur.NORMAL)
+                }
+                canvas.drawPath(neonPath, glowPaint)
+                // Mid layer
+                val midPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color; strokeWidth = dp.strokeWidth; style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND; alpha = 200
+                }
+                canvas.drawPath(neonPath, midPaint)
+                // Bright core
+                val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFFFFFFFF.toInt(); strokeWidth = dp.strokeWidth * 0.6f; style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND
+                }
+                canvas.drawPath(neonPath, corePaint)
                 continue
             }
 
@@ -693,10 +733,13 @@ class CropActivity : ComponentActivity() {
         val ext = if (format == Bitmap.CompressFormat.JPEG) "jpg" else "png"
         val mime = if (format == Bitmap.CompressFormat.JPEG) "image/jpeg" else "image/png"
 
+        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.$ext")
             put(MediaStore.Images.Media.MIME_TYPE, mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
 
@@ -710,10 +753,10 @@ class CropActivity : ComponentActivity() {
             contentResolver.update(uri, values, null, null)
 
             if (deleteOriginal) {
-                Toast.makeText(this, "Saved to Pictures/SnapCrop", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Saved to $savePath", Toast.LENGTH_SHORT).show()
                 deleteOriginalFile()
             } else {
-                Toast.makeText(this, "Copy saved to Pictures/SnapCrop", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Copy saved to $savePath", Toast.LENGTH_SHORT).show()
             }
         } catch (e: IOException) {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()

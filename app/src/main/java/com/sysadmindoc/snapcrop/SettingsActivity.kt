@@ -192,6 +192,35 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    Spacer(Modifier.height(8.dp))
+
+                    // Save location
+                    var savePath by remember {
+                        mutableStateOf(prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Save location", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text("Relative path in device storage", color = OnSurfaceVariant, fontSize = 11.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("Pictures/SnapCrop", "DCIM/SnapCrop", "Downloads/SnapCrop").forEach { path ->
+                                    FilterChip(selected = savePath == path,
+                                        onClick = { savePath = path; prefs.edit().putString("save_path", path).apply() },
+                                        label = { Text(path.substringBefore("/"), fontSize = 10.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                                        shape = RoundedCornerShape(8.dp))
+                                }
+                            }
+                        }
+                    }
+
                     Spacer(Modifier.height(20.dp))
 
                     // Service section
@@ -237,7 +266,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v5.8.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v5.9.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

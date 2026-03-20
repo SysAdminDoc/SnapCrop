@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.RotateRight
@@ -123,7 +124,8 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
 }
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
-    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji")
+    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji"),
+    NEON("Neon")
 }
 
 private val commonEmojis = listOf(
@@ -170,6 +172,7 @@ fun CropEditorScreen(
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
     onRemoveBg: () -> Unit,
+    onResize: (Int) -> Unit,
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit
@@ -222,6 +225,7 @@ fun CropEditorScreen(
     var bgRemoving by remember { mutableStateOf(false) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
     var showPalette by remember { mutableStateOf(false) }
+    var showResizeDialog by remember { mutableStateOf(false) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
@@ -843,12 +847,13 @@ fun CropEditorScreen(
                                                     DrawTool.CIRCLE -> "circle"
                                                     DrawTool.HIGHLIGHT -> "highlight"
                                                     DrawTool.SPOTLIGHT -> "spotlight"
+                                                    DrawTool.NEON -> "neon"
                                                     else -> null
                                                 }
                                                 drawPaths.add(DrawPath(
                                                     points = when {
                                                         shape == "rect" || shape == "circle" || shape == "spotlight" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
-                                                        drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT -> smoothPath(currentDrawPoints)
+                                                        drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON -> smoothPath(currentDrawPoints)
                                                         else -> currentDrawPoints.toList()
                                                     },
                                                     color = drawColor,
@@ -1141,6 +1146,33 @@ fun CropEditorScreen(
                             return
                         }
 
+                        // Neon glow pen — thick blurred glow + thin bright core
+                        if (shape == "neon" && pts.size >= 2) {
+                            // Outer glow (wide, semi-transparent)
+                            val glowPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color; strokeWidth = sw * 3; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND; alpha = 80
+                                maskFilter = android.graphics.BlurMaskFilter(sw * 2, android.graphics.BlurMaskFilter.Blur.NORMAL)
+                            }
+                            val glowPath = android.graphics.Path()
+                            glowPath.moveTo(ox + pts[0].x * scale, oy + pts[0].y * scale)
+                            for (i in 1 until pts.size) glowPath.lineTo(ox + pts[i].x * scale, oy + pts[i].y * scale)
+                            drawContext.canvas.nativeCanvas.drawPath(glowPath, glowPaint)
+                            // Inner core (bright, thin)
+                            val corePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = 0xFFFFFFFF.toInt(); strokeWidth = sw * 0.6f; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND
+                            }
+                            drawContext.canvas.nativeCanvas.drawPath(glowPath, corePaint)
+                            // Mid layer (colored, medium)
+                            val midPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color; strokeWidth = sw; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND; alpha = 200
+                            }
+                            drawContext.canvas.nativeCanvas.drawPath(glowPath, midPaint)
+                            return
+                        }
+
                         // Highlighter (semi-transparent wide stroke)
                         if (shape == "highlight" && pts.size >= 2) {
                             val highlightColor = color.copy(alpha = 0.4f)
@@ -1239,7 +1271,8 @@ fun CropEditorScreen(
                     if (editMode == EditMode.DRAW && currentDrawPoints.size > 1) {
                         val curShape = when (drawTool) {
                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
-                            DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"; else -> null
+                            DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
+                            DrawTool.NEON -> "neon"; else -> null
                         }
                         val curSw = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth
                         val curPts = if (curShape == "rect" || curShape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
@@ -1369,6 +1402,8 @@ fun CropEditorScreen(
             // Action icons row
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
+                IconButton(onClick = { showResizeDialog = true }) {
+                    Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
                 val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }
                 val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -1390,6 +1425,44 @@ fun CropEditorScreen(
                 Text("Crop & Save", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
             }
         }
+    }
+
+    // Resize dialog
+    if (showResizeDialog) {
+        val sizes = listOf(480, 720, 1080, 1440, 2160)
+        var selectedSize by remember { mutableIntStateOf(1080) }
+        AlertDialog(
+            onDismissRequest = { showResizeDialog = false },
+            title = { Text("Resize Image", color = OnSurface) },
+            text = {
+                Column {
+                    Text("Current: ${bitmap.width}x${bitmap.height}", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Max dimension:", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        sizes.forEach { size ->
+                            FilterChip(selected = selectedSize == size,
+                                onClick = { selectedSize = size },
+                                label = { Text("$size", fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                    containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                                shape = RoundedCornerShape(8.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showResizeDialog = false; onResize(selectedSize) }) {
+                    Text("Resize", color = Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResizeDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
     }
 
     // Text input dialog
