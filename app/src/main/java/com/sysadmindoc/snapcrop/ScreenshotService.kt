@@ -112,7 +112,8 @@ class ScreenshotService : Service() {
                     if (isRecent && isScreenshot && !isOurSave) {
                         lastProcessedUri = uriStr
                         lastProcessedTime = now
-                        launchEditor(uri)
+                        // Small delay to let the screenshot file finish writing
+                        Handler(Looper.getMainLooper()).postDelayed({ launchEditor(uri) }, 500)
                     }
                 }
             }
