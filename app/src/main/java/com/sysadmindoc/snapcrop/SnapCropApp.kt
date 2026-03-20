@@ -17,9 +17,10 @@ class SnapCropApp : Application() {
             NotificationChannel(
                 CHANNEL_ID,
                 "Screenshot Monitor",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN // Minimal visibility — no sound, no peek, tiny icon
             ).apply {
-                description = "Monitors for new screenshots"
+                description = "Background screenshot monitoring"
+                setShowBadge(false)
             }
         )
     }

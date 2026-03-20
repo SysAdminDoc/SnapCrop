@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ContentValues
@@ -8,6 +9,7 @@ import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -26,8 +28,8 @@ class ScreenshotService : Service() {
     }
 
     private var observer: ContentObserver? = null
-    private var lastProcessedTime = 0L
     private var lastProcessedId = -1L
+    private var lastProcessedTime = 0L
     private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -47,20 +49,28 @@ class ScreenshotService : Service() {
         return START_STICKY
     }
 
-    private fun buildServiceNotification() = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_ID)
-        .setContentTitle("SnapCrop")
-        .setContentText("Monitoring for screenshots...")
-        .setSmallIcon(R.drawable.ic_crop)
-        .setOngoing(true)
-        .setSilent(true)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                this, 0,
-                Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE
+    private fun buildServiceNotification(): Notification {
+        val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_ID)
+            .setContentTitle("SnapCrop")
+            .setContentText("Monitoring for screenshots")
+            .setSmallIcon(R.drawable.ic_crop)
+            .setOngoing(true)
+            .setSilent(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this, 0,
+                    Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_IMMUTABLE
+                )
             )
-        )
-        .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
+        }
+
+        return builder.build()
+    }
 
     private fun registerObserver() {
         observer?.let { contentResolver.unregisterContentObserver(it) }
@@ -68,9 +78,7 @@ class ScreenshotService : Service() {
         observer = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 super.onChange(selfChange, uri)
-                // Don't use the uri param — it's unreliable on many devices.
-                // Instead, query MediaStore for the latest screenshot.
-                handleScreenshotEvent()
+                onMediaStoreChanged()
             }
         }
 
@@ -81,53 +89,47 @@ class ScreenshotService : Service() {
         )
     }
 
-    /**
-     * Called when any image is added/changed in MediaStore.
-     * Queries for the most recent screenshot that's ready (IS_PENDING=0).
-     * Uses a short delay to let the file finish writing on devices that
-     * fire the observer before IS_PENDING flips.
-     */
-    private fun handleScreenshotEvent() {
+    private fun onMediaStoreChanged() {
         val now = System.currentTimeMillis()
-        if (now - lastProcessedTime < 2000) return
+        if (now - lastProcessedTime < 1500) return
 
-        // Try immediately first, then retry after 600ms if nothing found
+        // Try immediately
         val found = findLatestScreenshot()
         if (found != null) {
-            lastProcessedTime = now
+            lastProcessedTime = System.currentTimeMillis()
             lastProcessedId = found.first
             launchEditor(found.second)
-        } else {
-            // File might not be ready yet — retry once after a short delay
-            handler.postDelayed({
-                if (System.currentTimeMillis() - lastProcessedTime < 2000) return@postDelayed
-                val retry = findLatestScreenshot()
-                if (retry != null) {
-                    lastProcessedTime = System.currentTimeMillis()
-                    lastProcessedId = retry.first
-                    launchEditor(retry.second)
-                }
-            }, 600)
+            return
         }
+
+        // Not found yet — file may still be writing. Retry at 500ms and 1200ms.
+        handler.postDelayed({ retryFind() }, 500)
+        handler.postDelayed({ retryFind() }, 1200)
+    }
+
+    private fun retryFind() {
+        if (System.currentTimeMillis() - lastProcessedTime < 1500) return
+        val found = findLatestScreenshot() ?: return
+        lastProcessedTime = System.currentTimeMillis()
+        lastProcessedId = found.first
+        launchEditor(found.second)
     }
 
     /**
-     * Queries MediaStore for the latest screenshot added in the last 10 seconds
-     * that is NOT pending (fully written) and NOT our own save.
-     * Returns (id, uri) or null.
+     * Queries MediaStore for the most recent screenshot added in the last 15 seconds.
+     * Does NOT filter by IS_PENDING — some OEMs don't use it or set it differently.
+     * Instead validates by attempting to open the stream.
      */
     private fun findLatestScreenshot(): Pair<Long, Uri>? {
         val nowSec = System.currentTimeMillis() / 1000
         val projection = arrayOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.DATE_ADDED
+            MediaStore.Images.Media.RELATIVE_PATH
         )
 
-        // Only look at non-pending images added in the last 10 seconds
-        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ? AND ${MediaStore.Images.Media.IS_PENDING} = 0"
-        val selectionArgs = arrayOf("${nowSec - 10}")
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
+        val selectionArgs = arrayOf("${nowSec - 15}")
         val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
         try {
@@ -140,24 +142,32 @@ class ScreenshotService : Service() {
                     val name = cursor.getString(1) ?: continue
                     val path = cursor.getString(2) ?: ""
 
-                    // Skip if we already processed this ID
                     if (id == lastProcessedId) continue
 
-                    // Check if it's a screenshot
-                    val isScreenshot = path.contains("screenshot", ignoreCase = true) ||
-                            path.contains("Screen", ignoreCase = true) ||
-                            name.contains("screenshot", ignoreCase = true) ||
-                            name.contains("Screen", ignoreCase = true)
+                    val lowerName = name.lowercase()
+                    val lowerPath = path.lowercase()
 
-                    // Exclude our own saved crops
-                    val isOurSave = path.contains("SnapCrop", ignoreCase = false) ||
-                            name.startsWith("SnapCrop_")
+                    val isScreenshot = lowerPath.contains("screenshot") ||
+                            lowerPath.contains("screen") ||
+                            lowerName.contains("screenshot") ||
+                            lowerName.contains("screen")
+
+                    val isOurSave = path.contains("SnapCrop") || name.startsWith("SnapCrop_")
 
                     if (isScreenshot && !isOurSave) {
                         val uri = Uri.withAppendedPath(
                             MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
                         )
-                        return Pair(id, uri)
+                        // Validate the file is readable
+                        try {
+                            contentResolver.openInputStream(uri)?.use { stream ->
+                                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                                BitmapFactory.decodeStream(stream, null, opts)
+                                if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                    return Pair(id, uri)
+                                }
+                            }
+                        } catch (_: Exception) {}
                     }
                 }
             }
@@ -234,6 +244,7 @@ class ScreenshotService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        handler.removeCallbacksAndMessages(null)
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
         super.onDestroy()
