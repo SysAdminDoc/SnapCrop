@@ -27,6 +27,8 @@ class ScreenshotService : Service() {
 
     private var observer: ContentObserver? = null
     private var lastProcessedTime = 0L
+    private var lastProcessedId = -1L
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,10 +65,12 @@ class ScreenshotService : Service() {
     private fun registerObserver() {
         observer?.let { contentResolver.unregisterContentObserver(it) }
 
-        observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        observer = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
                 super.onChange(selfChange, uri)
-                uri?.let { handleNewImage(it) }
+                // Don't use the uri param — it's unreliable on many devices.
+                // Instead, query MediaStore for the latest screenshot.
+                handleScreenshotEvent()
             }
         }
 
@@ -77,34 +81,69 @@ class ScreenshotService : Service() {
         )
     }
 
-    private fun handleNewImage(uri: Uri) {
+    /**
+     * Called when any image is added/changed in MediaStore.
+     * Queries for the most recent screenshot that's ready (IS_PENDING=0).
+     * Uses a short delay to let the file finish writing on devices that
+     * fire the observer before IS_PENDING flips.
+     */
+    private fun handleScreenshotEvent() {
         val now = System.currentTimeMillis()
-
-        // Time-based debounce — prevent processing same screenshot twice
         if (now - lastProcessedTime < 2000) return
 
+        // Try immediately first, then retry after 600ms if nothing found
+        val found = findLatestScreenshot()
+        if (found != null) {
+            lastProcessedTime = now
+            lastProcessedId = found.first
+            launchEditor(found.second)
+        } else {
+            // File might not be ready yet — retry once after a short delay
+            handler.postDelayed({
+                if (System.currentTimeMillis() - lastProcessedTime < 2000) return@postDelayed
+                val retry = findLatestScreenshot()
+                if (retry != null) {
+                    lastProcessedTime = System.currentTimeMillis()
+                    lastProcessedId = retry.first
+                    launchEditor(retry.second)
+                }
+            }, 600)
+        }
+    }
+
+    /**
+     * Queries MediaStore for the latest screenshot added in the last 10 seconds
+     * that is NOT pending (fully written) and NOT our own save.
+     * Returns (id, uri) or null.
+     */
+    private fun findLatestScreenshot(): Pair<Long, Uri>? {
+        val nowSec = System.currentTimeMillis() / 1000
         val projection = arrayOf(
+            MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.DATE_ADDED,
-            MediaStore.Images.Media.IS_PENDING
+            MediaStore.Images.Media.DATE_ADDED
         )
 
+        // Only look at non-pending images added in the last 10 seconds
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ? AND ${MediaStore.Images.Media.IS_PENDING} = 0"
+        val selectionArgs = arrayOf("${nowSec - 10}")
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
         try {
-            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val name = cursor.getString(0) ?: return
-                    val path = cursor.getString(1) ?: ""
-                    val dateAdded = cursor.getLong(2)
-                    val isPending = cursor.getInt(3)
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection, selection, selectionArgs, sortOrder
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val name = cursor.getString(1) ?: continue
+                    val path = cursor.getString(2) ?: ""
 
-                    // CRITICAL: Only process when IS_PENDING = 0
-                    // The file is fully written to disk at this point.
-                    // ContentObserver fires twice: once on creation (IS_PENDING=1)
-                    // and once when finalized (IS_PENDING=0). We only want the second.
-                    if (isPending != 0) return
+                    // Skip if we already processed this ID
+                    if (id == lastProcessedId) continue
 
-                    val isRecent = (now / 1000 - dateAdded) < 10
+                    // Check if it's a screenshot
                     val isScreenshot = path.contains("screenshot", ignoreCase = true) ||
                             path.contains("Screen", ignoreCase = true) ||
                             name.contains("screenshot", ignoreCase = true) ||
@@ -114,13 +153,16 @@ class ScreenshotService : Service() {
                     val isOurSave = path.contains("SnapCrop", ignoreCase = false) ||
                             name.startsWith("SnapCrop_")
 
-                    if (isRecent && isScreenshot && !isOurSave) {
-                        lastProcessedTime = now
-                        launchEditor(uri)
+                    if (isScreenshot && !isOurSave) {
+                        val uri = Uri.withAppendedPath(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
+                        )
+                        return Pair(id, uri)
                     }
                 }
             }
         } catch (_: Exception) {}
+        return null
     }
 
     private fun launchEditor(uri: Uri) {
@@ -146,9 +188,7 @@ class ScreenshotService : Service() {
 
             if (isFullImage) {
                 bitmap.recycle()
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this, "No borders detected", Toast.LENGTH_SHORT).show()
-                }
+                handler.post { Toast.makeText(this, "No borders detected", Toast.LENGTH_SHORT).show() }
                 return
             }
 
@@ -179,9 +219,7 @@ class ScreenshotService : Service() {
 
                     try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
 
-                    Handler(Looper.getMainLooper()).post {
-                        Toast.makeText(this, "Autocropped & saved", Toast.LENGTH_SHORT).show()
-                    }
+                    handler.post { Toast.makeText(this, "Autocropped & saved", Toast.LENGTH_SHORT).show() }
                 } catch (e: IOException) {
                     contentResolver.delete(savedUri, null, null)
                 }
@@ -190,9 +228,7 @@ class ScreenshotService : Service() {
             cropped.recycle()
             bitmap.recycle()
         } catch (_: Exception) {
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(this, "Quick save failed", Toast.LENGTH_SHORT).show()
-            }
+            handler.post { Toast.makeText(this, "Quick save failed", Toast.LENGTH_SHORT).show() }
         }
     }
 
