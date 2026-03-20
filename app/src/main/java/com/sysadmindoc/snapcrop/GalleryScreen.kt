@@ -41,7 +41,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.sysadmindoc.snapcrop.ui.theme.*
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
@@ -52,7 +54,8 @@ fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
     onShareUris: (List<Uri>) -> Unit,
     onDeleteUris: (List<Uri>) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
     val context = LocalContext.current
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
@@ -63,8 +66,16 @@ fun GalleryScreen(
     val selectedIds = remember { mutableStateListOf<Long>() }
     val selectionMode = selectedIds.isNotEmpty()
 
-    LaunchedEffect(Unit) {
+    // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
+    LaunchedEffect(refreshKey) {
         withContext(Dispatchers.IO) { albums = loadAlbums(context.contentResolver) }
+        // Also refresh current album photos if viewing one
+        selectedAlbum?.let { path ->
+            withContext(Dispatchers.IO) {
+                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver)
+                else loadPhotos(context.contentResolver, path)
+            }
+        }
         isLoading = false
     }
 
@@ -114,13 +125,15 @@ fun GalleryScreen(
                 }) { Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = {
                     val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                    val deletedIds = selectedIds.toSet()
                     onDeleteUris(uris)
+                    // Remove deleted photos from local list immediately
+                    photos = photos.filter { it.id !in deletedIds }
                     selectedIds.clear()
-                    // Refresh
-                    selectedAlbum?.let { path ->
-                        val refreshPath = path
-                        selectedAlbum = null
-                        selectedAlbum = refreshPath
+                    // Refresh albums in background (counts changed)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val refreshed = loadAlbums(context.contentResolver)
+                        withContext(Dispatchers.Main) { albums = refreshed }
                     }
                 }) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
             } else {

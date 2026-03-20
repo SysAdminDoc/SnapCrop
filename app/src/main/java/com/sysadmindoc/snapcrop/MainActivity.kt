@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
+    private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
 
@@ -212,6 +213,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                             1 -> GalleryScreen(
+                                refreshKey = galleryRefreshKey.intValue,
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
@@ -252,6 +254,7 @@ class MainActivity : ComponentActivity() {
         serviceRunning.value = ScreenshotService.isRunning || shouldRun
 
         if (hasPermissions.value) loadRecentCrops()
+        galleryRefreshKey.intValue++
     }
 
     private fun checkPermissions() {
