@@ -51,8 +51,9 @@ class CropActivity : ComponentActivity() {
                         onShare = { rect -> shareCropped(bmp, rect) },
                         onDiscard = { finish() },
                         onAutoCrop = {
-                            val densityDpi = resources.displayMetrics.densityDpi
-                            val result = AutoCrop.detectWithMethod(bmp, densityDpi)
+                            val sbPx = SystemBars.statusBarHeight(resources)
+                            val nbPx = SystemBars.navigationBarHeight(resources)
+                            val result = AutoCrop.detectWithMethod(bmp, sbPx, nbPx)
                             cropMethod.value = result.method
                             result.rect
                         },
@@ -74,8 +75,9 @@ class CropActivity : ComponentActivity() {
             contentResolver.openInputStream(uri)?.use { stream ->
                 originalBitmap = BitmapFactory.decodeStream(stream)
                 originalBitmap?.let { bmp ->
-                    val densityDpi = resources.displayMetrics.densityDpi
-                    val result = AutoCrop.detectWithMethod(bmp, densityDpi)
+                    val statusBarPx = SystemBars.statusBarHeight(resources)
+                    val navBarPx = SystemBars.navigationBarHeight(resources)
+                    val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
                     cropRect.value = result.rect
                     cropMethod.value = result.method
                 }

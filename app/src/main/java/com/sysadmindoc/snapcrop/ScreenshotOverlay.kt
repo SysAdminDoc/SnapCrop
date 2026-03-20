@@ -2,13 +2,11 @@ package com.sysadmindoc.snapcrop
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.GestureDetector
@@ -16,10 +14,10 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.view.animation.OvershootInterpolator
+import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
 
 class ScreenshotOverlay(private val context: Context) {
@@ -30,35 +28,25 @@ class ScreenshotOverlay(private val context: Context) {
     private var autoDismissRunnable: Runnable? = null
 
     companion object {
-        private const val THUMBNAIL_WIDTH = 160
-        private const val THUMBNAIL_HEIGHT = 280
-        private const val CORNER_RADIUS = 16f
-        private const val MARGIN = 24
-        private const val DISPLAY_DURATION_MS = 4000L
-        private const val SWIPE_THRESHOLD = 100
+        private const val THUMBNAIL_W_DP = 110
+        private const val THUMBNAIL_H_DP = 200
+        private const val CORNER_RADIUS_DP = 14f
+        private const val MARGIN_DP = 16
+        private const val DISPLAY_MS = 4500L
+        private const val FLING_VELOCITY = 200
+        private const val FLING_DISTANCE = 60
     }
 
     fun show(bitmap: Bitmap, uri: Uri) {
         dismiss()
 
-        val thumbnailView = createThumbnailView(bitmap, uri)
-        val params = createLayoutParams()
-
-        overlayView = thumbnailView
-        windowManager.addView(thumbnailView, params)
-
-        animateIn(thumbnailView)
-
-        autoDismissRunnable = Runnable { animateOut() }
-        handler.postDelayed(autoDismissRunnable!!, DISPLAY_DURATION_MS)
-    }
-
-    private fun createThumbnailView(bitmap: Bitmap, uri: Uri): View {
         val density = context.resources.displayMetrics.density
-        val widthPx = (THUMBNAIL_WIDTH * density).toInt()
-        val heightPx = (THUMBNAIL_HEIGHT * density).toInt()
-        val cornerPx = CORNER_RADIUS * density
+        val widthPx = (THUMBNAIL_W_DP * density).toInt()
+        val heightPx = (THUMBNAIL_H_DP * density).toInt()
+        val cornerPx = CORNER_RADIUS_DP * density
+        val marginPx = (MARGIN_DP * density).toInt()
 
+        // Build thumbnail view
         val container = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(widthPx, heightPx)
         }
@@ -75,7 +63,6 @@ class ScreenshotOverlay(private val context: Context) {
             elevation = 12 * density
         }
 
-        // Dark border frame
         val border = View(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -87,19 +74,12 @@ class ScreenshotOverlay(private val context: Context) {
         container.addView(imageView)
         container.addView(border)
 
-        setupGestures(container, uri)
-
-        return container
-    }
-
-    private fun setupGestures(view: View, uri: Uri) {
-        var startX = 0f
-        var startTranslationX = 0f
-
+        // Gesture handling: tap to edit, fling to dismiss
         val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+
             override fun onSingleTapUp(e: MotionEvent): Boolean {
-                cancelAutoDismiss()
-                animateOut()
+                dismiss()
                 val intent = Intent(context, CropActivity::class.java).apply {
                     data = uri
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -107,122 +87,139 @@ class ScreenshotOverlay(private val context: Context) {
                 context.startActivity(intent)
                 return true
             }
+
+            override fun onFling(
+                e1: MotionEvent?, e2: MotionEvent,
+                velocityX: Float, velocityY: Float
+            ): Boolean {
+                e1 ?: return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                // Fling left or down to dismiss
+                if ((dx < -FLING_DISTANCE && abs(velocityX) > FLING_VELOCITY) ||
+                    (dy > FLING_DISTANCE && abs(velocityY) > FLING_VELOCITY)) {
+                    animateSwipeOut(if (abs(dx) > abs(dy)) -1f else 0f,
+                                   if (abs(dy) >= abs(dx)) 1f else 0f)
+                    return true
+                }
+                return false
+            }
         })
 
-        view.setOnTouchListener { v, event ->
+        // Track drag for visual feedback
+        var startX = 0f
+        var startY = 0f
+        container.setOnTouchListener { v, event ->
             gestureDetector.onTouchEvent(event)
 
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = event.rawX
-                    startTranslationX = v.translationX
+                    startY = event.rawY
                     cancelAutoDismiss()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - startX
-                    // Only allow swiping left (off-screen)
-                    v.translationX = (startTranslationX + dx).coerceAtMost(0f)
-                    v.alpha = 1f - (abs(v.translationX) / (v.width * 1.5f))
+                    val dy = event.rawY - startY
+                    // Allow dragging left or down with visual feedback
+                    v.translationX = dx.coerceAtMost(0f)
+                    v.translationY = dy.coerceAtLeast(0f)
+                    val dist = Math.hypot(
+                        v.translationX.toDouble(),
+                        v.translationY.toDouble()
+                    ).toFloat()
+                    v.alpha = (1f - dist / (v.width * 2f)).coerceAtLeast(0.3f)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    val dx = event.rawX - startX
-                    if (dx < -SWIPE_THRESHOLD) {
-                        // Swipe left — dismiss
-                        animateSwipeOut(v)
-                    } else {
-                        // Snap back
+                    // If not flung, snap back
+                    if (overlayView != null) {
                         v.animate()
                             .translationX(0f)
+                            .translationY(0f)
                             .alpha(1f)
                             .setDuration(200)
                             .setInterpolator(DecelerateInterpolator())
                             .start()
-                        // Re-schedule auto dismiss
-                        autoDismissRunnable = Runnable { animateOut() }
-                        handler.postDelayed(autoDismissRunnable!!, DISPLAY_DURATION_MS)
+                        scheduleAutoDismiss()
                     }
                     true
                 }
                 else -> false
             }
         }
-    }
 
-    private fun createLayoutParams(): WindowManager.LayoutParams {
-        val density = context.resources.displayMetrics.density
-        val marginPx = (MARGIN * density).toInt()
-        val widthPx = (THUMBNAIL_WIDTH * density).toInt()
-        val heightPx = (THUMBNAIL_HEIGHT * density).toInt()
-
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-        } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-        }
-
-        return WindowManager.LayoutParams(
+        // Window params
+        val params = WindowManager.LayoutParams(
             widthPx,
             heightPx,
-            type,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.START
             x = marginPx
-            y = marginPx + (48 * density).toInt() // above nav bar area
+            y = marginPx + (56 * density).toInt()
         }
-    }
 
-    private fun animateIn(view: View) {
-        val density = context.resources.displayMetrics.density
-        view.translationX = -(THUMBNAIL_WIDTH * density + MARGIN * density)
-        view.alpha = 0f
-        view.animate()
+        overlayView = container
+        windowManager.addView(container, params)
+
+        // Slide in from left
+        container.translationX = -(widthPx + marginPx).toFloat()
+        container.alpha = 0f
+        container.animate()
             .translationX(0f)
             .alpha(1f)
-            .setDuration(350)
-            .setInterpolator(OvershootInterpolator(0.8f))
+            .setDuration(300)
+            .setInterpolator(OvershootInterpolator(0.6f))
             .start()
+
+        scheduleAutoDismiss()
     }
 
-    private fun animateOut() {
-        val view = overlayView ?: return
+    private fun scheduleAutoDismiss() {
         cancelAutoDismiss()
-        view.animate()
-            .alpha(0f)
-            .setDuration(250)
-            .setInterpolator(DecelerateInterpolator())
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    removeOverlay()
-                }
-            })
-            .start()
-    }
-
-    private fun animateSwipeOut(view: View) {
-        cancelAutoDismiss()
-        val density = context.resources.displayMetrics.density
-        view.animate()
-            .translationX(-(view.width + MARGIN * density))
-            .alpha(0f)
-            .setDuration(200)
-            .setInterpolator(DecelerateInterpolator())
-            .setListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    removeOverlay()
-                }
-            })
-            .start()
+        autoDismissRunnable = Runnable { animateFadeOut() }
+        handler.postDelayed(autoDismissRunnable!!, DISPLAY_MS)
     }
 
     private fun cancelAutoDismiss() {
         autoDismissRunnable?.let { handler.removeCallbacks(it) }
         autoDismissRunnable = null
+    }
+
+    private fun animateFadeOut() {
+        val view = overlayView ?: return
+        cancelAutoDismiss()
+        view.animate()
+            .alpha(0f)
+            .translationX(-(view.width * 0.3f))
+            .setDuration(250)
+            .setInterpolator(DecelerateInterpolator())
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) { removeOverlay() }
+            })
+            .start()
+    }
+
+    private fun animateSwipeOut(dirX: Float, dirY: Float) {
+        val view = overlayView ?: return
+        cancelAutoDismiss()
+        val density = context.resources.displayMetrics.density
+        val distance = 300 * density
+        view.animate()
+            .translationX(view.translationX + dirX * distance)
+            .translationY(view.translationY + dirY * distance)
+            .alpha(0f)
+            .setDuration(200)
+            .setInterpolator(DecelerateInterpolator())
+            .setListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) { removeOverlay() }
+            })
+            .start()
     }
 
     fun dismiss() {
@@ -232,9 +229,7 @@ class ScreenshotOverlay(private val context: Context) {
 
     private fun removeOverlay() {
         overlayView?.let {
-            try {
-                windowManager.removeView(it)
-            } catch (_: Exception) {}
+            try { windowManager.removeView(it) } catch (_: Exception) {}
         }
         overlayView = null
     }

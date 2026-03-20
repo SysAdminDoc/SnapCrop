@@ -11,48 +11,40 @@ object AutoCrop {
     private const val COLOR_TOLERANCE = 30
     private const val PADDING = 2
 
-    // Common status bar heights in pixels at various densities
-    // Android status bar is typically 24dp, nav bar is 48dp
-    private val STATUS_BAR_DP = 24
-    private val NAV_BAR_DP = 48
-
     data class CropResult(
         val rect: Rect,
         val method: String // "border", "statusbar", "full"
     )
 
     /**
-     * Multi-strategy autocrop:
-     * 1. Try uniform-border detection (meme borders, solid margins)
-     * 2. If no borders found, try stripping status/nav bars
-     * 3. Return full image if nothing detected
+     * Multi-strategy autocrop using exact system bar heights from the device.
+     * @param statusBarPx exact status bar height in pixels (from resources)
+     * @param navBarPx exact navigation bar height in pixels (from resources)
      */
-    fun detect(bitmap: Bitmap, densityDpi: Int = 0): Rect {
-        return detectWithMethod(bitmap, densityDpi).rect
+    fun detect(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): Rect {
+        return detectWithMethod(bitmap, statusBarPx, navBarPx).rect
     }
 
-    fun detectWithMethod(bitmap: Bitmap, densityDpi: Int = 0): CropResult {
+    fun detectWithMethod(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): CropResult {
         val w = bitmap.width
         val h = bitmap.height
 
-        // Strategy 1: Uniform border detection
+        // Strategy 1: Uniform border detection (meme borders, solid margins)
         val borderRect = detectBorders(bitmap, w, h)
         val hasBorders = borderRect.left > 0 || borderRect.top > 0 ||
                 borderRect.right < w || borderRect.bottom < h
 
         if (hasBorders) {
-            // Also strip status/nav bars if inside border crop
-            val combined = if (densityDpi > 0) {
-                stripSystemBars(borderRect, w, h, densityDpi, bitmap)
-            } else {
-                borderRect
-            }
+            // Also strip system bars within the border crop
+            val combined = stripSystemBars(borderRect, w, h, statusBarPx, navBarPx)
             return CropResult(combined, "border")
         }
 
-        // Strategy 2: Status/nav bar stripping
-        if (densityDpi > 0) {
-            val stripped = stripSystemBars(Rect(0, 0, w, h), w, h, densityDpi, bitmap)
+        // Strategy 2: System bar stripping using exact device dimensions
+        // On modern Android (12+), status bar is transparent — no pixel analysis works.
+        // We use the known system bar pixel heights from the device to always strip.
+        if (statusBarPx > 0 || navBarPx > 0) {
+            val stripped = stripSystemBars(Rect(0, 0, w, h), w, h, statusBarPx, navBarPx)
             val hasStrip = stripped.top > 0 || stripped.bottom < h
             if (hasStrip) {
                 return CropResult(stripped, "statusbar")
@@ -64,91 +56,27 @@ object AutoCrop {
     }
 
     /**
-     * Detects system bars by looking for horizontal color edges at expected boundaries,
-     * or uniform-color strips (solid nav bars).
+     * Strips system bars using exact pixel heights from the device.
+     * Always strips — no pixel analysis needed since screenshots always
+     * capture the full framebuffer including bar regions.
      */
     private fun stripSystemBars(
-        rect: Rect, imgW: Int, imgH: Int, densityDpi: Int, bitmap: Bitmap
+        rect: Rect, imgW: Int, imgH: Int, statusBarPx: Int, navBarPx: Int
     ): Rect {
-        val density = densityDpi / 160f
-        val statusBarPx = (STATUS_BAR_DP * density).toInt()
-        val navBarPx = (NAV_BAR_DP * density).toInt()
-
         var top = rect.top
         var bottom = rect.bottom
 
-        // Check status bar (top): detect horizontal edge at expected boundary,
-        // or check if the strip is uniform (solid color status bar)
-        if (top == 0 && statusBarPx in 1 until imgH / 4) {
-            if (hasHorizontalEdge(bitmap, statusBarPx, imgW) ||
-                isStripUniform(bitmap, 0, statusBarPx, imgW)) {
-                top = statusBarPx
-            }
+        // Strip status bar if the rect starts at the very top
+        if (top == 0 && statusBarPx > 0 && statusBarPx < imgH / 4) {
+            top = statusBarPx
         }
 
-        // Check nav bar (bottom): same dual check
-        if (bottom == imgH && navBarPx in 1 until imgH / 4) {
-            val navTop = imgH - navBarPx
-            if (hasHorizontalEdge(bitmap, navTop, imgW) ||
-                isStripUniform(bitmap, navTop, imgH, imgW)) {
-                bottom = navTop
-            }
+        // Strip nav bar if the rect extends to the very bottom
+        if (bottom == imgH && navBarPx > 0 && navBarPx < imgH / 4) {
+            bottom = imgH - navBarPx
         }
 
         return Rect(rect.left, top, rect.right, bottom)
-    }
-
-    /**
-     * Checks if there's a visible horizontal color transition at a given row.
-     * Compares pixels just above and below the boundary. If most columns show
-     * a color difference, there's an edge (e.g., status bar → app content).
-     */
-    private fun hasHorizontalEdge(bitmap: Bitmap, y: Int, w: Int): Boolean {
-        if (y <= 0 || y >= bitmap.height) return false
-        val step = max(1, w / 30)
-        var changes = 0
-        var total = 0
-        // Sample a few rows above and below to be robust against single-pixel noise
-        val above = (y - 1).coerceAtLeast(0)
-        val below = y.coerceAtMost(bitmap.height - 1)
-
-        var x = 0
-        while (x < w) {
-            val colorAbove = bitmap.getPixel(x, above)
-            val colorBelow = bitmap.getPixel(x, below)
-            total++
-            if (!colorsMatch(colorAbove, colorBelow)) changes++
-            x += step
-        }
-
-        // If >30% of columns show a color change at this boundary, it's an edge
-        return total > 0 && changes.toFloat() / total > 0.3f
-    }
-
-    /**
-     * Checks if a horizontal strip is mostly one color (for solid bars like nav bar).
-     * Uses edge pixels for reference to avoid icons.
-     */
-    private fun isStripUniform(bitmap: Bitmap, yStart: Int, yEnd: Int, w: Int): Boolean {
-        if (yStart >= yEnd || yStart < 0 || yEnd > bitmap.height) return false
-
-        // Sample reference from top-left corner of the strip (least likely to have icons)
-        val refColor = bitmap.getPixel(1.coerceAtMost(w - 1), yStart)
-
-        val step = max(1, w / 20)
-        var matches = 0
-        var total = 0
-
-        for (y in yStart until yEnd step max(1, (yEnd - yStart) / 4)) {
-            var x = 0
-            while (x < w) {
-                total++
-                if (colorsMatch(bitmap.getPixel(x, y), refColor)) matches++
-                x += step
-            }
-        }
-
-        return total > 0 && matches.toFloat() / total > 0.7f
     }
 
     private fun detectBorders(bitmap: Bitmap, w: Int, h: Int): Rect {

@@ -35,9 +35,7 @@ class ScreenshotService : Service() {
         when (intent?.action) {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
-                if (uriStr != null) {
-                    quickSave(Uri.parse(uriStr))
-                }
+                if (uriStr != null) quickSave(Uri.parse(uriStr))
                 return START_STICKY
             }
         }
@@ -110,9 +108,7 @@ class ScreenshotService : Service() {
                     }
                 }
             }
-        } catch (_: Exception) {
-            // SecurityException or other query failure
-        }
+        } catch (_: Exception) {}
     }
 
     private fun quickSave(uri: Uri) {
@@ -121,15 +117,16 @@ class ScreenshotService : Service() {
                 BitmapFactory.decodeStream(stream)
             } ?: return
 
-            val densityDpi = resources.displayMetrics.densityDpi
-            val cropRect = AutoCrop.detect(bitmap, densityDpi)
+            val statusBarPx = SystemBars.statusBarHeight(resources)
+            val navBarPx = SystemBars.navigationBarHeight(resources)
+            val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
             val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                     cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
             if (isFullImage) {
                 bitmap.recycle()
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(this, "No borders detected — kept original", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "No borders detected", Toast.LENGTH_SHORT).show()
                 }
                 return
             }
@@ -159,7 +156,6 @@ class ScreenshotService : Service() {
                     values.put(MediaStore.Images.Media.IS_PENDING, 0)
                     contentResolver.update(savedUri, values, null, null)
 
-                    // Delete original
                     try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
 
                     Handler(Looper.getMainLooper()).post {
@@ -188,9 +184,7 @@ class ScreenshotService : Service() {
             } ?: return
 
             Handler(Looper.getMainLooper()).post {
-                if (overlay == null) {
-                    overlay = ScreenshotOverlay(this)
-                }
+                if (overlay == null) overlay = ScreenshotOverlay(this)
                 overlay?.show(bitmap, uri)
             }
         } catch (_: Exception) {}
