@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,6 +36,7 @@ class MainActivity : ComponentActivity() {
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
+    private val hasOverlayPermission = mutableStateOf(false)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -57,13 +59,17 @@ class MainActivity : ComponentActivity() {
 
         checkPermissions()
 
+        hasOverlayPermission.value = Settings.canDrawOverlays(this)
+
         setContent {
             SnapCropTheme {
                 HomeScreen(
                     isRunning = serviceRunning.value,
                     hasPermissions = hasPermissions.value,
+                    hasOverlayPermission = hasOverlayPermission.value,
                     onToggleService = { toggleService() },
                     onRequestPermissions = { requestPermissions() },
+                    onRequestOverlay = { requestOverlayPermission() },
                     onPickImage = { pickImageLauncher.launch("image/*") }
                 )
             }
@@ -73,6 +79,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissions()
+        hasOverlayPermission.value = Settings.canDrawOverlays(this)
     }
 
     private fun checkPermissions() {
@@ -112,6 +119,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestOverlayPermission() {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        startActivity(intent)
+    }
+
     private fun startMonitoring() {
         val intent = Intent(this, ScreenshotService::class.java)
         ContextCompat.startForegroundService(this, intent)
@@ -123,8 +138,10 @@ class MainActivity : ComponentActivity() {
 private fun HomeScreen(
     isRunning: Boolean,
     hasPermissions: Boolean,
+    hasOverlayPermission: Boolean,
     onToggleService: () -> Unit,
     onRequestPermissions: () -> Unit,
+    onRequestOverlay: () -> Unit,
     onPickImage: () -> Unit
 ) {
     Column(
@@ -154,7 +171,7 @@ private fun HomeScreen(
         )
 
         Text(
-            "v2.0.0",
+            "v2.1.0",
             fontSize = 13.sp,
             color = OnSurfaceVariant
         )
@@ -203,6 +220,44 @@ private fun HomeScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Grant Permissions", color = Color.Black)
+                }
+            }
+        }
+
+        // Overlay permission warning
+        AnimatedVisibility(visible = hasPermissions && !hasOverlayPermission) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Overlay Permission", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text(
+                            "Required to show screenshot thumbnail preview",
+                            color = OnSurfaceVariant,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+                Button(
+                    onClick = onRequestOverlay,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Grant Overlay Permission", color = Color.Black)
                 }
             }
         }

@@ -99,8 +99,19 @@ object AutoCrop {
 
     private fun isHorizontalStripUniform(bitmap: Bitmap, yStart: Int, yEnd: Int, w: Int): Boolean {
         if (yStart >= yEnd || yStart < 0 || yEnd > bitmap.height) return false
-        val refColor = bitmap.getPixel(w / 2, yStart)
-        val step = max(1, w / 15)
+
+        // Sample reference color from edges (corners) to avoid status bar clock/icons at center
+        val candidates = listOf(
+            bitmap.getPixel(2.coerceAtMost(w - 1), yStart),
+            bitmap.getPixel((w - 3).coerceAtLeast(0), yStart),
+            bitmap.getPixel(2.coerceAtMost(w - 1), (yEnd - 1).coerceAtLeast(yStart)),
+            bitmap.getPixel((w - 3).coerceAtLeast(0), (yEnd - 1).coerceAtLeast(yStart))
+        )
+        // Use the most common edge color as reference
+        val refColor = candidates.groupBy { it }.maxByOrNull { it.value.size }?.key
+            ?: candidates[0]
+
+        val step = max(1, w / 20)
         var matches = 0
         var total = 0
 
@@ -113,7 +124,8 @@ object AutoCrop {
             }
         }
 
-        return total > 0 && matches.toFloat() / total > 0.9f
+        // Lower threshold (0.75) — status bars have icons/text but background is uniform
+        return total > 0 && matches.toFloat() / total > 0.75f
     }
 
     private fun detectBorders(bitmap: Bitmap, w: Int, h: Int): Rect {

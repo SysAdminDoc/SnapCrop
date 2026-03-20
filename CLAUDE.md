@@ -23,6 +23,7 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 - `CropEditorScreen.kt` - Crop UI: Canvas, handles, preview, share, method indicator
 - `ScreenshotService.kt` - Screenshot detection + notification quick actions
 - `CropActivity.kt` - Activity with save/share/delete logic, FileProvider sharing
+- `ScreenshotOverlay.kt` - Floating thumbnail overlay (TYPE_APPLICATION_OVERLAY), tap to edit, swipe to dismiss
 
 ## Build
 ```
@@ -31,9 +32,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 ```
 
 ## Version
-v2.0.0
+v2.1.0
 
 ## Version History
+- v2.1.0: Fix top-crop status bar detection (edge-sample reference color, lower threshold), screenshot thumbnail overlay (tap to edit, swipe to dismiss), overlay permission flow
 - v2.0.0: ML Kit AI crop, notification quick actions, preview toggle, instant share, status bar auto-strip, crop method indicator
 - v1.0.0: Initial release — border scan autocrop, draggable crop editor, screenshot detection service
 
@@ -44,3 +46,5 @@ v2.0.0
 - Quick save in ScreenshotService runs on main thread for simplicity — bitmaps are small (screenshots)
 - FileProvider needed for share intent — cache dir `shared_crops/`
 - Preview mode creates a new bitmap each recomposition with crop changes — acceptable for screenshots
+- SYSTEM_ALERT_WINDOW needed for thumbnail overlay — gracefully skipped if not granted
+- Status bar detection: reference color sampled from edge pixels (not center) to avoid clock text
