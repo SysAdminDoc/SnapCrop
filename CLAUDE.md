@@ -36,9 +36,10 @@ Android screenshot autocrop editor. Detects screenshots via foreground service, 
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v3.3.0
+v4.0.0
 
 ## Version History
+- v4.0.0: Built-in gallery (album grid → photo grid → tap to edit), bottom navigation (Home/Gallery tabs), Coil AsyncImage for fast thumbnails, MediaStore album queries, all photos openable in crop editor
 - v3.3.0: Text annotation tool (tap to place, dialog to type, renders via nativeCanvas), filled shapes toggle (rect/circle), haptic feedback on undo/redo, 5 draw tools total
 - v3.2.0: Custom adaptive icon, async save with progress overlay, batch autocrop from gallery (multi-select + progress), mode indicator banner, aspect ratio chips hidden in draw/pixelate mode
 - v3.1.0: Rectangle + circle shape tools, 4 draw tools (pen/arrow/rect/circle), shapes render on export, delete confirmation toast, README overhaul, settings about version bump

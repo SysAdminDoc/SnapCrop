@@ -33,7 +33,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -143,35 +145,81 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
-                HomeScreen(
-                    isRunning = serviceRunning.value,
-                    hasPermissions = hasPermissions.value,
-                    recentCrops = recentCrops.value,
-                    cropCount = cropCount.value,
-                    onToggleService = { toggleService() },
-                    onRequestPermissions = { requestPermissions() },
-                    onPickImage = { pickImageLauncher.launch("image/*") },
-                    onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
-                    batchProgress = batchProgress.value,
-                    hasOverlayPermission = hasOverlayPermission.value,
-                    onRequestOverlay = {
-                        startActivity(Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:$packageName")
-                        ))
-                    },
-                    onOpenSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                    onOpenCrop = { uri ->
-                        startActivity(Intent(this, CropActivity::class.java).apply { data = uri })
-                    },
-                    onDeleteCrop = { uri ->
-                        try {
-                            contentResolver.delete(uri, null, null)
-                            android.widget.Toast.makeText(this, "Deleted", android.widget.Toast.LENGTH_SHORT).show()
-                        } catch (_: Exception) {}
-                        loadRecentCrops()
+                var selectedTab by remember { mutableIntStateOf(0) }
+
+                Scaffold(
+                    containerColor = Color.Black,
+                    bottomBar = {
+                        NavigationBar(containerColor = SurfaceVariant) {
+                            NavigationBarItem(
+                                selected = selectedTab == 0,
+                                onClick = { selectedTab = 0 },
+                                icon = { Icon(Icons.Default.Home, "Home") },
+                                label = { Text("Home") },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Primary,
+                                    selectedTextColor = Primary,
+                                    unselectedIconColor = OnSurfaceVariant,
+                                    unselectedTextColor = OnSurfaceVariant,
+                                    indicatorColor = PrimaryContainer
+                                )
+                            )
+                            NavigationBarItem(
+                                selected = selectedTab == 1,
+                                onClick = { selectedTab = 1 },
+                                icon = { Icon(Icons.Default.Photo, "Gallery") },
+                                label = { Text("Gallery") },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Primary,
+                                    selectedTextColor = Primary,
+                                    unselectedIconColor = OnSurfaceVariant,
+                                    unselectedTextColor = OnSurfaceVariant,
+                                    indicatorColor = PrimaryContainer
+                                )
+                            )
+                        }
                     }
-                )
+                ) { padding ->
+                    Box(Modifier.padding(padding)) {
+                        when (selectedTab) {
+                            0 -> HomeScreen(
+                                isRunning = serviceRunning.value,
+                                hasPermissions = hasPermissions.value,
+                                recentCrops = recentCrops.value,
+                                cropCount = cropCount.value,
+                                onToggleService = { toggleService() },
+                                onRequestPermissions = { requestPermissions() },
+                                onPickImage = { pickImageLauncher.launch("image/*") },
+                                onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
+                                batchProgress = batchProgress.value,
+                                hasOverlayPermission = hasOverlayPermission.value,
+                                onRequestOverlay = {
+                                    startActivity(Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:$packageName")
+                                    ))
+                                },
+                                onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
+                                onOpenCrop = { uri ->
+                                    startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
+                                },
+                                onDeleteCrop = { uri ->
+                                    try {
+                                        contentResolver.delete(uri, null, null)
+                                        Toast.makeText(this@MainActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                                    } catch (_: Exception) {}
+                                    loadRecentCrops()
+                                }
+                            )
+                            1 -> GalleryScreen(
+                                onOpenEditor = { uri ->
+                                    startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
+                                },
+                                onBack = { selectedTab = 0 }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -336,7 +384,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v3.3.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v4.0.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
