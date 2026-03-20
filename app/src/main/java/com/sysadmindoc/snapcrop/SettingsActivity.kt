@@ -1,6 +1,5 @@
 package com.sysadmindoc.snapcrop
 
-import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -113,6 +113,40 @@ class SettingsActivity : ComponentActivity() {
                         onCheckedChange = { prefs.edit().putBoolean("strip_exif", it).apply() }
                     )
 
+                    Spacer(Modifier.height(8.dp))
+
+                    // Filename template
+                    var filenameTemplate by remember {
+                        mutableStateOf(prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%")
+                    }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Filename template", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text("Use %timestamp%, %date%, %time%, %counter%",
+                                color = OnSurfaceVariant, fontSize = 11.sp)
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = filenameTemplate,
+                                onValueChange = {
+                                    filenameTemplate = it
+                                    prefs.edit().putString("filename_template", it).apply()
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                    focusedTextColor = OnSurface, unfocusedTextColor = OnSurface,
+                                    cursorColor = Primary
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                        }
+                    }
+
                     Spacer(Modifier.height(20.dp))
 
                     // Service section
@@ -158,7 +192,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v5.1.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v5.2.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

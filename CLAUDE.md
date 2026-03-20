@@ -14,7 +14,7 @@ Android screenshot autocrop editor with annotation, gallery, and ML Kit integrat
 - `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects screenshots, launches editor, shows notification with Edit/Share/Quick Crop actions. Falls back to notification if background activity launch fails (Android 12+).
 - `MonitorTileService` - Quick Settings tile to toggle screenshot monitoring on/off.
 - `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share via FileProvider.
-- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid. 8 draw tools, pixelate, OCR, crop presets, zoom.
+- `CropEditorScreen` - Compose Canvas with draggable corner/edge handles, dim overlay, rule-of-thirds grid. 9 draw tools (pen/arrow/rect/circle/text/highlight/callout/spotlight/magnifier), pixelate, OCR, crop presets, zoom.
 - `StitchActivity` - Combine 2+ images vertically or horizontally into one stitched image.
 - `AutoCrop` - Multi-strategy: (1) uniform-border scan, (2) system bar strip using exact device heights, (3) full image fallback.
 - `SystemBars` - Queries exact status_bar_height and navigation_bar_height from Android resources.
@@ -41,9 +41,10 @@ Android screenshot autocrop editor with annotation, gallery, and ML Kit integrat
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.1.0
+v5.2.0
 
 ## Version History
+- v5.2.0: Magnifier/loupe draw tool (tap to place zoomed circular inset with crosshair, 2x zoom), image-to-PDF export from gallery multi-select, custom filename templates in settings (%timestamp%/%date%/%time%/%counter%), stitch reorder (move up/down buttons), resolveFilename() helper for template expansion
 - v5.1.0: Spotlight/focus draw tool (dims everything outside selected area), image stitching (vertical/horizontal combine 2+ images), Quick Settings tile for monitor toggle, notification actions on screenshot detect (Edit/Share/Quick Crop with 30s auto-dismiss), fixed 6 bitmap memory leaks (rotate/flip/pixelate/destroy), fixed SQL injection in favorites query, fixed applyDraw always copies bitmap (prevents state corruption), added READ_MEDIA_VIDEO permission for gallery video support, AutoCrop edge case validation for scanTop >= scanBottom
 - v5.0.0: Stroke smoothing (Catmull-Rom spline on pen/highlighter paths), video support in gallery (play icon overlay, duration badge, system player launch), video+image mixed albums
 - v4.9.0: More crop presets (3:4, 9:16, 2:1 + scrollable row), eyedropper color picker (tap image to sample pixel color), gallery pinch-to-zoom grid (2-6 columns), current color preview swatch

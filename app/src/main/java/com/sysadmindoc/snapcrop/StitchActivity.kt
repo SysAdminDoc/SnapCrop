@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -65,6 +67,8 @@ class StitchActivity : ComponentActivity() {
                     isSaving = isSaving.value,
                     onToggleDirection = { isVertical.value = !isVertical.value },
                     onAddImages = { pickImagesLauncher.launch(arrayOf("image/*")) },
+                    onMoveUp = { i -> if (i > 0) { val u = imageUris.removeAt(i); imageUris.add(i - 1, u) } },
+                    onMoveDown = { i -> if (i < imageUris.size - 1) { val u = imageUris.removeAt(i); imageUris.add(i + 1, u) } },
                     onRemoveImage = { imageUris.removeAt(it) },
                     onSave = { stitchAndSave() },
                     onClose = { finish() }
@@ -180,6 +184,8 @@ private fun StitchScreen(
     isSaving: Boolean,
     onToggleDirection: () -> Unit,
     onAddImages: () -> Unit,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
     onRemoveImage: (Int) -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit
@@ -254,12 +260,28 @@ private fun StitchScreen(
                             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
                             contentScale = ContentScale.FillWidth
                         )
-                        IconButton(
-                            onClick = { onRemoveImage(index) },
-                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                        ) {
-                            Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(16.dp))
+                        Row(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                            if (index > 0) {
+                                IconButton(
+                                    onClick = { onMoveUp(index) },
+                                    modifier = Modifier.size(28.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                ) { Icon(Icons.Default.ArrowUpward, "Move up", tint = OnSurface, modifier = Modifier.size(14.dp)) }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            if (index < uris.size - 1) {
+                                IconButton(
+                                    onClick = { onMoveDown(index) },
+                                    modifier = Modifier.size(28.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                ) { Icon(Icons.Default.ArrowDownward, "Move down", tint = OnSurface, modifier = Modifier.size(14.dp)) }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            IconButton(
+                                onClick = { onRemoveImage(index) },
+                                modifier = Modifier.size(28.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(14.dp)) }
                         }
                     }
                 }
@@ -277,12 +299,12 @@ private fun StitchScreen(
                             modifier = Modifier.fillMaxHeight().width(200.dp).clip(RoundedCornerShape(4.dp)),
                             contentScale = ContentScale.FillHeight
                         )
-                        IconButton(
-                            onClick = { onRemoveImage(index) },
-                            modifier = Modifier.align(Alignment.TopEnd).size(32.dp)
-                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-                        ) {
-                            Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(16.dp))
+                        Column(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
+                            IconButton(
+                                onClick = { onRemoveImage(index) },
+                                modifier = Modifier.size(28.dp)
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(14.dp)) }
                         }
                     }
                 }

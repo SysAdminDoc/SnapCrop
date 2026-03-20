@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -221,6 +222,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onShareUris = { uris -> shareImages(uris) },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
+                                onExportPdf = { uris -> exportPdf(uris) },
                                 onBack = { selectedTab = 0 }
                             )
                         }
@@ -270,6 +272,52 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    private fun exportPdf(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val doc = PdfDocument()
+                var pageNum = 1
+                for (uri in uris) {
+                    val bmp = contentResolver.openInputStream(uri)?.use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    } ?: continue
+                    val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, pageNum).create()
+                    val page = doc.startPage(pageInfo)
+                    page.canvas.drawBitmap(bmp, 0f, 0f, null)
+                    doc.finishPage(page)
+                    bmp.recycle()
+                    pageNum++
+                }
+                if (pageNum == 1) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "No images to export", Toast.LENGTH_SHORT).show()
+                    }
+                    doc.close()
+                    return@launch
+                }
+
+                val values = android.content.ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.pdf")
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/SnapCrop")
+                }
+                val pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+                if (pdfUri != null) {
+                    contentResolver.openOutputStream(pdfUri)?.use { doc.writeTo(it) }
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "PDF saved to Documents/SnapCrop", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                doc.close()
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun shareImages(uris: List<Uri>) {
@@ -470,7 +518,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v5.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v5.2.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

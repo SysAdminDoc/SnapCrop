@@ -328,6 +328,44 @@ class CropActivity : ComponentActivity() {
                 continue
             }
 
+            // Magnifier loupe — circular zoomed inset
+            if (dp.shapeType == "magnifier" && dp.points.isNotEmpty()) {
+                val p = dp.points.first()
+                val loupeRadius = 120f // pixels in bitmap space
+                val zoomFactor = 2f
+                val loupeCx = p.x; val loupeCy = p.y - loupeRadius - 20f
+
+                // Border
+                val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = 0xFFFFFFFF.toInt(); style = Paint.Style.FILL
+                }
+                canvas.drawCircle(loupeCx, loupeCy, loupeRadius + 4f, borderPaint)
+
+                // Clip and draw zoomed content
+                canvas.save()
+                val clipPath = Path()
+                clipPath.addCircle(loupeCx, loupeCy, loupeRadius, Path.Direction.CW)
+                canvas.clipPath(clipPath)
+                canvas.translate(loupeCx - p.x * zoomFactor, loupeCy - p.y * zoomFactor)
+                canvas.scale(zoomFactor, zoomFactor)
+                canvas.drawBitmap(result, 0f, 0f, null)
+                canvas.restore()
+
+                // Ring border
+                val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color; style = Paint.Style.STROKE; strokeWidth = 3f
+                }
+                canvas.drawCircle(loupeCx, loupeCy, loupeRadius, ringPaint)
+
+                // Crosshair
+                val chPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color; strokeWidth = 1.5f
+                }
+                canvas.drawLine(loupeCx - 15f, loupeCy, loupeCx + 15f, loupeCy, chPaint)
+                canvas.drawLine(loupeCx, loupeCy - 15f, loupeCx, loupeCy + 15f, chPaint)
+                continue
+            }
+
             // Spotlight — dim entire image except the selected rectangle
             if (dp.shapeType == "spotlight" && dp.points.size >= 2) {
                 val p1 = dp.points.first(); val p2 = dp.points.last()
@@ -423,7 +461,7 @@ class CropActivity : ComponentActivity() {
         CoroutineScope(Dispatchers.IO).launch {
             val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths)
             withContext(Dispatchers.Main) {
-                saveToGallery(cropped, "SnapCrop_${System.currentTimeMillis()}", deleteOriginal)
+                saveToGallery(cropped, resolveFilename(), deleteOriginal)
                 cropped.recycle()
                 isSaving.value = false
             }
@@ -466,6 +504,21 @@ class CropActivity : ComponentActivity() {
             Toast.makeText(this, "Share failed", Toast.LENGTH_SHORT).show()
             cropped.recycle()
         }
+    }
+
+    private fun resolveFilename(): String {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val template = prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%"
+        val counter = prefs.getInt("save_counter", 1)
+        prefs.edit().putInt("save_counter", counter + 1).apply()
+        val now = System.currentTimeMillis()
+        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val timeFmt = java.text.SimpleDateFormat("HH-mm-ss", java.util.Locale.US)
+        return template
+            .replace("%timestamp%", now.toString())
+            .replace("%date%", dateFmt.format(java.util.Date(now)))
+            .replace("%time%", timeFmt.format(java.util.Date(now)))
+            .replace("%counter%", String.format("%04d", counter))
     }
 
     private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean) {

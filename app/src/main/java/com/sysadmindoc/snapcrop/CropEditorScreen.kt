@@ -118,7 +118,7 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
 }
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
-    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus")
+    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom")
 }
 
 private val drawColors = listOf(
@@ -667,6 +667,15 @@ fun CropEditorScreen(
                                                     text = "${calloutCounter++}"
                                                 ))
                                                 haptic()
+                                            } else if (drawTool == DrawTool.MAGNIFIER) {
+                                                // Place magnifier loupe at tap point
+                                                drawPaths.add(DrawPath(
+                                                    points = listOf(PointF(bx, by)),
+                                                    color = drawColor,
+                                                    strokeWidth = drawStrokeWidth,
+                                                    shapeType = "magnifier"
+                                                ))
+                                                haptic()
                                             } else {
                                                 currentDrawPoints = listOf(PointF(bx, by))
                                             }
@@ -882,6 +891,37 @@ fun CropEditorScreen(
                             }
                             drawContext.canvas.nativeCanvas.drawText(
                                 dp.text, cx, cy + radius * 0.4f, textPaint)
+                            return
+                        }
+
+                        // Magnifier loupe — zoomed circular inset
+                        if (shape == "magnifier" && pts.isNotEmpty()) {
+                            val p = pts.first()
+                            val cx = ox + p.x * scale; val cy = oy + p.y * scale
+                            val loupeRadius = 60.dp.toPx()
+                            val zoomFactor = 2f
+                            // Draw border circle
+                            drawCircle(Color.White, loupeRadius + 3.dp.toPx(), Offset(cx, cy - loupeRadius - 10.dp.toPx()))
+                            drawCircle(color, loupeRadius + 2.dp.toPx(), Offset(cx, cy - loupeRadius - 10.dp.toPx()), style = Stroke(2.dp.toPx()))
+                            // Clip and draw zoomed content using nativeCanvas
+                            drawContext.canvas.nativeCanvas.apply {
+                                val loupeCx = cx; val loupeCy = cy - loupeRadius - 10.dp.toPx()
+                                save()
+                                val clipPath = android.graphics.Path()
+                                clipPath.addCircle(loupeCx, loupeCy, loupeRadius, android.graphics.Path.Direction.CW)
+                                clipPath(clipPath)
+                                // Translate so the tapped point is at center of loupe, then scale
+                                val srcX = ox + p.x * scale
+                                val srcY = oy + p.y * scale
+                                translate(loupeCx - srcX * zoomFactor, loupeCy - srcY * zoomFactor)
+                                scale(zoomFactor, zoomFactor)
+                                drawBitmap(bitmap, ox / zoomFactor, oy / zoomFactor, null)
+                                restore()
+                            }
+                            // Crosshair
+                            val lCy = cy - loupeRadius - 10.dp.toPx()
+                            drawLine(color, Offset(cx - 8.dp.toPx(), lCy), Offset(cx + 8.dp.toPx(), lCy), 1.dp.toPx())
+                            drawLine(color, Offset(cx, lCy - 8.dp.toPx()), Offset(cx, lCy + 8.dp.toPx()), 1.dp.toPx())
                             return
                         }
 
