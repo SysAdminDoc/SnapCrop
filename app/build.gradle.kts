@@ -12,8 +12,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 14
-        versionName = "3.2.0"
+        versionCode = 15
+        versionName = "3.3.0"
     }
 
     buildTypes {

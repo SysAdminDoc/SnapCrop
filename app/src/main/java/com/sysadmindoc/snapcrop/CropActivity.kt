@@ -270,19 +270,33 @@ class CropActivity : ComponentActivity() {
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
 
+            // Text
+            if (dp.shapeType == "text" && dp.text != null && dp.points.isNotEmpty()) {
+                val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color
+                    textSize = dp.strokeWidth * 3
+                    style = Paint.Style.FILL
+                }
+                val p = dp.points.first()
+                canvas.drawText(dp.text, p.x, p.y, textPaint)
+                continue
+            }
+
             // Shape types
             if (dp.shapeType == "rect" && dp.points.size >= 2) {
                 val p1 = dp.points.first(); val p2 = dp.points.last()
                 val l = minOf(p1.x, p2.x); val t = minOf(p1.y, p2.y)
                 val r = maxOf(p1.x, p2.x); val b = maxOf(p1.y, p2.y)
-                canvas.drawRect(l, t, r, b, paint)
+                if (dp.filled) { paint.style = Paint.Style.FILL; canvas.drawRect(l, t, r, b, paint); paint.style = Paint.Style.STROKE }
+                else canvas.drawRect(l, t, r, b, paint)
                 continue
             }
             if (dp.shapeType == "circle" && dp.points.size >= 2) {
                 val p1 = dp.points.first(); val p2 = dp.points.last()
                 val l = minOf(p1.x, p2.x); val t = minOf(p1.y, p2.y)
                 val r = maxOf(p1.x, p2.x); val b = maxOf(p1.y, p2.y)
-                canvas.drawOval(l, t, r, b, paint)
+                if (dp.filled) { paint.style = Paint.Style.FILL; canvas.drawOval(l, t, r, b, paint); paint.style = Paint.Style.STROKE }
+                else canvas.drawOval(l, t, r, b, paint)
                 continue
             }
 

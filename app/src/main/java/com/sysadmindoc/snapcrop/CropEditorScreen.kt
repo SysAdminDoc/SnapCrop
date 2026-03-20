@@ -31,6 +31,11 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -59,12 +65,14 @@ data class DrawPath(
     val color: Int,
     val strokeWidth: Float,
     val isArrow: Boolean = false,
-    val shapeType: String? = null // "rect" or "circle"
+    val shapeType: String? = null, // "rect", "circle", or "text"
+    val text: String? = null,
+    val filled: Boolean = false
 )
 
 private enum class EditMode { CROP, PIXELATE, DRAW }
 private enum class DrawTool(val label: String) {
-    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle")
+    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text")
 }
 
 private val drawColors = listOf(
@@ -129,6 +137,24 @@ fun CropEditorScreen(
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
+    var shapeFilled by remember { mutableStateOf(false) }
+    var showTextDialog by remember { mutableStateOf(false) }
+    var textDialogValue by remember { mutableStateOf("") }
+    var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
+
+    val context = LocalContext.current
+    fun haptic() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                val v = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as Vibrator
+                v.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } catch (_: Exception) {}
+    }
 
     // Undo/Redo stacks
     val undoStack = remember { mutableStateListOf<Rect>() }
@@ -146,6 +172,7 @@ fun CropEditorScreen(
         val prev = undoStack.removeLast()
         cropLeft = prev.left; cropTop = prev.top
         cropRight = prev.right; cropBottom = prev.bottom
+        haptic()
     }
 
     fun redo() {
@@ -154,6 +181,7 @@ fun CropEditorScreen(
         val next = redoStack.removeLast()
         cropLeft = next.left; cropTop = next.top
         cropRight = next.right; cropBottom = next.bottom
+        haptic()
     }
 
     LaunchedEffect(initialCropRect) {
@@ -404,6 +432,15 @@ fun CropEditorScreen(
                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
                             shape = RoundedCornerShape(8.dp))
                     }
+                    if (drawTool == DrawTool.RECT || drawTool == DrawTool.CIRCLE) {
+                        FilterChip(selected = shapeFilled,
+                            onClick = { shapeFilled = !shapeFilled },
+                            label = { Text("Fill", fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp))
+                    }
                     drawColors.forEach { (color, _) ->
                         Box(Modifier
                             .size(if (drawColor == color) 24.dp else 18.dp)
@@ -467,7 +504,13 @@ fun CropEditorScreen(
                                         EditMode.DRAW -> {
                                             val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
                                             val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
-                                            currentDrawPoints = listOf(PointF(bx, by))
+                                            if (drawTool == DrawTool.TEXT) {
+                                                textPlacePoint = PointF(bx, by)
+                                                textDialogValue = ""
+                                                showTextDialog = true
+                                            } else {
+                                                currentDrawPoints = listOf(PointF(bx, by))
+                                            }
                                         }
                                         EditMode.CROP -> {
                                             activeHandle = findHandle(pos)
@@ -491,7 +534,7 @@ fun CropEditorScreen(
                                             pixDragStart = null; pixDragCurrent = null
                                         }
                                         EditMode.DRAW -> {
-                                            if (currentDrawPoints.size >= 2) {
+                                            if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT) {
                                                 val shape = when (drawTool) {
                                                     DrawTool.RECT -> "rect"
                                                     DrawTool.CIRCLE -> "circle"
@@ -502,7 +545,8 @@ fun CropEditorScreen(
                                                     color = drawColor,
                                                     strokeWidth = drawStrokeWidth,
                                                     isArrow = drawTool == DrawTool.ARROW,
-                                                    shapeType = shape
+                                                    shapeType = shape,
+                                                    filled = shapeFilled && shape != null
                                                 ))
                                             }
                                             currentDrawPoints = emptyList()
@@ -588,17 +632,37 @@ fun CropEditorScreen(
                     // Draw paths + shapes
                     fun drawShapeOnCanvas(dp: DrawPath, pts: List<PointF>, color: Color, sw: Float) {
                         val shape = dp.shapeType
+
+                        // Text rendering
+                        if (shape == "text" && dp.text != null && pts.isNotEmpty()) {
+                            val p = pts.first()
+                            val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color
+                                textSize = dp.strokeWidth * scale * 3
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(
+                                dp.text, ox + p.x * scale, oy + p.y * scale, textPaint)
+                            return
+                        }
+
                         if (shape != null && pts.size >= 2) {
                             val p1 = pts.first(); val p2 = pts.last()
                             val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
                             val sx2 = ox + p2.x * scale; val sy2 = oy + p2.y * scale
+                            val style = if (dp.filled) null else Stroke(sw)
                             when (shape) {
-                                "rect" -> drawRect(color, Offset(minOf(sx1, sx2), minOf(sy1, sy2)),
-                                    Size(kotlin.math.abs(sx2 - sx1), kotlin.math.abs(sy2 - sy1)), style = Stroke(sw))
+                                "rect" -> {
+                                    val off = Offset(minOf(sx1, sx2), minOf(sy1, sy2))
+                                    val sz = Size(kotlin.math.abs(sx2 - sx1), kotlin.math.abs(sy2 - sy1))
+                                    if (style != null) drawRect(color, off, sz, style = style)
+                                    else drawRect(color, off, sz)
+                                }
                                 "circle" -> {
                                     val cx = (sx1 + sx2) / 2; val cy = (sy1 + sy2) / 2
                                     val rx = kotlin.math.abs(sx2 - sx1) / 2; val ry = kotlin.math.abs(sy2 - sy1) / 2
-                                    drawOval(color, Offset(cx - rx, cy - ry), Size(rx * 2, ry * 2), style = Stroke(sw))
+                                    val off = Offset(cx - rx, cy - ry); val sz = Size(rx * 2, ry * 2)
+                                    if (style != null) drawOval(color, off, sz, style = style)
+                                    else drawOval(color, off, sz)
                                 }
                             }
                             return
@@ -712,6 +776,47 @@ fun CropEditorScreen(
                 ) { Icon(Icons.Default.Crop, null, Modifier.size(14.dp), tint = Color.Black); Spacer(Modifier.width(3.dp)); Text("Save", color = Color.Black, fontSize = 12.sp) }
             }
         }
+    }
+
+    // Text input dialog
+    if (showTextDialog) {
+        AlertDialog(
+            onDismissRequest = { showTextDialog = false },
+            title = { Text("Add Text", color = OnSurface) },
+            text = {
+                OutlinedTextField(
+                    value = textDialogValue,
+                    onValueChange = { textDialogValue = it },
+                    placeholder = { Text("Type here...") },
+                    singleLine = false,
+                    maxLines = 3,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Primary,
+                        unfocusedBorderColor = Outline,
+                        focusedTextColor = OnSurface,
+                        unfocusedTextColor = OnSurface
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (textDialogValue.isNotBlank() && textPlacePoint != null) {
+                        drawPaths.add(DrawPath(
+                            points = listOf(textPlacePoint!!),
+                            color = drawColor,
+                            strokeWidth = drawStrokeWidth,
+                            shapeType = "text",
+                            text = textDialogValue
+                        ))
+                    }
+                    showTextDialog = false
+                }) { Text("Add", color = Primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTextDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
     }
 }
 
