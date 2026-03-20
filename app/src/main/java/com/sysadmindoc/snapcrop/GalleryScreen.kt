@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -39,6 +40,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -95,6 +97,7 @@ fun GalleryScreen(
     var searchQuery by remember { mutableStateOf("") }
     var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
     var sortMode by remember { mutableStateOf(SortMode.DATE) }
+    var gridColumns by remember { mutableIntStateOf(3) }
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -262,13 +265,18 @@ fun GalleryScreen(
             }
             PhotoGrid(
                 photos = sortedPhotos,
+                columns = gridColumns,
                 selectedIds = selectedIds,
                 selectionMode = selectionMode,
                 onPhotoClick = { photo, index ->
                     if (selectionMode) toggleSelection(selectedIds, photo.id)
                     else viewerIndex = index
                 },
-                onPhotoLongClick = { photo -> toggleSelection(selectedIds, photo.id) }
+                onPhotoLongClick = { photo -> toggleSelection(selectedIds, photo.id) },
+                onPinchZoom = { zoom ->
+                    if (zoom < 0.8f) gridColumns = (gridColumns + 1).coerceAtMost(6)
+                    else if (zoom > 1.2f) gridColumns = (gridColumns - 1).coerceAtLeast(2)
+                }
             )
         }
     }
@@ -364,10 +372,12 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllP
 @Composable
 private fun PhotoGrid(
     photos: List<Photo>,
+    columns: Int,
     selectedIds: List<Long>,
     selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit,
-    onPhotoLongClick: (Photo) -> Unit
+    onPhotoLongClick: (Photo) -> Unit,
+    onPinchZoom: (Float) -> Unit
 ) {
     if (photos.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -376,11 +386,21 @@ private fun PhotoGrid(
         return
     }
 
+    var lastPinchZoom by remember { mutableFloatStateOf(1f) }
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = GridCells.Fixed(columns),
         contentPadding = PaddingValues(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.pointerInput(Unit) {
+            detectTransformGestures(panZoomLock = true) { _, _, zoom, _ ->
+                lastPinchZoom *= zoom
+                if (lastPinchZoom < 0.7f || lastPinchZoom > 1.4f) {
+                    onPinchZoom(lastPinchZoom)
+                    lastPinchZoom = 1f
+                }
+            }
+        }
     ) {
         items(photos.size) { index ->
             val photo = photos[index]

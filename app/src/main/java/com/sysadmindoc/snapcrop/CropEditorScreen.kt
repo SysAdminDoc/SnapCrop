@@ -5,9 +5,12 @@ import android.graphics.PointF
 import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +18,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Close
@@ -97,7 +101,10 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     FREE("Free", null),
     SQUARE("1:1", 1f),
     RATIO_4_3("4:3", 4f / 3f),
-    RATIO_16_9("16:9", 16f / 9f)
+    RATIO_3_4("3:4", 3f / 4f),
+    RATIO_16_9("16:9", 16f / 9f),
+    RATIO_9_16("9:16", 9f / 16f),
+    RATIO_2_1("2:1", 2f / 1f)
 }
 
 @Composable
@@ -159,6 +166,7 @@ fun CropEditorScreen(
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
     var shapeFilled by remember { mutableStateOf(false) }
     var calloutCounter by remember { mutableIntStateOf(1) }
+    var eyedropperActive by remember { mutableStateOf(false) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
@@ -434,6 +442,7 @@ fun CropEditorScreen(
         if (editMode == EditMode.CROP) Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -524,12 +533,23 @@ fun CropEditorScreen(
                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
                             shape = RoundedCornerShape(8.dp))
                     }
+                    // Eyedropper
+                    IconButton(onClick = { eyedropperActive = !eyedropperActive },
+                        modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Default.Colorize, "Pick color",
+                            tint = if (eyedropperActive) Primary else OnSurfaceVariant,
+                            modifier = Modifier.size(16.dp))
+                    }
                     drawColors.forEach { (color, _) ->
                         Box(Modifier
                             .size(if (drawColor == color) 24.dp else 18.dp)
                             .background(Color(color), RoundedCornerShape(3.dp))
-                            .pointerInput(color) { detectTapGestures { drawColor = color } })
+                            .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
                     }
+                    // Current color preview (shows sampled color)
+                    Box(Modifier.size(24.dp)
+                        .background(Color(drawColor), RoundedCornerShape(3.dp))
+                        .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp)))
                 }
                 Row {
                     if (drawPaths.isNotEmpty()) {
@@ -702,6 +722,16 @@ fun CropEditorScreen(
                                     else previewMode = true
                                 },
                                 onTap = { pos ->
+                                    // Eyedropper: sample pixel color from bitmap
+                                    if (eyedropperActive && editMode == EditMode.DRAW) {
+                                        val bx = ((pos.x - offsetX) / scaleX).toInt().coerceIn(0, bitmap.width - 1)
+                                        val by = ((pos.y - offsetY) / scaleY).toInt().coerceIn(0, bitmap.height - 1)
+                                        drawColor = bitmap.getPixel(bx, by)
+                                        eyedropperActive = false
+                                        haptic()
+                                        return@detectTapGestures
+                                    }
+
                                     if (editMode == EditMode.OCR) {
                                         val bx = ((pos.x - offsetX) / scaleX).toInt()
                                         val by = ((pos.y - offsetY) / scaleY).toInt()
