@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
@@ -88,6 +89,7 @@ fun GalleryScreen(
     onShareUris: (List<Uri>) -> Unit,
     onDeleteUris: (List<Uri>) -> Unit,
     onExportPdf: (List<Uri>) -> Unit,
+    onBatchResize: (List<Uri>) -> Unit,
     onBack: () -> Unit,
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
@@ -184,6 +186,10 @@ fun GalleryScreen(
                     val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                     if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
                 }) { Icon(Icons.Default.PictureAsPdf, "PDF", tint = OnSurface) }
+                IconButton(onClick = {
+                    val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
+                    if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }
+                }) { Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
                 IconButton(onClick = {
                     val uris = photos.filter { it.id in selectedIds }.map { it.uri }
                     val deletedIds = selectedIds.toSet()

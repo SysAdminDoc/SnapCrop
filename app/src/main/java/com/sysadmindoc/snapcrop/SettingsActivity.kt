@@ -237,7 +237,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v5.4.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v5.5.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

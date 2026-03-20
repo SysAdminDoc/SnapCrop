@@ -68,9 +68,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v5.4.0
+v5.5.0
 
 ## Version History
+- v5.5.0: Collage maker (8 grid layouts from 2x1 to 3x3, adjustable gap, center-crop cells), warmth adjustment slider (red/blue shift via ColorMatrix), batch resize from gallery multi-select (5 size presets with dialog), home screen layout improved (stitch+collage side by side)
 - v5.4.0: Emoji overlay tool (20 common emojis, scrollable picker, tap to place, scales with stroke width), watermark overlay (repeating diagonal text, configurable in settings, 25% opacity), circle crop (PorterDuff masking, transparent BG, force PNG on save, visual circle preview on canvas)
 - v5.3.0: Brightness/contrast/saturation adjustment sliders (ColorMatrix, live preview, applied to export), ADJUST edit mode
 - v5.2.0: Magnifier/loupe tool, PDF export from gallery, custom filename templates, stitch reorder
@@ -95,13 +96,10 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 
 ### Remaining high-value features:
 - **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch
-- **Emoji/sticker overlay** — Draggable, resizable, rotatable
 - **Device frame mockup** — Phone frame around screenshot
-- **Collage maker** — Grid layouts
 - **Background removal** — ML Kit subject segmentation
-- **Shape cropping** — Circle, star, heart with transparent BG
-- **Watermark overlay** — Repeating diagonal text stamp
-- **Batch resize** — Bulk resolution change
+- **More shape crops** — Star, heart, rounded rect with transparent BG
+- **Dashed/neon line styles** — Line style variants for shapes
 
 ## Gotchas
 - `foregroundServiceType="specialUse"` required for Android 14+

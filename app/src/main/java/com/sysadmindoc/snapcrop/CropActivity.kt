@@ -458,7 +458,8 @@ class CropActivity : ComponentActivity() {
 
     private fun applyAdjustments(bitmap: Bitmap, adj: FloatArray): Bitmap {
         val brightness = adj[0]; val contrast = adj[1]; val saturation = adj[2]
-        if (brightness == 0f && contrast == 1f && saturation == 1f) return bitmap
+        val warmth = if (adj.size > 4) adj[4] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
@@ -469,6 +470,9 @@ class CropActivity : ComponentActivity() {
         }
         if (brightness != 0f) {
             cm.postConcat(ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, brightness, 0f, 1f, 0f, 0f, brightness, 0f, 0f, 1f, 0f, brightness, 0f, 0f, 0f, 1f, 0f)))
+        }
+        if (warmth != 0f) {
+            cm.postConcat(ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, warmth, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 1f, 0f, -warmth, 0f, 0f, 0f, 1f, 0f)))
         }
         val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
         canvas.drawBitmap(bitmap, 0f, 0f, paint)

@@ -36,6 +36,11 @@
             android:theme="@style/Theme.SnapCrop" />
 
         <activity
+            android:name=".CollageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SnapCrop" />
+
+        <activity
             android:name=".StitchActivity"
             android:exported="false"
             android:theme="@style/Theme.SnapCrop" />

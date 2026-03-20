@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -87,6 +88,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private val batchProgress = mutableStateOf("")
+    private val resizeUris = mutableStateOf<List<Uri>>(emptyList())
+    private val showResizeDialogState = mutableStateOf(false)
 
     private fun batchAutocrop(uris: List<Uri>) {
         CoroutineScope(Dispatchers.IO).launch {
@@ -195,6 +198,7 @@ class MainActivity : ComponentActivity() {
                                 onPickImage = { pickImageLauncher.launch("image/*") },
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
+                                onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
                                 batchProgress = batchProgress.value,
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = {
@@ -223,10 +227,52 @@ class MainActivity : ComponentActivity() {
                                 onShareUris = { uris -> shareImages(uris) },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
                                 onExportPdf = { uris -> exportPdf(uris) },
+                                onBatchResize = { uris -> showResizeDialog(uris) },
                                 onBack = { selectedTab = 0 }
                             )
                         }
                     }
+                }
+
+                // Resize dialog
+                if (showResizeDialogState.value) {
+                    var selectedSize by remember { mutableIntStateOf(1080) }
+                    val sizes = listOf(480, 720, 1080, 1440, 2160)
+                    AlertDialog(
+                        onDismissRequest = { showResizeDialogState.value = false },
+                        title = { Text("Batch Resize", color = OnSurface) },
+                        text = {
+                            Column {
+                                Text("Max dimension (px):", color = OnSurfaceVariant, fontSize = 13.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    sizes.forEach { size ->
+                                        FilterChip(
+                                            selected = selectedSize == size,
+                                            onClick = { selectedSize = size },
+                                            label = { Text("$size", fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Text("${resizeUris.value.size} images will be resized", color = OnSurfaceVariant, fontSize = 12.sp)
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showResizeDialogState.value = false
+                                batchResize(resizeUris.value, selectedSize)
+                            }) { Text("Resize", color = Primary) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showResizeDialogState.value = false }) { Text("Cancel", color = OnSurfaceVariant) }
+                        },
+                        containerColor = SurfaceVariant
+                    )
                 }
             }
         }
@@ -272,6 +318,53 @@ class MainActivity : ComponentActivity() {
             needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
         permissionLauncher.launch(needed.toTypedArray())
+    }
+
+    private fun showResizeDialog(uris: List<Uri>) {
+        resizeUris.value = uris
+        showResizeDialogState.value = true
+    }
+
+    private fun batchResize(uris: List<Uri>, maxDim: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            var done = 0
+            for (uri in uris) {
+                withContext(Dispatchers.Main) { batchProgress.value = "Resizing ${done + 1}/${uris.size}..." }
+                try {
+                    contentResolver.openInputStream(uri)?.use { stream ->
+                        val bmp = BitmapFactory.decodeStream(stream) ?: return@use
+                        if (bmp.width <= maxDim && bmp.height <= maxDim) { bmp.recycle(); return@use }
+                        val scale = maxDim.toFloat() / maxOf(bmp.width, bmp.height)
+                        val newW = (bmp.width * scale).toInt()
+                        val newH = (bmp.height * scale).toInt()
+                        val resized = android.graphics.Bitmap.createScaledBitmap(bmp, newW, newH, true)
+                        bmp.recycle()
+                        val values = android.content.ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Resize_${System.currentTimeMillis()}.png")
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        }
+                        val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        if (savedUri != null) {
+                            contentResolver.openOutputStream(savedUri)?.use { out ->
+                                resized.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                            }
+                            values.clear()
+                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                            contentResolver.update(savedUri, values, null, null)
+                        }
+                        resized.recycle()
+                    }
+                } catch (_: Exception) {}
+                done++
+            }
+            withContext(Dispatchers.Main) {
+                batchProgress.value = ""
+                Toast.makeText(this@MainActivity, "Resized $done images to ${maxDim}px", Toast.LENGTH_SHORT).show()
+                galleryRefreshKey.intValue++
+            }
+        }
     }
 
     private fun exportPdf(uris: List<Uri>) {
@@ -487,6 +580,7 @@ private fun HomeScreen(
     onPickImage: () -> Unit,
     onBatchCrop: () -> Unit,
     onStitch: () -> Unit,
+    onCollage: () -> Unit,
     batchProgress: String,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
@@ -518,7 +612,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v5.4.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v5.5.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -662,16 +756,28 @@ private fun HomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // Stitch images
-        OutlinedButton(
-            onClick = onStitch,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-        ) {
-            Icon(Icons.Default.MergeType, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Stitch Images")
+        // Stitch + Collage row
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onStitch,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+            ) {
+                Icon(Icons.Default.MergeType, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Stitch")
+            }
+            OutlinedButton(
+                onClick = onCollage,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+            ) {
+                Icon(Icons.Default.GridView, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Collage")
+            }
         }
 
         // Stats

@@ -227,6 +227,7 @@ fun CropEditorScreen(
     var brightness by remember { mutableFloatStateOf(0f) }    // -100 to 100
     var contrast by remember { mutableFloatStateOf(1f) }      // 0.5 to 2.0
     var saturation by remember { mutableFloatStateOf(1f) }    // 0.0 to 2.0
+    var warmth by remember { mutableFloatStateOf(0f) }        // -50 to 50 (red/blue shift)
 
     val context = LocalContext.current
     fun haptic() {
@@ -679,8 +680,15 @@ fun CropEditorScreen(
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", saturation)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Warmth", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = warmth, onValueChange = { warmth = it },
+                        valueRange = -50f..50f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${warmth.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f }) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -908,7 +916,7 @@ fun CropEditorScreen(
                     val drawW = imgW * scale; val drawH = imgH * scale
 
                     // Build color adjustment matrix
-                    val adjustFilter = if (brightness != 0f || contrast != 1f || saturation != 1f) {
+                    val adjustFilter = if (brightness != 0f || contrast != 1f || saturation != 1f || warmth != 0f) {
                         val cm = ColorMatrix()
                         // Saturation
                         if (saturation != 1f) cm.timesAssign(ColorMatrix().apply { setToSaturation(saturation) })
@@ -928,6 +936,15 @@ fun CropEditorScreen(
                                 1f, 0f, 0f, 0f, brightness,
                                 0f, 1f, 0f, 0f, brightness,
                                 0f, 0f, 1f, 0f, brightness,
+                                0f, 0f, 0f, 1f, 0f
+                            )))
+                        }
+                        // Warmth: shift red up / blue down (or vice versa)
+                        if (warmth != 0f) {
+                            cm.timesAssign(ColorMatrix(floatArrayOf(
+                                1f, 0f, 0f, 0f, warmth,
+                                0f, 1f, 0f, 0f, 0f,
+                                0f, 0f, 1f, 0f, -warmth,
                                 0f, 0f, 0f, 1f, 0f
                             )))
                         }
@@ -1224,7 +1241,7 @@ fun CropEditorScreen(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
                 val circleCrop = if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f
-                val adj = floatArrayOf(brightness, contrast, saturation, circleCrop)
+                val adj = floatArrayOf(brightness, contrast, saturation, circleCrop, warmth)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -1234,7 +1251,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, if (selectedRatio == AspectRatio.CIRCLE) 1f else 0f, warmth)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
