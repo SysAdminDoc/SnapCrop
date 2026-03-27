@@ -15,9 +15,12 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.MediaStore
+import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import java.io.IOException
+
+private data class SaveFormat(val format: Bitmap.CompressFormat, val quality: Int, val ext: String, val mime: String)
 
 class ScreenshotService : Service() {
 
@@ -215,6 +218,20 @@ class ScreenshotService : Service() {
         }
     }
 
+    private fun getSaveFormat(prefs: SharedPreferences): SaveFormat {
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                          else Bitmap.CompressFormat.WEBP
+                SaveFormat(fmt, quality, "webp", "image/webp")
+            }
+            prefs.getBoolean("use_jpeg", false) -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+            else -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+        }
+    }
+
     private fun quickSave(uri: Uri) {
         try {
             val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
@@ -241,10 +258,13 @@ class ScreenshotService : Service() {
                 cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0))
             )
 
+            val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            val (fmt, quality, ext, mime) = getSaveFormat(prefs)
+
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.png")
-                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+                put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
+                put(MediaStore.Images.Media.MIME_TYPE, mime)
+                put(MediaStore.Images.Media.RELATIVE_PATH, prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
 
@@ -252,7 +272,7 @@ class ScreenshotService : Service() {
             if (savedUri != null) {
                 try {
                     contentResolver.openOutputStream(savedUri)?.use { out ->
-                        cropped.compress(Bitmap.CompressFormat.PNG, 100, out)
+                        cropped.compress(fmt, quality, out)
                     }
                     values.clear()
                     values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -294,7 +314,15 @@ class ScreenshotService : Service() {
             Intent(this, ScreenshotService::class.java).apply { action = ACTION_DISMISS },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val notification = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
+        // Load thumbnail for rich notification
+        val thumbnail = try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                BitmapFactory.decodeStream(stream, null, opts)
+            }
+        } catch (_: Exception) { null }
+
+        val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
             .setContentTitle("Screenshot detected")
             .setContentText("Tap to edit")
             .setSmallIcon(R.drawable.ic_crop)
@@ -306,7 +334,13 @@ class ScreenshotService : Service() {
             .addAction(0, "Quick Crop", quickSaveIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setTimeoutAfter(30_000)
-            .build()
+
+        if (thumbnail != null) {
+            builder.setLargeIcon(thumbnail)
+                .setStyle(NotificationCompat.BigPictureStyle().bigPicture(thumbnail).bigLargeIcon(null as android.graphics.Bitmap?))
+        }
+
+        val notification = builder.build()
 
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(DETECTED_NOTIF_ID, notification)

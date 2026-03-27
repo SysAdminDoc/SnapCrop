@@ -12,6 +12,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -147,11 +148,28 @@ class StitchActivity : ComponentActivity() {
         return result
     }
 
+    private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                          else Bitmap.CompressFormat.WEBP
+                Triple(fmt, quality, "webp")
+            }
+            prefs.getBoolean("use_jpeg", false) -> Triple(Bitmap.CompressFormat.JPEG, quality, "jpg")
+            else -> Triple(Bitmap.CompressFormat.PNG, 100, "png")
+        }
+    }
+
     private fun saveToGallery(bitmap: Bitmap) {
+        val (fmt, quality, ext) = getSaveFormat()
+        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Stitch_${System.currentTimeMillis()}.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Stitch_${System.currentTimeMillis()}.$ext")
+            put(MediaStore.Images.Media.MIME_TYPE, mime)
+            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
 
@@ -163,7 +181,7 @@ class StitchActivity : ComponentActivity() {
         }
 
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            contentResolver.openOutputStream(uri)?.use { bitmap.compress(fmt, quality, it) }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
@@ -264,24 +282,24 @@ private fun StitchScreen(
                             if (index > 0) {
                                 IconButton(
                                     onClick = { onMoveUp(index) },
-                                    modifier = Modifier.size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                ) { Icon(Icons.Default.ArrowUpward, "Move up", tint = OnSurface, modifier = Modifier.size(14.dp)) }
+                                    modifier = Modifier.size(36.dp)
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                                ) { Icon(Icons.Default.ArrowUpward, "Move up", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             if (index < uris.size - 1) {
                                 IconButton(
                                     onClick = { onMoveDown(index) },
-                                    modifier = Modifier.size(28.dp)
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                                ) { Icon(Icons.Default.ArrowDownward, "Move down", tint = OnSurface, modifier = Modifier.size(14.dp)) }
+                                    modifier = Modifier.size(36.dp)
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                                ) { Icon(Icons.Default.ArrowDownward, "Move down", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(14.dp)) }
+                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
@@ -304,10 +322,33 @@ private fun StitchScreen(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(14.dp)) }
+                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
+            }
+        }
+
+        // Output dimensions estimate
+        if (uris.size >= 2) {
+            val context = LocalContext.current
+            val dims = remember(uris, isVertical) {
+                try {
+                    var totalW = 0; var totalH = 0; var maxW = 0; var maxH = 0
+                    for (u in uris) {
+                        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(u)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
+                        val w = opts.outWidth; val h = opts.outHeight
+                        if (w > 0 && h > 0) {
+                            if (isVertical) { maxW = maxOf(maxW, w); totalH += h } else { totalW += w; maxH = maxOf(maxH, h) }
+                        }
+                    }
+                    if (isVertical) "${maxW}x${totalH}" else "${totalW}x${maxH}"
+                } catch (_: Exception) { "" }
+            }
+            if (dims.isNotEmpty()) {
+                Text("Output: $dims px", Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    color = OnSurfaceVariant, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
 

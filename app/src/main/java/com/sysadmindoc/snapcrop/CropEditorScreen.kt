@@ -7,9 +7,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
@@ -21,6 +24,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Draw
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
@@ -56,6 +60,8 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -149,13 +155,127 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     SQUARE("1:1", 1f),
     RATIO_4_3("4:3", 4f / 3f),
     RATIO_3_4("3:4", 3f / 4f),
+    RATIO_4_5("4:5", 4f / 5f),
+    RATIO_5_4("5:4", 5f / 4f),
     RATIO_16_9("16:9", 16f / 9f),
     RATIO_9_16("9:16", 9f / 16f),
     RATIO_2_1("2:1", 2f / 1f),
+    RATIO_3_1("3:1", 3f / 1f),
+    RATIO_21_9("21:9", 21f / 9f),
     CIRCLE("Circle", 1f),
     ROUNDED("Rounded", null),
     STAR("Star", 1f),
     HEART("Heart", 1f)
+}
+
+private data class EditorSnapshot(
+    val crop: Rect,
+    val bright: Float, val contr: Float, val sat: Float, val warm: Float, val vig: Float,
+    val sharp: Float,
+    val filter: ImageFilter,
+    val pixRects: List<Rect>,
+    val draws: List<DrawPath>
+)
+
+private enum class ImageFilter(val label: String) {
+    NONE("None"), MONO("Mono"), SEPIA("Sepia"), COOL("Cool"), WARM("Warm"),
+    VIVID("Vivid"), MUTED("Muted"), VINTAGE("Vintage"), NOIR("Noir"), FADE("Fade"),
+    INVERT("Invert"), POLAROID("Polaroid"), GRAIN("Grain")
+}
+
+private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? {
+    return when (filter) {
+        ImageFilter.NONE -> null
+        ImageFilter.MONO -> android.graphics.ColorMatrix().apply { setSaturation(0f) }
+        ImageFilter.SEPIA -> android.graphics.ColorMatrix().apply {
+            setSaturation(0f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1f, 0f, 0f, 0f, 40f,
+                0f, 1f, 0f, 0f, 20f,
+                0f, 0f, 1f, 0f, -10f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+        ImageFilter.COOL -> android.graphics.ColorMatrix(floatArrayOf(
+            0.9f, 0f, 0f, 0f, 0f,
+            0f, 0.95f, 0f, 0f, 0f,
+            0f, 0f, 1.1f, 0f, 20f,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        ImageFilter.WARM -> android.graphics.ColorMatrix(floatArrayOf(
+            1.1f, 0f, 0f, 0f, 15f,
+            0f, 1.05f, 0f, 0f, 5f,
+            0f, 0f, 0.9f, 0f, -10f,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        ImageFilter.VIVID -> android.graphics.ColorMatrix().apply {
+            setSaturation(1.5f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1.1f, 0f, 0f, 0f, 10f,
+                0f, 1.1f, 0f, 0f, 10f,
+                0f, 0f, 1.1f, 0f, 10f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+        ImageFilter.MUTED -> android.graphics.ColorMatrix().apply {
+            setSaturation(0.4f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1f, 0f, 0f, 0f, 15f,
+                0f, 1f, 0f, 0f, 15f,
+                0f, 0f, 1f, 0f, 15f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+        ImageFilter.VINTAGE -> android.graphics.ColorMatrix().apply {
+            setSaturation(0.5f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1.05f, 0.05f, 0f, 0f, 20f,
+                0f, 1f, 0.05f, 0f, 10f,
+                0f, 0f, 0.9f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+        ImageFilter.NOIR -> android.graphics.ColorMatrix().apply {
+            setSaturation(0f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1.4f, 0f, 0f, 0f, -30f,
+                0f, 1.4f, 0f, 0f, -30f,
+                0f, 0f, 1.4f, 0f, -30f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+        ImageFilter.FADE -> android.graphics.ColorMatrix().apply {
+            setSaturation(0.6f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1f, 0f, 0f, 0f, 30f,
+                0f, 1f, 0f, 0f, 30f,
+                0f, 0f, 1f, 0f, 30f,
+                0f, 0f, 0f, 0.9f, 0f
+            )))
+        }
+        ImageFilter.INVERT -> android.graphics.ColorMatrix(floatArrayOf(
+            -1f, 0f, 0f, 0f, 255f,
+            0f, -1f, 0f, 0f, 255f,
+            0f, 0f, -1f, 0f, 255f,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        ImageFilter.POLAROID -> android.graphics.ColorMatrix(floatArrayOf(
+            1.438f, -0.062f, -0.062f, 0f, 0f,
+            -0.122f, 1.378f, -0.122f, 0f, 0f,
+            -0.016f, -0.016f, 1.483f, 0f, 0f,
+            0f, 0f, 0f, 1f, 0f
+        ))
+        ImageFilter.GRAIN -> android.graphics.ColorMatrix().apply {
+            // Slightly desaturated + warm tone (grain noise applied at render time via alpha)
+            setSaturation(0.8f)
+            postConcat(android.graphics.ColorMatrix(floatArrayOf(
+                1.05f, 0.02f, 0f, 0f, 8f,
+                0f, 1.02f, 0f, 0f, 4f,
+                0f, 0f, 0.95f, 0f, -5f,
+                0f, 0f, 0f, 1f, 0f
+            )))
+        }
+    }
 }
 
 @Composable
@@ -216,6 +336,7 @@ fun CropEditorScreen(
     val drawRedoStack = remember { mutableStateListOf<DrawPath>() }
     var currentDrawPoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
+    val recentColors = remember { mutableStateListOf<Int>() }
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
     var drawTool by remember { mutableStateOf(DrawTool.PEN) }
     var shapeFilled by remember { mutableStateOf(false) }
@@ -230,6 +351,7 @@ fun CropEditorScreen(
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
     var faceRedacting by remember { mutableStateOf(false) }
+    var lastFaceCount by remember { mutableIntStateOf(-1) } // -1 = not scanned yet
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
@@ -243,6 +365,10 @@ fun CropEditorScreen(
     var saturation by remember { mutableFloatStateOf(1f) }    // 0.0 to 2.0
     var warmth by remember { mutableFloatStateOf(0f) }        // -50 to 50 (red/blue shift)
     var vignette by remember { mutableFloatStateOf(0f) }     // 0 to 1 (edge darkening)
+    var sharpen by remember { mutableFloatStateOf(0f) }      // 0 to 2 (convolution kernel strength)
+    var selectedFilter by remember { mutableStateOf(ImageFilter.NONE) }
+    var showCropInputDialog by remember { mutableStateOf(false) }
+    var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
 
     val context = LocalContext.current
     fun haptic() {
@@ -258,31 +384,42 @@ fun CropEditorScreen(
         } catch (_: Exception) {}
     }
 
-    // Undo/Redo stacks
-    val undoStack = remember { mutableStateListOf<Rect>() }
-    val redoStack = remember { mutableStateListOf<Rect>() }
+    fun captureSnapshot() = EditorSnapshot(
+        Rect(cropLeft, cropTop, cropRight, cropBottom),
+        brightness, contrast, saturation, warmth, vignette, sharpen,
+        selectedFilter,
+        pixelateRects.toList(),
+        drawPaths.toList()
+    )
+
+    fun restoreSnapshot(s: EditorSnapshot) {
+        cropLeft = s.crop.left; cropTop = s.crop.top; cropRight = s.crop.right; cropBottom = s.crop.bottom
+        brightness = s.bright; contrast = s.contr; saturation = s.sat; warmth = s.warm; vignette = s.vig; sharpen = s.sharp
+        selectedFilter = s.filter
+        pixelateRects.clear(); pixelateRects.addAll(s.pixRects)
+        drawPaths.clear(); drawPaths.addAll(s.draws)
+    }
+
+    val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
+    val redoStack = remember { mutableStateListOf<EditorSnapshot>() }
 
     fun pushUndo() {
-        undoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
+        undoStack.add(captureSnapshot())
         redoStack.clear()
         if (undoStack.size > 30) undoStack.removeAt(0)
     }
 
     fun undo() {
         if (undoStack.isEmpty()) return
-        redoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
-        val prev = undoStack.removeLast()
-        cropLeft = prev.left; cropTop = prev.top
-        cropRight = prev.right; cropBottom = prev.bottom
+        redoStack.add(captureSnapshot())
+        restoreSnapshot(undoStack.removeLast())
         haptic()
     }
 
     fun redo() {
         if (redoStack.isEmpty()) return
-        undoStack.add(Rect(cropLeft, cropTop, cropRight, cropBottom))
-        val next = redoStack.removeLast()
-        cropLeft = next.left; cropTop = next.top
-        cropRight = next.right; cropBottom = next.bottom
+        undoStack.add(captureSnapshot())
+        restoreSnapshot(redoStack.removeLast())
         haptic()
     }
 
@@ -347,6 +484,22 @@ fun CropEditorScreen(
         cropTop = (cropBottom - newH).coerceAtLeast(0)
     }
 
+    // Snap edge values to nearby guide positions (image edges, thirds, center)
+    fun snapX(v: Int): Int {
+        val snapDist = (bitmap.width * 0.015f).toInt().coerceAtLeast(4) // ~1.5% of image width
+        val guides = intArrayOf(0, bitmap.width / 4, bitmap.width / 3, bitmap.width / 2,
+            bitmap.width * 2 / 3, bitmap.width * 3 / 4, bitmap.width)
+        for (g in guides) { if (kotlin.math.abs(v - g) <= snapDist) return g }
+        return v
+    }
+    fun snapY(v: Int): Int {
+        val snapDist = (bitmap.height * 0.015f).toInt().coerceAtLeast(4)
+        val guides = intArrayOf(0, bitmap.height / 4, bitmap.height / 3, bitmap.height / 2,
+            bitmap.height * 2 / 3, bitmap.height * 3 / 4, bitmap.height)
+        for (g in guides) { if (kotlin.math.abs(v - g) <= snapDist) return g }
+        return v
+    }
+
     fun constrainToRatio(handle: DragHandle, dx: Int, dy: Int) {
         val ratio = selectedRatio.ratio
         val minSize = 50
@@ -384,6 +537,19 @@ fun CropEditorScreen(
                             else -> cropBottom = (cropTop + targetH).coerceAtMost(bitmap.height)
                         }
                     }
+                } else {
+                    // Edge magnetism: snap to guide positions when no ratio lock
+                    when (handle) {
+                        DragHandle.TOP_LEFT -> { cropLeft = snapX(cropLeft); cropTop = snapY(cropTop) }
+                        DragHandle.TOP_RIGHT -> { cropRight = snapX(cropRight); cropTop = snapY(cropTop) }
+                        DragHandle.BOTTOM_LEFT -> { cropLeft = snapX(cropLeft); cropBottom = snapY(cropBottom) }
+                        DragHandle.BOTTOM_RIGHT -> { cropRight = snapX(cropRight); cropBottom = snapY(cropBottom) }
+                        DragHandle.TOP -> cropTop = snapY(cropTop)
+                        DragHandle.BOTTOM -> cropBottom = snapY(cropBottom)
+                        DragHandle.LEFT -> cropLeft = snapX(cropLeft)
+                        DragHandle.RIGHT -> cropRight = snapX(cropRight)
+                        else -> {}
+                    }
                 }
             }
         }
@@ -407,85 +573,101 @@ fun CropEditorScreen(
             .background(Color.Black)
             .systemBarsPadding()
     ) {
-        // Top bar
+        // Top bar — Row 1: navigation + info
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row {
-                IconButton(onClick = onDiscard) { Icon(Icons.Default.Close, "Close", tint = OnSurface) }
-                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty()) {
-                    Icon(@Suppress("DEPRECATION") Icons.Default.Undo, "Undo",
-                        tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDiscard, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Close, "Close", tint = OnSurface, modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty()) {
-                    Icon(@Suppress("DEPRECATION") Icons.Default.Redo, "Redo",
-                        tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f))
+                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(40.dp)) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.Undo, "Undo (${undoStack.size})",
+                        tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(40.dp)) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.Redo, "Redo (${redoStack.size})",
+                        tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
             }
 
             // Info: dimensions + method + crop %
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { showCropInputDialog = true }) {
                 if (methodLabel.isNotEmpty()) {
                     Surface(color = SurfaceVariant, shape = RoundedCornerShape(6.dp)) {
                         Text(methodLabel, Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            color = Primary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            color = Primary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(4.dp))
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("${cropW}x${cropH}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Text("${cropW}x${cropH}", color = OnSurfaceVariant, fontSize = 13.sp, maxLines = 1)
                     if (cropPct > 0) {
-                        Text("-${cropPct}%", color = Secondary, fontSize = 10.sp)
+                        Text("-${cropPct}%", color = Secondary, fontSize = 11.sp)
                     }
                 }
             }
 
-            Row {
-                IconButton(onClick = onRotate) { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface) }
-                IconButton(onClick = onFlipH) { Icon(Icons.Default.Flip, "Flip", tint = OnSurface) }
-                IconButton(onClick = { editMode = if (editMode == EditMode.PIXELATE) EditMode.CROP else EditMode.PIXELATE }) {
-                    @Suppress("DEPRECATION")
-                    Icon(Icons.Default.BlurOn, "Pixelate",
-                        tint = if (editMode == EditMode.PIXELATE) Tertiary else OnSurface)
-                }
-                IconButton(onClick = { editMode = if (editMode == EditMode.DRAW) EditMode.CROP else EditMode.DRAW }) {
-                    Icon(Icons.Default.Draw, "Draw",
-                        tint = if (editMode == EditMode.DRAW) Secondary else OnSurface)
-                }
-                IconButton(onClick = {
-                    if (editMode == EditMode.OCR) { editMode = EditMode.CROP; ocrBlocks = emptyList(); scannedCodes = emptyList() }
-                    else {
-                        editMode = EditMode.OCR
-                        if (ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
-                            ocrLoading = true
-                            CoroutineScope(Dispatchers.Main).launch {
-                                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
-                                val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
-                                ocrBlocks = textDeferred.await()
-                                scannedCodes = codeDeferred.await()
-                                ocrLoading = false
-                            }
-                        }
-                    }
-                }) {
-                    Icon(Icons.Default.TextFields, "OCR",
-                        tint = if (editMode == EditMode.OCR) Color(0xFFCBA6F7) else OnSurface)
-                }
-                IconButton(onClick = {
-                    editMode = if (editMode == EditMode.ADJUST) EditMode.CROP else EditMode.ADJUST
-                }) {
-                    Icon(Icons.Default.Tune, "Adjust",
-                        tint = if (editMode == EditMode.ADJUST) Color(0xFFFAB387) else OnSurface)
-                }
-                IconButton(onClick = { previewMode = !previewMode }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onRotate, modifier = Modifier.size(40.dp)) {
+                    Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, "Rotate", tint = OnSurface, modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = onFlipH, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.Default.Flip, "Flip H", tint = OnSurface, modifier = Modifier.size(20.dp)) }
+                IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(40.dp)) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        "Preview", tint = if (previewMode) Primary else OnSurface)
+                        "Preview", tint = if (previewMode) Primary else OnSurface, modifier = Modifier.size(20.dp))
                 }
             }
+        }
+
+        // Top bar — Row 2: mode tabs (scrollable)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val modeChip = @Composable { label: String, mode: EditMode, color: Color ->
+                FilterChip(
+                    selected = editMode == mode,
+                    onClick = {
+                        if (editMode == mode && mode != EditMode.CROP) editMode = EditMode.CROP
+                        else {
+                            editMode = mode
+                            if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
+                                ocrLoading = true
+                                CoroutineScope(Dispatchers.Main).launch {
+                                    val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
+                                    val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
+                                    ocrBlocks = textDeferred.await()
+                                    scannedCodes = codeDeferred.await()
+                                    ocrLoading = false
+                                }
+                            }
+                        }
+                    },
+                    label = { Text(label, fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = color.copy(alpha = 0.25f), selectedLabelColor = color,
+                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+            modeChip("Crop", EditMode.CROP, Primary)
+            modeChip("Pixelate", EditMode.PIXELATE, Tertiary)
+            modeChip("Draw", EditMode.DRAW, Secondary)
+            modeChip("OCR", EditMode.OCR, Color(0xFFCBA6F7))
+            modeChip("Adjust", EditMode.ADJUST, Color(0xFFFAB387))
+            // Transform tools
+            IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.Flip, "Flip V", tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
         }
 
         // Mode indicator
@@ -495,7 +677,7 @@ fun CropEditorScreen(
                 EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "DRAW — ${drawTool.label.lowercase()}")
                 EditMode.OCR -> {
                     val info = if (ocrLoading) "SCANNING..." else buildString {
-                        append("OCR — tap to copy")
+                        append("OCR — tap block to copy")
                         if (ocrBlocks.isNotEmpty()) append(" | ${ocrBlocks.size} text")
                         if (scannedCodes.isNotEmpty()) append(" | ${scannedCodes.size} code")
                     }
@@ -504,13 +686,28 @@ fun CropEditorScreen(
                 EditMode.ADJUST -> Triple(Color(0xFFFAB387).copy(alpha = 0.15f), Color(0xFFFAB387), "ADJUST — brightness, contrast, saturation")
                 else -> Triple(Color.Transparent, Color.Transparent, "")
             }
-            Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.Center) {
-                if (ocrLoading && editMode == EditMode.OCR) {
-                    CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
-                    Spacer(Modifier.width(6.dp))
+            Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ocrLoading && editMode == EditMode.OCR) {
+                        CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                 }
-                Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            val allText = ocrBlocks.joinToString("\n") { it.text }
+                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", allText))
+                            android.widget.Toast.makeText(context, "Copied all text (${ocrBlocks.size} blocks)", android.widget.Toast.LENGTH_SHORT).show()
+                            haptic()
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                    ) { Text("Copy All", color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                }
             }
         }
 
@@ -519,7 +716,7 @@ fun CropEditorScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 2.dp),
+                .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             AspectRatio.entries.forEach { ratio ->
@@ -538,11 +735,34 @@ fun CropEditorScreen(
                     shape = RoundedCornerShape(8.dp)
                 )
             }
+            // Lock indicator (tap to unlock ratio)
+            if (selectedRatio != AspectRatio.FREE) {
+                FilterChip(
+                    selected = true,
+                    onClick = { selectedRatio = AspectRatio.FREE },
+                    label = { Text("\uD83D\uDD12", fontSize = 12.sp) }, // 🔒
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Tertiary.copy(alpha = 0.3f), selectedLabelColor = Tertiary,
+                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+            // Grid mode toggle
+            FilterChip(
+                selected = gridMode < 2,
+                onClick = { gridMode = (gridMode + 1) % 3 },
+                label = { Text(when (gridMode) { 0 -> "⅓"; 1 -> "φ"; else -> "Grid" }, fontSize = 12.sp) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                    containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
         }
 
         // Tool options row (pixelate/draw mode)
         if (editMode == EditMode.PIXELATE) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 // Smart redact faces
@@ -552,7 +772,9 @@ fun CropEditorScreen(
                             faceRedacting = true
                             CoroutineScope(Dispatchers.Main).launch {
                                 val faces = FaceDetector.detect(bitmap)
+                                if (faces.isNotEmpty()) pushUndo()
                                 pixelateRects.addAll(faces)
+                                lastFaceCount = faces.size
                                 faceRedacting = false
                                 if (faces.isEmpty()) {
                                     android.widget.Toast.makeText(context, "No faces found", android.widget.Toast.LENGTH_SHORT).show()
@@ -569,15 +791,24 @@ fun CropEditorScreen(
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     if (faceRedacting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Tertiary)
-                    else Text("Blur Faces", fontSize = 11.sp, color = Tertiary)
+                    else {
+                        Text("Blur Faces", fontSize = 11.sp, color = Tertiary)
+                        if (lastFaceCount >= 0) {
+                            Spacer(Modifier.width(4.dp))
+                            Surface(color = Tertiary, shape = RoundedCornerShape(8.dp)) {
+                                Text("$lastFaceCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                    fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
 
                 Row {
                     if (pixelateRects.isNotEmpty()) {
-                        TextButton(onClick = { pixelateRects.removeLastOrNull() }) {
+                        TextButton(onClick = { pushUndo(); pixelateRects.removeLastOrNull() }) {
                             Text("Undo", color = Tertiary, fontSize = 11.sp)
                         }
-                        TextButton(onClick = { pixelateRects.clear() }) {
+                        TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
                             Text("Clear", color = Tertiary, fontSize = 11.sp)
                         }
                     }
@@ -587,7 +818,7 @@ fun CropEditorScreen(
 
         if (editMode == EditMode.DRAW) {
             // Tool + color row
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -632,10 +863,63 @@ fun CropEditorScreen(
                             .background(Color(color), RoundedCornerShape(3.dp))
                             .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
                     }
-                    // Current color preview (shows sampled color)
+                    // Recent custom colors
+                    recentColors.forEach { color ->
+                        Box(Modifier
+                            .size(if (drawColor == color) 24.dp else 18.dp)
+                            .background(Color(color), RoundedCornerShape(3.dp))
+                            .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                            .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
+                    }
+                    // Current color preview (tap to open color picker)
+                    var showColorPicker by remember { mutableStateOf(false) }
                     Box(Modifier.size(24.dp)
                         .background(Color(drawColor), RoundedCornerShape(3.dp))
-                        .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp)))
+                        .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp))
+                        .clickable { showColorPicker = true })
+                    if (showColorPicker) {
+                        var pickerR by remember { mutableFloatStateOf(((drawColor shr 16) and 0xFF) / 255f) }
+                        var pickerG by remember { mutableFloatStateOf(((drawColor shr 8) and 0xFF) / 255f) }
+                        var pickerB by remember { mutableFloatStateOf((drawColor and 0xFF) / 255f) }
+                        AlertDialog(
+                            onDismissRequest = { showColorPicker = false },
+                            title = { Text("Pick Color", color = OnSurface) },
+                            text = {
+                                Column {
+                                    Box(Modifier.fillMaxWidth().height(40.dp)
+                                        .background(Color(pickerR, pickerG, pickerB), RoundedCornerShape(8.dp)))
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("R", color = Color(0xFFFF6666), fontSize = 11.sp)
+                                    Slider(value = pickerR, onValueChange = { pickerR = it }, colors = SliderDefaults.colors(
+                                        thumbColor = Color.Red, activeTrackColor = Color.Red, inactiveTrackColor = SurfaceVariant))
+                                    Text("G", color = Color(0xFF66FF66), fontSize = 11.sp)
+                                    Slider(value = pickerG, onValueChange = { pickerG = it }, colors = SliderDefaults.colors(
+                                        thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = SurfaceVariant))
+                                    Text("B", color = Color(0xFF6666FF), fontSize = 11.sp)
+                                    Slider(value = pickerB, onValueChange = { pickerB = it }, colors = SliderDefaults.colors(
+                                        thumbColor = Color.Blue, activeTrackColor = Color.Blue, inactiveTrackColor = SurfaceVariant))
+                                    val hex = String.format("#%02X%02X%02X", (pickerR * 255).toInt(), (pickerG * 255).toInt(), (pickerB * 255).toInt())
+                                    Text(hex, color = OnSurfaceVariant, fontSize = 12.sp)
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    val newColor = (0xFF000000.toInt() or ((pickerR * 255).toInt() shl 16) or ((pickerG * 255).toInt() shl 8) or (pickerB * 255).toInt())
+                                    drawColor = newColor
+                                    if (!recentColors.contains(newColor)) {
+                                        recentColors.add(0, newColor)
+                                        if (recentColors.size > 4) recentColors.removeLast()
+                                    }
+                                    eyedropperActive = false
+                                    showColorPicker = false
+                                }) { Text("Apply", color = Primary) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showColorPicker = false }) { Text("Cancel", color = OnSurfaceVariant) }
+                            },
+                            containerColor = SurfaceVariant
+                        )
+                    }
                 }
                 Row {
                     if (drawPaths.isNotEmpty()) {
@@ -649,7 +933,7 @@ fun CropEditorScreen(
                         }) { Text("Redo", color = Secondary, fontSize = 11.sp) }
                     }
                     if (drawPaths.isNotEmpty()) {
-                        TextButton(onClick = { drawPaths.clear(); drawRedoStack.clear() }) {
+                        TextButton(onClick = { pushUndo(); drawPaths.clear(); drawRedoStack.clear() }) {
                             Text("Clear", color = Secondary, fontSize = 11.sp)
                         }
                     }
@@ -669,7 +953,7 @@ fun CropEditorScreen(
             if (drawTool == DrawTool.EMOJI) {
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     commonEmojis.forEach { emoji ->
@@ -690,6 +974,27 @@ fun CropEditorScreen(
         // Adjust mode sliders
         if (editMode == EditMode.ADJUST) {
             val adjustColor = Color(0xFFFAB387)
+            // Filter presets
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ImageFilter.entries.forEach { filter ->
+                    FilterChip(
+                        selected = selectedFilter == filter,
+                        onClick = { selectedFilter = filter },
+                        label = { Text(filter.label, fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = adjustColor.copy(alpha = 0.3f), selectedLabelColor = adjustColor,
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Brightness", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
@@ -726,8 +1031,44 @@ fun CropEditorScreen(
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(vignette * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Sharpen", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = sharpen, onValueChange = { sharpen = it },
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${String.format("%.1f", sharpen)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f }) {
+                    TextButton(onClick = {
+                        // Auto-enhance: analyze bitmap histogram and set optimal values
+                        pushUndo()
+                        val sampleSize = 4
+                        val sw = bitmap.width / sampleSize; val sh = bitmap.height / sampleSize
+                        val sampled = android.graphics.Bitmap.createScaledBitmap(bitmap, sw, sh, false)
+                        var totalLum = 0f; var minLum = 255f; var maxLum = 0f; var totalSat = 0f
+                        val pixels = IntArray(sw * sh)
+                        sampled.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+                        for (px in pixels) {
+                            val r = (px shr 16) and 0xFF; val g = (px shr 8) and 0xFF; val b = px and 0xFF
+                            val lum = 0.299f * r + 0.587f * g + 0.114f * b
+                            totalLum += lum; minLum = minOf(minLum, lum); maxLum = maxOf(maxLum, lum)
+                            val cMax = maxOf(r, g, b).toFloat(); val cMin = minOf(r, g, b).toFloat()
+                            totalSat += if (cMax > 0) (cMax - cMin) / cMax else 0f
+                        }
+                        sampled.recycle()
+                        val n = pixels.size.toFloat()
+                        val avgLum = totalLum / n
+                        val avgSat = totalSat / n
+                        // Target: mid-tone brightness, decent contrast, natural saturation
+                        brightness = ((128f - avgLum) * 0.4f).coerceIn(-40f, 40f)
+                        contrast = if (maxLum - minLum < 150) 1.2f else if (maxLum - minLum > 230) 0.95f else 1.05f
+                        saturation = if (avgSat < 0.15f) 1.3f else if (avgSat > 0.5f) 0.9f else 1.1f
+                        warmth = 0f; vignette = 0f
+                        haptic()
+                    }) {
+                        Text("Auto", color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; selectedFilter = ImageFilter.NONE }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -758,192 +1099,318 @@ fun CropEditorScreen(
                         ).asImageBitmap()
                     } catch (_: Exception) { imageBitmap }
                 }
-                Canvas(modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) { detectTapGestures(onDoubleTap = { previewMode = false }) }
-                ) {
-                    val s = min(size.width / croppedPreview.width, size.height / croppedPreview.height)
-                    val dw = croppedPreview.width * s; val dh = croppedPreview.height * s
-                    val ox = (size.width - dw) / 2; val oy = (size.height - dh) / 2
-                    drawImage(croppedPreview, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
-                        dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
+                // Before/after swipe comparison
+                var dividerX by remember { mutableFloatStateOf(0.5f) }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Canvas(modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) { detectTapGestures(onDoubleTap = { previewMode = false }) }
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown()
+                                down.consume()
+                                dividerX = (down.position.x / size.width).coerceIn(0f, 1f)
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) break
+                                    dividerX = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    change.consume()
+                                }
+                            }
+                        }
+                    ) {
+                        // Right side: cropped preview (full)
+                        val s = min(size.width / croppedPreview.width, size.height / croppedPreview.height)
+                        val dw = croppedPreview.width * s; val dh = croppedPreview.height * s
+                        val ox = (size.width - dw) / 2; val oy = (size.height - dh) / 2
+                        drawImage(croppedPreview, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+                            dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
+
+                        // Left side: original image (clipped to divider)
+                        val divPx = size.width * dividerX
+                        clipRect(left = 0f, top = 0f, right = divPx, bottom = size.height) {
+                            val os = min(size.width / imageBitmap.width, size.height / imageBitmap.height)
+                            val odw = imageBitmap.width * os; val odh = imageBitmap.height * os
+                            val oox = (size.width - odw) / 2; val ooy = (size.height - odh) / 2
+                            drawImage(imageBitmap, dstOffset = IntOffset(oox.roundToInt(), ooy.roundToInt()),
+                                dstSize = IntSize(odw.roundToInt(), odh.roundToInt()))
+                        }
+
+                        // Divider line
+                        drawLine(Color.White, Offset(divPx, 0f), Offset(divPx, size.height), strokeWidth = 3f)
+                        drawCircle(Color.White, 12f, Offset(divPx, size.height / 2))
+                    }
+                    // Labels
+                    Text("BEFORE", Modifier.align(Alignment.TopStart).padding(12.dp),
+                        color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("AFTER", Modifier.align(Alignment.TopEnd).padding(12.dp),
+                        color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             } else {
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(bitmap, editMode) {
-                            detectDragGestures(
-                                onDragStart = { pos ->
-                                    when (editMode) {
-                                        EditMode.PIXELATE -> { pixDragStart = pos; pixDragCurrent = pos }
-                                        EditMode.DRAW -> {
-                                            drawRedoStack.clear()
-                                            val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
-                                            val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
-                                            if (drawTool == DrawTool.TEXT) {
-                                                textPlacePoint = PointF(bx, by)
-                                                textDialogValue = ""
-                                                showTextDialog = true
-                                            } else if (drawTool == DrawTool.CALLOUT) {
-                                                // Place numbered circle at tap point
-                                                drawPaths.add(DrawPath(
-                                                    points = listOf(PointF(bx, by)),
-                                                    color = drawColor,
-                                                    strokeWidth = drawStrokeWidth,
-                                                    shapeType = "callout",
-                                                    text = "${calloutCounter++}"
-                                                ))
-                                                haptic()
-                                            } else if (drawTool == DrawTool.MAGNIFIER) {
-                                                // Place magnifier loupe at tap point
-                                                drawPaths.add(DrawPath(
-                                                    points = listOf(PointF(bx, by)),
-                                                    color = drawColor,
-                                                    strokeWidth = drawStrokeWidth,
-                                                    shapeType = "magnifier"
-                                                ))
-                                                haptic()
-                                            } else if (drawTool == DrawTool.EMOJI) {
-                                                // Place emoji at tap point
-                                                drawPaths.add(DrawPath(
-                                                    points = listOf(PointF(bx, by)),
-                                                    color = drawColor,
-                                                    strokeWidth = drawStrokeWidth,
-                                                    shapeType = "emoji",
-                                                    text = selectedEmoji
-                                                ))
-                                                haptic()
+                        .pointerInput(bitmap, editMode, ocrBlocks, scannedCodes) {
+                            var lastTapTime = 0L
+                            var lastTapPos = Offset.Zero
+
+                            awaitEachGesture {
+                                val firstDown = awaitFirstDown()
+                                firstDown.consume()
+                                val downPos = firstDown.position
+
+                                val cropHandle = if (editMode == EditMode.CROP) findHandle(downPos) else DragHandle.NONE
+
+                                var totalDrag = Offset.Zero
+                                var moved = false
+                                var multiTouch = false
+                                var dragStarted = false
+                                var dragStartTime = 0L
+                                var drawPathLength = 0f
+                                var prevSpread = 0f
+                                var prevCentroid = downPos
+                                var prevCount = 1
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+
+                                    if (pressed.isEmpty()) {
+                                        // All fingers up
+                                        if (!moved && !multiTouch) {
+                                            // TAP
+                                            val now = event.changes.first().uptimeMillis
+                                            if (now - lastTapTime < 300L && (downPos - lastTapPos).getDistance() < viewConfiguration.touchSlop * 3) {
+                                                // Double tap
+                                                if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
+                                                    // Double-tap in OCR: crop to tapped text block
+                                                    val bx = ((downPos.x - offsetX) / scaleX).toInt()
+                                                    val by = ((downPos.y - offsetY) / scaleY).toInt()
+                                                    val tapped = ocrBlocks.find { it.bounds.contains(bx, by) }
+                                                    if (tapped != null) {
+                                                        pushUndo()
+                                                        val pad = 10
+                                                        cropLeft = (tapped.bounds.left - pad).coerceAtLeast(0)
+                                                        cropTop = (tapped.bounds.top - pad).coerceAtLeast(0)
+                                                        cropRight = (tapped.bounds.right + pad).coerceAtMost(bitmap.width)
+                                                        cropBottom = (tapped.bounds.bottom + pad).coerceAtMost(bitmap.height)
+                                                        selectedRatio = AspectRatio.FREE
+                                                        editMode = EditMode.CROP
+                                                        android.widget.Toast.makeText(context, "Cropped to text block", android.widget.Toast.LENGTH_SHORT).show()
+                                                        haptic()
+                                                    }
+                                                } else if (zoomLevel > 1.05f) { zoomLevel = 1f; panX = 0f; panY = 0f }
+                                                else previewMode = true
+                                                lastTapTime = 0L
                                             } else {
-                                                currentDrawPoints = listOf(PointF(bx, by))
-                                            }
-                                        }
-                                        EditMode.CROP -> {
-                                            activeHandle = findHandle(pos)
-                                            if (activeHandle != DragHandle.NONE) pushUndo()
-                                        }
-                                        EditMode.OCR, EditMode.ADJUST -> {}
-                                    }
-                                },
-                                onDragEnd = {
-                                    when (editMode) {
-                                        EditMode.PIXELATE -> {
-                                            if (pixDragStart != null && pixDragCurrent != null) {
-                                                val s = pixDragStart!!; val e = pixDragCurrent!!
-                                                val bx1 = ((minOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
-                                                val by1 = ((minOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
-                                                val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
-                                                val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
-                                                if (bx2 - bx1 > 10 && by2 - by1 > 10) {
-                                                    pixelateRects.add(Rect(bx1, by1, bx2, by2))
+                                                lastTapTime = now
+                                                lastTapPos = downPos
+                                                // Single tap actions
+                                                if (eyedropperActive && editMode == EditMode.DRAW) {
+                                                    val bx = ((downPos.x - offsetX) / scaleX).toInt().coerceIn(0, bitmap.width - 1)
+                                                    val by = ((downPos.y - offsetY) / scaleY).toInt().coerceIn(0, bitmap.height - 1)
+                                                    drawColor = bitmap.getPixel(bx, by)
+                                                    eyedropperActive = false
+                                                    haptic()
+                                                } else if (editMode == EditMode.DRAW) {
+                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
+                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                                    when (drawTool) {
+                                                        DrawTool.TEXT -> {
+                                                            textPlacePoint = PointF(bx, by)
+                                                            textDialogValue = ""
+                                                            showTextDialog = true
+                                                        }
+                                                        DrawTool.CALLOUT -> {
+                                                            drawPaths.add(DrawPath(
+                                                                points = listOf(PointF(bx, by)),
+                                                                color = drawColor, strokeWidth = drawStrokeWidth,
+                                                                shapeType = "callout", text = "${calloutCounter++}"
+                                                            ))
+                                                            haptic()
+                                                        }
+                                                        DrawTool.MAGNIFIER -> {
+                                                            drawPaths.add(DrawPath(
+                                                                points = listOf(PointF(bx, by)),
+                                                                color = drawColor, strokeWidth = drawStrokeWidth,
+                                                                shapeType = "magnifier"
+                                                            ))
+                                                            haptic()
+                                                        }
+                                                        DrawTool.EMOJI -> {
+                                                            drawPaths.add(DrawPath(
+                                                                points = listOf(PointF(bx, by)),
+                                                                color = drawColor, strokeWidth = drawStrokeWidth,
+                                                                shapeType = "emoji", text = selectedEmoji
+                                                            ))
+                                                            haptic()
+                                                        }
+                                                        else -> {}
+                                                    }
+                                                } else if (editMode == EditMode.OCR) {
+                                                    val bx = ((downPos.x - offsetX) / scaleX).toInt()
+                                                    val by = ((downPos.y - offsetY) / scaleY).toInt()
+                                                    val tappedCode = scannedCodes.find { it.bounds.contains(bx, by) }
+                                                    if (tappedCode != null) {
+                                                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                        cm.setPrimaryClip(ClipData.newPlainText("SnapCrop QR", tappedCode.rawValue))
+                                                        android.widget.Toast.makeText(context, "Copied: ${tappedCode.displayValue.take(80)}", android.widget.Toast.LENGTH_SHORT).show()
+                                                        haptic()
+                                                    } else {
+                                                        val tappedText = ocrBlocks.find { it.bounds.contains(bx, by) }
+                                                        if (tappedText != null) {
+                                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tappedText.text))
+                                                            android.widget.Toast.makeText(context, "Copied: ${tappedText.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
+                                                            haptic()
+                                                        }
+                                                    }
                                                 }
                                             }
-                                            pixDragStart = null; pixDragCurrent = null
                                         }
-                                        EditMode.DRAW -> {
-                                            if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT && drawTool != DrawTool.CALLOUT) {
-                                                val shape = when (drawTool) {
-                                                    DrawTool.RECT -> "rect"
-                                                    DrawTool.CIRCLE -> "circle"
-                                                    DrawTool.HIGHLIGHT -> "highlight"
-                                                    DrawTool.SPOTLIGHT -> "spotlight"
-                                                    DrawTool.NEON -> "neon"
-                                                    else -> null
+
+                                        // Drag end cleanup
+                                        if (dragStarted) {
+                                            when (editMode) {
+                                                EditMode.PIXELATE -> {
+                                                    if (pixDragStart != null && pixDragCurrent != null) {
+                                                        val s = pixDragStart!!; val e = pixDragCurrent!!
+                                                        val bx1 = ((minOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                                        val by1 = ((minOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                                        val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
+                                                        val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
+                                                        if (bx2 - bx1 > 10 && by2 - by1 > 10) {
+                                                            pixelateRects.add(Rect(bx1, by1, bx2, by2))
+                                                            haptic()
+                                                        }
+                                                    }
+                                                    pixDragStart = null; pixDragCurrent = null
                                                 }
-                                                drawPaths.add(DrawPath(
-                                                    points = when {
-                                                        shape == "rect" || shape == "circle" || shape == "spotlight" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
-                                                        drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON -> smoothPath(currentDrawPoints)
-                                                        else -> currentDrawPoints.toList()
-                                                    },
-                                                    color = drawColor,
-                                                    strokeWidth = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth,
-                                                    isArrow = drawTool == DrawTool.ARROW,
-                                                    shapeType = shape,
-                                                    filled = shapeFilled && (shape == "rect" || shape == "circle"),
-                                                    dashed = dashedStroke
-                                                ))
+                                                EditMode.DRAW -> {
+                                                    if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT && drawTool != DrawTool.CALLOUT) {
+                                                        val shape = when (drawTool) {
+                                                            DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
+                                                            DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
+                                                            DrawTool.NEON -> "neon"; else -> null
+                                                        }
+                                                        // Velocity-based stroke modulation for freehand tools
+                                                        val velFactor = if (drawTool == DrawTool.PEN || drawTool == DrawTool.NEON) {
+                                                            val elapsed = (System.currentTimeMillis() - dragStartTime).coerceAtLeast(1)
+                                                            val velocity = drawPathLength / elapsed // px/ms
+                                                            (1.5f - velocity * 0.8f).coerceIn(0.6f, 1.5f) // slow=thick, fast=thin
+                                                        } else 1f
+                                                        val baseWidth = if (drawTool == DrawTool.HIGHLIGHT) drawStrokeWidth * 3 else drawStrokeWidth
+                                                        drawPaths.add(DrawPath(
+                                                            points = when {
+                                                                shape == "rect" || shape == "circle" || shape == "spotlight" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                                drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON -> smoothPath(currentDrawPoints)
+                                                                else -> currentDrawPoints.toList()
+                                                            },
+                                                            color = drawColor,
+                                                            strokeWidth = baseWidth * velFactor,
+                                                            isArrow = drawTool == DrawTool.ARROW,
+                                                            shapeType = shape,
+                                                            filled = shapeFilled && (shape == "rect" || shape == "circle"),
+                                                            dashed = dashedStroke
+                                                        ))
+                                                        haptic()
+                                                    }
+                                                    currentDrawPoints = emptyList()
+                                                }
+                                                EditMode.CROP -> {}
+                                                EditMode.OCR, EditMode.ADJUST -> {}
                                             }
-                                            currentDrawPoints = emptyList()
                                         }
-                                        EditMode.CROP -> activeHandle = DragHandle.NONE
-                                        EditMode.OCR, EditMode.ADJUST -> {}
+                                        activeHandle = DragHandle.NONE
+                                        pixDragStart = null; pixDragCurrent = null
+                                        currentDrawPoints = emptyList()
+                                        break
                                     }
-                                },
-                                onDragCancel = {
-                                    activeHandle = DragHandle.NONE
-                                    pixDragStart = null; pixDragCurrent = null
-                                    currentDrawPoints = emptyList()
-                                },
-                                onDrag = { change, dragAmount ->
+
+                                    // Multi-touch: pinch-to-zoom
+                                    if (pressed.size >= 2) {
+                                        multiTouch = true
+                                        val centroid = Offset(
+                                            pressed.map { it.position.x }.average().toFloat(),
+                                            pressed.map { it.position.y }.average().toFloat()
+                                        )
+                                        val spread = pressed.map { (it.position - centroid).getDistance() }.average().toFloat()
+                                        if (prevCount >= 2 && prevSpread > 0f) {
+                                            val zoom = spread / prevSpread
+                                            val pan = centroid - prevCentroid
+                                            if (zoom != 1f || zoomLevel > 1.05f) {
+                                                zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
+                                                panX += pan.x; panY += pan.y
+                                            }
+                                        }
+                                        prevCentroid = centroid
+                                        prevSpread = spread
+                                        prevCount = pressed.size
+                                        event.changes.forEach { it.consume() }
+                                        continue
+                                    }
+
+                                    // Single finger drag
+                                    prevCount = 1
+                                    val change = pressed.first()
+                                    val dragDelta = change.positionChange()
+                                    totalDrag += dragDelta
+
+                                    if (!moved && totalDrag.getDistance() > viewConfiguration.touchSlop) {
+                                        moved = true
+                                    }
+
+                                    if (moved && !multiTouch) {
+                                        if (!dragStarted) {
+                                            dragStarted = true
+                                            dragStartTime = System.currentTimeMillis()
+                                            when {
+                                                cropHandle != DragHandle.NONE -> {
+                                                    activeHandle = cropHandle
+                                                    pushUndo()
+                                                }
+                                                editMode == EditMode.PIXELATE -> {
+                                                    pixDragStart = downPos; pixDragCurrent = downPos
+                                                }
+                                                editMode == EditMode.DRAW -> {
+                                                    drawRedoStack.clear()
+                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
+                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                                    currentDrawPoints = listOf(PointF(bx, by))
+                                                }
+                                            }
+                                        }
+
+                                        when {
+                                            cropHandle != DragHandle.NONE -> {
+                                                // Precision mode: after 800ms of dragging, slow down by 4x for fine-tuning
+                                                val precisionScale = if (System.currentTimeMillis() - dragStartTime > 800) 0.25f else 1f
+                                                constrainToRatio(cropHandle,
+                                                    (dragDelta.x / scaleX * precisionScale).roundToInt(),
+                                                    (dragDelta.y / scaleY * precisionScale).roundToInt())
+                                            }
+                                            editMode == EditMode.PIXELATE -> {
+                                                pixDragCurrent = pixDragCurrent?.plus(dragDelta)
+                                            }
+                                            editMode == EditMode.DRAW -> {
+                                                val pos = change.position
+                                                val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
+                                                val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                                if (currentDrawPoints.isNotEmpty()) {
+                                                    val prev = currentDrawPoints.last()
+                                                    drawPathLength += kotlin.math.sqrt(((bx - prev.x) * (bx - prev.x) + (by - prev.y) * (by - prev.y)).toDouble()).toFloat()
+                                                }
+                                                currentDrawPoints = currentDrawPoints + PointF(bx, by)
+                                            }
+                                            editMode == EditMode.CROP && zoomLevel > 1.05f -> {
+                                                panX += dragDelta.x; panY += dragDelta.y
+                                            }
+                                        }
+                                    }
                                     change.consume()
-                                    when (editMode) {
-                                        EditMode.PIXELATE -> pixDragCurrent = pixDragCurrent?.plus(Offset(dragAmount.x, dragAmount.y))
-                                        EditMode.DRAW -> {
-                                            val pos = change.position
-                                            val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
-                                            val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
-                                            currentDrawPoints = currentDrawPoints + PointF(bx, by)
-                                        }
-                                        EditMode.CROP -> constrainToRatio(activeHandle,
-                                            (dragAmount.x / scaleX).roundToInt(),
-                                            (dragAmount.y / scaleY).roundToInt())
-                                        EditMode.OCR, EditMode.ADJUST -> {}
-                                    }
-                                }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectTransformGestures(panZoomLock = true) { _, pan, zoom, _ ->
-                                if (zoom != 1f || zoomLevel > 1.05f) {
-                                    zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
-                                    panX += pan.x
-                                    panY += pan.y
                                 }
                             }
-                        }
-                        .pointerInput(editMode, ocrBlocks, scannedCodes) {
-                            detectTapGestures(
-                                onDoubleTap = {
-                                    if (zoomLevel > 1.05f) { zoomLevel = 1f; panX = 0f; panY = 0f }
-                                    else previewMode = true
-                                },
-                                onTap = { pos ->
-                                    // Eyedropper: sample pixel color from bitmap
-                                    if (eyedropperActive && editMode == EditMode.DRAW) {
-                                        val bx = ((pos.x - offsetX) / scaleX).toInt().coerceIn(0, bitmap.width - 1)
-                                        val by = ((pos.y - offsetY) / scaleY).toInt().coerceIn(0, bitmap.height - 1)
-                                        drawColor = bitmap.getPixel(bx, by)
-                                        eyedropperActive = false
-                                        haptic()
-                                        return@detectTapGestures
-                                    }
-
-                                    if (editMode == EditMode.OCR) {
-                                        val bx = ((pos.x - offsetX) / scaleX).toInt()
-                                        val by = ((pos.y - offsetY) / scaleY).toInt()
-
-                                        // Check barcodes first (higher priority)
-                                        val tappedCode = scannedCodes.find { it.bounds.contains(bx, by) }
-                                        if (tappedCode != null) {
-                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop QR", tappedCode.rawValue))
-                                            android.widget.Toast.makeText(context, "Copied: ${tappedCode.displayValue.take(80)}", android.widget.Toast.LENGTH_SHORT).show()
-                                            haptic()
-                                            return@detectTapGestures
-                                        }
-
-                                        // Then check text blocks
-                                        val tappedText = ocrBlocks.find { it.bounds.contains(bx, by) }
-                                        if (tappedText != null) {
-                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tappedText.text))
-                                            android.widget.Toast.makeText(context, "Copied: ${tappedText.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
-                                            haptic()
-                                        }
-                                    }
-                                }
-                            )
                         }
                 ) {
                     val imgW = bitmap.width.toFloat(); val imgH = bitmap.height.toFloat()
@@ -958,8 +1425,14 @@ fun CropEditorScreen(
                     val drawW = imgW * scale; val drawH = imgH * scale
 
                     // Build color adjustment matrix
-                    val adjustFilter = if (brightness != 0f || contrast != 1f || saturation != 1f || warmth != 0f) {
+                    val hasAdjustments = brightness != 0f || contrast != 1f || saturation != 1f || warmth != 0f || selectedFilter != ImageFilter.NONE
+                    val adjustFilter = if (hasAdjustments) {
                         val cm = ColorMatrix()
+                        // Image filter preset (applied first)
+                        val filterMat = getFilterMatrix(selectedFilter)
+                        if (filterMat != null) {
+                            cm.timesAssign(ColorMatrix(filterMat.getArray()))
+                        }
                         // Saturation
                         if (saturation != 1f) cm.timesAssign(ColorMatrix().apply { setToSaturation(saturation) })
                         // Contrast: scale around 0.5
@@ -1024,12 +1497,50 @@ fun CropEditorScreen(
 
                     drawRect(CropBorder, Offset(sl, st), Size(sr - sl, sb - st), style = Stroke(2.dp.toPx()))
 
-                    // Rule of thirds
+                    // Snap guide lines (show when crop edge aligns with a guide)
+                    if (activeHandle != DragHandle.NONE && activeHandle != DragHandle.CENTER && selectedRatio.ratio == null) {
+                        val snapGuideColor = Primary.copy(alpha = 0.35f)
+                        val xGuides = listOf(0, bitmap.width / 4, bitmap.width / 3, bitmap.width / 2,
+                            bitmap.width * 2 / 3, bitmap.width * 3 / 4, bitmap.width)
+                        val yGuides = listOf(0, bitmap.height / 4, bitmap.height / 3, bitmap.height / 2,
+                            bitmap.height * 2 / 3, bitmap.height * 3 / 4, bitmap.height)
+                        for (g in xGuides) {
+                            if (cropLeft == g || cropRight == g) {
+                                val gx = ox + g * scale
+                                drawLine(snapGuideColor, Offset(gx, oy), Offset(gx, oy + drawH), 1.dp.toPx(),
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
+                            }
+                        }
+                        for (g in yGuides) {
+                            if (cropTop == g || cropBottom == g) {
+                                val gy = oy + g * scale
+                                drawLine(snapGuideColor, Offset(ox, gy), Offset(ox + drawW, gy), 1.dp.toPx(),
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 4f)))
+                            }
+                        }
+                    }
+
+                    // Grid overlay (tap crop border text to cycle: thirds → golden → off)
                     val gridColor = CropBorder.copy(alpha = 0.3f)
-                    val tw = (sr - sl) / 3; val th = (sb - st) / 3
-                    for (i in 1..2) {
-                        drawLine(gridColor, Offset(sl + tw * i, st), Offset(sl + tw * i, sb), 1f)
-                        drawLine(gridColor, Offset(sl, st + th * i), Offset(sr, st + th * i), 1f)
+                    val cw = sr - sl; val ch = sb - st
+                    when (gridMode) {
+                        0 -> { // Rule of thirds
+                            val tw = cw / 3; val th = ch / 3
+                            for (i in 1..2) {
+                                drawLine(gridColor, Offset(sl + tw * i, st), Offset(sl + tw * i, sb), 1f)
+                                drawLine(gridColor, Offset(sl, st + th * i), Offset(sr, st + th * i), 1f)
+                            }
+                        }
+                        1 -> { // Golden ratio (φ ≈ 0.618)
+                            val phi = 0.618f
+                            val gx1 = cw * phi; val gx2 = cw * (1f - phi)
+                            val gy1 = ch * phi; val gy2 = ch * (1f - phi)
+                            drawLine(gridColor, Offset(sl + gx1, st), Offset(sl + gx1, sb), 1f)
+                            drawLine(gridColor, Offset(sl + gx2, st), Offset(sl + gx2, sb), 1f)
+                            drawLine(gridColor, Offset(sl, st + gy1), Offset(sr, st + gy1), 1f)
+                            drawLine(gridColor, Offset(sl, st + gy2), Offset(sr, st + gy2), 1f)
+                        }
+                        // 2 = no grid
                     }
 
                     // Corner handles
@@ -1083,8 +1594,20 @@ fun CropEditorScreen(
                                 this.color = dp.color
                                 textSize = dp.strokeWidth * scale * 3
                             }
-                            drawContext.canvas.nativeCanvas.drawText(
-                                dp.text, ox + p.x * scale, oy + p.y * scale, textPaint)
+                            val tx = ox + p.x * scale; val ty = oy + p.y * scale
+                            // Background pill
+                            if (dp.filled) {
+                                val bounds = android.graphics.Rect()
+                                textPaint.getTextBounds(dp.text, 0, dp.text.length, bounds)
+                                val pad = textPaint.textSize * 0.3f
+                                val bgColor = 0xCC000000.toInt()
+                                val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                                bgPaint.color = bgColor; bgPaint.style = android.graphics.Paint.Style.FILL
+                                drawContext.canvas.nativeCanvas.drawRoundRect(
+                                    tx - pad, ty + bounds.top - pad, tx + bounds.width() + pad, ty + bounds.bottom + pad,
+                                    pad, pad, bgPaint)
+                            }
+                            drawContext.canvas.nativeCanvas.drawText(dp.text, tx, ty, textPaint)
                             return
                         }
 
@@ -1405,7 +1928,7 @@ fun CropEditorScreen(
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
                 val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }
-                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette)
+                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -1415,7 +1938,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }, warmth, vignette)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
@@ -1423,6 +1946,19 @@ fun CropEditorScreen(
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = Color.Black)
                 Spacer(Modifier.width(8.dp))
                 Text("Crop & Save", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                // Estimated file size
+                val prefs = context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE)
+                val isJpeg = prefs.getBoolean("use_jpeg", false)
+                val isWebp = prefs.getBoolean("use_webp", false)
+                val pixels = cropW.toLong() * cropH
+                val estKb = when {
+                    isWebp -> pixels * 0.5f / 1024 // ~0.5 bytes/px for WebP
+                    isJpeg -> pixels * 0.8f / 1024  // ~0.8 bytes/px for JPEG
+                    else -> pixels * 3f / 1024       // ~3 bytes/px for PNG
+                }
+                val estLabel = if (estKb > 1024) String.format("~%.1f MB", estKb / 1024) else String.format("~%.0f KB", estKb)
+                Spacer(Modifier.width(6.dp))
+                Text(estLabel, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
             }
         }
     }
@@ -1467,23 +2003,40 @@ fun CropEditorScreen(
 
     // Text input dialog
     if (showTextDialog) {
+        var textBg by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showTextDialog = false },
             title = { Text("Add Text", color = OnSurface) },
             text = {
-                OutlinedTextField(
-                    value = textDialogValue,
-                    onValueChange = { textDialogValue = it },
-                    placeholder = { Text("Type here...") },
-                    singleLine = false,
-                    maxLines = 3,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Primary,
-                        unfocusedBorderColor = Outline,
-                        focusedTextColor = OnSurface,
-                        unfocusedTextColor = OnSurface
+                Column {
+                    OutlinedTextField(
+                        value = textDialogValue,
+                        onValueChange = { textDialogValue = it },
+                        placeholder = { Text("Type here...") },
+                        singleLine = false,
+                        maxLines = 3,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Primary,
+                            unfocusedBorderColor = Outline,
+                            focusedTextColor = OnSurface,
+                            unfocusedTextColor = OnSurface
+                        )
                     )
-                )
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(
+                            selected = textBg,
+                            onClick = { textBg = !textBg },
+                            label = { Text("Background", fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Size: ${(drawStrokeWidth * 3).toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp)
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -1493,7 +2046,8 @@ fun CropEditorScreen(
                             color = drawColor,
                             strokeWidth = drawStrokeWidth,
                             shapeType = "text",
-                            text = textDialogValue
+                            text = textDialogValue,
+                            filled = textBg
                         ))
                     }
                     showTextDialog = false
@@ -1501,6 +2055,79 @@ fun CropEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showTextDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
+    // Crop input dialog — type exact pixel values
+    if (showCropInputDialog) {
+        var inputX by remember { mutableStateOf(cropLeft.toString()) }
+        var inputY by remember { mutableStateOf(cropTop.toString()) }
+        var inputW by remember { mutableStateOf(cropW.toString()) }
+        var inputH by remember { mutableStateOf(cropH.toString()) }
+        AlertDialog(
+            onDismissRequest = { showCropInputDialog = false },
+            title = { Text("Crop Dimensions", color = OnSurface) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Image: ${bitmap.width}x${bitmap.height}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = inputX, onValueChange = { inputX = it.filter { c -> c.isDigit() } },
+                            label = { Text("X", fontSize = 11.sp) }, singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                focusedTextColor = OnSurface, unfocusedTextColor = OnSurface, focusedLabelColor = Primary)
+                        )
+                        OutlinedTextField(
+                            value = inputY, onValueChange = { inputY = it.filter { c -> c.isDigit() } },
+                            label = { Text("Y", fontSize = 11.sp) }, singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                focusedTextColor = OnSurface, unfocusedTextColor = OnSurface, focusedLabelColor = Primary)
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = inputW, onValueChange = { inputW = it.filter { c -> c.isDigit() } },
+                            label = { Text("Width", fontSize = 11.sp) }, singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                focusedTextColor = OnSurface, unfocusedTextColor = OnSurface, focusedLabelColor = Primary)
+                        )
+                        OutlinedTextField(
+                            value = inputH, onValueChange = { inputH = it.filter { c -> c.isDigit() } },
+                            label = { Text("Height", fontSize = 11.sp) }, singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                                focusedTextColor = OnSurface, unfocusedTextColor = OnSurface, focusedLabelColor = Primary)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val x = inputX.toIntOrNull() ?: 0
+                    val y = inputY.toIntOrNull() ?: 0
+                    val w = inputW.toIntOrNull() ?: cropW
+                    val h = inputH.toIntOrNull() ?: cropH
+                    val newLeft = x.coerceIn(0, bitmap.width - 50)
+                    val newTop = y.coerceIn(0, bitmap.height - 50)
+                    val newRight = (newLeft + w).coerceIn(newLeft + 50, bitmap.width)
+                    val newBottom = (newTop + h).coerceIn(newTop + 50, bitmap.height)
+                    pushUndo()
+                    cropLeft = newLeft; cropTop = newTop; cropRight = newRight; cropBottom = newBottom
+                    selectedRatio = AspectRatio.FREE
+                    showCropInputDialog = false
+                }) { Text("Apply", color = Primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCropInputDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
             },
             containerColor = SurfaceVariant
         )

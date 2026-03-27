@@ -88,19 +88,41 @@ class MainActivity : ComponentActivity() {
         if (uris.isNotEmpty()) batchAutocrop(uris)
     }
 
+    private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+                          else android.graphics.Bitmap.CompressFormat.WEBP
+                Triple(fmt, quality, "webp")
+            }
+            prefs.getBoolean("use_jpeg", false) -> Triple(android.graphics.Bitmap.CompressFormat.JPEG, quality, "jpg")
+            else -> Triple(android.graphics.Bitmap.CompressFormat.PNG, 100, "png")
+        }
+    }
+
     private val batchProgress = mutableStateOf("")
+    private val batchProgressFraction = mutableFloatStateOf(0f)
+    private val batchCancelled = mutableStateOf(false)
     private val resizeUris = mutableStateOf<List<Uri>>(emptyList())
     private val showResizeDialogState = mutableStateOf(false)
 
     private fun batchAutocrop(uris: List<Uri>) {
+        batchCancelled.value = false
         CoroutineScope(Dispatchers.IO).launch {
             val statusBarPx = SystemBars.statusBarHeight(resources)
             val navBarPx = SystemBars.navigationBarHeight(resources)
-            var done = 0
+            var done = 0; var failed = 0
             val total = uris.size
 
             for (uri in uris) {
-                withContext(Dispatchers.Main) { batchProgress.value = "Cropping ${done + 1}/$total..." }
+                if (batchCancelled.value) break
+                withContext(Dispatchers.Main) {
+                    batchProgress.value = "Cropping ${done + 1}/$total..."
+                    batchProgressFraction.floatValue = done.toFloat() / total
+                }
                 try {
                     contentResolver.openInputStream(uri)?.use { stream ->
                         val bitmap = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
@@ -115,16 +137,18 @@ class MainActivity : ComponentActivity() {
                                 cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0)))
                         }
 
+                        val (fmt, qual, ext) = getSaveFormat()
+                        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
                         val values = android.content.ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.png")
-                            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
+                            put(MediaStore.Images.Media.MIME_TYPE, mime)
+                            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
                             put(MediaStore.Images.Media.IS_PENDING, 1)
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
                             contentResolver.openOutputStream(savedUri)?.use { out ->
-                                toSave.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                toSave.compress(fmt, qual, out)
                             }
                             values.clear()
                             values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -133,12 +157,18 @@ class MainActivity : ComponentActivity() {
                         if (toSave !== bitmap) toSave.recycle()
                         bitmap.recycle()
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) { failed++ }
                 done++
             }
+            val cancelled = batchCancelled.value
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                Toast.makeText(this@MainActivity, "Batch cropped $done images", Toast.LENGTH_SHORT).show()
+                val msg = buildString {
+                    append("Cropped ${done - failed}/$total")
+                    if (failed > 0) append(" ($failed failed)")
+                    if (cancelled) append(" (stopped)")
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 loadRecentCrops()
             }
         }
@@ -202,6 +232,8 @@ class MainActivity : ComponentActivity() {
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
                                 onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
                                 batchProgress = batchProgress.value,
+                                batchFraction = batchProgressFraction.floatValue,
+                                onBatchCancel = { batchCancelled.value = true },
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = {
                                     startActivity(Intent(
@@ -328,10 +360,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun batchResize(uris: List<Uri>, maxDim: Int) {
+        batchCancelled.value = false
         CoroutineScope(Dispatchers.IO).launch {
-            var done = 0
+            var done = 0; var failed = 0
             for (uri in uris) {
-                withContext(Dispatchers.Main) { batchProgress.value = "Resizing ${done + 1}/${uris.size}..." }
+                if (batchCancelled.value) break
+                withContext(Dispatchers.Main) {
+                    batchProgress.value = "Resizing ${done + 1}/${uris.size}..."
+                    batchProgressFraction.floatValue = done.toFloat() / uris.size
+                }
                 try {
                     contentResolver.openInputStream(uri)?.use { stream ->
                         val bmp = BitmapFactory.decodeStream(stream) ?: return@use
@@ -341,16 +378,18 @@ class MainActivity : ComponentActivity() {
                         val newH = (bmp.height * scale).toInt()
                         val resized = android.graphics.Bitmap.createScaledBitmap(bmp, newW, newH, true)
                         bmp.recycle()
+                        val (fmt, qual, ext) = getSaveFormat()
+                        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
                         val values = android.content.ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Resize_${System.currentTimeMillis()}.png")
-                            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Resize_${System.currentTimeMillis()}.$ext")
+                            put(MediaStore.Images.Media.MIME_TYPE, mime)
+                            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
                             put(MediaStore.Images.Media.IS_PENDING, 1)
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
                             contentResolver.openOutputStream(savedUri)?.use { out ->
-                                resized.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                                resized.compress(fmt, qual, out)
                             }
                             values.clear()
                             values.put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -358,12 +397,18 @@ class MainActivity : ComponentActivity() {
                         }
                         resized.recycle()
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) { failed++ }
                 done++
             }
+            val cancelled = batchCancelled.value
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                Toast.makeText(this@MainActivity, "Resized $done images to ${maxDim}px", Toast.LENGTH_SHORT).show()
+                val msg = buildString {
+                    append("Resized ${done - failed}/${uris.size} to ${maxDim}px")
+                    if (failed > 0) append(" ($failed failed)")
+                    if (cancelled) append(" (stopped)")
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 galleryRefreshKey.intValue++
             }
         }
@@ -530,8 +575,10 @@ class MainActivity : ComponentActivity() {
                     MediaStore.Images.Media._ID,
                     MediaStore.Images.Media.DISPLAY_NAME
                 )
+                val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                    .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
                 val selection = "${MediaStore.Images.Media.RELATIVE_PATH} LIKE ?"
-                val selectionArgs = arrayOf("Pictures/SnapCrop%")
+                val selectionArgs = arrayOf("$savePath%")
                 val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
                 contentResolver.query(
@@ -585,6 +632,8 @@ private fun HomeScreen(
     onCollage: () -> Unit,
     onDeviceFrame: () -> Unit,
     batchProgress: String,
+    batchFraction: Float,
+    onBatchCancel: () -> Unit,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -615,7 +664,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v5.9.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v6.1.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -744,17 +793,36 @@ private fun HomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
+        // Batch progress bar
+        if (batchProgress.isNotEmpty()) {
+            LinearProgressIndicator(
+                progress = { batchFraction.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                color = Primary,
+                trackColor = SurfaceVariant
+            )
+        }
+
         // Batch crop
-        OutlinedButton(
-            onClick = onBatchCrop,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
-            enabled = batchProgress.isEmpty()
-        ) {
-            Icon(Icons.Default.BurstMode, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(if (batchProgress.isNotEmpty()) batchProgress else "Batch Autocrop")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = onBatchCrop,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
+                enabled = batchProgress.isEmpty()
+            ) {
+                Icon(Icons.Default.BurstMode, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (batchProgress.isNotEmpty()) batchProgress else "Batch Autocrop")
+            }
+            if (batchProgress.isNotEmpty()) {
+                OutlinedButton(
+                    onClick = onBatchCancel,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary)
+                ) { Text("Stop") }
+            }
         }
 
         Spacer(Modifier.height(8.dp))

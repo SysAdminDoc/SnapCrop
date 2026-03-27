@@ -44,6 +44,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -583,13 +584,46 @@ private fun PhotoViewer(
         }
     }
 
+    // Pinch-to-zoom state per page
+    var viewerZoom by remember { mutableFloatStateOf(1f) }
+    var viewerPanX by remember { mutableFloatStateOf(0f) }
+    var viewerPanY by remember { mutableFloatStateOf(0f) }
+
+    // Reset zoom on page change
+    LaunchedEffect(pagerState.currentPage) {
+        viewerZoom = 1f; viewerPanX = 0f; viewerPanY = 0f
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = viewerZoom <= 1.05f
+        ) { page ->
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(photos[page].uri).crossfade(true).build(),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize().clickable { showInfo = !showInfo },
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = viewerZoom, scaleY = viewerZoom,
+                        translationX = viewerPanX, translationY = viewerPanY
+                    )
+                    .pointerInput(page) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            viewerZoom = (viewerZoom * zoom).coerceIn(1f, 5f)
+                            if (viewerZoom > 1.05f) {
+                                viewerPanX += pan.x; viewerPanY += pan.y
+                            } else {
+                                viewerPanX = 0f; viewerPanY = 0f
+                            }
+                        }
+                    }
+                    .clickable {
+                        if (viewerZoom > 1.05f) {
+                            viewerZoom = 1f; viewerPanX = 0f; viewerPanY = 0f
+                        } else showInfo = !showInfo
+                    },
                 contentScale = ContentScale.Fit
             )
         }
@@ -722,11 +756,12 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
 
 private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
-        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+    // Images
+    val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
+    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
+        "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -737,7 +772,26 @@ private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
         }
     }
-    return photos
+
+    // Videos
+    val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
+        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
+    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
+        "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+        val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
+        val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
+                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol)))
+        }
+    }
+
+    return photos.sortedByDescending { it.dateAdded }
 }
 
 private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): List<Photo> {

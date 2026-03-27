@@ -193,14 +193,20 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun getDeletePref(): Boolean =
-        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", true)
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", false)
 
     private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        return if (prefs.getBoolean("use_jpeg", false)) {
-            Bitmap.CompressFormat.JPEG to prefs.getInt("jpeg_quality", 95)
-        } else {
-            Bitmap.CompressFormat.PNG to 100
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                          else Bitmap.CompressFormat.WEBP
+                fmt to quality
+            }
+            prefs.getBoolean("use_jpeg", false) -> Bitmap.CompressFormat.JPEG to quality
+            else -> Bitmap.CompressFormat.PNG to 100
         }
     }
 
@@ -460,6 +466,14 @@ class CropActivity : ComponentActivity() {
                     style = Paint.Style.FILL
                 }
                 val p = dp.points.first()
+                if (dp.filled) {
+                    val bounds = android.graphics.Rect()
+                    textPaint.getTextBounds(dp.text, 0, dp.text.length, bounds)
+                    val pad = textPaint.textSize * 0.3f
+                    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC000000.toInt(); style = Paint.Style.FILL }
+                    canvas.drawRoundRect(p.x - pad, p.y + bounds.top - pad, p.x + bounds.width() + pad,
+                        p.y + bounds.bottom + pad, pad, pad, bgPaint)
+                }
                 canvas.drawText(dp.text, p.x, p.y, textPaint)
                 continue
             }
@@ -511,14 +525,58 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
+    private fun getFilterColorMatrix(filterIndex: Int): ColorMatrix? {
+        return when (filterIndex) {
+            1 -> ColorMatrix().apply { setSaturation(0f) } // Mono
+            2 -> ColorMatrix().apply { // Sepia
+                setSaturation(0f)
+                postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,40f, 0f,1f,0f,0f,20f, 0f,0f,1f,0f,-10f, 0f,0f,0f,1f,0f)))
+            }
+            3 -> ColorMatrix(floatArrayOf(0.9f,0f,0f,0f,0f, 0f,0.95f,0f,0f,0f, 0f,0f,1.1f,0f,20f, 0f,0f,0f,1f,0f)) // Cool
+            4 -> ColorMatrix(floatArrayOf(1.1f,0f,0f,0f,15f, 0f,1.05f,0f,0f,5f, 0f,0f,0.9f,0f,-10f, 0f,0f,0f,1f,0f)) // Warm
+            5 -> ColorMatrix().apply { // Vivid
+                setSaturation(1.5f)
+                postConcat(ColorMatrix(floatArrayOf(1.1f,0f,0f,0f,10f, 0f,1.1f,0f,0f,10f, 0f,0f,1.1f,0f,10f, 0f,0f,0f,1f,0f)))
+            }
+            6 -> ColorMatrix().apply { // Muted
+                setSaturation(0.4f)
+                postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,15f, 0f,1f,0f,0f,15f, 0f,0f,1f,0f,15f, 0f,0f,0f,1f,0f)))
+            }
+            7 -> ColorMatrix().apply { // Vintage
+                setSaturation(0.5f)
+                postConcat(ColorMatrix(floatArrayOf(1.05f,0.05f,0f,0f,20f, 0f,1f,0.05f,0f,10f, 0f,0f,0.9f,0f,0f, 0f,0f,0f,1f,0f)))
+            }
+            8 -> ColorMatrix().apply { // Noir
+                setSaturation(0f)
+                postConcat(ColorMatrix(floatArrayOf(1.4f,0f,0f,0f,-30f, 0f,1.4f,0f,0f,-30f, 0f,0f,1.4f,0f,-30f, 0f,0f,0f,1f,0f)))
+            }
+            9 -> ColorMatrix().apply { // Fade
+                setSaturation(0.6f)
+                postConcat(ColorMatrix(floatArrayOf(1f,0f,0f,0f,30f, 0f,1f,0f,0f,30f, 0f,0f,1f,0f,30f, 0f,0f,0f,0.9f,0f)))
+            }
+            10 -> ColorMatrix(floatArrayOf(-1f,0f,0f,0f,255f, 0f,-1f,0f,0f,255f, 0f,0f,-1f,0f,255f, 0f,0f,0f,1f,0f)) // Invert
+            11 -> ColorMatrix(floatArrayOf(1.438f,-0.062f,-0.062f,0f,0f, -0.122f,1.378f,-0.122f,0f,0f, -0.016f,-0.016f,1.483f,0f,0f, 0f,0f,0f,1f,0f)) // Polaroid
+            12 -> ColorMatrix().apply { // Grain
+                setSaturation(0.8f)
+                postConcat(ColorMatrix(floatArrayOf(1.05f,0.02f,0f,0f,8f, 0f,1.02f,0f,0f,4f, 0f,0f,0.95f,0f,-5f, 0f,0f,0f,1f,0f)))
+            }
+            else -> null
+        }
+    }
+
     private fun applyAdjustments(bitmap: Bitmap, adj: FloatArray): Bitmap {
         val brightness = adj[0]; val contrast = adj[1]; val saturation = adj[2]
         val warmth = if (adj.size > 4) adj[4] else 0f
         val vignetteAmt = if (adj.size > 5) adj[5] else 0f
-        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f) return bitmap
+        val filterIndex = if (adj.size > 6) adj[6].toInt() else 0
+        val sharpenAmt = if (adj.size > 7) adj[7] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
+        // Apply image filter first
+        val filterMat = getFilterColorMatrix(filterIndex)
+        if (filterMat != null) cm.postConcat(filterMat)
         if (saturation != 1f) { val sat = ColorMatrix(); sat.setSaturation(saturation); cm.postConcat(sat) }
         if (contrast != 1f) {
             val t = (1f - contrast) / 2f * 255f
@@ -545,10 +603,47 @@ class CropActivity : ComponentActivity() {
             }
             canvas.drawRect(0f, 0f, result.width.toFloat(), result.height.toFloat(), vigPaint)
         }
+        // Sharpen: 3x3 convolution kernel
+        if (sharpenAmt > 0.01f) {
+            val sharpened = applySharpen(result, sharpenAmt)
+            if (sharpened !== result) result.recycle()
+            return sharpened
+        }
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f)): Bitmap {
+    private fun applySharpen(bitmap: Bitmap, amount: Float): Bitmap {
+        val w = bitmap.width; val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        val out = IntArray(w * h)
+        // Unsharp mask: center = 1 + 4*amount, neighbors = -amount
+        val center = 1f + 4f * amount
+        val edge = -amount
+        for (y in 1 until h - 1) {
+            for (x in 1 until w - 1) {
+                val idx = y * w + x
+                val c = pixels[idx]
+                val t = pixels[(y - 1) * w + x]
+                val b = pixels[(y + 1) * w + x]
+                val l = pixels[y * w + (x - 1)]
+                val r = pixels[y * w + (x + 1)]
+                fun ch(px: Int, shift: Int) = (px shr shift) and 0xFF
+                val nr = (ch(c, 16) * center + ch(t, 16) * edge + ch(b, 16) * edge + ch(l, 16) * edge + ch(r, 16) * edge).toInt().coerceIn(0, 255)
+                val ng = (ch(c, 8) * center + ch(t, 8) * edge + ch(b, 8) * edge + ch(l, 8) * edge + ch(r, 8) * edge).toInt().coerceIn(0, 255)
+                val nb = (ch(c, 0) * center + ch(t, 0) * edge + ch(b, 0) * edge + ch(l, 0) * edge + ch(r, 0) * edge).toInt().coerceIn(0, 255)
+                out[idx] = (c and 0xFF000000.toInt()) or (nr shl 16) or (ng shl 8) or nb
+            }
+        }
+        // Copy edges unchanged
+        for (x in 0 until w) { out[x] = pixels[x]; out[(h - 1) * w + x] = pixels[(h - 1) * w + x] }
+        for (y in 0 until h) { out[y * w] = pixels[y * w]; out[y * w + w - 1] = pixels[y * w + w - 1] }
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        result.setPixels(out, 0, w, 0, 0, w, h)
+        return result
+    }
+
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
         val adjusted = applyAdjustments(bitmap, adj)
         val pixelated = applyPixelate(adjusted, pixRects)
         if (pixelated !== adjusted && adjusted !== bitmap) adjusted.recycle()
@@ -646,34 +741,47 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
-        val cacheDir = File(cacheDir, "clipboard")
-        cacheDir.mkdirs()
-        val file = File(cacheDir, "clip.png")
-        try {
-            file.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            cropped.recycle()
-            val clipUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-            val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
-            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(clip)
-            Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "Copy failed", Toast.LENGTH_SHORT).show()
-            cropped.recycle()
+        CoroutineScope(Dispatchers.IO).launch {
+            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val clipDir = File(cacheDir, "clipboard")
+            clipDir.mkdirs()
+            val file = File(clipDir, "clip.png")
+            try {
+                file.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                cropped.recycle()
+                withContext(Dispatchers.Main) {
+                    val clipUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", file)
+                    val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
+                    val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(clip)
+                    Toast.makeText(this@CropActivity, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                cropped.recycle()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@CropActivity, "Copy failed", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
     private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
         val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+        val (format, quality) = getSaveFormat()
+        val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
+        val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
+        @Suppress("DEPRECATION")
+        val isWebp = shareFmt == Bitmap.CompressFormat.WEBP_LOSSY || shareFmt == Bitmap.CompressFormat.WEBP_LOSSLESS || shareFmt == Bitmap.CompressFormat.WEBP
+        val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
+        val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
         val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
-        val shareFile = File(shareDir, "snapcrop_share.png")
+        val shareFile = File(shareDir, "snapcrop_share.$ext")
         try {
-            shareFile.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            shareFile.outputStream().use { cropped.compress(shareFmt, shareQual, it) }
             cropped.recycle()
             val shareUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", shareFile)
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
+                type = mime
                 putExtra(Intent.EXTRA_STREAM, shareUri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }, null))
@@ -730,8 +838,10 @@ class CropActivity : ComponentActivity() {
 
     private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean, forcePng: Boolean = false) {
         val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
-        val ext = if (format == Bitmap.CompressFormat.JPEG) "jpg" else "png"
-        val mime = if (format == Bitmap.CompressFormat.JPEG) "image/jpeg" else "image/png"
+        @Suppress("DEPRECATION")
+        val isWebp = format == Bitmap.CompressFormat.WEBP_LOSSY || format == Bitmap.CompressFormat.WEBP_LOSSLESS || format == Bitmap.CompressFormat.WEBP
+        val ext = when { format == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
+        val mime = when { format == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
 
         val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"

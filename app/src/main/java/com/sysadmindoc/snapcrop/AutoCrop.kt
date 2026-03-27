@@ -66,8 +66,20 @@ object AutoCrop {
      */
     private fun detectBorders(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Rect {
         if (scanTop >= scanBottom || w <= 0) return Rect(0, scanTop, w, scanBottom)
-        val top = findTopEdge(bitmap, w, scanTop, scanBottom)
-        val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom)
+
+        // Sample corner colors to identify the actual border color.
+        // For dark mode screenshots, both border and content may be dark — corners reliably represent borders.
+        val corners = intArrayOf(
+            bitmap.getPixel(0, scanTop.coerceIn(0, bitmap.height - 1)),
+            bitmap.getPixel(w - 1, scanTop.coerceIn(0, bitmap.height - 1)),
+            bitmap.getPixel(0, (scanBottom - 1).coerceIn(0, bitmap.height - 1)),
+            bitmap.getPixel(w - 1, (scanBottom - 1).coerceIn(0, bitmap.height - 1))
+        )
+        // Use the most common corner color as reference border color
+        val borderColor = corners.groupBy { it }.maxByOrNull { it.value.size }?.key ?: corners[0]
+
+        val top = findTopEdge(bitmap, w, scanTop, scanBottom, borderColor)
+        val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom, borderColor)
         val left = findLeftEdge(bitmap, w, top, bottom)
         val right = findRightEdge(bitmap, w, top, bottom)
 
@@ -91,7 +103,7 @@ object AutoCrop {
      * Rows that are all one color (like black bars) are "uniform" — skip them.
      * The first row with actual content (non-uniform) is the top edge.
      */
-    private fun findTopEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Int {
+    private fun findTopEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int, borderColor: Int = 0): Int {
         val sampleX = IntArray(5) { (w * (it + 1) / 6f).toInt().coerceIn(0, w - 1) }
         val limit = scanTop + ((scanBottom - scanTop) * 0.45f).toInt()
 
@@ -105,7 +117,10 @@ object AutoCrop {
                 }
             }
 
-            if (nonUniform >= 2 || !isRowUniform(bitmap, y, w)) {
+            // Row is non-uniform OR uniform but doesn't match border color = content found
+            val isUniform = nonUniform < 2 && isRowUniform(bitmap, y, w)
+            val matchesBorder = borderColor == 0 || colorsMatch(refColor, borderColor)
+            if (!isUniform || !matchesBorder) {
                 return max(scanTop, y)
             }
         }
@@ -115,7 +130,7 @@ object AutoCrop {
     /**
      * Scans upward from scanBottom looking for the first non-uniform row.
      */
-    private fun findBottomEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int): Int {
+    private fun findBottomEdge(bitmap: Bitmap, w: Int, scanTop: Int, scanBottom: Int, borderColor: Int = 0): Int {
         val sampleX = IntArray(5) { (w * (it + 1) / 6f).toInt().coerceIn(0, w - 1) }
         val limit = scanTop + ((scanBottom - scanTop) * 0.55f).toInt()
 
@@ -129,7 +144,9 @@ object AutoCrop {
                 }
             }
 
-            if (nonUniform >= 2 || !isRowUniform(bitmap, y, w)) {
+            val isUniform = nonUniform < 2 && isRowUniform(bitmap, y, w)
+            val matchesBorder = borderColor == 0 || colorsMatch(refColor, borderColor)
+            if (!isUniform || !matchesBorder) {
                 return min(scanBottom, y + 1)
             }
         }

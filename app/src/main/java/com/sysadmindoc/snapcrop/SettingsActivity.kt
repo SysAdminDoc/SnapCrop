@@ -29,8 +29,9 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
-                var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", true)) }
+                var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", false)) }
                 var useJpeg by remember { mutableStateOf(prefs.getBoolean("use_jpeg", false)) }
+                var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
                 var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95)) }
 
@@ -39,7 +40,7 @@ class SettingsActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(Color.Black)
                         .systemBarsPadding()
-                        .padding(horizontal = 20.dp)
+                        .padding(horizontal = 16.dp)
                 ) {
                     // Top bar
                     Row(
@@ -69,17 +70,38 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
-                    SettingToggle(
-                        title = "Save as JPEG",
-                        subtitle = "Smaller file size. PNG is used when off (lossless)",
-                        checked = useJpeg,
-                        onCheckedChange = {
-                            useJpeg = it
-                            prefs.edit().putBoolean("use_jpeg", it).apply()
+                    // Image format selector
+                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text("Image Format", color = OnSurface, fontSize = 15.sp)
+                        Spacer(Modifier.height(2.dp))
+                        Text("PNG is lossless, JPEG/WebP are smaller files", color = OnSurfaceVariant, fontSize = 12.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("PNG" to false to false, "JPEG" to true to false, "WebP" to false to true).forEach { (pair, isWebp) ->
+                                val (label, isJpeg) = pair
+                                val selected = when {
+                                    isWebp -> useWebp
+                                    isJpeg -> useJpeg && !useWebp
+                                    else -> !useJpeg && !useWebp
+                                }
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        useJpeg = isJpeg; useWebp = isWebp
+                                        prefs.edit().putBoolean("use_jpeg", isJpeg).putBoolean("use_webp", isWebp).apply()
+                                    },
+                                    label = { Text(label) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
                         }
-                    )
+                    }
 
-                    if (useJpeg) {
+                    if (useJpeg || useWebp) {
                         Spacer(Modifier.height(4.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
@@ -106,11 +128,15 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
+                    var stripExif by remember { mutableStateOf(prefs.getBoolean("strip_exif", false)) }
                     SettingToggle(
                         title = "Strip metadata on share",
                         subtitle = "Remove EXIF data (location, device info) when sharing for privacy",
-                        checked = prefs.getBoolean("strip_exif", false),
-                        onCheckedChange = { prefs.edit().putBoolean("strip_exif", it).apply() }
+                        checked = stripExif,
+                        onCheckedChange = {
+                            stripExif = it
+                            prefs.edit().putBoolean("strip_exif", it).apply()
+                        }
                     )
 
                     Spacer(Modifier.height(8.dp))
@@ -266,7 +292,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v5.9.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v6.1.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

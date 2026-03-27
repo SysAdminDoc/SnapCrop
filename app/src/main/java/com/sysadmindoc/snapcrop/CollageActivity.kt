@@ -74,6 +74,7 @@ class CollageActivity : ComponentActivity() {
     private val isSaving = mutableStateOf(false)
     private val spacing = mutableIntStateOf(4) // pixels gap
     private val bgColorIdx = mutableIntStateOf(0)
+    private val cellAspect = mutableFloatStateOf(4f / 3f) // cell aspect ratio (w/h)
 
     private val pickImagesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -99,6 +100,8 @@ class CollageActivity : ComponentActivity() {
                     onLayoutChange = { selectedLayout.value = it },
                     onSpacingChange = { spacing.intValue = it },
                     onBgColorChange = { bgColorIdx.intValue = it },
+                    cellAspect = cellAspect.floatValue,
+                    onCellAspectChange = { cellAspect.floatValue = it },
                     onPickImages = { pickImagesLauncher.launch(arrayOf("image/*")) },
                     onSave = { buildAndSave() },
                     onClose = { finish() }
@@ -130,7 +133,7 @@ class CollageActivity : ComponentActivity() {
 
                 // Target: 1080px wide collage
                 val cellW = (1080 - gap * (layout.cols + 1)) / layout.cols
-                val cellH = (cellW * 4 / 3) // 4:3 cells
+                val cellH = (cellW / cellAspect.floatValue).toInt()
                 val totalW = cellW * layout.cols + gap * (layout.cols + 1)
                 val totalH = cellH * layout.rows + gap * (layout.rows + 1)
 
@@ -183,11 +186,28 @@ class CollageActivity : ComponentActivity() {
         return scaled
     }
 
+    private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                          else Bitmap.CompressFormat.WEBP
+                Triple(fmt, quality, "webp")
+            }
+            prefs.getBoolean("use_jpeg", false) -> Triple(Bitmap.CompressFormat.JPEG, quality, "jpg")
+            else -> Triple(Bitmap.CompressFormat.PNG, 100, "png")
+        }
+    }
+
     private fun saveToGallery(bitmap: Bitmap) {
+        val (fmt, quality, ext) = getSaveFormat()
+        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Collage_${System.currentTimeMillis()}.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/SnapCrop")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Collage_${System.currentTimeMillis()}.$ext")
+            put(MediaStore.Images.Media.MIME_TYPE, mime)
+            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
@@ -197,7 +217,7 @@ class CollageActivity : ComponentActivity() {
             return
         }
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            contentResolver.openOutputStream(uri)?.use { bitmap.compress(fmt, quality, it) }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
@@ -221,6 +241,8 @@ private fun CollageScreen(
     onLayoutChange: (CollageLayout) -> Unit,
     onSpacingChange: (Int) -> Unit,
     onBgColorChange: (Int) -> Unit,
+    cellAspect: Float,
+    onCellAspectChange: (Float) -> Unit,
     onPickImages: () -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit
@@ -267,6 +289,24 @@ private fun CollageScreen(
             )
         }
 
+        // Cell aspect ratio
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("Cells:", color = OnSurfaceVariant, fontSize = 11.sp)
+            listOf("4:3" to 4f/3f, "1:1" to 1f, "16:9" to 16f/9f, "3:4" to 3f/4f).forEach { (label, ratio) ->
+                FilterChip(
+                    selected = kotlin.math.abs(cellAspect - ratio) < 0.01f,
+                    onClick = { onCellAspectChange(ratio) },
+                    label = { Text(label, fontSize = 11.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+        }
+
         // Background color picker
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
@@ -291,7 +331,7 @@ private fun CollageScreen(
             } else {
                 // Grid preview
                 Column(
-                    Modifier.fillMaxWidth().aspectRatio(layout.cols.toFloat() / layout.rows * 0.75f)
+                    Modifier.fillMaxWidth().aspectRatio(layout.cols.toFloat() / layout.rows * cellAspect)
                         .clip(RoundedCornerShape(8.dp))
                         .background(SurfaceVariant),
                     verticalArrangement = Arrangement.spacedBy(spacing.dp)
