@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -220,6 +222,54 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
+                    // Border/padding on export
+                    var borderSize by remember { mutableIntStateOf(prefs.getInt("border_size", 0)) }
+                    var borderColorIdx by remember { mutableIntStateOf(prefs.getInt("border_color", 0)) }
+                    val borderColors = listOf(
+                        0xFF000000.toInt() to "Black", 0xFFFFFFFF.toInt() to "White",
+                        0xFF1E1E2E.toInt() to "Dark", 0xFF89B4FA.toInt() to "Blue",
+                        0xFFA6E3A1.toInt() to "Green", 0xFFF38BA8.toInt() to "Pink"
+                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Export border", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text("Add padding around saved images", color = OnSurfaceVariant, fontSize = 11.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Size: ${borderSize}px", color = OnSurfaceVariant, fontSize = 11.sp,
+                                    modifier = Modifier.width(56.dp))
+                                Slider(
+                                    value = borderSize.toFloat(), onValueChange = {
+                                        borderSize = it.toInt()
+                                        prefs.edit().putInt("border_size", borderSize).apply()
+                                    },
+                                    valueRange = 0f..100f, modifier = Modifier.weight(1f),
+                                    colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
+                                )
+                            }
+                            if (borderSize > 0) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Color:", color = OnSurfaceVariant, fontSize = 11.sp)
+                                    borderColors.forEachIndexed { i, (color, _) ->
+                                        Box(
+                                            Modifier.size(24.dp)
+                                                .background(androidx.compose.ui.graphics.Color(color), RoundedCornerShape(4.dp))
+                                                .then(if (i == borderColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                                                .clickable { borderColorIdx = i; prefs.edit().putInt("border_color", i).apply() }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
                     // Save location
                     var savePath by remember {
                         mutableStateOf(prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
@@ -292,7 +342,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v6.1.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v6.2.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

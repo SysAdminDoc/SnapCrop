@@ -337,6 +337,33 @@ class CropActivity : ComponentActivity() {
             paint.alpha = 255
             paint.pathEffect = if (dp.dashed) android.graphics.DashPathEffect(floatArrayOf(dp.strokeWidth * 3, dp.strokeWidth * 2), 0f) else null
 
+            // Blur brush — Gaussian blur along the stroke path
+            if (dp.shapeType == "blur" && dp.points.size >= 2) {
+                val radius = (dp.strokeWidth * 2).toInt().coerceAtLeast(4)
+                for (pt in dp.points) {
+                    val cx = pt.x.toInt(); val cy = pt.y.toInt()
+                    val half = radius
+                    val l = (cx - half).coerceAtLeast(0)
+                    val t = (cy - half).coerceAtLeast(0)
+                    val r = (cx + half).coerceAtMost(result.width)
+                    val b = (cy + half).coerceAtMost(result.height)
+                    val w = r - l; val h = b - t
+                    if (w < 3 || h < 3) continue
+                    // Box blur by downscale + upscale
+                    var region: Bitmap? = null; var tiny: Bitmap? = null; var blurred: Bitmap? = null
+                    try {
+                        region = Bitmap.createBitmap(result, l, t, w, h)
+                        val scale = 4
+                        tiny = Bitmap.createScaledBitmap(region, (w / scale).coerceAtLeast(1), (h / scale).coerceAtLeast(1), true)
+                        blurred = Bitmap.createScaledBitmap(tiny, w, h, true)
+                        canvas.drawBitmap(blurred, l.toFloat(), t.toFloat(), null)
+                    } finally {
+                        region?.recycle(); tiny?.recycle(); blurred?.recycle()
+                    }
+                }
+                continue
+            }
+
             // Emoji overlay
             if (dp.shapeType == "emoji" && dp.text != null && dp.points.isNotEmpty()) {
                 val p = dp.points.first()
@@ -570,7 +597,9 @@ class CropActivity : ComponentActivity() {
         val vignetteAmt = if (adj.size > 5) adj[5] else 0f
         val filterIndex = if (adj.size > 6) adj[6].toInt() else 0
         val sharpenAmt = if (adj.size > 7) adj[7] else 0f
-        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f) return bitmap
+        val highlightsAmt = if (adj.size > 9) adj[9] else 0f
+        val shadowsAmt = if (adj.size > 10) adj[10] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f && highlightsAmt == 0f && shadowsAmt == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
@@ -602,6 +631,26 @@ class CropActivity : ComponentActivity() {
                 )
             }
             canvas.drawRect(0f, 0f, result.width.toFloat(), result.height.toFloat(), vigPaint)
+        }
+        // Highlights/Shadows: per-pixel luminance-based adjustment
+        if (highlightsAmt != 0f || shadowsAmt != 0f) {
+            val w = result.width; val h = result.height
+            val pixels = IntArray(w * h)
+            result.getPixels(pixels, 0, w, 0, 0, w, h)
+            for (i in pixels.indices) {
+                val px = pixels[i]
+                var r = (px shr 16) and 0xFF; var g = (px shr 8) and 0xFF; var b = px and 0xFF
+                val lum = 0.299f * r + 0.587f * g + 0.114f * b
+                // Highlights affect bright pixels (lum > 128), shadows affect dark pixels (lum < 128)
+                val hiFactor = ((lum - 128f) / 128f).coerceIn(0f, 1f) // 0 for darks, 1 for brights
+                val shFactor = ((128f - lum) / 128f).coerceIn(0f, 1f) // 1 for darks, 0 for brights
+                val adj2 = highlightsAmt * hiFactor * 0.5f + shadowsAmt * shFactor * 0.5f
+                r = (r + adj2).toInt().coerceIn(0, 255)
+                g = (g + adj2).toInt().coerceIn(0, 255)
+                b = (b + adj2).toInt().coerceIn(0, 255)
+                pixels[i] = (px and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+            }
+            result.setPixels(pixels, 0, w, 0, 0, w, h)
         }
         // Sharpen: 3x3 convolution kernel
         if (sharpenAmt > 0.01f) {
@@ -643,17 +692,26 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
-        val adjusted = applyAdjustments(bitmap, adj)
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+        // Apply free rotation first (before adjustments/crop)
+        val rotAngle = if (adj.size > 8) adj[8] else 0f
+        val rotated = if (rotAngle != 0f) {
+            val matrix = Matrix().apply { postRotate(rotAngle, bitmap.width / 2f, bitmap.height / 2f) }
+            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        } else bitmap
+
+        val adjusted = applyAdjustments(rotated, adj)
+        if (rotated !== bitmap && adjusted !== rotated) rotated.recycle()
         val pixelated = applyPixelate(adjusted, pixRects)
-        if (pixelated !== adjusted && adjusted !== bitmap) adjusted.recycle()
+        if (pixelated !== adjusted && adjusted !== rotated && adjusted !== bitmap) adjusted.recycle()
         val drawn = applyDraw(pixelated, drawPaths)
-        if (drawn !== pixelated && pixelated !== bitmap && pixelated !== adjusted) pixelated.recycle()
-        val cropped = Bitmap.createBitmap(drawn,
-            rect.left.coerceAtLeast(0), rect.top.coerceAtLeast(0),
-            rect.width().coerceAtMost(drawn.width - rect.left.coerceAtLeast(0)),
-            rect.height().coerceAtMost(drawn.height - rect.top.coerceAtLeast(0)))
-        if (drawn !== bitmap && drawn !== adjusted) drawn.recycle()
+        if (drawn !== pixelated && pixelated !== bitmap) pixelated.recycle()
+        val cl = rect.left.coerceIn(0, drawn.width - 1)
+        val ct = rect.top.coerceIn(0, drawn.height - 1)
+        val cw = rect.width().coerceAtMost(drawn.width - cl).coerceAtLeast(1)
+        val ch = rect.height().coerceAtMost(drawn.height - ct).coerceAtLeast(1)
+        val cropped = Bitmap.createBitmap(drawn, cl, ct, cw, ch)
+        if (drawn !== bitmap) drawn.recycle()
 
         // Shape crop masking
         val shapeType = if (adj.size > 3) adj[3] else 0f
@@ -728,6 +786,9 @@ class CropActivity : ComponentActivity() {
         isSaving.value = true
         CoroutineScope(Dispatchers.IO).launch {
             var cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val bordered = applyBorder(cropped)
+            if (bordered !== cropped) cropped.recycle()
+            cropped = bordered
             val watermarked = applyWatermark(cropped)
             if (watermarked !== cropped) cropped.recycle()
             cropped = watermarked
@@ -789,6 +850,25 @@ class CropActivity : ComponentActivity() {
             Toast.makeText(this, "Share failed", Toast.LENGTH_SHORT).show()
             cropped.recycle()
         }
+    }
+
+    private fun applyBorder(bitmap: Bitmap): Bitmap {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val borderSize = prefs.getInt("border_size", 0)
+        if (borderSize <= 0) return bitmap
+        val borderColorIdx = prefs.getInt("border_color", 0)
+        val borderColors = intArrayOf(
+            0xFF000000.toInt(), 0xFFFFFFFF.toInt(), 0xFF1E1E2E.toInt(),
+            0xFF89B4FA.toInt(), 0xFFA6E3A1.toInt(), 0xFFF38BA8.toInt()
+        )
+        val bgColor = borderColors[borderColorIdx.coerceIn(0, borderColors.size - 1)]
+        val newW = bitmap.width + borderSize * 2
+        val newH = bitmap.height + borderSize * 2
+        val result = Bitmap.createBitmap(newW, newH, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        canvas.drawColor(bgColor)
+        canvas.drawBitmap(bitmap, borderSize.toFloat(), borderSize.toFloat(), null)
+        return result
     }
 
     private fun applyWatermark(bitmap: Bitmap): Bitmap {
