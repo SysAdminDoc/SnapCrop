@@ -8,6 +8,7 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
@@ -63,6 +65,7 @@ class MainActivity : ComponentActivity() {
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
+    private val hasFileManagePermission = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
@@ -231,6 +234,14 @@ class MainActivity : ComponentActivity() {
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
                                 onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
+                                onDelayedCapture = { seconds ->
+                                    val intent = Intent(this@MainActivity, ScreenshotService::class.java).apply {
+                                        action = ScreenshotService.ACTION_DELAYED_CAPTURE
+                                        putExtra(ScreenshotService.EXTRA_DELAY_SECONDS, seconds)
+                                    }
+                                    startService(intent)
+                                    Toast.makeText(this@MainActivity, "Capturing in ${seconds}s...", Toast.LENGTH_SHORT).show()
+                                },
                                 batchProgress = batchProgress.value,
                                 batchFraction = batchProgressFraction.floatValue,
                                 onBatchCancel = { batchCancelled.value = true },
@@ -238,6 +249,13 @@ class MainActivity : ComponentActivity() {
                                 onRequestOverlay = {
                                     startActivity(Intent(
                                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                        Uri.parse("package:$packageName")
+                                    ))
+                                },
+                                hasFileManagePermission = hasFileManagePermission.value,
+                                onRequestFileManage = {
+                                    startActivity(Intent(
+                                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                                         Uri.parse("package:$packageName")
                                     ))
                                 },
@@ -316,6 +334,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
+        hasFileManagePermission.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+            Environment.isExternalStorageManager() else true
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getBoolean("auto_start", false)
@@ -443,12 +463,24 @@ class MainActivity : ComponentActivity() {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.pdf")
                     put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
                     put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/SnapCrop")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
-                val pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
-                if (pdfUri != null) {
-                    contentResolver.openOutputStream(pdfUri)?.use { doc.writeTo(it) }
+                var pdfUri: Uri? = null
+                try {
+                    pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+                    if (pdfUri != null) {
+                        contentResolver.openOutputStream(pdfUri)?.use { doc.writeTo(it) }
+                        values.clear()
+                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        contentResolver.update(pdfUri, values, null, null)
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "PDF saved to Documents/SnapCrop", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "PDF saved to Documents/SnapCrop", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
                     }
                 }
                 doc.close()
@@ -503,8 +535,17 @@ class MainActivity : ComponentActivity() {
 
     private fun requestDeleteUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+: system delete confirmation dialog
+        // MANAGE_EXTERNAL_STORAGE grants direct delete without system confirmation
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            var count = 0
+            for (uri in uris) {
+                try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+            }
+            Toast.makeText(this, "Deleted $count photos", Toast.LENGTH_SHORT).show()
+            galleryRefreshKey.intValue++
+            loadRecentCrops()
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+ without MANAGE_EXTERNAL_STORAGE: system delete confirmation dialog
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
                 @Suppress("DEPRECATION")
@@ -631,11 +672,14 @@ private fun HomeScreen(
     onStitch: () -> Unit,
     onCollage: () -> Unit,
     onDeviceFrame: () -> Unit,
+    onDelayedCapture: (Int) -> Unit,
     batchProgress: String,
     batchFraction: Float,
     onBatchCancel: () -> Unit,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
+    hasFileManagePermission: Boolean,
+    onRequestFileManage: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
@@ -664,7 +708,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v6.3.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v6.5.0", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -729,6 +773,31 @@ private fun HomeScreen(
                 }
                 Button(
                     onClick = onRequestOverlay,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Grant Permission", color = Color.Black) }
+            }
+        }
+
+        // File management permission (needed on Android 11+ to delete without prompts)
+        if (hasPermissions && !hasFileManagePermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("File Management", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("Allows deleting photos without confirmation prompts",
+                            color = OnSurfaceVariant, fontSize = 13.sp)
+                    }
+                }
+                Button(
+                    onClick = onRequestFileManage,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
@@ -863,6 +932,35 @@ private fun HomeScreen(
             Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Text("Device Mockup")
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Delayed capture
+        var showDelayPicker by remember { mutableStateOf(false) }
+        OutlinedButton(
+            onClick = { showDelayPicker = !showDelayPicker },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
+        ) {
+            Icon(Icons.Default.Timer, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Delayed Capture")
+        }
+        if (showDelayPicker) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(3, 5, 10).forEach { sec ->
+                    FilledTonalButton(
+                        onClick = { onDelayedCapture(sec); showDelayPicker = false },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
+                    ) { Text("${sec}s", color = Primary, fontSize = 13.sp) }
+                }
+            }
         }
 
         // Stats

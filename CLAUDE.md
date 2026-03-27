@@ -1,7 +1,7 @@
 # SnapCrop
 
 ## Overview
-Android screenshot autocrop editor with full annotation toolkit, image adjustments, gallery, stitching, collage, device mockup, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars and borders (including dark mode), provides 14 draw tools + 5 edit modes + 16 image filters + 9 adjustment sliders.
+Android screenshot autocrop editor with full annotation toolkit, image adjustments, gallery, stitching, collage, device mockup, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars and borders (including dark mode), provides 16 draw tools + 5 edit modes + 17 image filters + 13 adjustment sliders (10 + 3 curves) + 7 shape crops.
 
 ## Tech Stack
 - Kotlin, Jetpack Compose, Material 3
@@ -14,7 +14,7 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 ## Architecture
 - `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects screenshots, launches editor, shows rich notification with thumbnail preview + Edit/Share/Quick Crop actions. Falls back to notification if background activity launch fails (Android 12+).
 - `MonitorTileService` - Quick Settings tile to toggle screenshot monitoring on/off.
-- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share/clipboard/save via FileProvider. Applies adjustments + 13 image filters via ColorMatrixColorFilter on export. Saves as PNG/JPEG/WebP per user setting.
+- `CropActivity` - Loads bitmap, runs AutoCrop, hosts CropEditorScreen composable. Supports share/clipboard/save via FileProvider. Applies adjustments + 17 image filters (13 ColorMatrix + 4 per-pixel) on export. Saves as PNG/JPEG/WebP per user setting.
 - `CropEditorScreen` - Compose Canvas with unified gesture handler (single `awaitEachGesture`). Two-row top bar: navigation (close/undo/redo/rotate/flip/preview) + scrollable mode tab chips (Crop/Pixelate/Draw/OCR/Adjust). Draggable corner/edge handles with edge magnetism (snap to 0/25/33/50/67/75/100% guides) + precision drag mode (4x slower after 800ms). Grid overlay toggles between rule-of-thirds, golden ratio (φ), and off. Before/after swipe comparison in preview mode. Unified undo/redo across all modes capturing full editor state. Tap dimension display for precise pixel input (X/Y/W/H dialog with numeric keyboard).
 - `StitchActivity` - Combine 2+ images vertically or horizontally. Reorder with move up/down buttons. Shows output dimensions preview.
 - `CollageActivity` - 8 grid layouts (2x1 to 3x3) with adjustable gap, 6 background colors, configurable cell aspect ratio (4:3/1:1/16:9/3:4).
@@ -28,10 +28,10 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 ## Key Files
 | File | Lines | Purpose |
 |------|-------|---------|
-| `CropEditorScreen.kt` | ~2050 | Crop UI, 11 draw tools, 5 edit modes, 13 filters, unified gesture + undo |
+| `CropEditorScreen.kt` | ~2120 | Crop UI, 14 draw tools, 5 edit modes, 17 filters, unified gesture + undo |
 | `GalleryScreen.kt` | ~690 | Albums, photos, viewer, multi-select, favorites, PDF |
 | `MainActivity.kt` | ~850 | Home screen, permissions, batch crop/resize, format-aware export |
-| `CropActivity.kt` | ~830 | Save/share/delete, bitmap pipeline, 13 filter matrices, adjustments |
+| `CropActivity.kt` | ~1100 | Save/share/delete, bitmap pipeline, 17 filters, adjustments, shape crops |
 | `ScreenshotService.kt` | ~330 | Screenshot detection, thumbnail notification, quick save |
 | `StitchActivity.kt` | ~360 | Image stitching with reorder + output size preview |
 | `CollageActivity.kt` | ~380 | Collage builder with cell aspect ratio selector |
@@ -45,7 +45,7 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 | `TextExtractor.kt` | ~33 | ML Kit text recognition |
 | `ColorPaletteExtractor.kt` | ~50 | Dominant color extraction |
 
-## Draw Tools (12)
+## Draw Tools (16)
 1. **Pen** - Freehand with Catmull-Rom smoothing + velocity-based stroke width + optional dashed
 2. **Arrow** - Line with arrowhead + optional dashed
 3. **Rect** - Rectangle (optional fill, optional dashed)
@@ -60,16 +60,18 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 12. **Blur** - Gaussian blur brush (downscale/upscale per-point, 4x stroke width radius)
 13. **Line** - Straight line between two points (optional dashed)
 14. **Eraser** - Erase to transparent (PorterDuff.Mode.CLEAR, 3x stroke width)
+15. **Fill** - Flood fill contiguous region at tap point (BFS with color tolerance 30, safety limit w*h/2)
+16. **Heal** - Content-aware inpainting brush (samples surrounding ring of pixels, averages into painted area, 3x stroke width)
 
-## Image Filters (16)
-Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red Pop, Blue Pop, Green Pop + Auto-enhance (histogram-based)
+## Image Filters (17)
+Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red Pop, Blue Pop, Green Pop, Glitch + Auto-enhance (histogram-based)
 
 ## Edit Modes (5)
-1. **CROP** - Drag handles with edge magnetism + precision mode, 15 aspect ratios with lock indicator, grid overlay (thirds/golden ratio/off), auto/AI crop, rotate/flip H/flip V, resize, tap dimensions for exact pixel input, before/after swipe comparison in preview, estimated file size on save button, straighten angle slider (-45 to +45 degrees)
+1. **CROP** - Drag handles with edge magnetism + precision mode, 18 aspect ratios (incl. 7 shape crops: circle/rounded/star/heart/triangle/hexagon/diamond) with lock indicator, grid overlay (thirds/golden ratio/off), auto/AI crop, rotate/flip H/flip V, resize, tap dimensions for exact pixel input, before/after swipe comparison in preview, estimated file size on save button, straighten angle slider (-45 to +45 degrees), gradient background fill for shape crops (6 presets)
 2. **PIXELATE** - Draw rectangles to redact, one-tap face blur with count badge, haptic on commit
 3. **DRAW** - 11 tools, 6 preset colors + RGB color picker dialog + eyedropper + recent colors (last 4), velocity-based stroke width for pen/neon, stroke width slider, dashed toggle, text background pill option, haptic on commit
 4. **OCR** - ML Kit text recognition + barcode scanning, tap to copy single block, "Copy All" button, double-tap text block to crop to it
-5. **ADJUST** - 16 image filter presets (13 color + 3 selective color pop) + auto-enhance, brightness, contrast, saturation, warmth, vignette, sharpen, highlights, shadows, tilt-shift sliders
+5. **ADJUST** - 17 image filter presets (13 color + 3 selective color pop + glitch) + auto-enhance, brightness, contrast, saturation, warmth, vignette, sharpen, highlights, shadows, tilt-shift, denoise sliders
 
 ## Build
 ```
@@ -80,9 +82,12 @@ export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot"
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v6.3.0
+v6.5.0
 
 ## Version History
+- v6.5.0: **7 new features from competitor research.** **Curves tool** (per-channel RGB gamma curves in ADJUST mode — 3 sliders for Red/Green/Blue channel adjustment, LUT-based per-pixel processing on export). **Flood fill** (16th draw tool — tap to fill contiguous region with selected color, BFS with color tolerance). **Healing brush** (17th draw tool — content-aware inpainting along stroke, samples surrounding ring of pixels to replace painted area). **Target file size compression** (Settings toggle + KB slider, binary search on quality for JPEG/WebP to meet budget, shows actual size + quality in save toast). **Delayed capture** (3/5/10s countdown timer from HomeScreen, notification countdown, detects new screenshot after delay). **25 collage layouts** (up from 8 — added 4x1 through 6x3 grids). **Curves data in adj FloatArray** (indices 14-16 = curveR/curveG/curveB). EditorSnapshot extended with curves. adj default array now 17 elements.
+- v6.4.1: **MANAGE_EXTERNAL_STORAGE permission** — eliminates "Allow SnapCrop to delete this photo?" system prompt on Android 11+. Permission card on home screen guides user to grant. `requestDeleteUris` (MainActivity), `deleteOriginalFile` (CropActivity), `quickSave` (ScreenshotService) all use permission-aware 3-tier flow: MANAGE_EXTERNAL_STORAGE direct delete > createDeleteRequest fallback > direct delete. **CropActivity onActivityResult handler** for request code 99 (was missing — delete confirmation result was silently ignored). **PDF export IS_PENDING** — PDF writes now use IS_PENDING=1/0 semantics with cleanup on failure. **Error-path delete hardening** — all 4 activities (Crop/Stitch/Collage/DeviceFrame) wrap error-path `contentResolver.delete()` in try-catch.
+- v6.4.0: **Triangle shape crop** (equilateral triangle via Path masking), **Hexagon shape crop** (regular hexagon via Path masking), **Diamond shape crop** (rotated square via Path masking), **Glitch filter** (17th filter — RGB channel shift, 2% of width offset), **Denoise slider** (10th adjust slider — blend with downscaled/upscaled blur, 0-80% strength), **Gradient background fill** for shape crops (6 presets: Sunset/Ocean/Purple/Dark/Mint/Fire, fills transparent areas behind masked shapes), **Gradient preview on canvas** (40% alpha fill inside shape outlines), **Undo history panel** (collapsible timeline with step labels, tap any step to jump, describes draws/filters/adjustments per snapshot). Canvas shape preview outlines for all 7 shape crops. `shareCropped` moved to IO dispatcher. 7 shape crops, 17 filters, 10 adjust sliders.
 - v6.3.0: **Line tool** (13th draw tool, straight line with optional dash), **Eraser tool** (14th draw tool, PorterDuff.CLEAR to transparent), **Selective color pop** (3 new filters: Red/Blue/Green — keep one hue, desaturate rest via HSV per-pixel), **Tilt-shift** effect slider (linear blur top/bottom via downscale blend, 30% center focus band). 14 draw tools, 16 filters, 9 adjust sliders.
 - v6.2.0: **Blur brush** (12th draw tool, Gaussian blur via downscale/upscale along stroke path), **free rotation/straighten** (-45 to 45 degree slider in crop mode, rotates bitmap on export via Matrix.postRotate), **export border** (0-100px colored padding, 6 color options in settings), **highlights/shadows** sliders (luminance-based per-pixel adjustment, bright pixels affected by highlights, dark pixels by shadows). adj FloatArray now 11 elements: [9]=highlights, [10]=shadows.
 - v6.1.0: **Audit fixes**: `delete_original` default changed from `true` to `false` (non-destructive default), `loadRecentCrops` now respects custom save path setting (was hardcoded to Pictures/SnapCrop), `quickSave` in ScreenshotService now respects format preference (was hardcoded PNG), `shareCropped` respects format preference (was always PNG), `copyToClipboard` moved to IO dispatcher (was blocking main thread), Stitch/Collage save now respect format preference (were always PNG), `loadAllPhotos` now includes videos (was images-only unlike album view), version string sync across all files. **New**: Sharpen slider in ADJUST mode (3x3 unsharp mask convolution kernel, 0-2x range), pinch-to-zoom in PhotoViewer (1-5x, resets on page change, disables pager swipe when zoomed), tap to reset zoom in viewer. **6 edit modes** (Crop/Pixelate/Draw/OCR/Adjust with sharpen).
@@ -117,12 +122,18 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 
 ### Remaining high-value features:
 - **Scrolling/long screenshot** — AccessibilityService auto-scroll + stitch
-- **Gradient background fill** — Replace transparent areas with gradient
+- ~~**Gradient background fill**~~ — Done in v6.4.0
 - **Layer system** — Independent movable/resizable annotation layers
-- **Undo history panel** — Visual timeline of all edits
+- ~~**Undo history panel**~~ — Done in v6.4.0
 - **Perspective/quad crop** — 4 independent corner points with warp transform
 - **Non-destructive editing** — Save edit state as JSON sidecar, re-open later
 - **Tablet/foldable adaptive layout** — WindowSizeClass for side-panel tools on wide screens
+- ~~**Curves tool**~~ — Done in v6.5.0 (per-channel RGB gamma)
+- ~~**Flood fill**~~ — Done in v6.5.0 (16th draw tool)
+- ~~**Healing brush**~~ — Done in v6.5.0 (17th draw tool, content-aware inpainting)
+- ~~**Target file size compression**~~ — Done in v6.5.0 (binary search on quality)
+- ~~**Delayed capture**~~ — Done in v6.5.0 (3/5/10s countdown)
+- ~~**More collage layouts**~~ — Done in v6.5.0 (25 layouts, up from 8)
 
 ## Gotchas
 - `foregroundServiceType="specialUse"` required for Android 14+
@@ -137,7 +148,7 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 - Bitmap.asImageBitmap() wraps same native bitmap — do NOT recycle source while ImageBitmap is in use
 - ColorMatrix for adjustments: filter preset first, then saturation, then contrast (scale around mid + offset), then brightness (additive), then warmth
 - Gesture handling uses single `awaitEachGesture` — do NOT add separate `detectDragGestures`/`detectTransformGestures` modifiers as they consume events and conflict
-- adj FloatArray layout (12 elements): [0]=brightness, [1]=contrast, [2]=saturation, [3]=shapeCrop, [4]=warmth, [5]=vignette, [6]=filterIndex (0-15), [7]=sharpen, [8]=rotationAngle, [9]=highlights, [10]=shadows, [11]=tiltShift. CropActivity.getFilterColorMatrix() must match ImageFilter enum ordinal order exactly. Filters 13-15 (selective color pop) are per-pixel, not ColorMatrix
+- adj FloatArray layout (17 elements): [0]=brightness, [1]=contrast, [2]=saturation, [3]=shapeCrop (0=none, 1=circle, 2=rounded, 3=star, 4=heart, 5=triangle, 6=hexagon, 7=diamond), [4]=warmth, [5]=vignette, [6]=filterIndex (0-16), [7]=sharpen, [8]=rotationAngle, [9]=highlights, [10]=shadows, [11]=tiltShift, [12]=denoise, [13]=gradientBg (0=none, 1-6=gradient preset), [14]=curveR, [15]=curveG, [16]=curveB. CropActivity.getFilterColorMatrix() must match ImageFilter enum ordinal order exactly. Filters 13-16 (selective color pop + glitch) are per-pixel, not ColorMatrix. Curves use LUT-based gamma adjustment per channel
 - EditorSnapshot data class must be at file top-level (not inside composable) — Kotlin forbids local data classes in functions
 - WebP uses `WEBP_LOSSY` on API 30+ and deprecated `WEBP` on API 29. saveToGallery ext/mime detection must handle all three constants (WEBP_LOSSY, WEBP_LOSSLESS, WEBP)
 - Inside Compose `Canvas { }` (DrawScope), `color` is a DrawScope property — use `paint.color = x` outside `apply {}` blocks or assign to a `val` first to avoid shadowing
@@ -147,6 +158,7 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 - Batch operations in MainActivity use their own `getSaveFormat()` helper — must stay in sync with CropActivity's version
 - All 6 activities (CropActivity, MainActivity, StitchActivity, CollageActivity, DeviceFrameActivity, ScreenshotService) must respect the save format and save path preferences
 - `delete_original` defaults to `false` — non-destructive by default
+- `MANAGE_EXTERNAL_STORAGE` enables prompt-free deletion on Android 11+. Without it, `createDeleteRequest()` shows system confirmation. Check `Environment.isExternalStorageManager()` before choosing path. ScreenshotService (no UI) skips delete entirely without the permission (can't show system dialog from a service).
 
 ## UI Design Rules
 - **Padding rhythm**: 4dp, 8dp, 12dp, 16dp only. Minimum vertical padding 4dp.

@@ -19,6 +19,7 @@ import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -547,6 +548,54 @@ class CropActivity : ComponentActivity() {
                 continue
             }
 
+            // Flood fill — fill contiguous region at tap point with selected color
+            if (dp.shapeType == "fill" && dp.points.isNotEmpty()) {
+                val fx = dp.points[0].x.toInt().coerceIn(0, result.width - 1)
+                val fy = dp.points[0].y.toInt().coerceIn(0, result.height - 1)
+                floodFill(result, fx, fy, dp.color)
+                continue
+            }
+
+            // Heal — content-aware inpainting along stroke (average surrounding pixels)
+            if (dp.shapeType == "heal" && dp.points.size >= 2) {
+                val radius = (dp.strokeWidth * 1.5f).toInt().coerceAtLeast(3)
+                val w = result.width; val h = result.height
+                val pixels = IntArray(w * h)
+                result.getPixels(pixels, 0, w, 0, 0, w, h)
+                for (pt in dp.points) {
+                    val cx = pt.x.toInt(); val cy = pt.y.toInt()
+                    // Sample from ring around the point (radius*2 to radius*3)
+                    for (dy in -radius..radius) {
+                        for (dx in -radius..radius) {
+                            val px = cx + dx; val py = cy + dy
+                            if (px < 0 || px >= w || py < 0 || py >= h) continue
+                            if (dx * dx + dy * dy > radius * radius) continue
+                            // Sample from ring outside radius (offset by radius in each direction)
+                            var sr = 0; var sg = 0; var sb = 0; var count = 0
+                            val sampleR = radius * 2
+                            for (sy in -sampleR..sampleR step 3) {
+                                for (sx in -sampleR..sampleR step 3) {
+                                    val dist = sx * sx + sy * sy
+                                    if (dist < radius * radius || dist > sampleR * sampleR) continue
+                                    val spx = (px + sx).coerceIn(0, w - 1)
+                                    val spy = (py + sy).coerceIn(0, h - 1)
+                                    val sp = pixels[spy * w + spx]
+                                    sr += (sp shr 16) and 0xFF; sg += (sp shr 8) and 0xFF; sb += sp and 0xFF
+                                    count++
+                                }
+                            }
+                            if (count > 0) {
+                                val orig = pixels[py * w + px]
+                                pixels[py * w + px] = (orig and 0xFF000000.toInt()) or
+                                    ((sr / count) shl 16) or ((sg / count) shl 8) or (sb / count)
+                            }
+                        }
+                    }
+                }
+                result.setPixels(pixels, 0, w, 0, 0, w, h)
+                continue
+            }
+
             // Freehand path
             val path = Path()
             path.moveTo(dp.points[0].x, dp.points[0].y)
@@ -574,6 +623,42 @@ class CropActivity : ComponentActivity() {
             }
         }
         return result
+    }
+
+    private fun floodFill(bitmap: Bitmap, x: Int, y: Int, fillColor: Int) {
+        val w = bitmap.width; val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        val targetColor = pixels[y * w + x]
+        if (targetColor == fillColor) return
+        val tolerance = 30 // color distance tolerance
+        fun colorClose(c1: Int, c2: Int): Boolean {
+            val dr = ((c1 shr 16) and 0xFF) - ((c2 shr 16) and 0xFF)
+            val dg = ((c1 shr 8) and 0xFF) - ((c2 shr 8) and 0xFF)
+            val db = (c1 and 0xFF) - (c2 and 0xFF)
+            return dr * dr + dg * dg + db * db <= tolerance * tolerance * 3
+        }
+        val queue = ArrayDeque<Int>(w * h / 4)
+        val visited = BooleanArray(w * h)
+        queue.add(y * w + x)
+        visited[y * w + x] = true
+        var filled = 0
+        val maxFill = w * h / 2 // safety limit
+        while (queue.isNotEmpty() && filled < maxFill) {
+            val idx = queue.removeFirst()
+            pixels[idx] = fillColor
+            filled++
+            val cx = idx % w; val cy = idx / w
+            for ((nx, ny) in listOf(cx - 1 to cy, cx + 1 to cy, cx to cy - 1, cx to cy + 1)) {
+                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue
+                val ni = ny * w + nx
+                if (!visited[ni] && colorClose(pixels[ni], targetColor)) {
+                    visited[ni] = true
+                    queue.add(ni)
+                }
+            }
+        }
+        bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
     }
 
     private fun getFilterColorMatrix(filterIndex: Int): ColorMatrix? {
@@ -611,7 +696,7 @@ class CropActivity : ComponentActivity() {
                 setSaturation(0.8f)
                 postConcat(ColorMatrix(floatArrayOf(1.05f,0.02f,0f,0f,8f, 0f,1.02f,0f,0f,4f, 0f,0f,0.95f,0f,-5f, 0f,0f,0f,1f,0f)))
             }
-            // 13-15: Selective color pop (Red/Blue/Green) — handled per-pixel in applyAdjustments
+            // 13-16: per-pixel filters handled in applyAdjustments
             else -> null
         }
     }
@@ -625,7 +710,11 @@ class CropActivity : ComponentActivity() {
         val highlightsAmt = if (adj.size > 9) adj[9] else 0f
         val shadowsAmt = if (adj.size > 10) adj[10] else 0f
         val tiltShiftAmt = if (adj.size > 11) adj[11] else 0f
-        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f && highlightsAmt == 0f && shadowsAmt == 0f && tiltShiftAmt == 0f) return bitmap
+        val denoiseAmt = if (adj.size > 12) adj[12] else 0f
+        val curveRAmt = if (adj.size > 14) adj[14] else 0f
+        val curveGAmt = if (adj.size > 15) adj[15] else 0f
+        val curveBAmt = if (adj.size > 16) adj[16] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f && highlightsAmt == 0f && shadowsAmt == 0f && tiltShiftAmt == 0f && denoiseAmt == 0f && curveRAmt == 0f && curveGAmt == 0f && curveBAmt == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
@@ -678,6 +767,51 @@ class CropActivity : ComponentActivity() {
             }
             result.setPixels(pixels, 0, w, 0, 0, w, h)
         }
+        // Curves: per-channel gamma adjustment
+        if (curveRAmt != 0f || curveGAmt != 0f || curveBAmt != 0f) {
+            val w = result.width; val h = result.height
+            val pixels = IntArray(w * h)
+            result.getPixels(pixels, 0, w, 0, 0, w, h)
+            // Build LUTs for each channel: gamma curve from -100..+100 mapped to gamma 0.5..2.0
+            fun buildLut(amount: Float): IntArray {
+                val lut = IntArray(256)
+                if (amount == 0f) { for (i in 0..255) lut[i] = i; return lut }
+                val gamma = if (amount > 0) 1f / (1f + amount / 50f) else 1f + (-amount / 50f)
+                for (i in 0..255) {
+                    lut[i] = (255.0 * Math.pow(i / 255.0, gamma.toDouble())).toInt().coerceIn(0, 255)
+                }
+                return lut
+            }
+            val lutR = buildLut(curveRAmt); val lutG = buildLut(curveGAmt); val lutB = buildLut(curveBAmt)
+            for (i in pixels.indices) {
+                val px = pixels[i]
+                val r = lutR[(px shr 16) and 0xFF]
+                val g = lutG[(px shr 8) and 0xFF]
+                val b = lutB[px and 0xFF]
+                pixels[i] = (px and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+            }
+            result.setPixels(pixels, 0, w, 0, 0, w, h)
+        }
+        // Glitch effect (16): RGB channel shift
+        if (filterIndex == 16) {
+            val w = result.width; val h = result.height
+            val pixels = IntArray(w * h)
+            result.getPixels(pixels, 0, w, 0, 0, w, h)
+            val out = IntArray(w * h)
+            val shift = (w * 0.02f).toInt().coerceAtLeast(3) // 2% of width
+            for (y in 0 until h) {
+                for (x in 0 until w) {
+                    val idx = y * w + x
+                    val rIdx = y * w + (x + shift).coerceAtMost(w - 1)
+                    val bIdx = y * w + (x - shift).coerceAtLeast(0)
+                    val r = (pixels[rIdx] shr 16) and 0xFF
+                    val g = (pixels[idx] shr 8) and 0xFF
+                    val b = pixels[bIdx] and 0xFF
+                    out[idx] = (pixels[idx] and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+                }
+            }
+            result.setPixels(out, 0, w, 0, 0, w, h)
+        }
         // Selective color pop filters (13=RedPop, 14=BluePop, 15=GreenPop)
         if (filterIndex in 13..15) {
             val w = result.width; val h = result.height
@@ -698,6 +832,27 @@ class CropActivity : ComponentActivity() {
                 }
             }
             result.setPixels(pixels, 0, w, 0, 0, w, h)
+        }
+        // Noise reduction: blend with slightly blurred version
+        if (denoiseAmt > 0.01f) {
+            val w = result.width; val h = result.height
+            val scale = (2 + denoiseAmt * 4).toInt().coerceIn(2, 6)
+            val tiny = Bitmap.createScaledBitmap(result, (w / scale).coerceAtLeast(1), (h / scale).coerceAtLeast(1), true)
+            val blurred = Bitmap.createScaledBitmap(tiny, w, h, true)
+            tiny.recycle()
+            val origPx = IntArray(w * h); val blurPx = IntArray(w * h)
+            result.getPixels(origPx, 0, w, 0, 0, w, h)
+            blurred.getPixels(blurPx, 0, w, 0, 0, w, h)
+            val blend = denoiseAmt.coerceIn(0f, 0.8f) // never fully replace
+            for (i in origPx.indices) {
+                val o = origPx[i]; val b = blurPx[i]
+                val r = ((o shr 16 and 0xFF) * (1 - blend) + (b shr 16 and 0xFF) * blend).toInt()
+                val g = ((o shr 8 and 0xFF) * (1 - blend) + (b shr 8 and 0xFF) * blend).toInt()
+                val bl = ((o and 0xFF) * (1 - blend) + (b and 0xFF) * blend).toInt()
+                origPx[i] = (o and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or bl
+            }
+            result.setPixels(origPx, 0, w, 0, 0, w, h)
+            blurred.recycle()
         }
         // Sharpen: 3x3 convolution kernel
         if (sharpenAmt > 0.01f) {
@@ -780,7 +935,7 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
         // Apply free rotation first (before adjustments/crop)
         val rotAngle = if (adj.size > 8) adj[8] else 0f
         val rotated = if (rotAngle != 0f) {
@@ -803,33 +958,34 @@ class CropActivity : ComponentActivity() {
 
         // Shape crop masking
         val shapeType = if (adj.size > 3) adj[3] else 0f
-        if (shapeType == 1f) {
+        val gradIdx = if (adj.size > 13) adj[13].toInt() else 0
+        val shaped: Bitmap = if (shapeType == 1f) {
             // Circle
             val size = minOf(cropped.width, cropped.height)
-            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val c = Canvas(shaped)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
             val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             c.drawCircle(size / 2f, size / 2f, size / 2f, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
             cropped.recycle()
-            return shaped
+            s
         } else if (shapeType == 2f) {
             // Rounded rect
-            val shaped = Bitmap.createBitmap(cropped.width, cropped.height, Bitmap.Config.ARGB_8888)
-            val c = Canvas(shaped)
+            val s = Bitmap.createBitmap(cropped.width, cropped.height, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
             val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val radius = minOf(cropped.width, cropped.height) * 0.08f
             c.drawRoundRect(RectF(0f, 0f, cropped.width.toFloat(), cropped.height.toFloat()), radius, radius, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, 0f, 0f, shapePaint)
             cropped.recycle()
-            return shaped
+            s
         } else if (shapeType == 3f) {
             // Star (5-point)
             val size = minOf(cropped.width, cropped.height)
-            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val c = Canvas(shaped)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
             val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val starPath = Path()
             val cx = size / 2f; val cy = size / 2f; val outerR = size / 2f; val innerR = outerR * 0.38f
@@ -845,12 +1001,12 @@ class CropActivity : ComponentActivity() {
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
             cropped.recycle()
-            return shaped
+            s
         } else if (shapeType == 4f) {
             // Heart
             val size = minOf(cropped.width, cropped.height)
-            val shaped = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-            val c = Canvas(shaped)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
             val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
             val heartPath = Path()
             val w = size.toFloat(); val h = size.toFloat()
@@ -863,10 +1019,97 @@ class CropActivity : ComponentActivity() {
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
             cropped.recycle()
-            return shaped
+            s
+        } else if (shapeType == 5f) {
+            // Triangle (equilateral)
+            val size = minOf(cropped.width, cropped.height)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val triPath = Path()
+            triPath.moveTo(size / 2f, size * 0.05f)
+            triPath.lineTo(size * 0.95f, size * 0.95f)
+            triPath.lineTo(size * 0.05f, size * 0.95f)
+            triPath.close()
+            c.drawPath(triPath, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
+            cropped.recycle()
+            s
+        } else if (shapeType == 6f) {
+            // Hexagon
+            val size = minOf(cropped.width, cropped.height)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val hexPath = Path()
+            val cx = size / 2f; val cy = size / 2f; val r = size / 2f * 0.95f
+            for (i in 0 until 6) {
+                val angle = Math.toRadians((i * 60.0 - 30.0))
+                val x = cx + r * kotlin.math.cos(angle).toFloat()
+                val y = cy + r * kotlin.math.sin(angle).toFloat()
+                if (i == 0) hexPath.moveTo(x, y) else hexPath.lineTo(x, y)
+            }
+            hexPath.close()
+            c.drawPath(hexPath, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
+            cropped.recycle()
+            s
+        } else if (shapeType == 7f) {
+            // Diamond (rotated square)
+            val size = minOf(cropped.width, cropped.height)
+            val s = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(s)
+            val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+            val diaPath = Path()
+            val half = size / 2f * 0.95f
+            val cx = size / 2f; val cy = size / 2f
+            diaPath.moveTo(cx, cy - half)
+            diaPath.lineTo(cx + half, cy)
+            diaPath.lineTo(cx, cy + half)
+            diaPath.lineTo(cx - half, cy)
+            diaPath.close()
+            c.drawPath(diaPath, shapePaint)
+            shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
+            c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
+            cropped.recycle()
+            s
+        } else {
+            cropped
         }
 
-        return cropped
+        // Gradient background fill for transparent areas (shape crops only)
+        if (gradIdx > 0 && shapeType >= 1f) {
+            return applyGradientBackground(shaped, gradIdx)
+        }
+
+        return shaped
+    }
+
+    private fun applyGradientBackground(bitmap: Bitmap, gradIdx: Int): Bitmap {
+        val w = bitmap.width; val h = bitmap.height
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(result)
+        // Draw gradient background
+        val (startColor, endColor) = when (gradIdx) {
+            1 -> 0xFFFF6B35.toInt() to 0xFFF7C948.toInt() // Sunset (orange->yellow)
+            2 -> 0xFF0077B6.toInt() to 0xFF00B4D8.toInt() // Ocean (deep blue->cyan)
+            3 -> 0xFF7B2FBE.toInt() to 0xFFE040FB.toInt() // Purple (purple->pink)
+            4 -> 0xFF1A1A2E.toInt() to 0xFF16213E.toInt() // Dark (dark blue shades)
+            5 -> 0xFF00B09B.toInt() to 0xFF96C93D.toInt() // Mint (teal->green)
+            6 -> 0xFFFF416C.toInt() to 0xFFFF4B2B.toInt() // Fire (red->orange)
+            else -> return bitmap
+        }
+        val gradPaint = Paint().apply {
+            shader = android.graphics.LinearGradient(0f, 0f, w.toFloat(), h.toFloat(),
+                startColor, endColor, android.graphics.Shader.TileMode.CLAMP)
+        }
+        canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), gradPaint)
+        // Draw the shape-cropped image on top (transparent areas show gradient)
+        canvas.drawBitmap(bitmap, 0f, 0f, null)
+        bitmap.recycle()
+        return result
     }
 
     private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
@@ -915,28 +1158,34 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
-        val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
-        val (format, quality) = getSaveFormat()
-        val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
-        val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
-        @Suppress("DEPRECATION")
-        val isWebp = shareFmt == Bitmap.CompressFormat.WEBP_LOSSY || shareFmt == Bitmap.CompressFormat.WEBP_LOSSLESS || shareFmt == Bitmap.CompressFormat.WEBP
-        val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
-        val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
-        val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
-        val shareFile = File(shareDir, "snapcrop_share.$ext")
-        try {
-            shareFile.outputStream().use { cropped.compress(shareFmt, shareQual, it) }
-            cropped.recycle()
-            val shareUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", shareFile)
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = mime
-                putExtra(Intent.EXTRA_STREAM, shareUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }, null))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Share failed", Toast.LENGTH_SHORT).show()
-            cropped.recycle()
+        CoroutineScope(Dispatchers.IO).launch {
+            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val (format, quality) = getSaveFormat()
+            val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
+            val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
+            @Suppress("DEPRECATION")
+            val isWebp = shareFmt == Bitmap.CompressFormat.WEBP_LOSSY || shareFmt == Bitmap.CompressFormat.WEBP_LOSSLESS || shareFmt == Bitmap.CompressFormat.WEBP
+            val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
+            val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
+            val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
+            val shareFile = File(shareDir, "snapcrop_share.$ext")
+            try {
+                shareFile.outputStream().use { cropped.compress(shareFmt, shareQual, it) }
+                cropped.recycle()
+                val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
+                withContext(Dispatchers.Main) {
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = mime
+                        putExtra(Intent.EXTRA_STREAM, shareUri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }, null))
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@CropActivity, "Share failed", Toast.LENGTH_SHORT).show()
+                }
+                cropped.recycle()
+            }
         }
     }
 
@@ -1004,15 +1253,42 @@ class CropActivity : ComponentActivity() {
             .replace("%counter%", String.format("%04d", counter))
     }
 
+    private fun compressToTargetSize(bitmap: Bitmap, format: Bitmap.CompressFormat, targetKb: Int): Pair<ByteArray, Int> {
+        // Binary search for quality that meets target file size
+        var lo = 10; var hi = 100; var bestBytes: ByteArray? = null; var bestQuality = hi
+        while (lo <= hi) {
+            val mid = (lo + hi) / 2
+            val baos = java.io.ByteArrayOutputStream()
+            bitmap.compress(format, mid, baos)
+            val bytes = baos.toByteArray()
+            if (bytes.size <= targetKb * 1024) {
+                bestBytes = bytes; bestQuality = mid; lo = mid + 1
+            } else {
+                hi = mid - 1
+            }
+        }
+        if (bestBytes == null) {
+            val baos = java.io.ByteArrayOutputStream()
+            bitmap.compress(format, 10, baos)
+            bestBytes = baos.toByteArray(); bestQuality = 10
+        }
+        return bestBytes to bestQuality
+    }
+
     private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean, forcePng: Boolean = false) {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
         @Suppress("DEPRECATION")
         val isWebp = format == Bitmap.CompressFormat.WEBP_LOSSY || format == Bitmap.CompressFormat.WEBP_LOSSLESS || format == Bitmap.CompressFormat.WEBP
         val ext = when { format == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
         val mime = when { format == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
 
-        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
-            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+        val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+
+        // Target file size compression (JPEG/WebP only, not PNG)
+        val targetSizeEnabled = prefs.getBoolean("target_size_enabled", false)
+        val targetSizeKb = prefs.getInt("target_size_kb", 500)
+        val useTargetSize = targetSizeEnabled && !forcePng && format != Bitmap.CompressFormat.PNG
 
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, "$name.$ext")
@@ -1025,27 +1301,45 @@ class CropActivity : ComponentActivity() {
         if (uri == null) { Toast.makeText(this, "Failed to save", Toast.LENGTH_SHORT).show(); return }
 
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
-
-            if (deleteOriginal) {
-                Toast.makeText(this, "Saved to $savePath", Toast.LENGTH_SHORT).show()
-                deleteOriginalFile()
+            if (useTargetSize) {
+                val (bytes, usedQuality) = compressToTargetSize(bitmap, format, targetSizeKb)
+                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                val sizeKb = bytes.size / 1024
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+                val msg = "Saved (${sizeKb}KB, q=$usedQuality)"
+                if (deleteOriginal) {
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                    deleteOriginalFile()
+                } else {
+                    Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+                }
             } else {
-                Toast.makeText(this, "Copy saved to $savePath", Toast.LENGTH_SHORT).show()
+                contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
+                values.clear()
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                contentResolver.update(uri, values, null, null)
+                if (deleteOriginal) {
+                    Toast.makeText(this, "Saved to $savePath", Toast.LENGTH_SHORT).show()
+                    deleteOriginalFile()
+                } else {
+                    Toast.makeText(this, "Copy saved to $savePath", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (e: IOException) {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
-            contentResolver.delete(uri, null, null)
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
         }
         finish()
     }
 
     private fun deleteOriginalFile() {
         val uri = sourceUri ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
+            // MANAGE_EXTERNAL_STORAGE: direct delete without system confirmation
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
                 @Suppress("DEPRECATION")
@@ -1056,6 +1350,16 @@ class CropActivity : ComponentActivity() {
             }
         } else {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 99) {
+            if (resultCode == RESULT_OK) {
+                Toast.makeText(this, "Original deleted", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

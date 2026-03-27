@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.BlurOn
@@ -131,7 +132,7 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
 private enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), LINE("Line"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
     HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji"),
-    NEON("Neon"), BLUR("Blur"), ERASER("Erase")
+    NEON("Neon"), BLUR("Blur"), ERASER("Erase"), FILL("Fill"), HEAL("Heal")
 }
 
 private val commonEmojis = listOf(
@@ -165,24 +166,30 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     CIRCLE("Circle", 1f),
     ROUNDED("Rounded", null),
     STAR("Star", 1f),
-    HEART("Heart", 1f)
+    HEART("Heart", 1f),
+    TRIANGLE("Triangle", 1f),
+    HEXAGON("Hexagon", 1f),
+    DIAMOND("Diamond", 1f)
 }
 
 private data class EditorSnapshot(
     val crop: Rect,
     val bright: Float, val contr: Float, val sat: Float, val warm: Float, val vig: Float,
     val sharp: Float, val rotAngle: Float,
-    val hi: Float, val sh: Float, val tilt: Float,
+    val hi: Float, val sh: Float, val tilt: Float, val dn: Float,
+    val gradBg: Int,
     val filter: ImageFilter,
     val pixRects: List<Rect>,
-    val draws: List<DrawPath>
+    val draws: List<DrawPath>,
+    val cR: Float = 0f, val cG: Float = 0f, val cB: Float = 0f
 )
 
 private enum class ImageFilter(val label: String) {
     NONE("None"), MONO("Mono"), SEPIA("Sepia"), COOL("Cool"), WARM("Warm"),
     VIVID("Vivid"), MUTED("Muted"), VINTAGE("Vintage"), NOIR("Noir"), FADE("Fade"),
     INVERT("Invert"), POLAROID("Polaroid"), GRAIN("Grain"),
-    RED_POP("Red"), BLUE_POP("Blue"), GREEN_POP("Green")
+    RED_POP("Red"), BLUE_POP("Blue"), GREEN_POP("Green"),
+    GLITCH("Glitch")
 }
 
 private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? {
@@ -276,9 +283,26 @@ private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? 
                 0f, 0f, 0f, 1f, 0f
             )))
         }
-        // Selective color pop filters — handled per-pixel in CropActivity, no ColorMatrix
-        ImageFilter.RED_POP, ImageFilter.BLUE_POP, ImageFilter.GREEN_POP -> null
+        // Per-pixel filters — handled in CropActivity, no ColorMatrix
+        ImageFilter.RED_POP, ImageFilter.BLUE_POP, ImageFilter.GREEN_POP, ImageFilter.GLITCH -> null
     }
+}
+
+private fun getGradientBrush(gradIdx: Int, left: Float, top: Float, right: Float, bottom: Float): androidx.compose.ui.graphics.Brush? {
+    val (startColor, endColor) = when (gradIdx) {
+        1 -> Color(0xFFFF6B35) to Color(0xFFF7C948) // Sunset
+        2 -> Color(0xFF0077B6) to Color(0xFF00B4D8) // Ocean
+        3 -> Color(0xFF7B2FBE) to Color(0xFFE040FB) // Purple
+        4 -> Color(0xFF1A1A2E) to Color(0xFF16213E) // Dark
+        5 -> Color(0xFF00B09B) to Color(0xFF96C93D) // Mint
+        6 -> Color(0xFFFF416C) to Color(0xFFFF4B2B) // Fire
+        else -> return null
+    }
+    return androidx.compose.ui.graphics.Brush.linearGradient(
+        colors = listOf(startColor, endColor),
+        start = Offset(left, top),
+        end = Offset(right, bottom)
+    )
 }
 
 @Composable
@@ -372,8 +396,15 @@ fun CropEditorScreen(
     var highlights by remember { mutableFloatStateOf(0f) }   // -100 to 100 (bright area adjustment)
     var shadows by remember { mutableFloatStateOf(0f) }      // -100 to 100 (dark area adjustment)
     var tiltShift by remember { mutableFloatStateOf(0f) }    // 0 to 1 (linear blur top/bottom)
+    var denoise by remember { mutableFloatStateOf(0f) }      // 0 to 1 (noise reduction strength)
+    // Curves: per-channel midpoint adjustments (-100 to 100)
+    var curveR by remember { mutableFloatStateOf(0f) }
+    var curveG by remember { mutableFloatStateOf(0f) }
+    var curveB by remember { mutableFloatStateOf(0f) }
     var selectedFilter by remember { mutableStateOf(ImageFilter.NONE) }
     var showCropInputDialog by remember { mutableStateOf(false) }
+    var gradientBg by remember { mutableIntStateOf(0) } // 0=none, 1-6=gradient presets
+    var showUndoHistory by remember { mutableStateOf(false) }
     var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
     var rotationAngle by remember { mutableFloatStateOf(0f) } // -45 to 45 degrees for straightening
 
@@ -394,19 +425,21 @@ fun CropEditorScreen(
     fun captureSnapshot() = EditorSnapshot(
         Rect(cropLeft, cropTop, cropRight, cropBottom),
         brightness, contrast, saturation, warmth, vignette, sharpen, rotationAngle,
-        highlights, shadows, tiltShift,
+        highlights, shadows, tiltShift, denoise, gradientBg,
         selectedFilter,
         pixelateRects.toList(),
-        drawPaths.toList()
+        drawPaths.toList(),
+        curveR, curveG, curveB
     )
 
     fun restoreSnapshot(s: EditorSnapshot) {
         cropLeft = s.crop.left; cropTop = s.crop.top; cropRight = s.crop.right; cropBottom = s.crop.bottom
         brightness = s.bright; contrast = s.contr; saturation = s.sat; warmth = s.warm; vignette = s.vig; sharpen = s.sharp; rotationAngle = s.rotAngle
-        highlights = s.hi; shadows = s.sh; tiltShift = s.tilt
+        highlights = s.hi; shadows = s.sh; tiltShift = s.tilt; denoise = s.dn; gradientBg = s.gradBg
         selectedFilter = s.filter
         pixelateRects.clear(); pixelateRects.addAll(s.pixRects)
         drawPaths.clear(); drawPaths.addAll(s.draws)
+        curveR = s.cR; curveG = s.cG; curveB = s.cB
     }
 
     val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
@@ -602,6 +635,12 @@ fun CropEditorScreen(
                     Icon(@Suppress("DEPRECATION") Icons.Default.Redo, "Redo (${redoStack.size})",
                         tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
+                if (undoStack.isNotEmpty()) {
+                    IconButton(onClick = { showUndoHistory = !showUndoHistory }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.History, "History",
+                            tint = if (showUndoHistory) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
+                    }
+                }
             }
 
             // Info: dimensions + method + crop %
@@ -630,6 +669,46 @@ fun CropEditorScreen(
                 IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(40.dp)) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         "Preview", tint = if (previewMode) Primary else OnSurface, modifier = Modifier.size(20.dp))
+                }
+            }
+        }
+
+        // Undo history panel (collapsible)
+        if (showUndoHistory && undoStack.isNotEmpty()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .background(SurfaceVariant.copy(alpha = 0.3f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("History:", color = OnSurfaceVariant, fontSize = 10.sp)
+                undoStack.forEachIndexed { idx, snap ->
+                    val label = buildString {
+                        if (snap.draws.isNotEmpty()) append("D${snap.draws.size} ")
+                        if (snap.pixRects.isNotEmpty()) append("P${snap.pixRects.size} ")
+                        if (snap.filter != ImageFilter.NONE) append(snap.filter.label + " ")
+                        if (snap.bright != 0f || snap.contr != 1f || snap.sat != 1f) append("Adj ")
+                        val cropDesc = "${snap.crop.width()}x${snap.crop.height()}"
+                        if (isEmpty()) append(cropDesc) else append(cropDesc)
+                    }.trim()
+                    FilterChip(
+                        selected = false,
+                        onClick = {
+                            // Jump to this snapshot: push current state onto redo, restore clicked
+                            redoStack.add(captureSnapshot())
+                            // Move everything after idx back to redo
+                            for (i in undoStack.size - 1 downTo idx + 1) {
+                                redoStack.add(undoStack.removeAt(i))
+                            }
+                            restoreSnapshot(undoStack.removeAt(idx))
+                            haptic()
+                        },
+                        label = { Text("${idx + 1}: $label", fontSize = 9.sp, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(6.dp)
+                    )
                 }
             }
         }
@@ -767,6 +846,30 @@ fun CropEditorScreen(
                 ),
                 shape = RoundedCornerShape(8.dp)
             )
+        }
+
+        // Gradient background picker (shows when shape crop is selected)
+        if (editMode == EditMode.CROP && selectedRatio in listOf(AspectRatio.CIRCLE, AspectRatio.ROUNDED, AspectRatio.STAR, AspectRatio.HEART, AspectRatio.TRIANGLE, AspectRatio.HEXAGON, AspectRatio.DIAMOND)) {
+            val gradLabels = listOf("None", "Sunset", "Ocean", "Purple", "Dark", "Mint", "Fire")
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("BG:", color = OnSurfaceVariant, fontSize = 11.sp)
+                gradLabels.forEachIndexed { i, label ->
+                    FilterChip(
+                        selected = gradientBg == i,
+                        onClick = { gradientBg = i },
+                        label = { Text(label, fontSize = 10.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
         }
 
         // Straighten angle slider (crop mode only, when angle != 0 or user taps)
@@ -1087,6 +1190,38 @@ fun CropEditorScreen(
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(tiltShift * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Denoise", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = denoise, onValueChange = { denoise = it },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${(denoise * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                // Curves (per-channel RGB)
+                val curvesColor = Color(0xFFCBA6F7) // Lavender
+                Text("Curves", color = curvesColor, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Red", color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = curveR, onValueChange = { curveR = it },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFFFF6B6B), activeTrackColor = Color(0xFFFF6B6B), inactiveTrackColor = SurfaceVariant))
+                    Text("${curveR.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Green", color = Color(0xFF51CF66), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = curveG, onValueChange = { curveG = it },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF51CF66), activeTrackColor = Color(0xFF51CF66), inactiveTrackColor = SurfaceVariant))
+                    Text("${curveG.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Blue", color = Color(0xFF339AF0), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = curveB, onValueChange = { curveB = it },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF339AF0), activeTrackColor = Color(0xFF339AF0), inactiveTrackColor = SurfaceVariant))
+                    Text("${curveB.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = {
                         // Auto-enhance: analyze bitmap histogram and set optimal values
@@ -1117,7 +1252,7 @@ fun CropEditorScreen(
                     }) {
                         Text("Auto", color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; selectedFilter = ImageFilter.NONE }) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; denoise = 0f; selectedFilter = ImageFilter.NONE }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -1295,6 +1430,19 @@ fun CropEditorScreen(
                                                             ))
                                                             haptic()
                                                         }
+                                                        DrawTool.FILL -> {
+                                                            pushUndo()
+                                                            drawPaths.add(DrawPath(
+                                                                points = listOf(PointF(bx, by)),
+                                                                color = drawColor, strokeWidth = 0f,
+                                                                shapeType = "fill"
+                                                            ))
+                                                            haptic()
+                                                        }
+                                                        DrawTool.HEAL -> {
+                                                            // Heal = content-aware fill from surrounding pixels (stored as special draw path)
+                                                            // First tap sets source point, drag paints from source
+                                                        }
                                                         else -> {}
                                                     }
                                                 } else if (editMode == EditMode.OCR) {
@@ -1337,11 +1485,11 @@ fun CropEditorScreen(
                                                     pixDragStart = null; pixDragCurrent = null
                                                 }
                                                 EditMode.DRAW -> {
-                                                    if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT && drawTool != DrawTool.CALLOUT) {
+                                                    if (currentDrawPoints.size >= 2 && drawTool != DrawTool.TEXT && drawTool != DrawTool.CALLOUT && drawTool != DrawTool.FILL) {
                                                         val shape = when (drawTool) {
                                                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
                                                             DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
-                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; else -> null
+                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; DrawTool.HEAL -> "heal"; else -> null
                                                         }
                                                         // Velocity-based stroke modulation for freehand tools
                                                         val velFactor = if (drawTool == DrawTool.PEN || drawTool == DrawTool.NEON) {
@@ -1349,11 +1497,11 @@ fun CropEditorScreen(
                                                             val velocity = drawPathLength / elapsed // px/ms
                                                             (1.5f - velocity * 0.8f).coerceIn(0.6f, 1.5f) // slow=thick, fast=thin
                                                         } else 1f
-                                                        val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; else -> drawStrokeWidth }
+                                                        val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; DrawTool.HEAL -> drawStrokeWidth * 3; else -> drawStrokeWidth }
                                                         drawPaths.add(DrawPath(
                                                             points = when {
                                                                 shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
-                                                                drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER -> smoothPath(currentDrawPoints)
+                                                                drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER || drawTool == DrawTool.HEAL -> smoothPath(currentDrawPoints)
                                                                 else -> currentDrawPoints.toList()
                                                             },
                                                             color = drawColor,
@@ -1619,17 +1767,71 @@ fun CropEditorScreen(
                     if (selectedRatio == AspectRatio.CIRCLE) {
                         val cx = (sl + sr) / 2; val cy = (st + sb) / 2
                         val radius = minOf(sr - sl, sb - st) / 2
+                        // Gradient fill preview
+                        if (gradientBg > 0) {
+                            val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
+                            if (gradBrush != null) drawCircle(brush = gradBrush, radius = radius, center = Offset(cx, cy), alpha = 0.4f)
+                        }
                         drawCircle(CropBorder.copy(alpha = 0.5f), radius, Offset(cx, cy), style = Stroke(2.dp.toPx()))
                     } else if (selectedRatio == AspectRatio.ROUNDED) {
+                        if (gradientBg > 0) {
+                            val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
+                            if (gradBrush != null) drawRoundRect(brush = gradBrush, topLeft = Offset(sl, st), size = Size(sr - sl, sb - st),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), alpha = 0.4f)
+                        }
                         drawRoundRect(CropBorder.copy(alpha = 0.5f), Offset(sl, st), Size(sr - sl, sb - st),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), style = Stroke(2.dp.toPx()))
-                    } else if (selectedRatio == AspectRatio.STAR || selectedRatio == AspectRatio.HEART) {
-                        // Show shape name indicator
-                        val label = if (selectedRatio == AspectRatio.STAR) "Star" else "Heart"
-                        val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                            color = 0x80CDD6F4.toInt(); textSize = 14.dp.toPx(); textAlign = android.graphics.Paint.Align.CENTER
+                    } else if (selectedRatio in listOf(AspectRatio.STAR, AspectRatio.HEART, AspectRatio.TRIANGLE, AspectRatio.HEXAGON, AspectRatio.DIAMOND)) {
+                        val shapeSize = minOf(sr - sl, sb - st)
+                        val scx = (sl + sr) / 2; val scy = (st + sb) / 2
+                        val shapeLeft = scx - shapeSize / 2; val shapeTop = scy - shapeSize / 2
+                        val shapePath = androidx.compose.ui.graphics.Path()
+                        when (selectedRatio) {
+                            AspectRatio.STAR -> {
+                                val outerR = shapeSize / 2; val innerR = outerR * 0.38f
+                                for (i in 0 until 10) {
+                                    val r = if (i % 2 == 0) outerR else innerR
+                                    val angle = Math.toRadians((i * 36.0 - 90.0)).toFloat()
+                                    val px = scx + r * kotlin.math.cos(angle); val py = scy + r * kotlin.math.sin(angle)
+                                    if (i == 0) shapePath.moveTo(px, py) else shapePath.lineTo(px, py)
+                                }
+                            }
+                            AspectRatio.HEART -> {
+                                val w = shapeSize; val h = shapeSize
+                                shapePath.moveTo(scx, shapeTop + h * 0.25f)
+                                shapePath.cubicTo(shapeLeft + w * 0.15f, shapeTop + h * -0.05f, shapeLeft - w * 0.1f, shapeTop + h * 0.45f, scx, shapeTop + h * 0.95f)
+                                shapePath.moveTo(scx, shapeTop + h * 0.25f)
+                                shapePath.cubicTo(shapeLeft + w * 0.85f, shapeTop + h * -0.05f, shapeLeft + w * 1.1f, shapeTop + h * 0.45f, scx, shapeTop + h * 0.95f)
+                            }
+                            AspectRatio.TRIANGLE -> {
+                                shapePath.moveTo(scx, shapeTop + shapeSize * 0.05f)
+                                shapePath.lineTo(shapeLeft + shapeSize * 0.95f, shapeTop + shapeSize * 0.95f)
+                                shapePath.lineTo(shapeLeft + shapeSize * 0.05f, shapeTop + shapeSize * 0.95f)
+                            }
+                            AspectRatio.HEXAGON -> {
+                                val r = shapeSize / 2 * 0.95f
+                                for (i in 0 until 6) {
+                                    val angle = Math.toRadians((i * 60.0 - 30.0)).toFloat()
+                                    val px = scx + r * kotlin.math.cos(angle); val py = scy + r * kotlin.math.sin(angle)
+                                    if (i == 0) shapePath.moveTo(px, py) else shapePath.lineTo(px, py)
+                                }
+                            }
+                            AspectRatio.DIAMOND -> {
+                                val half = shapeSize / 2 * 0.95f
+                                shapePath.moveTo(scx, scy - half)        // top
+                                shapePath.lineTo(scx + half, scy)        // right
+                                shapePath.lineTo(scx, scy + half)        // bottom
+                                shapePath.lineTo(scx - half, scy)        // left
+                            }
+                            else -> {}
                         }
-                        drawContext.canvas.nativeCanvas.drawText(label, (sl + sr) / 2, (st + sb) / 2, labelPaint)
+                        shapePath.close()
+                        // Gradient fill preview
+                        if (gradientBg > 0) {
+                            val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
+                            if (gradBrush != null) drawPath(shapePath, brush = gradBrush, alpha = 0.4f)
+                        }
+                        drawPath(shapePath, CropBorder.copy(alpha = 0.5f), style = Stroke(2.dp.toPx()))
                     }
 
                     // Pixelate region indicators (mosaic pattern)
@@ -2021,12 +2223,12 @@ fun CropEditorScreen(
             Spacer(Modifier.height(6.dp))
 
             // Action icons row
+            val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; AspectRatio.TRIANGLE -> 5f; AspectRatio.HEXAGON -> 6f; AspectRatio.DIAMOND -> 7f; else -> 0f }
+            val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows, tiltShift, denoise, gradientBg.toFloat(), curveR, curveG, curveB)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
-                val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }
-                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows, tiltShift)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -2036,7 +2238,7 @@ fun CropEditorScreen(
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), floatArrayOf(brightness, contrast, saturation, when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows)) },
+            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)

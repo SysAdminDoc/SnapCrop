@@ -130,6 +130,42 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
+                    // Target file size
+                    var targetSizeEnabled by remember { mutableStateOf(prefs.getBoolean("target_size_enabled", false)) }
+                    var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500)) }
+                    SettingToggle(
+                        title = "Target file size",
+                        subtitle = "Auto-adjust quality to meet a file size budget (JPEG/WebP only)",
+                        checked = targetSizeEnabled,
+                        onCheckedChange = {
+                            targetSizeEnabled = it
+                            prefs.edit().putBoolean("target_size_enabled", it).apply()
+                        }
+                    )
+                    if (targetSizeEnabled && (useJpeg || useWebp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Target: ${targetSizeKb}KB", color = OnSurfaceVariant, fontSize = 13.sp,
+                                modifier = Modifier.width(90.dp))
+                            Slider(
+                                value = targetSizeKb.toFloat(),
+                                onValueChange = {
+                                    targetSizeKb = it.toInt()
+                                    prefs.edit().putInt("target_size_kb", targetSizeKb).apply()
+                                },
+                                valueRange = 50f..5000f,
+                                modifier = Modifier.weight(1f),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
                     var stripExif by remember { mutableStateOf(prefs.getBoolean("strip_exif", false)) }
                     SettingToggle(
                         title = "Strip metadata on share",
@@ -342,7 +378,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v6.3.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v6.5.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

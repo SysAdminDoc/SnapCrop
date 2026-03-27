@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -28,8 +29,11 @@ class ScreenshotService : Service() {
         const val ACTION_QUICK_SAVE = "com.sysadmindoc.snapcrop.QUICK_SAVE"
         const val ACTION_SHARE = "com.sysadmindoc.snapcrop.SHARE"
         const val ACTION_DISMISS = "com.sysadmindoc.snapcrop.DISMISS_NOTIF"
+        const val ACTION_DELAYED_CAPTURE = "com.sysadmindoc.snapcrop.DELAYED_CAPTURE"
         const val EXTRA_URI = "extra_uri"
+        const val EXTRA_DELAY_SECONDS = "extra_delay_seconds"
         private const val DETECTED_NOTIF_ID = 2
+        private const val COUNTDOWN_NOTIF_ID = 3
         @Volatile var isRunning = false
             private set
     }
@@ -64,6 +68,11 @@ class ScreenshotService : Service() {
             }
             ACTION_DISMISS -> {
                 dismissDetectedNotification()
+                return START_STICKY
+            }
+            ACTION_DELAYED_CAPTURE -> {
+                val delaySec = intent.getIntExtra(EXTRA_DELAY_SECONDS, 3)
+                startDelayedCapture(delaySec)
                 return START_STICKY
             }
         }
@@ -278,7 +287,10 @@ class ScreenshotService : Service() {
                     values.put(MediaStore.Images.Media.IS_PENDING, 0)
                     contentResolver.update(savedUri, values, null, null)
 
-                    try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                    // Delete original screenshot (only works with MANAGE_EXTERNAL_STORAGE or own files)
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+                        try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                    }
 
                     handler.post { Toast.makeText(this, "Autocropped & saved", Toast.LENGTH_SHORT).show() }
                 } catch (e: IOException) {
@@ -349,6 +361,43 @@ class ScreenshotService : Service() {
     private fun dismissDetectedNotification() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancel(DETECTED_NOTIF_ID)
+    }
+
+    private fun startDelayedCapture(seconds: Int) {
+        val nm = getSystemService(NotificationManager::class.java)
+        // Remember the last processed ID so we can detect the NEW screenshot
+        val preSnapshotId = lastProcessedId
+        val preSnapshotTime = System.currentTimeMillis()
+
+        // Countdown notification
+        for (i in seconds downTo 1) {
+            handler.postDelayed({
+                val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
+                    .setContentTitle("Screenshot in ${i}s")
+                    .setContentText("Take your screenshot now...")
+                    .setSmallIcon(R.drawable.ic_crop)
+                    .setOngoing(true)
+                    .setSilent(true)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                nm.notify(COUNTDOWN_NOTIF_ID, builder.build())
+            }, ((seconds - i) * 1000).toLong())
+        }
+
+        // After countdown, look for new screenshot
+        handler.postDelayed({
+            nm.cancel(COUNTDOWN_NOTIF_ID)
+            // Poll for a new screenshot that appeared after we started
+            handler.post {
+                val found = findLatestScreenshot()
+                if (found != null && found.first != preSnapshotId) {
+                    lastProcessedTime = System.currentTimeMillis()
+                    lastProcessedId = found.first
+                    launchEditor(found.second)
+                } else {
+                    Toast.makeText(this, "No new screenshot detected", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }, (seconds * 1000).toLong())
     }
 
     override fun onDestroy() {

@@ -189,7 +189,7 @@ class StitchActivity : ComponentActivity() {
             finish()
         } catch (e: IOException) {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
-            contentResolver.delete(uri, null, null)
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
     }

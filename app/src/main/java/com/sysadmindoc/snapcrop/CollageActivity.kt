@@ -65,6 +65,23 @@ private val layouts = listOf(
     CollageLayout("3x2", 3, 2),
     CollageLayout("2x3", 2, 3),
     CollageLayout("3x3", 3, 3),
+    CollageLayout("4x1", 4, 1),
+    CollageLayout("1x4", 1, 4),
+    CollageLayout("4x2", 4, 2),
+    CollageLayout("2x4", 2, 4),
+    CollageLayout("4x3", 4, 3),
+    CollageLayout("3x4", 3, 4),
+    CollageLayout("4x4", 4, 4),
+    CollageLayout("5x1", 5, 1),
+    CollageLayout("1x5", 1, 5),
+    CollageLayout("5x2", 5, 2),
+    CollageLayout("2x5", 2, 5),
+    CollageLayout("5x3", 5, 3),
+    CollageLayout("3x5", 3, 5),
+    CollageLayout("5x5", 5, 5),
+    CollageLayout("6x1", 6, 1),
+    CollageLayout("6x2", 6, 2),
+    CollageLayout("6x3", 6, 3),
 )
 
 class CollageActivity : ComponentActivity() {
@@ -225,7 +242,7 @@ class CollageActivity : ComponentActivity() {
             finish()
         } catch (e: IOException) {
             Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
-            contentResolver.delete(uri, null, null)
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
     }
