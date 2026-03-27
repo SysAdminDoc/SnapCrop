@@ -337,6 +337,30 @@ class CropActivity : ComponentActivity() {
             paint.alpha = 255
             paint.pathEffect = if (dp.dashed) android.graphics.DashPathEffect(floatArrayOf(dp.strokeWidth * 3, dp.strokeWidth * 2), 0f) else null
 
+            // Line tool — straight line between two points
+            if (dp.shapeType == "line" && dp.points.size >= 2) {
+                val p1 = dp.points.first(); val p2 = dp.points.last()
+                paint.pathEffect = if (dp.dashed) android.graphics.DashPathEffect(floatArrayOf(dp.strokeWidth * 3, dp.strokeWidth * 2), 0f) else null
+                canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
+                continue
+            }
+
+            // Eraser — paint transparent along stroke path
+            if (dp.shapeType == "eraser" && dp.points.size >= 2) {
+                val eraserPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                    strokeWidth = dp.strokeWidth
+                    style = Paint.Style.STROKE
+                    strokeCap = Paint.Cap.ROUND
+                    strokeJoin = Paint.Join.ROUND
+                }
+                val eraserPath = Path()
+                eraserPath.moveTo(dp.points[0].x, dp.points[0].y)
+                for (i in 1 until dp.points.size) eraserPath.lineTo(dp.points[i].x, dp.points[i].y)
+                canvas.drawPath(eraserPath, eraserPaint)
+                continue
+            }
+
             // Blur brush — Gaussian blur along the stroke path
             if (dp.shapeType == "blur" && dp.points.size >= 2) {
                 val radius = (dp.strokeWidth * 2).toInt().coerceAtLeast(4)
@@ -587,6 +611,7 @@ class CropActivity : ComponentActivity() {
                 setSaturation(0.8f)
                 postConcat(ColorMatrix(floatArrayOf(1.05f,0.02f,0f,0f,8f, 0f,1.02f,0f,0f,4f, 0f,0f,0.95f,0f,-5f, 0f,0f,0f,1f,0f)))
             }
+            // 13-15: Selective color pop (Red/Blue/Green) — handled per-pixel in applyAdjustments
             else -> null
         }
     }
@@ -599,7 +624,8 @@ class CropActivity : ComponentActivity() {
         val sharpenAmt = if (adj.size > 7) adj[7] else 0f
         val highlightsAmt = if (adj.size > 9) adj[9] else 0f
         val shadowsAmt = if (adj.size > 10) adj[10] else 0f
-        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f && highlightsAmt == 0f && shadowsAmt == 0f) return bitmap
+        val tiltShiftAmt = if (adj.size > 11) adj[11] else 0f
+        if (brightness == 0f && contrast == 1f && saturation == 1f && warmth == 0f && vignetteAmt == 0f && filterIndex == 0 && sharpenAmt == 0f && highlightsAmt == 0f && shadowsAmt == 0f && tiltShiftAmt == 0f) return bitmap
         val result = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
         val cm = ColorMatrix()
@@ -652,12 +678,74 @@ class CropActivity : ComponentActivity() {
             }
             result.setPixels(pixels, 0, w, 0, 0, w, h)
         }
+        // Selective color pop filters (13=RedPop, 14=BluePop, 15=GreenPop)
+        if (filterIndex in 13..15) {
+            val w = result.width; val h = result.height
+            val pixels = IntArray(w * h)
+            result.getPixels(pixels, 0, w, 0, 0, w, h)
+            val targetHue = when (filterIndex) { 13 -> 0f; 14 -> 220f; else -> 120f } // Red/Blue/Green
+            val hueRange = 40f // degrees of hue to keep
+            val hsv = FloatArray(3)
+            for (i in pixels.indices) {
+                val px = pixels[i]
+                val r = (px shr 16) and 0xFF; val g = (px shr 8) and 0xFF; val b = px and 0xFF
+                android.graphics.Color.RGBToHSV(r, g, b, hsv)
+                val hueDiff = kotlin.math.abs(hsv[0] - targetHue).let { if (it > 180) 360 - it else it }
+                if (hueDiff > hueRange || hsv[1] < 0.15f) {
+                    // Desaturate — convert to grayscale
+                    val gray = (0.299f * r + 0.587f * g + 0.114f * b).toInt().coerceIn(0, 255)
+                    pixels[i] = (px and 0xFF000000.toInt()) or (gray shl 16) or (gray shl 8) or gray
+                }
+            }
+            result.setPixels(pixels, 0, w, 0, 0, w, h)
+        }
         // Sharpen: 3x3 convolution kernel
         if (sharpenAmt > 0.01f) {
             val sharpened = applySharpen(result, sharpenAmt)
             if (sharpened !== result) result.recycle()
-            return sharpened
+            return applyTiltShift(sharpened, tiltShiftAmt)
         }
+        return applyTiltShift(result, tiltShiftAmt)
+    }
+
+    private fun applyTiltShift(bitmap: Bitmap, amount: Float): Bitmap {
+        if (amount < 0.01f) return bitmap
+        val w = bitmap.width; val h = bitmap.height
+        // Create heavily blurred version via downscale/upscale
+        val scale = (8 * amount).toInt().coerceIn(2, 16)
+        val tiny = Bitmap.createScaledBitmap(bitmap, (w / scale).coerceAtLeast(1), (h / scale).coerceAtLeast(1), true)
+        val blurred = Bitmap.createScaledBitmap(tiny, w, h, true)
+        tiny.recycle()
+        // Blend: center band stays sharp, top/bottom use blurred version
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val focusBand = 0.3f // 30% of height is the sharp center
+        val focusTop = (h * (0.5f - focusBand / 2)).toInt()
+        val focusBottom = (h * (0.5f + focusBand / 2)).toInt()
+        val sharpPixels = IntArray(w * h)
+        val blurPixels = IntArray(w * h)
+        bitmap.getPixels(sharpPixels, 0, w, 0, 0, w, h)
+        blurred.getPixels(blurPixels, 0, w, 0, 0, w, h)
+        val outPixels = IntArray(w * h)
+        for (y in 0 until h) {
+            val blendFactor = when {
+                y < focusTop -> 1f - (y.toFloat() / focusTop).coerceIn(0f, 1f) // top blur
+                y > focusBottom -> ((y - focusBottom).toFloat() / (h - focusBottom)).coerceIn(0f, 1f) // bottom blur
+                else -> 0f // center sharp
+            }
+            for (x in 0 until w) {
+                val idx = y * w + x
+                if (blendFactor < 0.01f) { outPixels[idx] = sharpPixels[idx]; continue }
+                if (blendFactor > 0.99f) { outPixels[idx] = blurPixels[idx]; continue }
+                val sp = sharpPixels[idx]; val bp = blurPixels[idx]
+                val r = ((sp shr 16 and 0xFF) * (1 - blendFactor) + (bp shr 16 and 0xFF) * blendFactor).toInt()
+                val g = ((sp shr 8 and 0xFF) * (1 - blendFactor) + (bp shr 8 and 0xFF) * blendFactor).toInt()
+                val b = ((sp and 0xFF) * (1 - blendFactor) + (bp and 0xFF) * blendFactor).toInt()
+                outPixels[idx] = (sp and 0xFF000000.toInt()) or (r shl 16) or (g shl 8) or b
+            }
+        }
+        result.setPixels(outPixels, 0, w, 0, 0, w, h)
+        blurred.recycle()
         return result
     }
 
@@ -692,7 +780,7 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
         // Apply free rotation first (before adjustments/crop)
         val rotAngle = if (adj.size > 8) adj[8] else 0f
         val rotated = if (rotAngle != 0f) {

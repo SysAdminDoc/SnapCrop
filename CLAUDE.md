@@ -1,7 +1,7 @@
 # SnapCrop
 
 ## Overview
-Android screenshot autocrop editor with full annotation toolkit, image adjustments, gallery, stitching, collage, device mockup, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars and borders (including dark mode), provides 12 draw tools + 5 edit modes + 13 image filters + 8 adjustment sliders.
+Android screenshot autocrop editor with full annotation toolkit, image adjustments, gallery, stitching, collage, device mockup, and ML Kit integration. Detects screenshots via foreground service, auto-crops system bars and borders (including dark mode), provides 14 draw tools + 5 edit modes + 16 image filters + 9 adjustment sliders.
 
 ## Tech Stack
 - Kotlin, Jetpack Compose, Material 3
@@ -58,16 +58,18 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 10. **Emoji** - 20 common emojis, scrollable picker, tap to place
 11. **Neon** - 3-layer glow pen (BlurMaskFilter outer + colored mid + white core) + velocity stroke
 12. **Blur** - Gaussian blur brush (downscale/upscale per-point, 4x stroke width radius)
+13. **Line** - Straight line between two points (optional dashed)
+14. **Eraser** - Erase to transparent (PorterDuff.Mode.CLEAR, 3x stroke width)
 
-## Image Filters (13)
-Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade, Invert, Polaroid, Grain + Auto-enhance (histogram-based)
+## Image Filters (16)
+Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red Pop, Blue Pop, Green Pop + Auto-enhance (histogram-based)
 
 ## Edit Modes (5)
 1. **CROP** - Drag handles with edge magnetism + precision mode, 15 aspect ratios with lock indicator, grid overlay (thirds/golden ratio/off), auto/AI crop, rotate/flip H/flip V, resize, tap dimensions for exact pixel input, before/after swipe comparison in preview, estimated file size on save button, straighten angle slider (-45 to +45 degrees)
 2. **PIXELATE** - Draw rectangles to redact, one-tap face blur with count badge, haptic on commit
 3. **DRAW** - 11 tools, 6 preset colors + RGB color picker dialog + eyedropper + recent colors (last 4), velocity-based stroke width for pen/neon, stroke width slider, dashed toggle, text background pill option, haptic on commit
 4. **OCR** - ML Kit text recognition + barcode scanning, tap to copy single block, "Copy All" button, double-tap text block to crop to it
-5. **ADJUST** - 13 image filter presets + auto-enhance (histogram-based one-tap), brightness, contrast, saturation, warmth, vignette, sharpen, highlights, shadows sliders
+5. **ADJUST** - 16 image filter presets (13 color + 3 selective color pop) + auto-enhance, brightness, contrast, saturation, warmth, vignette, sharpen, highlights, shadows, tilt-shift sliders
 
 ## Build
 ```
@@ -78,9 +80,10 @@ export JAVA_HOME="/c/Program Files/Eclipse Adoptium/jdk-17.0.18.8-hotspot"
 Sign: `zipalign` + `apksigner` with `snapcrop.jks` (keystore in repo root, gitignored)
 
 ## Version
-v6.2.0
+v6.3.0
 
 ## Version History
+- v6.3.0: **Line tool** (13th draw tool, straight line with optional dash), **Eraser tool** (14th draw tool, PorterDuff.CLEAR to transparent), **Selective color pop** (3 new filters: Red/Blue/Green — keep one hue, desaturate rest via HSV per-pixel), **Tilt-shift** effect slider (linear blur top/bottom via downscale blend, 30% center focus band). 14 draw tools, 16 filters, 9 adjust sliders.
 - v6.2.0: **Blur brush** (12th draw tool, Gaussian blur via downscale/upscale along stroke path), **free rotation/straighten** (-45 to 45 degree slider in crop mode, rotates bitmap on export via Matrix.postRotate), **export border** (0-100px colored padding, 6 color options in settings), **highlights/shadows** sliders (luminance-based per-pixel adjustment, bright pixels affected by highlights, dark pixels by shadows). adj FloatArray now 11 elements: [9]=highlights, [10]=shadows.
 - v6.1.0: **Audit fixes**: `delete_original` default changed from `true` to `false` (non-destructive default), `loadRecentCrops` now respects custom save path setting (was hardcoded to Pictures/SnapCrop), `quickSave` in ScreenshotService now respects format preference (was hardcoded PNG), `shareCropped` respects format preference (was always PNG), `copyToClipboard` moved to IO dispatcher (was blocking main thread), Stitch/Collage save now respect format preference (were always PNG), `loadAllPhotos` now includes videos (was images-only unlike album view), version string sync across all files. **New**: Sharpen slider in ADJUST mode (3x3 unsharp mask convolution kernel, 0-2x range), pinch-to-zoom in PhotoViewer (1-5x, resets on page change, disables pager swipe when zoomed), tap to reset zoom in viewer. **6 edit modes** (Crop/Pixelate/Draw/OCR/Adjust with sharpen).
 - v6.0.0: **Crop**: unified gesture handler (fixed drag conflict with pinch-zoom), precise pixel input dialog, 4 new aspect ratios (4:5/5:4/3:1/21:9), edge magnetism snap guides with dashed guide line visualization, precision drag mode (4x slower after 800ms hold), golden ratio grid toggle (thirds/φ/off), flip vertical button, before/after swipe comparison in preview, file size estimate on save button. **Filters**: 13 presets (Mono/Sepia/Cool/Warm/Vivid/Muted/Vintage/Noir/Fade/Invert/Polaroid/Grain) + auto-enhance (histogram analysis). **Draw**: velocity-based stroke width modulation (slow=thicker, fast=thinner for PEN/NEON), RGB color picker dialog with live preview + hex display, recent custom colors memory (last 4), text annotation background pill option, haptic on commit. **OCR**: copy-all button in mode banner, double-tap text block to crop to it, face count badge on Blur Faces button. **Export**: WebP format option (API 29 compat fallback), batch ops respect format setting, save_path setting respected by all 6 activities. **Undo**: unified across all modes (crop+adjust+pixelate+draw in single EditorSnapshot). **Batch**: cancel button with determinate progress bar (X/N percentage), error counting with summary toast. **Stitch**: output dimensions preview, enlarged touch targets (28→36dp). **Collage**: cell aspect ratio selector (4:3/1:1/16:9/3:4). **Notifications**: screenshot thumbnail preview (BigPictureStyle). **UI overhaul**: Top bar split into two rows (navigation + scrollable mode tab chips) to prevent overcrowding. Mode switching via labeled FilterChip tabs instead of icon-only buttons. Standardized all vertical padding to 4dp minimum. Settings horizontal padding 20→16dp. Consistent 12dp horizontal padding across all tool rows. Aspect ratio lock indicator (tap 🔒 to unlock). **AutoCrop**: dark mode border detection improvement (corner-based border color reference prevents false positives on dark content). **Bugs fixed**: strip_exif toggle state tracking, EditorSnapshot moved to top-level (Kotlin forbids local data classes), WebP WEBP_LOSSY API 30 fallback to deprecated WEBP on API 29, WebP ext/mime detection for both constants, version string sync to 6.0.0, DrawScope color property shadowing in Paint.apply blocks.
@@ -134,7 +137,7 @@ Top competitors: ImageToolbox (12.1k stars), ScreenshotTile (1.9k), PhotoEditor 
 - Bitmap.asImageBitmap() wraps same native bitmap — do NOT recycle source while ImageBitmap is in use
 - ColorMatrix for adjustments: filter preset first, then saturation, then contrast (scale around mid + offset), then brightness (additive), then warmth
 - Gesture handling uses single `awaitEachGesture` — do NOT add separate `detectDragGestures`/`detectTransformGestures` modifiers as they consume events and conflict
-- adj FloatArray layout (11 elements): [0]=brightness, [1]=contrast, [2]=saturation, [3]=shapeCrop, [4]=warmth, [5]=vignette, [6]=filterIndex, [7]=sharpen, [8]=rotationAngle, [9]=highlights, [10]=shadows. CropActivity.getFilterColorMatrix() must match ImageFilter enum ordinal order exactly
+- adj FloatArray layout (12 elements): [0]=brightness, [1]=contrast, [2]=saturation, [3]=shapeCrop, [4]=warmth, [5]=vignette, [6]=filterIndex (0-15), [7]=sharpen, [8]=rotationAngle, [9]=highlights, [10]=shadows, [11]=tiltShift. CropActivity.getFilterColorMatrix() must match ImageFilter enum ordinal order exactly. Filters 13-15 (selective color pop) are per-pixel, not ColorMatrix
 - EditorSnapshot data class must be at file top-level (not inside composable) — Kotlin forbids local data classes in functions
 - WebP uses `WEBP_LOSSY` on API 30+ and deprecated `WEBP` on API 29. saveToGallery ext/mime detection must handle all three constants (WEBP_LOSSY, WEBP_LOSSLESS, WEBP)
 - Inside Compose `Canvas { }` (DrawScope), `color` is a DrawScope property — use `paint.color = x` outside `apply {}` blocks or assign to a `val` first to avoid shadowing

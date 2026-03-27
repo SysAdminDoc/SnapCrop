@@ -129,9 +129,9 @@ private fun smoothPath(points: List<PointF>): List<PointF> {
     return smooth
 }
 private enum class DrawTool(val label: String) {
-    PEN("Pen"), ARROW("Arrow"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
+    PEN("Pen"), ARROW("Arrow"), LINE("Line"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
     HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji"),
-    NEON("Neon"), BLUR("Blur")
+    NEON("Neon"), BLUR("Blur"), ERASER("Erase")
 }
 
 private val commonEmojis = listOf(
@@ -172,7 +172,7 @@ private data class EditorSnapshot(
     val crop: Rect,
     val bright: Float, val contr: Float, val sat: Float, val warm: Float, val vig: Float,
     val sharp: Float, val rotAngle: Float,
-    val hi: Float, val sh: Float,
+    val hi: Float, val sh: Float, val tilt: Float,
     val filter: ImageFilter,
     val pixRects: List<Rect>,
     val draws: List<DrawPath>
@@ -181,7 +181,8 @@ private data class EditorSnapshot(
 private enum class ImageFilter(val label: String) {
     NONE("None"), MONO("Mono"), SEPIA("Sepia"), COOL("Cool"), WARM("Warm"),
     VIVID("Vivid"), MUTED("Muted"), VINTAGE("Vintage"), NOIR("Noir"), FADE("Fade"),
-    INVERT("Invert"), POLAROID("Polaroid"), GRAIN("Grain")
+    INVERT("Invert"), POLAROID("Polaroid"), GRAIN("Grain"),
+    RED_POP("Red"), BLUE_POP("Blue"), GREEN_POP("Green")
 }
 
 private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? {
@@ -267,7 +268,6 @@ private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? 
             0f, 0f, 0f, 1f, 0f
         ))
         ImageFilter.GRAIN -> android.graphics.ColorMatrix().apply {
-            // Slightly desaturated + warm tone (grain noise applied at render time via alpha)
             setSaturation(0.8f)
             postConcat(android.graphics.ColorMatrix(floatArrayOf(
                 1.05f, 0.02f, 0f, 0f, 8f,
@@ -276,6 +276,8 @@ private fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? 
                 0f, 0f, 0f, 1f, 0f
             )))
         }
+        // Selective color pop filters — handled per-pixel in CropActivity, no ColorMatrix
+        ImageFilter.RED_POP, ImageFilter.BLUE_POP, ImageFilter.GREEN_POP -> null
     }
 }
 
@@ -369,6 +371,7 @@ fun CropEditorScreen(
     var sharpen by remember { mutableFloatStateOf(0f) }      // 0 to 2 (convolution kernel strength)
     var highlights by remember { mutableFloatStateOf(0f) }   // -100 to 100 (bright area adjustment)
     var shadows by remember { mutableFloatStateOf(0f) }      // -100 to 100 (dark area adjustment)
+    var tiltShift by remember { mutableFloatStateOf(0f) }    // 0 to 1 (linear blur top/bottom)
     var selectedFilter by remember { mutableStateOf(ImageFilter.NONE) }
     var showCropInputDialog by remember { mutableStateOf(false) }
     var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
@@ -391,7 +394,7 @@ fun CropEditorScreen(
     fun captureSnapshot() = EditorSnapshot(
         Rect(cropLeft, cropTop, cropRight, cropBottom),
         brightness, contrast, saturation, warmth, vignette, sharpen, rotationAngle,
-        highlights, shadows,
+        highlights, shadows, tiltShift,
         selectedFilter,
         pixelateRects.toList(),
         drawPaths.toList()
@@ -400,7 +403,7 @@ fun CropEditorScreen(
     fun restoreSnapshot(s: EditorSnapshot) {
         cropLeft = s.crop.left; cropTop = s.crop.top; cropRight = s.crop.right; cropBottom = s.crop.bottom
         brightness = s.bright; contrast = s.contr; saturation = s.sat; warmth = s.warm; vignette = s.vig; sharpen = s.sharp; rotationAngle = s.rotAngle
-        highlights = s.hi; shadows = s.sh
+        highlights = s.hi; shadows = s.sh; tiltShift = s.tilt
         selectedFilter = s.filter
         pixelateRects.clear(); pixelateRects.addAll(s.pixRects)
         drawPaths.clear(); drawPaths.addAll(s.draws)
@@ -866,7 +869,7 @@ fun CropEditorScreen(
                             shape = RoundedCornerShape(8.dp))
                     }
                     // Dashed toggle (for pen, arrow, rect, circle)
-                    if (drawTool in listOf(DrawTool.PEN, DrawTool.ARROW, DrawTool.RECT, DrawTool.CIRCLE)) {
+                    if (drawTool in listOf(DrawTool.PEN, DrawTool.ARROW, DrawTool.LINE, DrawTool.RECT, DrawTool.CIRCLE)) {
                         FilterChip(selected = dashedStroke,
                             onClick = { dashedStroke = !dashedStroke },
                             label = { Text("---", fontSize = 10.sp) },
@@ -1077,6 +1080,13 @@ fun CropEditorScreen(
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${shadows.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tilt-Shift", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Slider(value = tiltShift, onValueChange = { tiltShift = it },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
+                    Text("${(tiltShift * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
+                }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = {
                         // Auto-enhance: analyze bitmap histogram and set optimal values
@@ -1107,7 +1117,7 @@ fun CropEditorScreen(
                     }) {
                         Text("Auto", color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; selectedFilter = ImageFilter.NONE }) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; selectedFilter = ImageFilter.NONE }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -1331,7 +1341,7 @@ fun CropEditorScreen(
                                                         val shape = when (drawTool) {
                                                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
                                                             DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
-                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; else -> null
+                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; else -> null
                                                         }
                                                         // Velocity-based stroke modulation for freehand tools
                                                         val velFactor = if (drawTool == DrawTool.PEN || drawTool == DrawTool.NEON) {
@@ -1339,11 +1349,11 @@ fun CropEditorScreen(
                                                             val velocity = drawPathLength / elapsed // px/ms
                                                             (1.5f - velocity * 0.8f).coerceIn(0.6f, 1.5f) // slow=thick, fast=thin
                                                         } else 1f
-                                                        val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; else -> drawStrokeWidth }
+                                                        val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; else -> drawStrokeWidth }
                                                         drawPaths.add(DrawPath(
                                                             points = when {
-                                                                shape == "rect" || shape == "circle" || shape == "spotlight" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
-                                                                drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR -> smoothPath(currentDrawPoints)
+                                                                shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                                drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER -> smoothPath(currentDrawPoints)
                                                                 else -> currentDrawPoints.toList()
                                                             },
                                                             color = drawColor,
@@ -1759,6 +1769,31 @@ fun CropEditorScreen(
                             return
                         }
 
+                        // Line tool — straight line between first and last points
+                        if (shape == "line" && pts.size >= 2) {
+                            val p1 = pts.first(); val p2 = pts.last()
+                            val dashEffect = if (dp.dashed) androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(sw * 3, sw * 2), 0f) else null
+                            drawLine(color,
+                                Offset(ox + p1.x * scale, oy + p1.y * scale),
+                                Offset(ox + p2.x * scale, oy + p2.y * scale),
+                                strokeWidth = sw,
+                                pathEffect = dashEffect)
+                            return
+                        }
+
+                        // Eraser — semi-transparent checkerboard-style indicator
+                        if (shape == "eraser" && pts.size >= 2) {
+                            val eraserPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = 0xFFFF6666.toInt(); strokeWidth = sw; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND; alpha = 60
+                            }
+                            val eraserPath = android.graphics.Path()
+                            eraserPath.moveTo(ox + pts[0].x * scale, oy + pts[0].y * scale)
+                            for (i in 1 until pts.size) eraserPath.lineTo(ox + pts[i].x * scale, oy + pts[i].y * scale)
+                            drawContext.canvas.nativeCanvas.drawPath(eraserPath, eraserPaint)
+                            return
+                        }
+
                         // Highlighter (semi-transparent wide stroke)
                         if (shape == "highlight" && pts.size >= 2) {
                             val highlightColor = color.copy(alpha = 0.4f)
@@ -1858,9 +1893,9 @@ fun CropEditorScreen(
                         val curShape = when (drawTool) {
                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
                             DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
-                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; else -> null
+                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; else -> null
                         }
-                        val curSw = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; else -> drawStrokeWidth }
+                        val curSw = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; else -> drawStrokeWidth }
                         val curPts = if (curShape == "rect" || curShape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
                         drawShapeOnCanvas(DrawPath(curPts, drawColor, curSw, drawTool == DrawTool.ARROW, curShape),
                             curPts, Color(drawColor), curSw * scale)
@@ -1991,7 +2026,7 @@ fun CropEditorScreen(
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
                 val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; else -> 0f }
-                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows)
+                val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows, tiltShift)
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
