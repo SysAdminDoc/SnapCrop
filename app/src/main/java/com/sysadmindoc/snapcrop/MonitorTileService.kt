@@ -23,9 +23,15 @@ class MonitorTileService : TileService() {
         } else {
             if (Build.VERSION.SDK_INT >= 31 && !Settings.canDrawOverlays(this)) {
                 // Can't start without overlay permission — open app
-                startActivityAndCollapse(Intent(this, MainActivity::class.java).apply {
+                val intent = Intent(this, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                })
+                }
+                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    startActivityAndCollapse(android.app.PendingIntent.getActivity(this, 0, intent, android.app.PendingIntent.FLAG_IMMUTABLE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    startActivityAndCollapse(intent)
+                }
                 return
             }
             ContextCompat.startForegroundService(this, Intent(this, ScreenshotService::class.java))

@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.*
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -130,12 +130,12 @@ class CollageActivity : ComponentActivity() {
     }
 
     private fun buildAndSave() {
-        if (imageUris.isEmpty() || isSaving.value) return
+        if (imageUris.size < 2 || isSaving.value) return
         isSaving.value = true
         val layout = selectedLayout.value
         val gap = spacing.intValue
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val bitmaps = imageUris.mapNotNull { uri ->
                     contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
@@ -149,8 +149,8 @@ class CollageActivity : ComponentActivity() {
                 }
 
                 // Target: 1080px wide collage
-                val cellW = (1080 - gap * (layout.cols + 1)) / layout.cols
-                val cellH = (cellW / cellAspect.floatValue).toInt()
+                val cellW = ((1080 - gap * (layout.cols + 1)) / layout.cols).coerceAtLeast(1)
+                val cellH = (cellW / cellAspect.floatValue).toInt().coerceAtLeast(1)
                 val totalW = cellW * layout.cols + gap * (layout.cols + 1)
                 val totalH = cellH * layout.rows + gap * (layout.rows + 1)
 
@@ -175,7 +175,7 @@ class CollageActivity : ComponentActivity() {
 
                 bitmaps.forEach { it.recycle() }
 
-                withContext(Dispatchers.Main) { saveToGallery(result) }
+                saveToGallery(result)
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -229,19 +229,21 @@ class CollageActivity : ComponentActivity() {
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
-            Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
+            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
             isSaving.value = false
             return
         }
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(fmt, quality, it) }
+            (contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Failed to open output stream")).use { bitmap.compress(fmt, quality, it) }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
-            Toast.makeText(this, "Collage saved", Toast.LENGTH_SHORT).show()
-            finish()
+            runOnUiThread {
+                Toast.makeText(this, "Collage saved", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         } catch (e: IOException) {
-            Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
+            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
@@ -396,7 +398,7 @@ private fun CollageScreen(
                 Button(
                     onClick = onSave,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = uris.isNotEmpty(),
+                    enabled = uris.size >= 2,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {

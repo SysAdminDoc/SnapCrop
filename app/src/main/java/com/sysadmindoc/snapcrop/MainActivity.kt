@@ -11,7 +11,7 @@ import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,9 +56,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
 
-data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
+data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap, val nativeBitmap: android.graphics.Bitmap? = null)
 
 class MainActivity : ComponentActivity() {
 
@@ -114,7 +115,7 @@ class MainActivity : ComponentActivity() {
 
     private fun batchAutocrop(uris: List<Uri>) {
         batchCancelled.value = false
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             val statusBarPx = SystemBars.statusBarHeight(resources)
             val navBarPx = SystemBars.navigationBarHeight(resources)
             var done = 0; var failed = 0
@@ -133,11 +134,11 @@ class MainActivity : ComponentActivity() {
                         val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                                 cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
+                        val cw = cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)).coerceAtLeast(1)
+                        val ch = cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0)).coerceAtLeast(1)
                         val toSave = if (isFullImage) bitmap else {
                             android.graphics.Bitmap.createBitmap(bitmap,
-                                cropRect.left.coerceAtLeast(0), cropRect.top.coerceAtLeast(0),
-                                cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)),
-                                cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0)))
+                                cropRect.left.coerceAtLeast(0), cropRect.top.coerceAtLeast(0), cw, ch)
                         }
 
                         val (fmt, qual, ext) = getSaveFormat()
@@ -150,12 +151,15 @@ class MainActivity : ComponentActivity() {
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
-                            contentResolver.openOutputStream(savedUri)?.use { out ->
-                                toSave.compress(fmt, qual, out)
+                            val os = contentResolver.openOutputStream(savedUri)
+                            if (os != null) {
+                                os.use { out -> toSave.compress(fmt, qual, out) }
+                                values.clear()
+                                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                                contentResolver.update(savedUri, values, null, null)
+                            } else {
+                                contentResolver.delete(savedUri, null, null)
                             }
-                            values.clear()
-                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                            contentResolver.update(savedUri, values, null, null)
                         }
                         if (toSave !== bitmap) toSave.recycle()
                         bitmap.recycle()
@@ -254,10 +258,18 @@ class MainActivity : ComponentActivity() {
                                 },
                                 hasFileManagePermission = hasFileManagePermission.value,
                                 onRequestFileManage = {
-                                    startActivity(Intent(
-                                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                        Uri.parse("package:$packageName")
-                                    ))
+                                    try {
+                                        startActivity(Intent(
+                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                            Uri.parse("package:$packageName")
+                                        ))
+                                    } catch (_: Exception) {
+                                        try {
+                                            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                        } catch (_: Exception) {
+                                            Toast.makeText(this@MainActivity, "Open Settings > Apps > SnapCrop > Permissions to grant file access", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
                                 },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenCrop = { uri ->
@@ -342,7 +354,7 @@ class MainActivity : ComponentActivity() {
         if (shouldRun && hasPermissions.value && !ScreenshotService.isRunning) {
             startMonitoring()
         }
-        serviceRunning.value = ScreenshotService.isRunning || shouldRun
+        serviceRunning.value = ScreenshotService.isRunning
 
         if (hasPermissions.value) loadRecentCrops()
         galleryRefreshKey.intValue++
@@ -381,7 +393,7 @@ class MainActivity : ComponentActivity() {
 
     private fun batchResize(uris: List<Uri>, maxDim: Int) {
         batchCancelled.value = false
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             var done = 0; var failed = 0
             for (uri in uris) {
                 if (batchCancelled.value) break
@@ -408,12 +420,15 @@ class MainActivity : ComponentActivity() {
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
-                            contentResolver.openOutputStream(savedUri)?.use { out ->
-                                resized.compress(fmt, qual, out)
+                            val os = contentResolver.openOutputStream(savedUri)
+                            if (os != null) {
+                                os.use { out -> resized.compress(fmt, qual, out) }
+                                values.clear()
+                                values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                                contentResolver.update(savedUri, values, null, null)
+                            } else {
+                                contentResolver.delete(savedUri, null, null)
                             }
-                            values.clear()
-                            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                            contentResolver.update(savedUri, values, null, null)
                         }
                         resized.recycle()
                     }
@@ -436,14 +451,23 @@ class MainActivity : ComponentActivity() {
 
     private fun exportPdf(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val doc = PdfDocument()
             try {
-                val doc = PdfDocument()
                 var pageNum = 1
+                val maxPdfDim = 2048 // Limit page dimensions to prevent OOM on large images
                 for (uri in uris) {
-                    val bmp = contentResolver.openInputStream(uri)?.use { stream ->
+                    var bmp = contentResolver.openInputStream(uri)?.use { stream ->
                         BitmapFactory.decodeStream(stream)
                     } ?: continue
+                    // Downscale large images to prevent OOM
+                    if (bmp.width > maxPdfDim || bmp.height > maxPdfDim) {
+                        val scale = maxPdfDim.toFloat() / maxOf(bmp.width, bmp.height)
+                        val scaled = android.graphics.Bitmap.createScaledBitmap(
+                            bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
+                        bmp.recycle()
+                        bmp = scaled
+                    }
                     val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, pageNum).create()
                     val page = doc.startPage(pageInfo)
                     page.canvas.drawBitmap(bmp, 0f, 0f, null)
@@ -455,7 +479,6 @@ class MainActivity : ComponentActivity() {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "No images to export", Toast.LENGTH_SHORT).show()
                     }
-                    doc.close()
                     return@launch
                 }
 
@@ -469,10 +492,17 @@ class MainActivity : ComponentActivity() {
                 try {
                     pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
                     if (pdfUri != null) {
-                        contentResolver.openOutputStream(pdfUri)?.use { doc.writeTo(it) }
+                        val pdfOs = contentResolver.openOutputStream(pdfUri)
+                        if (pdfOs != null) {
+                            pdfOs.use { doc.writeTo(it) }
+                        } else {
+                            contentResolver.delete(pdfUri, null, null)
+                            pdfUri = null
+                            throw Exception("Failed to open output stream for PDF")
+                        }
                         values.clear()
                         values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        contentResolver.update(pdfUri, values, null, null)
+                        contentResolver.update(pdfUri!!, values, null, null)
                         withContext(Dispatchers.Main) {
                             Toast.makeText(this@MainActivity, "PDF saved to Documents/SnapCrop", Toast.LENGTH_SHORT).show()
                         }
@@ -483,21 +513,23 @@ class MainActivity : ComponentActivity() {
                         Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
                     }
                 }
-                doc.close()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
                 }
+            } finally {
+                doc.close()
             }
         }
     }
 
     private fun shareImages(uris: List<Uri>) {
+        if (uris.isEmpty()) return
         val stripExif = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("strip_exif", false)
 
         if (stripExif) {
             // Re-encode to strip EXIF metadata
-            CoroutineScope(Dispatchers.IO).launch {
+            lifecycleScope.launch(Dispatchers.IO) {
                 val shareDir = java.io.File(cacheDir, "share_clean")
                 shareDir.mkdirs()
                 shareDir.listFiles()?.forEach { it.delete() } // clean old
@@ -537,13 +569,17 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         // MANAGE_EXTERNAL_STORAGE grants direct delete without system confirmation
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            var count = 0
-            for (uri in uris) {
-                try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+            lifecycleScope.launch(Dispatchers.IO) {
+                var count = 0
+                for (uri in uris) {
+                    try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Deleted $count photos", Toast.LENGTH_SHORT).show()
+                    galleryRefreshKey.intValue++
+                    loadRecentCrops()
+                }
             }
-            Toast.makeText(this, "Deleted $count photos", Toast.LENGTH_SHORT).show()
-            galleryRefreshKey.intValue++
-            loadRecentCrops()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             // Android 11+ without MANAGE_EXTERNAL_STORAGE: system delete confirmation dialog
             try {
@@ -609,7 +645,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun loadRecentCrops() {
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val crops = mutableListOf<RecentCrop>()
                 val projection = arrayOf(
@@ -641,7 +677,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 contentResolver.openInputStream(uri)?.use { stream ->
                                     BitmapFactory.decodeStream(stream, null, opts)?.let { thumb ->
-                                        crops.add(RecentCrop(uri, thumb.asImageBitmap()))
+                                        crops.add(RecentCrop(uri, thumb.asImageBitmap(), thumb))
                                     }
                                 }
                             } catch (_: Exception) {}
@@ -652,6 +688,8 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 withContext(Dispatchers.Main) {
+                    // Recycle old thumbnail bitmaps to prevent native memory leak
+                    recentCrops.value.forEach { it.nativeBitmap?.recycle() }
                     recentCrops.value = crops
                 }
             } catch (_: Exception) {}
@@ -708,7 +746,7 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v6.5.0", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text("v${BuildConfig.VERSION_NAME}", fontSize = 13.sp, color = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)

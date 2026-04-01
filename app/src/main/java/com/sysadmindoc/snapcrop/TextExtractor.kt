@@ -17,17 +17,20 @@ object TextExtractor {
     }
 
     suspend fun extract(bitmap: Bitmap): List<TextBlock> {
+        if (bitmap.isRecycled) return emptyList()
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
             recognizer.process(image)
                 .addOnSuccessListener { result ->
-                    val blocks = result.textBlocks.mapNotNull { block ->
-                        val bounds = block.boundingBox ?: return@mapNotNull null
-                        TextBlock(block.text, bounds)
+                    if (cont.isActive) {
+                        val blocks = result.textBlocks.mapNotNull { block ->
+                            val bounds = block.boundingBox ?: return@mapNotNull null
+                            TextBlock(block.text, bounds)
+                        }
+                        cont.resume(blocks)
                     }
-                    cont.resume(blocks)
                 }
-                .addOnFailureListener { cont.resume(emptyList()) }
+                .addOnFailureListener { if (cont.isActive) cont.resume(emptyList()) }
         }
     }
 }
