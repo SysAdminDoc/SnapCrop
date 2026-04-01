@@ -72,7 +72,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.snapcrop.ui.theme.*
-import kotlinx.coroutines.CoroutineScope
+import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -325,6 +325,10 @@ fun CropEditorScreen(
     onFlipV: () -> Unit
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
+    val scope = rememberCoroutineScope()
+
+    // Reset bgRemoving and stale palette when bitmap changes (BG removal, rotation, resize)
+    LaunchedEffect(bitmap) { bgRemoving = false; paletteColors = emptyList() }
 
     // Base scale/offset (fit image to canvas)
     var baseScale by remember { mutableFloatStateOf(1f) }
@@ -361,7 +365,7 @@ fun CropEditorScreen(
     // Draw mode
     val drawPaths = remember { mutableStateListOf<DrawPath>() }
     val drawRedoStack = remember { mutableStateListOf<DrawPath>() }
-    var currentDrawPoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
+    val currentDrawPoints = remember { mutableStateListOf<PointF>() }
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
     val recentColors = remember { mutableStateListOf<Int>() }
     var drawStrokeWidth by remember { mutableFloatStateOf(6f) }
@@ -407,6 +411,9 @@ fun CropEditorScreen(
     var showUndoHistory by remember { mutableStateOf(false) }
     var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
     var rotationAngle by remember { mutableFloatStateOf(0f) } // -45 to 45 degrees for straightening
+
+    // Pre-allocate Paint for vignette to avoid allocation in DrawScope
+    val vigPaint = remember { android.graphics.Paint() }
 
     val context = LocalContext.current
     fun haptic() {
@@ -731,7 +738,7 @@ fun CropEditorScreen(
                             editMode = mode
                             if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
                                 ocrLoading = true
-                                CoroutineScope(Dispatchers.Main).launch {
+                                scope.launch {
                                     val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
                                     val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
                                     ocrBlocks = textDeferred.await()
@@ -901,7 +908,7 @@ fun CropEditorScreen(
                     onClick = {
                         if (!faceRedacting) {
                             faceRedacting = true
-                            CoroutineScope(Dispatchers.Main).launch {
+                            scope.launch {
                                 val faces = FaceDetector.detect(bitmap)
                                 if (faces.isNotEmpty()) pushUndo()
                                 pixelateRects.addAll(faces)
@@ -952,7 +959,8 @@ fun CropEditorScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     DrawTool.entries.forEach { tool ->
                         FilterChip(selected = drawTool == tool,
                             onClick = { drawTool = tool },
@@ -1055,11 +1063,13 @@ fun CropEditorScreen(
                 Row {
                     if (drawPaths.isNotEmpty()) {
                         TextButton(onClick = {
+                            pushUndo()
                             drawPaths.removeLastOrNull()?.let { drawRedoStack.add(it) }
                         }) { Text("Undo", color = Secondary, fontSize = 11.sp) }
                     }
                     if (drawRedoStack.isNotEmpty()) {
                         TextButton(onClick = {
+                            pushUndo()
                             drawRedoStack.removeLastOrNull()?.let { drawPaths.add(it) }
                         }) { Text("Redo", color = Secondary, fontSize = 11.sp) }
                     }
@@ -1227,7 +1237,7 @@ fun CropEditorScreen(
                         // Auto-enhance: analyze bitmap histogram and set optimal values
                         pushUndo()
                         val sampleSize = 4
-                        val sw = bitmap.width / sampleSize; val sh = bitmap.height / sampleSize
+                        val sw = (bitmap.width / sampleSize).coerceAtLeast(1); val sh = (bitmap.height / sampleSize).coerceAtLeast(1)
                         val sampled = android.graphics.Bitmap.createScaledBitmap(bitmap, sw, sh, false)
                         var totalLum = 0f; var minLum = 255f; var maxLum = 0f; var totalSat = 0f
                         val pixels = IntArray(sw * sh)
@@ -1252,7 +1262,7 @@ fun CropEditorScreen(
                     }) {
                         Text("Auto", color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; denoise = 0f; selectedFilter = ImageFilter.NONE }) {
+                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; denoise = 0f; curveR = 0f; curveG = 0f; curveB = 0f; selectedFilter = ImageFilter.NONE }) {
                         Text("Reset", color = adjustColor, fontSize = 11.sp)
                     }
                 }
@@ -1391,15 +1401,15 @@ fun CropEditorScreen(
                                                 lastTapTime = now
                                                 lastTapPos = downPos
                                                 // Single tap actions
-                                                if (eyedropperActive && editMode == EditMode.DRAW) {
+                                                if (eyedropperActive && editMode == EditMode.DRAW && !bitmap.isRecycled) {
                                                     val bx = ((downPos.x - offsetX) / scaleX).toInt().coerceIn(0, bitmap.width - 1)
                                                     val by = ((downPos.y - offsetY) / scaleY).toInt().coerceIn(0, bitmap.height - 1)
                                                     drawColor = bitmap.getPixel(bx, by)
                                                     eyedropperActive = false
                                                     haptic()
                                                 } else if (editMode == EditMode.DRAW) {
-                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
-                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, (bitmap.width - 1).toFloat())
+                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, (bitmap.height - 1).toFloat())
                                                     when (drawTool) {
                                                         DrawTool.TEXT -> {
                                                             textPlacePoint = PointF(bx, by)
@@ -1407,6 +1417,7 @@ fun CropEditorScreen(
                                                             showTextDialog = true
                                                         }
                                                         DrawTool.CALLOUT -> {
+                                                            pushUndo()
                                                             drawPaths.add(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
@@ -1415,6 +1426,7 @@ fun CropEditorScreen(
                                                             haptic()
                                                         }
                                                         DrawTool.MAGNIFIER -> {
+                                                            pushUndo()
                                                             drawPaths.add(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
@@ -1423,6 +1435,7 @@ fun CropEditorScreen(
                                                             haptic()
                                                         }
                                                         DrawTool.EMOJI -> {
+                                                            pushUndo()
                                                             drawPaths.add(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
@@ -1478,6 +1491,7 @@ fun CropEditorScreen(
                                                         val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
                                                         val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
                                                         if (bx2 - bx1 > 10 && by2 - by1 > 10) {
+                                                            pushUndo()
                                                             pixelateRects.add(Rect(bx1, by1, bx2, by2))
                                                             haptic()
                                                         }
@@ -1513,7 +1527,7 @@ fun CropEditorScreen(
                                                         ))
                                                         haptic()
                                                     }
-                                                    currentDrawPoints = emptyList()
+                                                    currentDrawPoints.clear()
                                                 }
                                                 EditMode.CROP -> {}
                                                 EditMode.OCR, EditMode.ADJUST -> {}
@@ -1521,7 +1535,7 @@ fun CropEditorScreen(
                                         }
                                         activeHandle = DragHandle.NONE
                                         pixDragStart = null; pixDragCurrent = null
-                                        currentDrawPoints = emptyList()
+                                        currentDrawPoints.clear()
                                         break
                                     }
 
@@ -1533,7 +1547,7 @@ fun CropEditorScreen(
                                             pressed.map { it.position.y }.average().toFloat()
                                         )
                                         val spread = pressed.map { (it.position - centroid).getDistance() }.average().toFloat()
-                                        if (prevCount >= 2 && prevSpread > 0f) {
+                                        if (prevCount >= 2 && prevSpread > 1f) {
                                             val zoom = spread / prevSpread
                                             val pan = centroid - prevCentroid
                                             if (zoom != 1f || zoomLevel > 1.05f) {
@@ -1572,9 +1586,9 @@ fun CropEditorScreen(
                                                 }
                                                 editMode == EditMode.DRAW -> {
                                                     drawRedoStack.clear()
-                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
-                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
-                                                    currentDrawPoints = listOf(PointF(bx, by))
+                                                    val bx = ((downPos.x - offsetX) / scaleX).coerceIn(0f, (bitmap.width - 1).toFloat())
+                                                    val by = ((downPos.y - offsetY) / scaleY).coerceIn(0f, (bitmap.height - 1).toFloat())
+                                                    currentDrawPoints.clear(); currentDrawPoints.add(PointF(bx, by))
                                                 }
                                             }
                                         }
@@ -1592,13 +1606,13 @@ fun CropEditorScreen(
                                             }
                                             editMode == EditMode.DRAW -> {
                                                 val pos = change.position
-                                                val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, bitmap.width.toFloat())
-                                                val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, bitmap.height.toFloat())
+                                                val bx = ((pos.x - offsetX) / scaleX).coerceIn(0f, (bitmap.width - 1).toFloat())
+                                                val by = ((pos.y - offsetY) / scaleY).coerceIn(0f, (bitmap.height - 1).toFloat())
                                                 if (currentDrawPoints.isNotEmpty()) {
                                                     val prev = currentDrawPoints.last()
                                                     drawPathLength += kotlin.math.sqrt(((bx - prev.x) * (bx - prev.x) + (by - prev.y) * (by - prev.y)).toDouble()).toFloat()
                                                 }
-                                                currentDrawPoints = currentDrawPoints + PointF(bx, by)
+                                                currentDrawPoints.add(PointF(bx, by))
                                             }
                                             editMode == EditMode.CROP && zoomLevel > 1.05f -> {
                                                 panX += dragDelta.x; panY += dragDelta.y
@@ -1614,7 +1628,10 @@ fun CropEditorScreen(
                     val fitScale = min(size.width / imgW, size.height / imgH)
                     val fitW = imgW * fitScale; val fitH = imgH * fitScale
                     val fitOx = (size.width - fitW) / 2; val fitOy = (size.height - fitH) / 2
-                    baseScale = fitScale; baseOx = fitOx; baseOy = fitOy
+                    // Avoid state writes inside DrawScope to prevent recomposition loops
+                    if (baseScale != fitScale || baseOx != fitOx || baseOy != fitOy) {
+                        baseScale = fitScale; baseOx = fitOx; baseOy = fitOy
+                    }
 
                     // Effective (zoomed) image position
                     val ox = offsetX; val oy = offsetY
@@ -1676,15 +1693,13 @@ fun CropEditorScreen(
                     // Vignette overlay (radial gradient from transparent to black)
                     if (vignette > 0.01f) {
                         drawContext.canvas.nativeCanvas.apply {
-                            val vigPaint = android.graphics.Paint().apply {
-                                shader = android.graphics.RadialGradient(
-                                    ox + drawW / 2, oy + drawH / 2,
-                                    maxOf(drawW, drawH) * 0.7f,
-                                    intArrayOf(0x00000000, (vignette * 200).toInt().coerceAtMost(200) shl 24),
-                                    floatArrayOf(0.4f, 1f),
-                                    android.graphics.Shader.TileMode.CLAMP
-                                )
-                            }
+                            vigPaint.shader = android.graphics.RadialGradient(
+                                ox + drawW / 2, oy + drawH / 2,
+                                maxOf(drawW, drawH) * 0.7f,
+                                intArrayOf(0x00000000, (vignette * 200).toInt().coerceAtMost(200) shl 24),
+                                floatArrayOf(0.4f, 1f),
+                                android.graphics.Shader.TileMode.CLAMP
+                            )
                             drawRect(ox, oy, ox + drawW, oy + drawH, vigPaint)
                         }
                     }
@@ -1800,7 +1815,7 @@ fun CropEditorScreen(
                                 val w = shapeSize; val h = shapeSize
                                 shapePath.moveTo(scx, shapeTop + h * 0.25f)
                                 shapePath.cubicTo(shapeLeft + w * 0.15f, shapeTop + h * -0.05f, shapeLeft - w * 0.1f, shapeTop + h * 0.45f, scx, shapeTop + h * 0.95f)
-                                shapePath.moveTo(scx, shapeTop + h * 0.25f)
+                                shapePath.lineTo(scx, shapeTop + h * 0.25f)
                                 shapePath.cubicTo(shapeLeft + w * 0.85f, shapeTop + h * -0.05f, shapeLeft + w * 1.1f, shapeTop + h * 0.45f, scx, shapeTop + h * 0.95f)
                             }
                             AspectRatio.TRIANGLE -> {
@@ -2186,7 +2201,10 @@ fun CropEditorScreen(
                 FilledTonalButton(
                     onClick = {
                         if (paletteColors.isEmpty()) {
-                            paletteColors = ColorPaletteExtractor.extract(bitmap)
+                            scope.launch(Dispatchers.Default) {
+                                val colors = ColorPaletteExtractor.extract(bitmap)
+                                paletteColors = colors
+                            }
                         }
                         showPalette = !showPalette
                     },
@@ -2246,10 +2264,11 @@ fun CropEditorScreen(
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = Color.Black)
                 Spacer(Modifier.width(8.dp))
                 Text("Crop & Save", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                // Estimated file size
-                val prefs = context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE)
-                val isJpeg = prefs.getBoolean("use_jpeg", false)
-                val isWebp = prefs.getBoolean("use_webp", false)
+                // Estimated file size (read prefs once, not every recomposition)
+                val (isJpeg, isWebp) = remember {
+                    val prefs = context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE)
+                    prefs.getBoolean("use_jpeg", false) to prefs.getBoolean("use_webp", false)
+                }
                 val pixels = cropW.toLong() * cropH
                 val estKb = when {
                     isWebp -> pixels * 0.5f / 1024 // ~0.5 bytes/px for WebP
@@ -2341,6 +2360,7 @@ fun CropEditorScreen(
             confirmButton = {
                 TextButton(onClick = {
                     if (textDialogValue.isNotBlank() && textPlacePoint != null) {
+                        pushUndo()
                         drawPaths.add(DrawPath(
                             points = listOf(textPlacePoint!!),
                             color = drawColor,

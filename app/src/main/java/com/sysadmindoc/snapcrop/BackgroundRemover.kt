@@ -22,19 +22,22 @@ object BackgroundRemover {
      * Returns the subject on a transparent background, or the original bitmap on failure.
      */
     suspend fun remove(bitmap: Bitmap): Bitmap {
+        if (bitmap.isRecycled) return bitmap
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
-            segmenter.process(image)
+            val task = segmenter.process(image)
                 .addOnSuccessListener { result ->
-                    val foreground = result.foregroundBitmap
-                    if (foreground != null) {
-                        cont.resume(foreground)
-                    } else {
-                        cont.resume(bitmap)
+                    if (cont.isActive) {
+                        val foreground = result.foregroundBitmap
+                        if (foreground != null) {
+                            cont.resume(foreground)
+                        } else {
+                            cont.resume(bitmap)
+                        }
                     }
                 }
                 .addOnFailureListener {
-                    cont.resume(bitmap)
+                    if (cont.isActive) cont.resume(bitmap)
                 }
         }
     }

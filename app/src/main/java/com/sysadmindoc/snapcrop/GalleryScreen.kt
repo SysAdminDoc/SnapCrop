@@ -56,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.sysadmindoc.snapcrop.ui.theme.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -96,6 +95,7 @@ fun GalleryScreen(
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
@@ -136,10 +136,19 @@ fun GalleryScreen(
         }
     }
 
+    // Compute sorted photos at the top level so viewer uses same order as grid
+    val viewerPhotos = remember(photos, sortMode) {
+        when (sortMode) {
+            SortMode.DATE -> photos
+            SortMode.NAME -> photos.sortedBy { it.name.lowercase() }
+            SortMode.SIZE -> photos.sortedByDescending { it.size }
+        }
+    }
+
     // Fullscreen viewer
-    if (viewerIndex >= 0 && photos.isNotEmpty()) {
+    if (viewerIndex >= 0 && viewerPhotos.isNotEmpty()) {
         PhotoViewer(
-            photos = photos,
+            photos = viewerPhotos,
             initialIndex = viewerIndex,
             onClose = { viewerIndex = -1 },
             onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
@@ -148,8 +157,8 @@ fun GalleryScreen(
                 onDeleteUris(listOf(photo.uri))
                 photos = photos.filter { it.id != photo.id }
                 if (photos.isEmpty()) viewerIndex = -1
-                else viewerIndex = viewerIndex.coerceAtMost(photos.size - 1)
-                CoroutineScope(Dispatchers.IO).launch {
+                else viewerIndex = viewerIndex.coerceIn(0, photos.size - 1)
+                scope.launch(Dispatchers.IO) {
                     val refreshed = loadAlbums(context.contentResolver)
                     withContext(Dispatchers.Main) { albums = refreshed }
                 }
@@ -200,7 +209,7 @@ fun GalleryScreen(
                     photos = photos.filter { it.id !in deletedIds }
                     selectedIds.clear()
                     // Refresh albums in background (counts changed)
-                    CoroutineScope(Dispatchers.IO).launch {
+                    scope.launch(Dispatchers.IO) {
                         val refreshed = loadAlbums(context.contentResolver)
                         withContext(Dispatchers.Main) { albums = refreshed }
                     }
@@ -428,6 +437,7 @@ private fun PhotoGrid(
     ) {
         // Date section headers (full-span)
         if (showDateHeaders) {
+            val indexById = photos.withIndex().associate { (i, p) -> p.id to i }
             val grouped = photos.groupBy { dateFormat.format(java.util.Date(it.dateAdded * 1000)) }
             grouped.forEach { (date, datePhotos) ->
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -437,7 +447,7 @@ private fun PhotoGrid(
                 }
                 items(datePhotos.size) { i ->
                     val photo = datePhotos[i]
-                    val globalIdx = photos.indexOf(photo)
+                    val globalIdx = indexById[photo.id] ?: 0
                     val isSelected = photo.id in selectedIds
                     PhotoItem(photo, globalIdx, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
                 }
@@ -467,7 +477,7 @@ private fun PhotoGrid(
                         tint = Color.White.copy(alpha = 0.8f))
                     if (photo.duration > 0) {
                         val secs = (photo.duration / 1000).toInt()
-                        val durText = "${secs / 60}:${String.format("%02d", secs % 60)}"
+                        val durText = if (secs >= 3600) String.format("%d:%02d:%02d", secs / 3600, (secs % 3600) / 60, secs % 60) else "${secs / 60}:${String.format("%02d", secs % 60)}"
                         Text(durText, color = Color.White, fontSize = 10.sp,
                             modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
                                 .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
@@ -511,7 +521,7 @@ private fun PhotoItem(
                 tint = Color.White.copy(alpha = 0.8f))
             if (photo.duration > 0) {
                 val secs = (photo.duration / 1000).toInt()
-                val durText = "${secs / 60}:${String.format("%02d", secs % 60)}"
+                val durText = if (secs >= 3600) String.format("%d:%02d:%02d", secs / 3600, (secs % 3600) / 60, secs % 60) else "${secs / 60}:${String.format("%02d", secs % 60)}"
                 Text(durText, color = Color.White, fontSize = 10.sp,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
@@ -572,7 +582,7 @@ private fun PhotoViewer(
                     val date = cursor.getLong(4)
                     val path = cursor.getString(5) ?: ""
                     val sizeStr = when {
-                        size > 1_000_000 -> "${size / 1_000_000}MB"
+                        size > 1_000_000 -> String.format("%.1fMB", size / 1_000_000.0)
                         size > 1_000 -> "${size / 1_000}KB"
                         else -> "${size}B"
                     }
@@ -584,22 +594,25 @@ private fun PhotoViewer(
         }
     }
 
-    // Pinch-to-zoom state per page
-    var viewerZoom by remember { mutableFloatStateOf(1f) }
-    var viewerPanX by remember { mutableFloatStateOf(0f) }
-    var viewerPanY by remember { mutableFloatStateOf(0f) }
-
-    // Reset zoom on page change
-    LaunchedEffect(pagerState.currentPage) {
-        viewerZoom = 1f; viewerPanX = 0f; viewerPanY = 0f
-    }
+    // Zoom state tracked per page so adjacent pages aren't affected
+    val zoomStates = remember { mutableMapOf<Int, Triple<Float, Float, Float>>() }
+    val currentZoom = zoomStates[pagerState.currentPage]?.first ?: 1f
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = viewerZoom <= 1.05f
+            userScrollEnabled = currentZoom <= 1.05f
         ) { page ->
+            var viewerZoom by remember { mutableFloatStateOf(zoomStates[page]?.first ?: 1f) }
+            var viewerPanX by remember { mutableFloatStateOf(zoomStates[page]?.second ?: 0f) }
+            var viewerPanY by remember { mutableFloatStateOf(zoomStates[page]?.third ?: 0f) }
+
+            // Sync back so pager knows about zoom for userScrollEnabled
+            LaunchedEffect(viewerZoom, viewerPanX, viewerPanY) {
+                zoomStates[page] = Triple(viewerZoom, viewerPanX, viewerPanY)
+            }
+
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(photos[page].uri).crossfade(true).build(),
@@ -690,24 +703,38 @@ private fun PhotoViewer(
 }
 
 private fun loadAlbums(resolver: ContentResolver): List<Album> {
-    val albumMap = mutableMapOf<String, MutableList<Long>>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.RELATIVE_PATH)
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+    val albumMap = mutableMapOf<String, MutableList<Pair<Long, Boolean>>>() // id to isVideo
+    val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH)
+    val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
+    // Images
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
-        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-        val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+        val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val path = cursor.getString(pathCol) ?: continue
-            albumMap.getOrPut(path) { mutableListOf() }.add(id)
+            albumMap.getOrPut(path) { mutableListOf() }.add(id to false)
+        }
+    }
+    // Videos
+    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+        val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+        val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+        while (cursor.moveToNext()) {
+            val id = cursor.getLong(idCol)
+            val path = cursor.getString(pathCol) ?: continue
+            albumMap.getOrPut(path) { mutableListOf() }.add(id to true)
         }
     }
 
-    return albumMap.map { (path, ids) ->
+    return albumMap.map { (path, items) ->
         val name = path.trimEnd('/').substringAfterLast("/").ifEmpty { path }
-        val coverUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, ids.first())
-        Album(name, path, coverUri, ids.size)
+        val (firstId, isVideo) = items.first()
+        val coverUri = ContentUris.withAppendedId(
+            if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            firstId)
+        Album(name, path, coverUri, items.size)
     }.sortedByDescending { it.count }
 }
 
@@ -797,23 +824,39 @@ private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
 private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): List<Photo> {
     if (favIds.isEmpty()) return emptyList()
     val photos = mutableListOf<Photo>()
-    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
-        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
-    val placeholders = favIds.joinToString(",") { "?" }
-    val selection = "${MediaStore.Images.Media._ID} IN ($placeholders)"
-    val selectionArgs = favIds.map { it.toString() }.toTypedArray()
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
-        val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-        val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
-        val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
-        val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
-        while (cursor.moveToNext()) {
-            val id = cursor.getLong(idCol)
-            val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
+    // Batch queries in chunks of 500 to avoid SQLite bind variable limit (~999)
+    fun queryFavs(contentUri: Uri, idsList: List<Long>, isVideo: Boolean) {
+        val projection = if (isVideo) {
+            arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
+                MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
+                MediaStore.Video.Media.DURATION)
+        } else {
+            arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
+                MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+        }
+        for (chunk in idsList.chunked(500)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            val selection = "${MediaStore.MediaColumns._ID} IN ($placeholders)"
+            val selectionArgs = chunk.map { it.toString() }.toTypedArray()
+            resolver.query(contentUri, projection, selection, selectionArgs, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                val durCol = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idCol)
+                    val uri = ContentUris.withAppendedId(contentUri, id)
+                    val duration = if (isVideo) cursor.getLong(durCol) else 0L
+                    photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol), isVideo = isVideo, duration = duration))
+                }
+            }
         }
     }
-    return photos
+
+    val idsList = favIds.toList()
+    queryFavs(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, idsList, false)
+    queryFavs(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, idsList, true)
+    return photos.sortedByDescending { it.dateAdded }
 }

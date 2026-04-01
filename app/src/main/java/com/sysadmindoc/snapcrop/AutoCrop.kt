@@ -24,6 +24,9 @@ object AutoCrop {
         val w = bitmap.width
         val h = bitmap.height
 
+        // Images too small for reliable border detection
+        if (w < 100 || h < 100) return CropResult(Rect(0, 0, w, h), "too_small")
+
         // Step 1: ALWAYS strip system bars first.
         // This removes the status bar (with icons that confuse border detection)
         // and the nav bar, giving us the clean content area to analyze.
@@ -47,7 +50,7 @@ object AutoCrop {
                 borderRect.right < w || borderRect.bottom < contentBottom
 
         if (hasBorders) {
-            return CropResult(borderRect, if (strippedBars) "border" else "border")
+            return CropResult(borderRect, if (strippedBars) "border+bars" else "border")
         }
 
         // Step 3: If no borders found but we stripped bars, return stripped result
@@ -80,8 +83,8 @@ object AutoCrop {
 
         val top = findTopEdge(bitmap, w, scanTop, scanBottom, borderColor)
         val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom, borderColor)
-        val left = findLeftEdge(bitmap, w, top, bottom)
-        val right = findRightEdge(bitmap, w, top, bottom)
+        val left = findLeftEdge(bitmap, w, top, bottom, borderColor)
+        val right = findRightEdge(bitmap, w, top, bottom, borderColor)
 
         val cropLeft = max(0, left - PADDING)
         val cropTop = max(scanTop, top - PADDING)
@@ -153,7 +156,7 @@ object AutoCrop {
         return scanBottom
     }
 
-    private fun findLeftEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int): Int {
+    private fun findLeftEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int, borderColor: Int = 0): Int {
         val sampleY = IntArray(5) {
             (top + (bottom - top) * (it + 1) / 6f).toInt().coerceIn(top, max(top, bottom - 1))
         }
@@ -168,14 +171,16 @@ object AutoCrop {
                 }
             }
 
-            if (nonUniform >= 2 || !isColumnUniform(bitmap, x, top, bottom)) {
+            val isUniform = nonUniform < 2 && isColumnUniform(bitmap, x, top, bottom)
+            val matchesBorder = borderColor == 0 || colorsMatch(refColor, borderColor)
+            if (!isUniform || !matchesBorder) {
                 return max(0, x)
             }
         }
         return 0
     }
 
-    private fun findRightEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int): Int {
+    private fun findRightEdge(bitmap: Bitmap, w: Int, top: Int, bottom: Int, borderColor: Int = 0): Int {
         val sampleY = IntArray(5) {
             (top + (bottom - top) * (it + 1) / 6f).toInt().coerceIn(top, max(top, bottom - 1))
         }
@@ -190,7 +195,9 @@ object AutoCrop {
                 }
             }
 
-            if (nonUniform >= 2 || !isColumnUniform(bitmap, x, top, bottom)) {
+            val isUniform = nonUniform < 2 && isColumnUniform(bitmap, x, top, bottom)
+            val matchesBorder = borderColor == 0 || colorsMatch(refColor, borderColor)
+            if (!isUniform || !matchesBorder) {
                 return min(w, x + 1)
             }
         }
