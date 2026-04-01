@@ -327,9 +327,6 @@ fun CropEditorScreen(
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
     val scope = rememberCoroutineScope()
 
-    // Reset bgRemoving and stale palette when bitmap changes (BG removal, rotation, resize)
-    LaunchedEffect(bitmap) { bgRemoving = false; paletteColors = emptyList() }
-
     // Base scale/offset (fit image to canvas)
     var baseScale by remember { mutableFloatStateOf(1f) }
     var baseOx by remember { mutableFloatStateOf(0f) }
@@ -376,6 +373,10 @@ fun CropEditorScreen(
     var eyedropperActive by remember { mutableStateOf(false) }
     var bgRemoving by remember { mutableStateOf(false) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
+
+    // Reset bgRemoving and stale palette when bitmap changes (BG removal, rotation, resize)
+    LaunchedEffect(bitmap) { bgRemoving = false; paletteColors = emptyList() }
+
     var showPalette by remember { mutableStateOf(false) }
     var showResizeDialog by remember { mutableStateOf(false) }
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
