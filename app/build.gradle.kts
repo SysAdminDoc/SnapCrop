@@ -16,10 +16,20 @@ android {
         versionName = "6.5.5"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../snapcrop-release.jks")
+            storePassword = "snapcrop123"
+            keyAlias = "snapcrop"
+            keyPassword = "snapcrop123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
