@@ -6,6 +6,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.objects.ObjectDetection
 import com.google.mlkit.vision.objects.defaults.ObjectDetectorOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 
 /**
@@ -30,11 +31,14 @@ object SmartCropEngine {
      * all detected objects, or the full image rect if nothing is detected.
      */
     suspend fun detect(bitmap: Bitmap): Rect {
-        return suspendCancellableCoroutine { cont ->
+        if (bitmap.isRecycled) return Rect(0, 0, 0, 0)
+        return withTimeoutOrNull(5000L) {
+            suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
 
             detector.process(image)
                 .addOnSuccessListener { detectedObjects ->
+                    if (!cont.isActive) return@addOnSuccessListener
                     if (detectedObjects.isEmpty()) {
                         cont.resume(Rect(0, 0, bitmap.width, bitmap.height))
                         return@addOnSuccessListener
@@ -76,8 +80,9 @@ object SmartCropEngine {
                     }
                 }
                 .addOnFailureListener {
-                    cont.resume(Rect(0, 0, bitmap.width, bitmap.height))
+                    if (cont.isActive) cont.resume(Rect(0, 0, bitmap.width, bitmap.height))
                 }
         }
+        } ?: Rect(0, 0, bitmap.width, bitmap.height)
     }
 }
