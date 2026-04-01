@@ -35,7 +35,7 @@ class SettingsActivity : ComponentActivity() {
                 var useJpeg by remember { mutableStateOf(prefs.getBoolean("use_jpeg", false)) }
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
-                var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95)) }
+                var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95).coerceIn(50, 100)) }
 
                 Column(
                     modifier = Modifier
@@ -132,7 +132,7 @@ class SettingsActivity : ComponentActivity() {
 
                     // Target file size
                     var targetSizeEnabled by remember { mutableStateOf(prefs.getBoolean("target_size_enabled", false)) }
-                    var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500)) }
+                    var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500).coerceIn(50, 5000)) }
                     SettingToggle(
                         title = "Target file size",
                         subtitle = "Auto-adjust quality to meet a file size budget (JPEG/WebP only)",
@@ -196,8 +196,9 @@ class SettingsActivity : ComponentActivity() {
                             OutlinedTextField(
                                 value = filenameTemplate,
                                 onValueChange = {
-                                    filenameTemplate = it
-                                    prefs.edit().putString("filename_template", it).apply()
+                                    val sanitized = it.replace(Regex("[<>:\"/\\\\|?*]"), "_")
+                                    filenameTemplate = sanitized
+                                    prefs.edit().putString("filename_template", sanitized).apply()
                                 },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -360,7 +361,7 @@ class SettingsActivity : ComponentActivity() {
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp),
                         onClick = {
-                            cacheDir.deleteRecursively()
+                            Thread { cacheDir.deleteRecursively() }.start()
                             android.widget.Toast.makeText(this@SettingsActivity,
                                 "Cache cleared", android.widget.Toast.LENGTH_SHORT).show()
                         }
@@ -378,7 +379,7 @@ class SettingsActivity : ComponentActivity() {
                     // About
                     Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v6.5.0", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop v${BuildConfig.VERSION_NAME}", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
                     Text("Auto-crop, annotate, and redact screenshots instantly.",
                         color = OnSurfaceVariant, fontSize = 13.sp)

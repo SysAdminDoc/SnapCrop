@@ -23,25 +23,27 @@ object FaceDetector {
      * Boxes are padded by 15% for better coverage when pixelating.
      */
     suspend fun detect(bitmap: Bitmap): List<Rect> {
+        if (bitmap.isRecycled) return emptyList()
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    val rects = faces.mapNotNull { face ->
-                        val box = face.boundingBox
-                        // Pad 15% for hair/chin coverage
-                        val padX = (box.width() * 0.15f).toInt()
-                        val padY = (box.height() * 0.15f).toInt()
-                        Rect(
-                            (box.left - padX).coerceAtLeast(0),
-                            (box.top - padY).coerceAtLeast(0),
-                            (box.right + padX).coerceAtMost(bitmap.width),
-                            (box.bottom + padY).coerceAtMost(bitmap.height)
-                        )
+                    if (cont.isActive) {
+                        val rects = faces.mapNotNull { face ->
+                            val box = face.boundingBox
+                            val padX = (box.width() * 0.15f).toInt()
+                            val padY = (box.height() * 0.15f).toInt()
+                            Rect(
+                                (box.left - padX).coerceAtLeast(0),
+                                (box.top - padY).coerceAtLeast(0),
+                                (box.right + padX).coerceAtMost(bitmap.width),
+                                (box.bottom + padY).coerceAtMost(bitmap.height)
+                            )
+                        }
+                        cont.resume(rects)
                     }
-                    cont.resume(rects)
                 }
-                .addOnFailureListener { cont.resume(emptyList()) }
+                .addOnFailureListener { if (cont.isActive) cont.resume(emptyList()) }
         }
     }
 }

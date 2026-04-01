@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.*
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,7 +94,7 @@ class DeviceFrameActivity : ComponentActivity() {
         isSaving.value = true
         val frame = selectedFrame.value
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 if (src == null) {
@@ -164,7 +164,7 @@ class DeviceFrameActivity : ComponentActivity() {
                 }
 
                 src.recycle()
-                withContext(Dispatchers.Main) { saveToGallery(result) }
+                saveToGallery(result)
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -175,23 +175,55 @@ class DeviceFrameActivity : ComponentActivity() {
         }
     }
 
+    private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val quality = prefs.getInt("jpeg_quality", 95)
+        return when {
+            prefs.getBoolean("use_webp", false) -> {
+                @Suppress("DEPRECATION")
+                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R)
+                    android.graphics.Bitmap.CompressFormat.WEBP_LOSSY else android.graphics.Bitmap.CompressFormat.WEBP
+                Triple(fmt, quality, "webp")
+            }
+            prefs.getBoolean("use_jpeg", false) -> Triple(android.graphics.Bitmap.CompressFormat.JPEG, quality, "jpg")
+            else -> Triple(android.graphics.Bitmap.CompressFormat.PNG, 100, "png")
+        }
+    }
+
     private fun saveToGallery(bitmap: Bitmap) {
+        val (format, quality, ext) = getSaveFormat()
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+        val mimeType = when (ext) {
+            "webp" -> "image/webp"
+            "jpg" -> "image/jpeg"
+            else -> "image/png"
+        }
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Frame_${System.currentTimeMillis()}.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Frame_${System.currentTimeMillis()}.$ext")
+            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
+            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show(); isSaving.value = false; return }
+        if (uri == null) { runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }; isSaving.value = false; return }
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val stream = contentResolver.openOutputStream(uri)
+            if (stream == null) {
+                runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                isSaving.value = false
+                return
+            }
+            stream.use { bitmap.compress(format, quality, it) }
             values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
-            Toast.makeText(this, "Mockup saved", Toast.LENGTH_SHORT).show()
-            finish()
+            runOnUiThread {
+                Toast.makeText(this, "Mockup saved", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         } catch (e: IOException) {
-            Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
+            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }

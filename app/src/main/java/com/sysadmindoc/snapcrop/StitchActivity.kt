@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.*
-import kotlinx.coroutines.CoroutineScope
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,15 +84,17 @@ class StitchActivity : ComponentActivity() {
     private fun stitchAndSave() {
         if (imageUris.size < 2 || isSaving.value) return
         isSaving.value = true
+        val urisSnapshot = imageUris.toList()
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val bitmaps = imageUris.mapNotNull { uri ->
+                val bitmaps = urisSnapshot.mapNotNull { uri ->
                     contentResolver.openInputStream(uri)?.use { stream ->
                         BitmapFactory.decodeStream(stream)
                     }
                 }
                 if (bitmaps.size < 2) {
+                    bitmaps.forEach { it.recycle() }
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@StitchActivity, "Need at least 2 images", Toast.LENGTH_SHORT).show()
                         isSaving.value = false
@@ -103,7 +105,7 @@ class StitchActivity : ComponentActivity() {
                 val result = if (isVertical.value) stitchVertical(bitmaps) else stitchHorizontal(bitmaps)
                 bitmaps.forEach { it.recycle() }
 
-                withContext(Dispatchers.Main) { saveToGallery(result) }
+                saveToGallery(result)
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -175,20 +177,22 @@ class StitchActivity : ComponentActivity() {
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
-            Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
+            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
             isSaving.value = false
             return
         }
 
         try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(fmt, quality, it) }
+            (contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Failed to open output stream")).use { bitmap.compress(fmt, quality, it) }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
-            Toast.makeText(this, "Stitched image saved", Toast.LENGTH_SHORT).show()
-            finish()
+            runOnUiThread {
+                Toast.makeText(this, "Stitched image saved", Toast.LENGTH_SHORT).show()
+                finish()
+            }
         } catch (e: IOException) {
-            Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show()
+            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }

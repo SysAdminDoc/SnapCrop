@@ -19,6 +19,7 @@ import android.provider.MediaStore
 import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.*
 import java.io.IOException
 
 private data class SaveFormat(val format: Bitmap.CompressFormat, val quality: Int, val ext: String, val mime: String)
@@ -242,66 +243,69 @@ class ScreenshotService : Service() {
     }
 
     private fun quickSave(uri: Uri) {
-        try {
-            val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream)
-            } ?: return
+        CoroutineScope(Dispatchers.IO).launch {
+            var bitmap: Bitmap? = null
+            var cropped: Bitmap? = null
+            try {
+                bitmap = contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                } ?: return@launch
 
-            val statusBarPx = SystemBars.statusBarHeight(resources)
-            val navBarPx = SystemBars.navigationBarHeight(resources)
-            val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
-            val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
-                    cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
+                val statusBarPx = SystemBars.statusBarHeight(resources)
+                val navBarPx = SystemBars.navigationBarHeight(resources)
+                val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
+                val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
+                        cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
-            if (isFullImage) {
-                bitmap.recycle()
-                handler.post { Toast.makeText(this, "No borders detected", Toast.LENGTH_SHORT).show() }
-                return
-            }
-
-            val cropped = Bitmap.createBitmap(
-                bitmap,
-                cropRect.left.coerceAtLeast(0),
-                cropRect.top.coerceAtLeast(0),
-                cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)),
-                cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0))
-            )
-
-            val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-            val (fmt, quality, ext, mime) = getSaveFormat(prefs)
-
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
-                put(MediaStore.Images.Media.MIME_TYPE, mime)
-                put(MediaStore.Images.Media.RELATIVE_PATH, prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-
-            val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            if (savedUri != null) {
-                try {
-                    contentResolver.openOutputStream(savedUri)?.use { out ->
-                        cropped.compress(fmt, quality, out)
-                    }
-                    values.clear()
-                    values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                    contentResolver.update(savedUri, values, null, null)
-
-                    // Delete original screenshot (only works with MANAGE_EXTERNAL_STORAGE or own files)
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
-                        try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-                    }
-
-                    handler.post { Toast.makeText(this, "Autocropped & saved", Toast.LENGTH_SHORT).show() }
-                } catch (e: IOException) {
-                    contentResolver.delete(savedUri, null, null)
+                if (isFullImage) {
+                    handler.post { Toast.makeText(this@ScreenshotService, "No borders detected", Toast.LENGTH_SHORT).show() }
+                    return@launch
                 }
-            }
 
-            cropped.recycle()
-            bitmap.recycle()
-        } catch (_: Exception) {
-            handler.post { Toast.makeText(this, "Quick save failed", Toast.LENGTH_SHORT).show() }
+                cropped = Bitmap.createBitmap(
+                    bitmap,
+                    cropRect.left.coerceAtLeast(0),
+                    cropRect.top.coerceAtLeast(0),
+                    cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)),
+                    cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0))
+                )
+
+                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                val (fmt, quality, ext, mime) = getSaveFormat(prefs)
+
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
+                    put(MediaStore.Images.Media.MIME_TYPE, mime)
+                    put(MediaStore.Images.Media.RELATIVE_PATH, prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                }
+
+                val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                if (savedUri != null) {
+                    try {
+                        contentResolver.openOutputStream(savedUri)?.use { out ->
+                            cropped.compress(fmt, quality, out)
+                        }
+                        values.clear()
+                        values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        contentResolver.update(savedUri, values, null, null)
+
+                        // Delete original screenshot (only works with MANAGE_EXTERNAL_STORAGE or own files)
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+                            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                        }
+
+                        handler.post { Toast.makeText(this@ScreenshotService, "Autocropped & saved", Toast.LENGTH_SHORT).show() }
+                    } catch (e: IOException) {
+                        contentResolver.delete(savedUri, null, null)
+                    }
+                }
+            } catch (_: Exception) {
+                handler.post { Toast.makeText(this@ScreenshotService, "Quick save failed", Toast.LENGTH_SHORT).show() }
+            } finally {
+                cropped?.recycle()
+                bitmap?.recycle()
+            }
         }
     }
 
@@ -356,6 +360,7 @@ class ScreenshotService : Service() {
 
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(DETECTED_NOTIF_ID, notification)
+        // Do NOT recycle thumbnail here — the notification system reads it asynchronously
     }
 
     private fun dismissDetectedNotification() {
@@ -367,7 +372,6 @@ class ScreenshotService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         // Remember the last processed ID so we can detect the NEW screenshot
         val preSnapshotId = lastProcessedId
-        val preSnapshotTime = System.currentTimeMillis()
 
         // Countdown notification
         for (i in seconds downTo 1) {
