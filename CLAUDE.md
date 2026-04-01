@@ -10,6 +10,7 @@ Android screenshot autocrop editor with full annotation toolkit, image adjustmen
 - Coil 2.7.0 for async image loading
 - Android PdfDocument for PDF export
 - minSdk 29, targetSdk 35, compileSdk 35
+- Release signing: `snapcrop-release.jks` (gitignored) configured in `app/build.gradle.kts` signingConfigs. `assembleRelease` produces a signed, installable APK at `app/build/outputs/apk/release/app-release.apk`. Unsigned APKs CANNOT be installed on Android — always use the signed variant for releases.
 
 ## Architecture
 - `ScreenshotService` - Foreground service with ContentObserver on MediaStore. Detects screenshots, launches editor, shows rich notification with thumbnail preview + Edit/Share/Quick Crop actions. Falls back to notification if background activity launch fails (Android 12+).
