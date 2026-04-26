@@ -2,16 +2,21 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Crop icon centered in safe zone (18dp inset) -->
+    android:viewportWidth="512"
+    android:viewportHeight="512">
     <group
-        android:translateX="30"
-        android:translateY="30"
-        android:scaleX="2"
-        android:scaleY="2">
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M17,15h2V7c0,-1.1 -0.9,-2 -2,-2H9v2h8v8zM7,17V1H5v4H1v2h4v10c0,1.1 0.9,2 2,2h10v4h2v-4h4v-2H7z"/>
+        android:rotation="-8" android:pivotX="256" android:pivotY="256"
+        android:scaleX="0.44" android:scaleY="0.44" android:pivotX="256" android:pivotY="256"
+        android:translateY="88"
+        android:alpha="0.92">
+    <path android:pathData="M178 142 H334 V372 L256 326 L178 372 Z" android:fillColor="@android:color/transparent" android:strokeColor="#58A6FF" android:strokeWidth="22" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M214 222 H298" android:fillColor="@android:color/transparent" android:strokeColor="#4ADE80" android:strokeWidth="18" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M214 266 H286" android:fillColor="@android:color/transparent" android:strokeColor="#4ADE80" android:strokeWidth="18" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    </group>
+    <group
+        android:rotation="-4" android:pivotX="256" android:pivotY="256"
+        android:scaleX="0.9" android:scaleY="0.9" android:pivotX="256" android:pivotY="256">
+    <path android:pathData="M214 176 L344 256 L214 336 Z" android:fillColor="#58A6FF" android:strokeColor="@android:color/transparent" />
+    <path android:pathData="M144 384 H368" android:fillColor="@android:color/transparent" android:strokeColor="#4ADE80" android:strokeWidth="22" android:strokeLineCap="round" android:strokeLineJoin="round" />
     </group>
 </vector>
