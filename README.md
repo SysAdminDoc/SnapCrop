@@ -1,13 +1,3 @@
-<!-- codex-branding:start -->
-<p align="center"><img src="icon.png" width="128" alt="Snap Crop"></p>
-
-<p align="center">
-  <img alt="Version" src="https://img.shields.io/badge/version-6.5.5-58A6FF?style=for-the-badge">
-  <img alt="License" src="https://img.shields.io/badge/license-MIT-4ade80?style=for-the-badge">
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-58A6FF?style=for-the-badge">
-</p>
-<!-- codex-branding:end -->
-
 # SnapCrop
 
 **The screenshot tool Android should have shipped with.**
