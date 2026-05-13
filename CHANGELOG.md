@@ -2,6 +2,12 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.6.1] - 2026-05-13
+
+- **Default Save now replaces the original screenshot.** When you crop a screenshot and tap Save, the original full-size capture is removed automatically so you don't end up with both copies. Use **Save Copy** when you want to keep the original alongside the crop. The Settings toggle (renamed to "Replace original on Save") defaults to ON; turn it off to revert to non-destructive behavior.
+- Existing users who never opened the old "Delete original after crop" toggle pick up the new default automatically. Users who explicitly turned it off keep their preference.
+- Seamless silent delete requires **All files access** (MANAGE_EXTERNAL_STORAGE) — the home screen permission card prompts for it. Without that permission, Android 11+ shows a one-tap system confirmation per delete.
+
 ## [v6.6.0] - 2026-05-13
 
 Sixth-pass deep audit — security + reliability.

@@ -31,7 +31,7 @@ class SettingsActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
-                var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", false)) }
+                var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", true)) }
                 var useJpeg by remember { mutableStateOf(prefs.getBoolean("use_jpeg", false)) }
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
@@ -63,8 +63,8 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
-                        title = "Delete original after crop",
-                        subtitle = "Remove the original screenshot when using Crop & Save",
+                        title = "Replace original on Save",
+                        subtitle = "When ON (default), Save deletes the screenshot you cropped from. Use Save Copy to keep both.",
                         checked = deleteOriginal,
                         onCheckedChange = {
                             deleteOriginal = it
