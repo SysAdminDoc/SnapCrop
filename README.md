@@ -91,6 +91,7 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for batch delete, share, resize, or PDF export
 - Favorites, search, and sort by date/name/size
+- Home recent crops include explicit delete confirmation for safe cleanup
 
 ### More Tools
 - **Image Stitching** — Combine 2+ images vertically or horizontally with reorder controls

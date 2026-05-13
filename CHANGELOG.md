@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.7.3] - 2026-05-13
+
+**Home recent-crop trust polish.**
+
+- **Recent crop removal is explicit.** The home screen now shows a visible delete affordance on each recent crop instead of hiding removal behind long-press.
+- **Deletion now confirms intent.** Removing a recent crop opens a calm confirmation dialog that explains only the exported crop is removed, not the source screenshot.
+- **Accessibility improved.** Recent crop thumbnails and delete actions now have clearer screen-reader labels and stable touch targets.
+
 ## [v6.7.2] - 2026-05-13
 
 **Editor trust and save-state polish.**

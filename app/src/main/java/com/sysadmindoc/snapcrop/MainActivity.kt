@@ -23,9 +23,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.GridView
@@ -747,6 +746,8 @@ private fun HomeScreen(
     onOpenCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
 ) {
+    var cropPendingDelete by remember { mutableStateOf<RecentCrop?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1071,18 +1072,10 @@ private fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(recentCrops) { crop ->
-                    @OptIn(ExperimentalFoundationApi::class)
-                    Image(
-                        bitmap = crop.thumbBitmap,
-                        contentDescription = "Recent cropped screenshot",
-                        modifier = Modifier
-                            .size(80.dp, 140.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .combinedClickable(
-                                onClick = { onOpenCrop(crop.uri) },
-                                onLongClick = { onDeleteCrop(crop.uri) }
-                            ),
-                        contentScale = ContentScale.Crop
+                    RecentCropTile(
+                        crop = crop,
+                        onOpen = { onOpenCrop(crop.uri) },
+                        onDelete = { cropPendingDelete = crop }
                     )
                 }
             }
@@ -1098,6 +1091,76 @@ private fun HomeScreen(
         )
 
         Spacer(Modifier.height(16.dp))
+    }
+
+    val pendingDelete = cropPendingDelete
+    if (pendingDelete != null) {
+        AlertDialog(
+            onDismissRequest = { cropPendingDelete = null },
+            title = { Text("Delete recent crop?", color = OnSurface) },
+            text = {
+                Text(
+                    "This removes the exported crop from your media library. The source screenshot is not touched.",
+                    color = OnSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        cropPendingDelete = null
+                        onDeleteCrop(pendingDelete.uri)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
+                ) {
+                    Text("Delete crop")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { cropPendingDelete = null }) {
+                    Text("Cancel", color = OnSurfaceVariant)
+                }
+            },
+            containerColor = SurfaceVariant,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+}
+
+@Composable
+private fun RecentCropTile(
+    crop: RecentCrop,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(84.dp, 144.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onOpen)
+    ) {
+        Image(
+            bitmap = crop.thumbBitmap,
+            contentDescription = "Open recent crop",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(36.dp)
+                .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete recent crop",
+                tint = Tertiary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }
 
