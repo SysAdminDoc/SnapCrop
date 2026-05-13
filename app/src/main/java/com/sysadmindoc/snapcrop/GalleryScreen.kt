@@ -155,6 +155,12 @@ fun GalleryScreen(
             onShare = { onShareUris(listOf(it.uri)) },
             onDelete = { photo ->
                 onDeleteUris(listOf(photo.uri))
+                // Drop the favorite entry too — leaving it stranded keeps a dead ID in
+                // SharedPreferences that the Favorites view would then fail to resolve.
+                if (FavoritesStore.isFavorite(context, photo.id)) {
+                    FavoritesStore.toggle(context, photo.id)
+                    favIds = FavoritesStore.getAllIds(context)
+                }
                 photos = photos.filter { it.id != photo.id }
                 if (photos.isEmpty()) viewerIndex = -1
                 else viewerIndex = viewerIndex.coerceIn(0, photos.size - 1)
@@ -594,8 +600,11 @@ private fun PhotoViewer(
         }
     }
 
-    // Zoom state tracked per page so adjacent pages aren't affected
-    val zoomStates = remember { mutableMapOf<Int, Triple<Float, Float, Float>>() }
+    // Zoom state tracked per page so adjacent pages aren't affected. Must be a
+    // SnapshotStateMap so writes from the page composables propagate to the parent's
+    // userScrollEnabled read — a plain mutableMap would silently leave swipes enabled
+    // while the user is zoomed in.
+    val zoomStates = remember { mutableStateMapOf<Int, Triple<Float, Float, Float>>() }
     val currentZoom = zoomStates[pagerState.currentPage]?.first ?: 1f
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {

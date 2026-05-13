@@ -59,7 +59,7 @@ import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
 
-data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap, val nativeBitmap: android.graphics.Bitmap? = null)
+data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
 
 class MainActivity : ComponentActivity() {
 
@@ -527,19 +527,41 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         val stripExif = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("strip_exif", false)
 
-        if (stripExif) {
-            // Re-encode to strip EXIF metadata
+        // Detect content types so mixed image/video selections aren't filtered to image-only handlers.
+        val hasVideo = uris.any { uri ->
+            try { contentResolver.getType(uri)?.startsWith("video/") == true } catch (_: Exception) { false }
+        }
+        val hasImage = uris.any { uri ->
+            try { contentResolver.getType(uri)?.startsWith("image/") != false } catch (_: Exception) { true }
+        }
+        val shareType = when {
+            hasVideo && hasImage -> "*/*"
+            hasVideo -> "video/*"
+            else -> "image/*"
+        }
+
+        if (stripExif && hasImage) {
+            // Re-encode images to strip EXIF metadata. Videos pass through unchanged
+            // (we don't transcode — that would be slow and lossy).
             lifecycleScope.launch(Dispatchers.IO) {
                 val shareDir = java.io.File(cacheDir, "share_clean")
                 shareDir.mkdirs()
                 shareDir.listFiles()?.forEach { it.delete() } // clean old
+                val (fmt, qual, ext) = getSaveFormat()
+                @Suppress("DEPRECATION")
+                val isWebp = fmt == android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+                        || fmt == android.graphics.Bitmap.CompressFormat.WEBP_LOSSLESS
+                        || fmt == android.graphics.Bitmap.CompressFormat.WEBP
                 val cleanUris = mutableListOf<Uri>()
                 for ((i, uri) in uris.withIndex()) {
+                    val mime = try { contentResolver.getType(uri) ?: "" } catch (_: Exception) { "" }
+                    if (mime.startsWith("video/")) { cleanUris.add(uri); continue }
                     try {
                         contentResolver.openInputStream(uri)?.use { stream ->
                             val bmp = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
-                            val file = java.io.File(shareDir, "share_${i}.png")
-                            file.outputStream().use { out -> bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out) }
+                            val outExt = if (isWebp) "webp" else ext
+                            val file = java.io.File(shareDir, "share_${i}.$outExt")
+                            file.outputStream().use { out -> bmp.compress(fmt, qual, out) }
                             bmp.recycle()
                             cleanUris.add(androidx.core.content.FileProvider.getUriForFile(
                                 this@MainActivity, "${packageName}.fileprovider", file))
@@ -548,7 +570,7 @@ class MainActivity : ComponentActivity() {
                 }
                 withContext(Dispatchers.Main) {
                     val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                        type = "image/*"
+                        type = shareType
                         putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(cleanUris))
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
@@ -557,7 +579,7 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "image/*"
+                type = shareType
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
@@ -677,7 +699,11 @@ class MainActivity : ComponentActivity() {
                                 }
                                 contentResolver.openInputStream(uri)?.use { stream ->
                                     BitmapFactory.decodeStream(stream, null, opts)?.let { thumb ->
-                                        crops.add(RecentCrop(uri, thumb.asImageBitmap(), thumb))
+                                        // Don't hold the native Bitmap separately — recycling it
+                                        // while Compose still draws the wrapped ImageBitmap crashes
+                                        // with "Cannot draw recycled bitmaps". Thumbnails are small
+                                        // (inSampleSize=8), so we let GC reclaim them on swap.
+                                        crops.add(RecentCrop(uri, thumb.asImageBitmap()))
                                     }
                                 }
                             } catch (_: Exception) {}
@@ -688,8 +714,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 withContext(Dispatchers.Main) {
-                    // Recycle old thumbnail bitmaps to prevent native memory leak
-                    recentCrops.value.forEach { it.nativeBitmap?.recycle() }
                     recentCrops.value = crops
                 }
             } catch (_: Exception) {}
