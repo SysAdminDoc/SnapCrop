@@ -2,6 +2,16 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.7.0] - 2026-05-13
+
+**Gallery cleanup feature: one-tap select all screenshots.**
+
+- **Screenshot detection by dimensions.** Every image in an album is now compared against the device's physical display resolution (with ~2% tolerance for status-bar / cutout trims). Matches are flagged as screenshots regardless of filename.
+- **"Select N screenshots" action.** When viewing any album, a phone-icon button + count appears in the top bar if screenshot-sized images are present. Tap to enter selection mode with every detected screenshot pre-selected — then tap the trash icon to delete them all at once. Designed for cleaning up raw screenshots that piled up before you cropped them.
+- **Visual indicator.** Detected screenshots get a small phone-icon badge in the top-left of their grid tile so you can review the auto-detection before bulk-deleting.
+- **Browse-by-swipe** in the photo viewer continues to work via `HorizontalPager` — opening any photo lets you swipe left/right through the rest of the album.
+- Loaders now query `WIDTH`/`HEIGHT` from MediaStore (1 extra cursor column, negligible overhead).
+
 ## [v6.6.1] - 2026-05-13
 
 - **Default Save now replaces the original screenshot.** When you crop a screenshot and tap Save, the original full-size capture is removed automatically so you don't end up with both copies. Use **Save Copy** when you want to keep the original alongside the crop. The Settings toggle (renamed to "Replace original on Save") defaults to ON; turn it off to revert to non-destructive behavior.
