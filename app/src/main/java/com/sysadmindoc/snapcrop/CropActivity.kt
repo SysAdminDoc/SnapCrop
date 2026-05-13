@@ -32,8 +32,19 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,9 +52,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import com.sysadmindoc.snapcrop.ui.theme.OnSurface
+import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
+import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
+import com.sysadmindoc.snapcrop.ui.theme.Tertiary
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -104,6 +122,8 @@ class CropActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
+                val showDeleteConfirm = remember { mutableStateOf(false) }
+                val replaceOriginalOnSave = remember { getDeletePref() }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     if (isLoading.value) {
                         CircularProgressIndicator(
@@ -122,16 +142,7 @@ class CropActivity : ComponentActivity() {
                             onShare = { rect, pix, draw, adj -> shareCropped(bmp, rect, pix, draw, adj) },
                             onCopyClipboard = { rect, pix, draw, adj -> copyToClipboard(bmp, rect, pix, draw, adj) },
                             onDiscard = { finish() },
-                            onDelete = {
-                                val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                    !Environment.isExternalStorageManager()
-                                deleteOriginalFile()
-                                if (!needsDialog) {
-                                    Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
-                                    finish()
-                                }
-                                // If needsDialog, onActivityResult handles toast + finish
-                            },
+                            onDelete = { showDeleteConfirm.value = true },
                             onAutoCrop = {
                                 val sbPx = SystemBars.statusBarHeight(resources)
                                 val nbPx = SystemBars.navigationBarHeight(resources)
@@ -174,7 +185,8 @@ class CropActivity : ComponentActivity() {
                             },
                             onRotate = { rotateBitmap() },
                             onFlipH = { flipBitmap(horizontal = true) },
-                            onFlipV = { flipBitmap(horizontal = false) }
+                            onFlipV = { flipBitmap(horizontal = false) },
+                            replaceOriginalOnSave = replaceOriginalOnSave
                         )
                     }
 
@@ -182,7 +194,36 @@ class CropActivity : ComponentActivity() {
                     if (isSaving.value) {
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
                             contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Primary)
+                            Surface(
+                                color = SurfaceVariant,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(32.dp),
+                                        color = Primary,
+                                        strokeWidth = 3.dp
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        "Saving export",
+                                        color = OnSurface,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        if (getDeletePref())
+                                            "Replacing the source after the crop is written"
+                                        else
+                                            "Writing a separate copy to your save location",
+                                        color = OnSurfaceVariant,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -193,6 +234,44 @@ class CropActivity : ComponentActivity() {
                             Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flashAlpha.value)))
                         }
                     }
+                }
+                if (showDeleteConfirm.value) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteConfirm.value = false },
+                        title = { Text("Delete original screenshot?", color = OnSurface) },
+                        text = {
+                            Text(
+                                "This removes the source image from your library. Saved copies and shared exports stay where they are.",
+                                color = OnSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showDeleteConfirm.value = false
+                                    val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                                        !Environment.isExternalStorageManager()
+                                    deleteOriginalFile()
+                                    if (!needsDialog) {
+                                        Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                                        finish()
+                                    }
+                                    // If needsDialog, onActivityResult handles toast + finish
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
+                            ) {
+                                Text("Delete")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteConfirm.value = false }) {
+                                Text("Cancel", color = OnSurfaceVariant)
+                            }
+                        },
+                        containerColor = SurfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
             }
         }

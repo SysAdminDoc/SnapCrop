@@ -47,6 +47,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Tap dimensions for exact pixel input
 - Before/after swipe comparison
 - Live file size estimate
+- Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
 
 **Draw — 16 Tools**
 | Tool | What it does |

@@ -322,7 +322,8 @@ fun CropEditorScreen(
     onResize: (Int) -> Unit,
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
-    onFlipV: () -> Unit
+    onFlipV: () -> Unit,
+    replaceOriginalOnSave: Boolean
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
     val scope = rememberCoroutineScope()
@@ -2246,7 +2247,7 @@ fun CropEditorScreen(
             val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; AspectRatio.TRIANGLE -> 5f; AspectRatio.HEXAGON -> 6f; AspectRatio.DIAMOND -> 7f; else -> 0f }
             val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows, tiltShift, denoise, gradientBg.toFloat(), curveR, curveG, curveB)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete original", tint = Tertiary) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
                 IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
@@ -2265,7 +2266,6 @@ fun CropEditorScreen(
             ) {
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = Color.Black)
                 Spacer(Modifier.width(8.dp))
-                Text("Crop & Save", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 // Estimated file size (read prefs once, not every recomposition)
                 val (isJpeg, isWebp) = remember {
                     val prefs = context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE)
@@ -2278,6 +2278,13 @@ fun CropEditorScreen(
                     else -> pixels * 3f / 1024       // ~3 bytes/px for PNG
                 }
                 val estLabel = if (estKb > 1024) String.format("~%.1f MB", estKb / 1024) else String.format("~%.0f KB", estKb)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (replaceOriginalOnSave) "Save & Replace" else "Crop & Save",
+                    color = Color.Black,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
+                )
                 Spacer(Modifier.width(6.dp))
                 Text(estLabel, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
             }
