@@ -199,7 +199,7 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun getDeletePref(): Boolean =
-        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", false)
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", true)
 
     private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
