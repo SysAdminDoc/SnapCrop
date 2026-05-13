@@ -877,13 +877,14 @@ class CropActivity : ComponentActivity() {
     private fun applyTiltShift(bitmap: Bitmap, amount: Float): Bitmap {
         if (amount < 0.01f) return bitmap
         val w = bitmap.width; val h = bitmap.height
+        if (w < 2 || h < 2) return bitmap
         // Create heavily blurred version via downscale/upscale
         val scale = (8 * amount).toInt().coerceIn(2, 16)
         val tiny = Bitmap.createScaledBitmap(bitmap, (w / scale).coerceAtLeast(1), (h / scale).coerceAtLeast(1), true)
         val blurred = Bitmap.createScaledBitmap(tiny, w, h, true)
-        tiny.recycle()
-        // Blend: center band stays sharp, top/bottom use blurred version
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        if (tiny !== blurred) tiny.recycle()
+        // result is allocated empty — setPixels below overwrites every cell, so no bitmap.copy needed.
+        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val focusBand = 0.3f // 30% of height is the sharp center
         val focusTop = (h * (0.5f - focusBand / 2)).toInt()
         val focusBottom = (h * (0.5f + focusBand / 2)).toInt()
@@ -916,6 +917,9 @@ class CropActivity : ComponentActivity() {
 
     private fun applySharpen(bitmap: Bitmap, amount: Float): Bitmap {
         val w = bitmap.width; val h = bitmap.height
+        // 3x3 unsharp-mask kernel needs at least 3px in each dimension; degenerate
+        // bitmaps fall through unchanged instead of producing a one-pixel result.
+        if (w < 3 || h < 3) return bitmap
         val pixels = IntArray(w * h)
         bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
         val out = IntArray(w * h)

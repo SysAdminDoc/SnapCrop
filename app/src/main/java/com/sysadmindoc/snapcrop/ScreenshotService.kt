@@ -43,10 +43,22 @@ class ScreenshotService : Service() {
     private var lastProcessedId = -1L
     private var lastProcessedTime = 0L
     private val handler = Handler(Looper.getMainLooper())
+    private var foregroundStarted = false
+    private var delayedCaptureBaseline: Long = 0L
+    private var delayedCaptureActive = false
+
+    private fun ensureForeground() {
+        if (foregroundStarted) return
+        startForeground(1, buildServiceNotification())
+        foregroundStarted = true
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Any onStartCommand path must promote to foreground within 5s on Android 8+
+        // to avoid ForegroundServiceDidNotStartInTimeException. Promote first, then dispatch.
+        ensureForeground()
         when (intent?.action) {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
@@ -72,13 +84,16 @@ class ScreenshotService : Service() {
                 return START_STICKY
             }
             ACTION_DELAYED_CAPTURE -> {
-                val delaySec = intent.getIntExtra(EXTRA_DELAY_SECONDS, 3)
+                val delaySec = intent.getIntExtra(EXTRA_DELAY_SECONDS, 3).coerceIn(1, 30)
+                // Register the observer so the live capture path is available if the user
+                // happens to take a screenshot before the post-countdown poll fires.
+                registerObserver()
+                isRunning = true
                 startDelayedCapture(delaySec)
                 return START_STICKY
             }
         }
 
-        startForeground(1, buildServiceNotification())
         registerObserver()
         isRunning = true
         return START_STICKY
@@ -125,6 +140,9 @@ class ScreenshotService : Service() {
     }
 
     private fun onMediaStoreChanged() {
+        // Suppress the auto-launch path while a delayed capture is in flight —
+        // the countdown handler owns that screenshot and will route it itself.
+        if (delayedCaptureActive) return
         val now = System.currentTimeMillis()
         if (now - lastProcessedTime < 1500) return
 
@@ -143,6 +161,7 @@ class ScreenshotService : Service() {
     }
 
     private fun retryFind() {
+        if (delayedCaptureActive) return
         if (System.currentTimeMillis() - lastProcessedTime < 1500) return
         val found = findLatestScreenshot() ?: return
         lastProcessedTime = System.currentTimeMillis()
@@ -370,45 +389,103 @@ class ScreenshotService : Service() {
 
     private fun startDelayedCapture(seconds: Int) {
         val nm = getSystemService(NotificationManager::class.java)
-        // Remember the last processed ID so we can detect the NEW screenshot
-        val preSnapshotId = lastProcessedId
+        // Snapshot the wall-clock baseline (in MediaStore seconds). Any screenshot whose
+        // DATE_ADDED is strictly greater than this baseline is "new" — using a numeric
+        // timestamp instead of comparing against lastProcessedId avoids a race where the
+        // observer races us and consumes the screenshot before this branch fires.
+        delayedCaptureBaseline = System.currentTimeMillis() / 1000
+        delayedCaptureActive = true
 
-        // Countdown notification
-        for (i in seconds downTo 1) {
-            handler.postDelayed({
-                val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
-                    .setContentTitle("Screenshot in ${i}s")
-                    .setContentText("Take your screenshot now...")
+        // Countdown ticks: chain a single Runnable instead of seeding N postDelayed callbacks
+        // so cancellation in onDestroy reliably clears every pending tick.
+        val tick = object : Runnable {
+            var remaining = seconds
+            override fun run() {
+                if (remaining <= 0) return
+                val builder = NotificationCompat.Builder(this@ScreenshotService, SnapCropApp.CHANNEL_DETECTED)
+                    .setContentTitle("Screenshot in ${remaining}s")
+                    .setContentText("Take your screenshot now…")
                     .setSmallIcon(R.drawable.ic_crop)
                     .setOngoing(true)
                     .setSilent(true)
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                 nm.notify(COUNTDOWN_NOTIF_ID, builder.build())
-            }, ((seconds - i) * 1000).toLong())
+                remaining--
+                if (remaining > 0) handler.postDelayed(this, 1000)
+            }
         }
+        handler.post(tick)
 
-        // After countdown, look for new screenshot
+        // After countdown, look for a new screenshot newer than the baseline.
         handler.postDelayed({
             nm.cancel(COUNTDOWN_NOTIF_ID)
-            // Poll for a new screenshot that appeared after we started
-            handler.post {
-                val found = findLatestScreenshot()
-                if (found != null && found.first != preSnapshotId) {
-                    lastProcessedTime = System.currentTimeMillis()
-                    lastProcessedId = found.first
-                    launchEditor(found.second)
-                } else {
-                    Toast.makeText(this, "No new screenshot detected", Toast.LENGTH_SHORT).show()
+            // Some OEMs take an extra moment to write the file; poll briefly.
+            findDelayedCaptureScreenshot(attemptsLeft = 6)
+        }, (seconds * 1000L) + 200L)
+    }
+
+    private fun findDelayedCaptureScreenshot(attemptsLeft: Int) {
+        if (!delayedCaptureActive) return
+        val found = findScreenshotAddedAfter(delayedCaptureBaseline)
+        if (found != null) {
+            delayedCaptureActive = false
+            lastProcessedTime = System.currentTimeMillis()
+            lastProcessedId = found.first
+            launchEditor(found.second)
+            return
+        }
+        if (attemptsLeft <= 0) {
+            delayedCaptureActive = false
+            Toast.makeText(this, "No new screenshot detected", Toast.LENGTH_SHORT).show()
+            return
+        }
+        handler.postDelayed({ findDelayedCaptureScreenshot(attemptsLeft - 1) }, 500)
+    }
+
+    private fun findScreenshotAddedAfter(thresholdSec: Long): Pair<Long, Uri>? {
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH,
+            MediaStore.Images.Media.DATE_ADDED
+        )
+        val selection = "${MediaStore.Images.Media.DATE_ADDED} > ?"
+        val selectionArgs = arrayOf(thresholdSec.toString())
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+        try {
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection, selection, selectionArgs, sortOrder
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val name = cursor.getString(1) ?: continue
+                    val path = cursor.getString(2) ?: ""
+                    val isOurSave = path.contains("SnapCrop") || name.startsWith("SnapCrop_")
+                    if (isOurSave) continue
+                    val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
+                    try {
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeStream(stream, null, opts)
+                            if (opts.outWidth > 0 && opts.outHeight > 0) return Pair(id, uri)
+                        }
+                    } catch (_: Exception) {}
                 }
             }
-        }, (seconds * 1000).toLong())
+        } catch (_: Exception) {}
+        return null
     }
 
     override fun onDestroy() {
         isRunning = false
+        delayedCaptureActive = false
+        foregroundStarted = false
         handler.removeCallbacksAndMessages(null)
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null
+        // Clear any lingering countdown notification if the user toggled the service off mid-capture.
+        try { getSystemService(NotificationManager::class.java)?.cancel(COUNTDOWN_NOTIF_ID) } catch (_: Exception) {}
         dismissDetectedNotification()
         super.onDestroy()
     }

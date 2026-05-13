@@ -19,3 +19,5 @@ local.properties
 *.idsig
 *.apk
 CLAUDE.md
+keystore.properties
+

@@ -1,8 +1,25 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
+
+// Load signing credentials from gitignored keystore.properties (local builds)
+// or environment variables (CI). Never inline secrets in this file.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
+}
+fun signingValue(propKey: String, envKey: String): String? =
+    keystoreProps.getProperty(propKey) ?: System.getenv(envKey)
+
+val releaseStorePath = signingValue("storeFile", "SNAPCROP_KEYSTORE_PATH") ?: "snapcrop-release.jks"
+val releaseStoreFile = rootProject.file(releaseStorePath)
+val hasReleaseKeystore = releaseStoreFile.exists()
+        && signingValue("storePassword", "SNAPCROP_KEYSTORE_PASSWORD") != null
+        && signingValue("keyPassword", "SNAPCROP_KEY_PASSWORD") != null
 
 android {
     namespace = "com.sysadmindoc.snapcrop"
@@ -12,16 +29,18 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 49
-        versionName = "6.5.6"
+        versionCode = 50
+        versionName = "6.6.0"
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../snapcrop-release.jks")
-            storePassword = "snapcrop123"
-            keyAlias = "snapcrop"
-            keyPassword = "snapcrop123"
+        if (hasReleaseKeystore) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = signingValue("storePassword", "SNAPCROP_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "SNAPCROP_KEY_ALIAS") ?: "snapcrop"
+                keyPassword = signingValue("keyPassword", "SNAPCROP_KEY_PASSWORD")
+            }
         }
     }
 
@@ -29,7 +48,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            // Sign with the release keystore when available; otherwise fall back to the
+            // debug signing config so contributor builds still produce an installable APK.
+            signingConfig = if (hasReleaseKeystore) signingConfigs.getByName("release")
+                            else signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

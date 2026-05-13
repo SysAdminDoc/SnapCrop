@@ -92,14 +92,35 @@ class CollageActivity : ComponentActivity() {
     private val spacing = mutableIntStateOf(4) // pixels gap
     private val bgColorIdx = mutableIntStateOf(0)
     private val cellAspect = mutableFloatStateOf(4f / 3f) // cell aspect ratio (w/h)
+    // When true, the next picker result replaces all existing selections (initial pick / explicit "Pick All").
+    // When false, it appends to fill empty cells (tapping the '+' tile).
+    private var nextPickReplaces = true
 
     private val pickImagesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
-            imageUris.clear()
-            imageUris.addAll(uris.take(selectedLayout.value.slots))
+            val slots = selectedLayout.value.slots
+            if (nextPickReplaces) {
+                imageUris.clear()
+                imageUris.addAll(uris.take(slots))
+            } else {
+                val capacity = (slots - imageUris.size).coerceAtLeast(0)
+                if (capacity > 0) imageUris.addAll(uris.take(capacity))
+            }
+            nextPickReplaces = true // default back so the toolbar "Pick" button always replaces.
         }
+    }
+
+    private fun launchReplacePicker() {
+        nextPickReplaces = true
+        pickImagesLauncher.launch(arrayOf("image/*"))
+    }
+
+    private fun launchAppendPicker() {
+        if (imageUris.size >= selectedLayout.value.slots) return
+        nextPickReplaces = false
+        pickImagesLauncher.launch(arrayOf("image/*"))
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -114,18 +135,26 @@ class CollageActivity : ComponentActivity() {
                     isSaving = isSaving.value,
                     spacing = spacing.intValue,
                     bgColorIdx = bgColorIdx.intValue,
-                    onLayoutChange = { selectedLayout.value = it },
+                    onLayoutChange = {
+                        selectedLayout.value = it
+                        // Drop overflow selections silently when shrinking layouts.
+                        while (imageUris.size > it.slots) imageUris.removeAt(imageUris.size - 1)
+                    },
                     onSpacingChange = { spacing.intValue = it },
                     onBgColorChange = { bgColorIdx.intValue = it },
                     cellAspect = cellAspect.floatValue,
                     onCellAspectChange = { cellAspect.floatValue = it },
-                    onPickImages = { pickImagesLauncher.launch(arrayOf("image/*")) },
+                    onPickImages = { launchReplacePicker() },
+                    onAddImage = { launchAppendPicker() },
+                    onRemoveImage = { idx -> if (idx in imageUris.indices) imageUris.removeAt(idx) },
                     onSave = { buildAndSave() },
                     onClose = { finish() }
                 )
             }
         }
 
+        // First launch: pick replaces (list is empty anyway).
+        nextPickReplaces = true
         pickImagesLauncher.launch(arrayOf("image/*"))
     }
 
@@ -263,6 +292,8 @@ private fun CollageScreen(
     cellAspect: Float,
     onCellAspectChange: (Float) -> Unit,
     onPickImages: () -> Unit,
+    onAddImage: () -> Unit,
+    onRemoveImage: (Int) -> Unit,
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
@@ -276,7 +307,13 @@ private fun CollageScreen(
             Text("Collage", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
                 modifier = Modifier.weight(1f))
             Text("${uris.size}/${layout.slots}", color = OnSurfaceVariant, fontSize = 13.sp,
-                modifier = Modifier.padding(end = 8.dp))
+                modifier = Modifier.padding(end = 4.dp))
+            TextButton(
+                onClick = onPickImages,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text(if (uris.isEmpty()) "Pick" else "Replace", color = Primary, fontSize = 12.sp)
+            }
         }
 
         // Layout picker
@@ -366,19 +403,32 @@ private fun CollageScreen(
                         ) {
                             for (col in 0 until layout.cols) {
                                 val idx = row * layout.cols + col
+                                val occupied = idx < uris.size
                                 Box(
                                     Modifier.weight(1f).fillMaxHeight()
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(Color.Black.copy(alpha = 0.3f))
-                                        .clickable { onPickImages() },
+                                        .clickable {
+                                            // Occupied cell: long-press would remove, single-tap is no-op
+                                            // to prevent accidental edits. Empty cell appends new images.
+                                            if (!occupied) onAddImage()
+                                        },
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    if (idx < uris.size) {
+                                    if (occupied) {
                                         AsyncImage(
                                             model = uris[idx], contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
                                         )
+                                        IconButton(
+                                            onClick = { onRemoveImage(idx) },
+                                            modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
+                                                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+                                        ) {
+                                            Icon(Icons.Default.Close, "Remove",
+                                                tint = OnSurface, modifier = Modifier.size(16.dp))
+                                        }
                                     } else {
                                         Text("+", color = OnSurfaceVariant, fontSize = 24.sp)
                                     }
