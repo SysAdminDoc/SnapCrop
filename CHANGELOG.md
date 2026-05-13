@@ -2,6 +2,16 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.7.1] - 2026-05-13
+
+**Premium UX polish pass across the main workflow, gallery, settings, and utility screens.**
+
+- **Home is now workflow-led.** The main screen now presents clearer monitor status, calmer permission guidance, polished action tiles, and a proper batch-progress card with percentage and cancel affordance.
+- **Settings is usable on real phones.** Settings now scrolls, surfaces export defaults at the top, explains JPEG/WebP-only target-size behavior, disables unavailable toggles instead of letting them silently do nothing, and clears temporary files from a coroutine with clearer feedback.
+- **Gallery states feel finished.** Loading, empty, no-results, and selection states now include clearer hierarchy and copy; the screenshot-cleanup action is labeled instead of being a tiny icon/count pair.
+- **Secondary tools got better trust states.** Stitch, Collage, and Device Mockup now have intentional empty states, rendering status text, and disabled save buttons that explain what is needed.
+- **Visual consistency tightened.** UI backdrops now stay within the sharper 4-12dp radius system, and text annotation backdrops use a compact rounded rectangle instead of a fully rounded label shape.
+
 ## [v6.7.0] - 2026-05-13
 
 **Gallery cleanup feature: one-tap select all screenshots.**

@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -19,7 +20,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -48,9 +49,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -228,37 +231,42 @@ fun GalleryScreen(
                 IconButton(onClick = { selectedIds.clear() }) {
                     Icon(Icons.Default.Close, "Cancel", tint = OnSurface)
                 }
-                Text("${selectedIds.size} selected", color = OnSurface, fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                IconButton(onClick = {
-                    selectedIds.clear()
-                    selectedIds.addAll(photos.map { it.id })
-                }) { Icon(Icons.Default.SelectAll, "Select all", tint = OnSurface) }
-                IconButton(onClick = {
-                    val uris = photos.filter { it.id in selectedIds }.map { it.uri }
-                    onShareUris(uris)
-                }) { Icon(Icons.Default.Share, "Share", tint = OnSurface) }
-                IconButton(onClick = {
-                    val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
-                    if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
-                }) { Icon(Icons.Default.PictureAsPdf, "PDF", tint = OnSurface) }
-                IconButton(onClick = {
-                    val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
-                    if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }
-                }) { Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
-                IconButton(onClick = {
-                    val uris = photos.filter { it.id in selectedIds }.map { it.uri }
-                    val deletedIds = selectedIds.toSet()
-                    onDeleteUris(uris)
-                    // Remove deleted photos from local list immediately
-                    photos = photos.filter { it.id !in deletedIds }
-                    selectedIds.clear()
-                    // Refresh albums in background (counts changed)
-                    scope.launch(Dispatchers.IO) {
-                        val refreshed = loadAlbums(context.contentResolver)
-                        withContext(Dispatchers.Main) { albums = refreshed }
-                    }
-                }) { Icon(Icons.Default.Delete, "Delete", tint = Tertiary) }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("${selectedIds.size} selected", color = OnSurface, fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium)
+                    Text("Share, export, resize, or delete", color = OnSurfaceVariant, fontSize = 11.sp)
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    IconButton(onClick = {
+                        selectedIds.clear()
+                        selectedIds.addAll(photos.map { it.id })
+                    }) { Icon(Icons.Default.SelectAll, "Select all", tint = OnSurface) }
+                    IconButton(onClick = {
+                        val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                        onShareUris(uris)
+                    }) { Icon(Icons.Default.Share, "Share", tint = OnSurface) }
+                    IconButton(onClick = {
+                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
+                    }) { Icon(Icons.Default.PictureAsPdf, "Export PDF", tint = OnSurface) }
+                    IconButton(onClick = {
+                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }
+                    }) { Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
+                    IconButton(onClick = {
+                        val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                        val deletedIds = selectedIds.toSet()
+                        onDeleteUris(uris)
+                        // Remove deleted photos from local list immediately
+                        photos = photos.filter { it.id !in deletedIds }
+                        selectedIds.clear()
+                        // Refresh albums in background (counts changed)
+                        scope.launch(Dispatchers.IO) {
+                            val refreshed = loadAlbums(context.contentResolver)
+                            withContext(Dispatchers.Main) { albums = refreshed }
+                        }
+                    }) { Icon(Icons.Default.Delete, "Delete selected", tint = Tertiary) }
+                }
             } else {
                 IconButton(onClick = {
                     if (selectedAlbum != null) { selectedAlbum = null; photos = emptyList() }
@@ -275,7 +283,9 @@ fun GalleryScreen(
                         else -> selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (selectedAlbum == null) {
                     Text("${albums.sumOf { it.count }} photos", color = OnSurfaceVariant,
@@ -288,16 +298,21 @@ fun GalleryScreen(
                     // every dimension-matching image pre-selected, ready for bulk delete.
                     val screenshotCount = photos.count { it.isScreenshot }
                     if (screenshotCount > 0) {
-                        IconButton(onClick = {
+                        TextButton(
+                            onClick = {
                             selectedIds.clear()
                             selectedIds.addAll(photos.filter { it.isScreenshot }.map { it.id })
-                        }) {
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
                             Icon(Icons.Default.PhoneAndroid,
-                                "Select $screenshotCount screenshot(s)", tint = Tertiary)
+                                "Select $screenshotCount screenshots", tint = Tertiary,
+                                modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("$screenshotCount screenshots", color = Tertiary, fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium)
                         }
-                        Text("$screenshotCount", color = Tertiary, fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(end = 2.dp))
                     }
                     // Sort button when viewing photos
                     IconButton(onClick = {
@@ -336,13 +351,20 @@ fun GalleryScreen(
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Primary)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Primary)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Loading your media library", color = OnSurfaceVariant, fontSize = 13.sp)
+                }
             }
         } else if (selectedAlbum == null) {
             AlbumGrid(albums = filteredAlbums, onAlbumClick = { selectedAlbum = it.path },
                 onAllPhotos = { selectedAlbum = "__ALL__" },
                 onFavorites = { selectedAlbum = "__FAVS__" },
-                favCount = favIds.size)
+                favCount = favIds.size,
+                emptyTitle = if (searchQuery.isBlank()) "No albums found" else "No matching albums",
+                emptySubtitle = if (searchQuery.isBlank()) "Grant media access or add photos to see them here."
+                    else "Try a different album name.")
         } else {
             val sortedPhotos = remember(photos, sortMode) {
                 when (sortMode) {
@@ -377,12 +399,48 @@ private fun toggleSelection(selectedIds: MutableList<Long>, id: Long) {
 }
 
 @Composable
-private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit,
-                      onFavorites: () -> Unit, favCount: Int) {
-    if (albums.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No albums found", color = OnSurfaceVariant, fontSize = 15.sp)
+private fun GalleryEmptyState(
+    icon: ImageVector,
+    title: String,
+    subtitle: String
+) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                color = SurfaceVariant,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(14.dp).size(28.dp),
+                    tint = Primary
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(title, color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                subtitle,
+                color = OnSurfaceVariant,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center
+            )
         }
+    }
+}
+
+@Composable
+private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit,
+                      onFavorites: () -> Unit, favCount: Int,
+                      emptyTitle: String, emptySubtitle: String) {
+    if (albums.isEmpty()) {
+        GalleryEmptyState(
+            icon = Icons.Default.Photo,
+            title = emptyTitle,
+            subtitle = emptySubtitle
+        )
         return
     }
 
@@ -471,9 +529,11 @@ private fun PhotoGrid(
     onPinchZoom: (Float) -> Unit
 ) {
     if (photos.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No photos", color = OnSurfaceVariant, fontSize = 15.sp)
-        }
+        GalleryEmptyState(
+            icon = Icons.Default.Photo,
+            title = "No media here",
+            subtitle = "This album is empty or its items are no longer available."
+        )
         return
     }
 
@@ -520,7 +580,7 @@ private fun PhotoGrid(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(photo.uri).crossfade(true).size(250).build(),
-                    contentDescription = null,
+                    contentDescription = photo.name.ifBlank { "Media item" },
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                         .clip(RoundedCornerShape(2.dp))
                         .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
@@ -572,7 +632,7 @@ private fun PhotoItem(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(photo.uri).crossfade(true).size(250).build(),
-            contentDescription = null,
+            contentDescription = photo.name.ifBlank { "Media item" },
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .clip(RoundedCornerShape(2.dp))
                 .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)

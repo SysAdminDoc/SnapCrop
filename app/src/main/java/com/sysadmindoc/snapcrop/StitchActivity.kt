@@ -268,7 +268,15 @@ private fun StitchScreen(
         // Preview
         if (uris.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("Select images to stitch together", color = OnSurfaceVariant, fontSize = 15.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    Surface(color = SurfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                        Icon(Icons.Default.Add, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Add images to stitch", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text("Choose at least two images, then reorder them before saving.",
+                        color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+                }
             }
         } else if (isVertical) {
             LazyColumn(
@@ -287,7 +295,7 @@ private fun StitchScreen(
                                 IconButton(
                                     onClick = { onMoveUp(index) },
                                     modifier = Modifier.size(36.dp)
-                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                 ) { Icon(Icons.Default.ArrowUpward, "Move up", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
@@ -295,14 +303,14 @@ private fun StitchScreen(
                                 IconButton(
                                     onClick = { onMoveDown(index) },
                                     modifier = Modifier.size(36.dp)
-                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                 ) { Icon(Icons.Default.ArrowDownward, "Move down", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
@@ -325,7 +333,7 @@ private fun StitchScreen(
                             IconButton(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
-                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
@@ -359,18 +367,30 @@ private fun StitchScreen(
         // Save button
         Box(Modifier.fillMaxWidth().padding(12.dp)) {
             if (isSaving) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center), color = Primary)
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rendering stitch...", color = OnSurfaceVariant, fontSize = 13.sp)
+                }
             } else {
+                val canSave = uris.size >= 2
                 Button(
                     onClick = onSave,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = uris.size >= 2,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    enabled = canSave,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Primary,
+                        disabledContainerColor = SurfaceVariant,
+                        disabledContentColor = OnSurfaceVariant
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Save, null, Modifier.size(18.dp), tint = Color.Black)
+                    Icon(Icons.Default.Save, null, Modifier.size(18.dp),
+                        tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text("Stitch & Save", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(if (canSave) "Stitch & Save" else "Select at least 2 images",
+                        color = if (canSave) Color.Black else OnSurfaceVariant,
+                        fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

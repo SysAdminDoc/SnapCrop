@@ -1872,17 +1872,18 @@ fun CropEditorScreen(
                                 textSize = dp.strokeWidth * scale * 3
                             }
                             val tx = ox + p.x * scale; val ty = oy + p.y * scale
-                            // Background pill
+                            // Compact label backdrop for readable text annotations.
                             if (dp.filled) {
                                 val bounds = android.graphics.Rect()
                                 textPaint.getTextBounds(dp.text, 0, dp.text.length, bounds)
                                 val pad = textPaint.textSize * 0.3f
+                                val radius = min(pad, 8.dp.toPx())
                                 val bgColor = 0xCC000000.toInt()
                                 val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
                                 bgPaint.color = bgColor; bgPaint.style = android.graphics.Paint.Style.FILL
                                 drawContext.canvas.nativeCanvas.drawRoundRect(
                                     tx - pad, ty + bounds.top - pad, tx + bounds.width() + pad, ty + bounds.bottom + pad,
-                                    pad, pad, bgPaint)
+                                    radius, radius, bgPaint)
                             }
                             drawContext.canvas.nativeCanvas.drawText(dp.text, tx, ty, textPaint)
                             return
