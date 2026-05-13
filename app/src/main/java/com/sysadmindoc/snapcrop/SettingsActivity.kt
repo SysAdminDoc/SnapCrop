@@ -8,7 +8,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -20,7 +22,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import com.sysadmindoc.snapcrop.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,13 +42,20 @@ class SettingsActivity : ComponentActivity() {
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
                 var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95).coerceIn(50, 100)) }
+                val outputFormat = when {
+                    useWebp -> "WebP"
+                    useJpeg -> "JPEG"
+                    else -> "PNG"
+                }
+                val lossyFormat = useJpeg || useWebp
 
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Color.Black)
                         .systemBarsPadding()
-                        .padding(horizontal = 16.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     // Top bar
                     Row(
@@ -57,6 +70,25 @@ class SettingsActivity : ComponentActivity() {
                     }
 
                     Spacer(Modifier.height(16.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Export defaults", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "$outputFormat output - ${if (deleteOriginal) "Save replaces the source screenshot" else "Save keeps the source screenshot"}",
+                                color = OnSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
 
                     // Save behavior section
                     Text("Save Behavior", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -135,8 +167,12 @@ class SettingsActivity : ComponentActivity() {
                     var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500).coerceIn(50, 5000)) }
                     SettingToggle(
                         title = "Target file size",
-                        subtitle = "Auto-adjust quality to meet a file size budget (JPEG/WebP only)",
-                        checked = targetSizeEnabled,
+                        subtitle = if (lossyFormat)
+                            "Auto-adjust quality to meet a file size budget"
+                        else
+                            "Available when JPEG or WebP is selected",
+                        checked = targetSizeEnabled && lossyFormat,
+                        enabled = lossyFormat,
                         onCheckedChange = {
                             targetSizeEnabled = it
                             prefs.edit().putBoolean("target_size_enabled", it).apply()
@@ -361,9 +397,16 @@ class SettingsActivity : ComponentActivity() {
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp),
                         onClick = {
-                            Thread { cacheDir.deleteRecursively() }.start()
-                            android.widget.Toast.makeText(this@SettingsActivity,
-                                "Cache cleared", android.widget.Toast.LENGTH_SHORT).show()
+                            lifecycleScope.launch(Dispatchers.IO) {
+                                cacheDir.deleteRecursively()
+                                withContext(Dispatchers.Main) {
+                                    android.widget.Toast.makeText(
+                                        this@SettingsActivity,
+                                        "Temporary files cleared",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
                         }
                     ) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -386,6 +429,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(4.dp))
                     Text("github.com/SysAdminDoc/SnapCrop",
                         color = Primary, fontSize = 12.sp)
+                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
@@ -397,11 +441,12 @@ private fun SettingToggle(
     title: String,
     subtitle: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        colors = CardDefaults.cardColors(containerColor = if (enabled) SurfaceVariant else SurfaceContainer),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
@@ -410,12 +455,18 @@ private fun SettingToggle(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(title, color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                Text(subtitle, color = OnSurfaceVariant, fontSize = 12.sp)
+                Text(
+                    title,
+                    color = if (enabled) OnSurface else OnSurfaceVariant,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 15.sp
+                )
+                Text(subtitle, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
             }
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                enabled = enabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = Color.Black,
                     checkedTrackColor = Primary,

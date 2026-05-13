@@ -56,7 +56,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 | Line | Straight line between two points |
 | Rectangle | Optional fill |
 | Circle / Ellipse | Optional fill |
-| Text | Tap to place, optional background pill |
+| Text | Tap to place, optional readable backdrop |
 | Highlight | Semi-transparent marker (40% alpha) |
 | Callout | Auto-numbered circles (1, 2, 3...) |
 | Spotlight | Dims everything *except* your selection |

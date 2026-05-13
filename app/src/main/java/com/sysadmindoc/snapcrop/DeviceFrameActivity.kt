@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -275,36 +276,58 @@ private fun FrameScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(0.6f).aspectRatio(9f / 19f),
                     colors = CardDefaults.cardColors(containerColor = Color(frame.bezelColor)),
-                    shape = RoundedCornerShape(24.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Box(Modifier.fillMaxSize().padding(8.dp)) {
                         AsyncImage(
                             model = imageUri, contentDescription = null,
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp)),
                             contentScale = ContentScale.Crop
                         )
                     }
                 }
             } else {
-                OutlinedButton(onClick = onPickImage, shape = RoundedCornerShape(12.dp)) {
-                    Text("Pick Screenshot", color = OnSurface)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(color = SurfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                        Icon(Icons.Default.PhotoLibrary, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Pick a screenshot", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text("Preview it in a device frame before exporting.",
+                        color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = onPickImage, shape = RoundedCornerShape(12.dp)) {
+                        Text("Choose image", color = OnSurface)
+                    }
                 }
             }
         }
 
         Box(Modifier.fillMaxWidth().padding(12.dp)) {
             if (isSaving) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center), color = Primary)
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rendering mockup...", color = OnSurfaceVariant, fontSize = 13.sp)
+                }
             } else {
+                val canSave = imageUri != null
                 Button(
                     onClick = onSave, modifier = Modifier.fillMaxWidth(),
-                    enabled = imageUri != null,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    enabled = canSave,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Primary,
+                        disabledContainerColor = SurfaceVariant,
+                        disabledContentColor = OnSurfaceVariant
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Save, null, Modifier.size(18.dp), tint = Color.Black)
+                    Icon(Icons.Default.Save, null, Modifier.size(18.dp),
+                        tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text("Save Mockup", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(if (canSave) "Save Mockup" else "Choose an image",
+                        color = if (canSave) Color.Black else OnSurfaceVariant,
+                        fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

@@ -51,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -205,7 +206,7 @@ class MainActivity : ComponentActivity() {
                                     selectedTextColor = Primary,
                                     unselectedIconColor = OnSurfaceVariant,
                                     unselectedTextColor = OnSurfaceVariant,
-                                    indicatorColor = PrimaryContainer
+                                    indicatorColor = Color.Transparent
                                 )
                             )
                             NavigationBarItem(
@@ -218,7 +219,7 @@ class MainActivity : ComponentActivity() {
                                     selectedTextColor = Primary,
                                     unselectedIconColor = OnSurfaceVariant,
                                     unselectedTextColor = OnSurfaceVariant,
-                                    indicatorColor = PrimaryContainer
+                                    indicatorColor = Color.Transparent
                                 )
                             )
                         }
@@ -754,7 +755,7 @@ private fun HomeScreen(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
     ) {
-        Spacer(Modifier.height(48.dp))
+        Spacer(Modifier.height(32.dp))
 
         // Header
         Row(
@@ -770,7 +771,12 @@ private fun HomeScreen(
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text("v${BuildConfig.VERSION_NAME}", fontSize = 13.sp, color = OnSurfaceVariant)
+                Text(
+                    "Clean, redact, and export screenshots - v${BuildConfig.VERSION_NAME}",
+                    fontSize = 13.sp,
+                    color = OnSurfaceVariant,
+                    lineHeight = 18.sp
+                )
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
@@ -786,7 +792,7 @@ private fun HomeScreen(
                     .fillMaxWidth()
                     .padding(bottom = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Row(
                     modifier = Modifier.padding(16.dp),
@@ -795,11 +801,12 @@ private fun HomeScreen(
                     Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Permissions Required", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("Media permissions required", color = OnSurface, fontWeight = FontWeight.Medium)
                         Text(
-                            "Media access needed to detect and edit screenshots",
+                            "Allow SnapCrop to detect screenshots, show notifications, and open images for editing.",
                             color = OnSurfaceVariant,
-                            fontSize = 13.sp
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
                         )
                     }
                 }
@@ -812,7 +819,7 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Grant Permissions", color = Color.Black)
+                    Text("Grant media access", color = Color.Black)
                 }
             }
         }
@@ -822,15 +829,15 @@ private fun HomeScreen(
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Display Over Apps", color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text("Required to open editor when screenshot is taken",
-                            color = OnSurfaceVariant, fontSize = 13.sp)
+                        Text("Open editor from screenshots", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("Display-over-apps lets the crop editor appear immediately after a screenshot.",
+                            color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 }
                 Button(
@@ -838,7 +845,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Grant Permission", color = Color.Black) }
+                ) { Text("Grant display access", color = Color.Black) }
             }
         }
 
@@ -847,15 +854,15 @@ private fun HomeScreen(
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("File Management", color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text("Allows deleting photos without confirmation prompts",
-                            color = OnSurfaceVariant, fontSize = 13.sp)
+                        Text("Seamless cleanup", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("All-files access removes the source screenshot after Save without Android asking each time.",
+                            color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 }
                 Button(
@@ -863,7 +870,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Grant Permission", color = Color.Black) }
+                ) { Text("Grant file access", color = Color.Black) }
             }
         }
 
@@ -873,7 +880,7 @@ private fun HomeScreen(
             colors = CardDefaults.cardColors(
                 containerColor = if (isRunning) PrimaryContainer else SurfaceVariant
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -882,7 +889,7 @@ private fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
                         "Screenshot Monitor",
                         color = OnSurface,
@@ -890,11 +897,25 @@ private fun HomeScreen(
                         fontSize = 16.sp
                     )
                     Text(
-                        if (isRunning) "Active — watching for screenshots" else "Tap to start monitoring",
+                        if (isRunning) "Active - new screenshots open in the editor" else "Paused - turn on to catch screenshots automatically",
                         color = OnSurfaceVariant,
-                        fontSize = 13.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
+                Surface(
+                    color = if (isRunning) Secondary.copy(alpha = 0.16f) else SurfaceElevated,
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        if (isRunning) "Active" else "Paused",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = if (isRunning) Secondary else OnSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
                 Switch(
                     checked = isRunning,
                     onCheckedChange = { onToggleService() },
@@ -908,51 +929,92 @@ private fun HomeScreen(
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(20.dp))
 
-        // Manual pick
-        OutlinedButton(
-            onClick = onPickImage,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-        ) {
-            Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Pick Image to Crop")
-        }
-
+        Text("Workflows", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
 
         // Batch progress bar
         if (batchProgress.isNotEmpty()) {
-            LinearProgressIndicator(
-                progress = { batchFraction.coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                color = Primary,
-                trackColor = SurfaceVariant
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(batchProgress, color = OnSurface, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        Text("${(batchFraction.coerceIn(0f, 1f) * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { batchFraction.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Primary,
+                        trackColor = SurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        OutlinedButton(
+                            onClick = onBatchCancel,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                        ) { Text("Cancel batch", fontSize = 12.sp) }
+                    }
+                }
+            }
+        }
+
+        var showDelayPicker by remember { mutableStateOf(false) }
+        HomeActionTile(
+            icon = Icons.Default.PhotoLibrary,
+            title = "Crop one image",
+            subtitle = "Open the editor with auto-crop, redaction, OCR, and export tools.",
+            onClick = onPickImage
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HomeActionTile(
+                icon = Icons.Default.BurstMode,
+                title = "Batch autocrop",
+                subtitle = "Clean several screenshots at once.",
+                enabled = batchProgress.isEmpty(),
+                modifier = Modifier.weight(1f),
+                onClick = onBatchCrop
+            )
+            HomeActionTile(
+                icon = Icons.Default.Timer,
+                title = "Delayed capture",
+                subtitle = "Start a timed screenshot.",
+                modifier = Modifier.weight(1f),
+                onClick = { showDelayPicker = !showDelayPicker }
             )
         }
 
-        // Batch crop
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = onBatchCrop,
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface),
-                enabled = batchProgress.isEmpty()
+        if (showDelayPicker) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Default.BurstMode, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (batchProgress.isNotEmpty()) batchProgress else "Batch Autocrop")
-            }
-            if (batchProgress.isNotEmpty()) {
-                OutlinedButton(
-                    onClick = onBatchCancel,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary)
-                ) { Text("Stop") }
+                Column(Modifier.padding(12.dp)) {
+                    Text("Choose delay", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("SnapCrop waits, then opens the next screenshot it detects.",
+                        color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(3, 5, 10).forEach { sec ->
+                            FilledTonalButton(
+                                onClick = { onDelayedCapture(sec); showDelayPicker = false },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
+                            ) { Text("${sec}s", color = Primary, fontSize = 13.sp) }
+                        }
+                    }
+                }
             }
         }
 
@@ -960,74 +1022,34 @@ private fun HomeScreen(
 
         // Stitch + Collage row
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
-                onClick = onStitch,
+            HomeActionTile(
+                icon = Icons.Default.MergeType,
+                title = "Stitch",
+                subtitle = "Join images vertically or horizontally.",
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-            ) {
-                Icon(Icons.Default.MergeType, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Stitch")
-            }
-            OutlinedButton(
-                onClick = onCollage,
+                onClick = onStitch
+            )
+            HomeActionTile(
+                icon = Icons.Default.GridView,
+                title = "Collage",
+                subtitle = "Build a clean multi-image layout.",
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-            ) {
-                Icon(Icons.Default.GridView, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Collage")
-            }
+                onClick = onCollage
+            )
         }
 
         Spacer(Modifier.height(8.dp))
 
-        // Device frame
-        OutlinedButton(
-            onClick = onDeviceFrame,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-        ) {
-            Icon(Icons.Default.PhoneAndroid, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Device Mockup")
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Delayed capture
-        var showDelayPicker by remember { mutableStateOf(false) }
-        OutlinedButton(
-            onClick = { showDelayPicker = !showDelayPicker },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = OnSurface)
-        ) {
-            Icon(Icons.Default.Timer, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Delayed Capture")
-        }
-        if (showDelayPicker) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                listOf(3, 5, 10).forEach { sec ->
-                    FilledTonalButton(
-                        onClick = { onDelayedCapture(sec); showDelayPicker = false },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
-                    ) { Text("${sec}s", color = Primary, fontSize = 13.sp) }
-                }
-            }
-        }
+        HomeActionTile(
+            icon = Icons.Default.PhoneAndroid,
+            title = "Device mockup",
+            subtitle = "Wrap a screenshot in a polished phone frame.",
+            onClick = onDeviceFrame
+        )
 
         // Stats
         if (cropCount > 0) {
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 "$cropCount screenshots cropped",
                 color = OnSurfaceVariant,
@@ -1052,7 +1074,7 @@ private fun HomeScreen(
                     @OptIn(ExperimentalFoundationApi::class)
                     Image(
                         bitmap = crop.thumbBitmap,
-                        contentDescription = null,
+                        contentDescription = "Recent cropped screenshot",
                         modifier = Modifier
                             .size(80.dp, 140.dp)
                             .clip(RoundedCornerShape(10.dp))
@@ -1069,12 +1091,66 @@ private fun HomeScreen(
         Spacer(Modifier.height(32.dp))
 
         Text(
-            "Screenshots are detected automatically when the monitor is active.\nCropped images are saved to Pictures/SnapCrop.",
+            "Screenshots are detected automatically when the monitor is active. Exports follow your format and location settings.",
             color = OnSurfaceVariant,
             fontSize = 12.sp,
             lineHeight = 18.sp
         )
 
         Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun HomeActionTile(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val contentAlpha = if (enabled) 1f else 0.48f
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 84.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = PrimaryContainer.copy(alpha = contentAlpha),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(8.dp).size(18.dp),
+                    tint = Primary.copy(alpha = contentAlpha)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = OnSurface.copy(alpha = contentAlpha),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+                Text(
+                    subtitle,
+                    color = OnSurfaceVariant.copy(alpha = contentAlpha),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 2
+                )
+            }
+        }
     }
 }

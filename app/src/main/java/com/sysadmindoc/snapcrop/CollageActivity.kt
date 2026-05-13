@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.*
@@ -383,7 +384,15 @@ private fun CollageScreen(
         // Collage preview
         Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
             if (uris.isEmpty()) {
-                Text("Select images to create a collage", color = OnSurfaceVariant, fontSize = 15.sp)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                    Surface(color = SurfaceVariant, shape = RoundedCornerShape(12.dp)) {
+                        Icon(Icons.Default.Add, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Start a collage", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text("Pick several images, then tune the layout, gap, aspect ratio, and background.",
+                        color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+                }
             } else {
                 // Grid preview
                 Column(
@@ -443,18 +452,30 @@ private fun CollageScreen(
         // Save button
         Box(Modifier.fillMaxWidth().padding(12.dp)) {
             if (isSaving) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center), color = Primary)
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Rendering collage...", color = OnSurfaceVariant, fontSize = 13.sp)
+                }
             } else {
+                val canSave = uris.size >= 2
                 Button(
                     onClick = onSave,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = uris.size >= 2,
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    enabled = canSave,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Primary,
+                        disabledContainerColor = SurfaceVariant,
+                        disabledContentColor = OnSurfaceVariant
+                    ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Save, null, Modifier.size(18.dp), tint = Color.Black)
+                    Icon(Icons.Default.Save, null, Modifier.size(18.dp),
+                        tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text("Save Collage", color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(if (canSave) "Save Collage" else "Select at least 2 images",
+                        color = if (canSave) Color.Black else OnSurfaceVariant,
+                        fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }
