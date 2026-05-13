@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.7.2] - 2026-05-13
+
+**Editor trust and save-state polish.**
+
+- **Delete now asks first.** The editor trash action now opens a clear confirmation dialog before removing the source screenshot from the media library.
+- **Primary save is explicit.** When the user's default Save behavior replaces the source screenshot, the editor now labels the main action **Save & Replace**; non-destructive setups still show **Crop & Save**.
+- **Saving feedback is calmer.** The blocking save overlay now explains whether SnapCrop is replacing the source or writing a separate copy instead of showing a bare spinner.
+
 ## [v6.7.1] - 2026-05-13
 
 **Premium UX polish pass across the main workflow, gallery, settings, and utility screens.**
