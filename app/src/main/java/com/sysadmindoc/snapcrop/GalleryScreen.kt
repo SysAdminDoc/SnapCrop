@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircle
@@ -61,7 +62,44 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
-data class Photo(val id: Long, val uri: Uri, val dateAdded: Long, val name: String = "", val size: Long = 0, val isVideo: Boolean = false, val duration: Long = 0)
+data class Photo(
+    val id: Long, val uri: Uri, val dateAdded: Long,
+    val name: String = "", val size: Long = 0,
+    val isVideo: Boolean = false, val duration: Long = 0,
+    val width: Int = 0, val height: Int = 0,
+    val isScreenshot: Boolean = false
+)
+
+/** Full physical display size, ignoring system bars / cutouts — screenshots are
+ *  captured at this resolution on stock Android. */
+internal fun getScreenSize(context: Context): Pair<Int, Int> {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val wm = context.getSystemService(android.view.WindowManager::class.java)
+            val bounds = wm.currentWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            @Suppress("DEPRECATION")
+            val display = (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager).defaultDisplay
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            metrics.widthPixels to metrics.heightPixels
+        }
+    } catch (_: Exception) { 0 to 0 }
+}
+
+/** Heuristic screenshot detection: filename hint OR dimensions matching the device
+ *  screen (either orientation) within a small tolerance. */
+internal fun looksLikeScreenshot(width: Int, height: Int, name: String, screenW: Int, screenH: Int): Boolean {
+    if (name.contains("screenshot", ignoreCase = true)) return true
+    if (width <= 0 || height <= 0 || screenW <= 0 || screenH <= 0) return false
+    val maxImg = maxOf(width, height); val minImg = minOf(width, height)
+    val maxScr = maxOf(screenW, screenH); val minScr = minOf(screenW, screenH)
+    // ~2% tolerance covers status-bar trims and minor device-cutout differences.
+    val tol = (maxScr * 0.02f).toInt().coerceAtLeast(4)
+    return kotlin.math.abs(maxImg - maxScr) <= tol && kotlin.math.abs(minImg - minScr) <= tol
+}
 
 private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
 
@@ -96,6 +134,7 @@ fun GalleryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val (screenW, screenH) = remember { getScreenSize(context) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
@@ -114,8 +153,8 @@ fun GalleryScreen(
         // Also refresh current album photos if viewing one
         selectedAlbum?.let { path ->
             withContext(Dispatchers.IO) {
-                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver)
-                else loadPhotos(context.contentResolver, path)
+                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver, screenW, screenH)
+                else loadPhotos(context.contentResolver, path, screenW, screenH)
             }
         }
         isLoading = false
@@ -127,9 +166,9 @@ fun GalleryScreen(
             selectedIds.clear()
             withContext(Dispatchers.IO) {
                 photos = when (path) {
-                    "__ALL__" -> loadAllPhotos(context.contentResolver)
-                    "__FAVS__" -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context))
-                    else -> loadPhotos(context.contentResolver, path)
+                    "__ALL__" -> loadAllPhotos(context.contentResolver, screenW, screenH)
+                    "__FAVS__" -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH)
+                    else -> loadPhotos(context.contentResolver, path, screenW, screenH)
                 }
             }
             isLoading = false
@@ -245,6 +284,21 @@ fun GalleryScreen(
                     // Photo count
                     Text("${photos.size}", color = OnSurfaceVariant, fontSize = 12.sp,
                         modifier = Modifier.padding(end = 4.dp))
+                    // One-tap "select all screenshots" — drops user into selection mode with
+                    // every dimension-matching image pre-selected, ready for bulk delete.
+                    val screenshotCount = photos.count { it.isScreenshot }
+                    if (screenshotCount > 0) {
+                        IconButton(onClick = {
+                            selectedIds.clear()
+                            selectedIds.addAll(photos.filter { it.isScreenshot }.map { it.id })
+                        }) {
+                            Icon(Icons.Default.PhoneAndroid,
+                                "Select $screenshotCount screenshot(s)", tint = Tertiary)
+                        }
+                        Text("$screenshotCount", color = Tertiary, fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(end = 2.dp))
+                    }
                     // Sort button when viewing photos
                     IconButton(onClick = {
                         sortMode = when (sortMode) {
@@ -490,6 +544,13 @@ private fun PhotoGrid(
                                 .padding(horizontal = 4.dp, vertical = 1.dp))
                     }
                 }
+                if (photo.isScreenshot && !photo.isVideo) {
+                    Icon(Icons.Default.PhoneAndroid, null,
+                        modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp)
+                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                            .padding(2.dp),
+                        tint = Tertiary)
+                }
                 if (isSelected) {
                     Icon(Icons.Default.CheckCircle, null,
                         modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
@@ -533,6 +594,13 @@ private fun PhotoItem(
                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
                         .padding(horizontal = 4.dp, vertical = 1.dp))
             }
+        }
+        if (photo.isScreenshot && !photo.isVideo) {
+            Icon(Icons.Default.PhoneAndroid, null,
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .padding(2.dp),
+                tint = Tertiary)
         }
         if (isSelected) {
             Icon(Icons.Default.CheckCircle, null,
@@ -747,12 +815,13 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
     }.sortedByDescending { it.count }
 }
 
-private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo> {
+private fun loadPhotos(resolver: ContentResolver, albumPath: String, screenW: Int, screenH: Int): List<Photo> {
     val photos = mutableListOf<Photo>()
 
     // Images
     val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
-        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
+        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT)
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
@@ -761,14 +830,20 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
+        val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+        val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
+            val name = cursor.getString(nameCol) ?: ""
+            val w = cursor.getInt(wCol); val h = cursor.getInt(hCol)
+            val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
+                width = w, height = h, isScreenshot = isShot))
         }
     }
 
-    // Videos
+    // Videos (screenshot detection N/A)
     val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
         MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
     resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
@@ -790,22 +865,29 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String): List<Photo
     return photos.sortedByDescending { it.dateAdded }
 }
 
-private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
+private fun loadAllPhotos(resolver: ContentResolver, screenW: Int, screenH: Int): List<Photo> {
     val photos = mutableListOf<Photo>()
 
     // Images
     val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
-        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE)
+        MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
+        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT)
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
         "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
+        val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
+        val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-            photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol)))
+            val name = cursor.getString(nameCol) ?: ""
+            val w = cursor.getInt(wCol); val h = cursor.getInt(hCol)
+            val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
+            photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
+                width = w, height = h, isScreenshot = isShot))
         }
     }
 
@@ -830,7 +912,7 @@ private fun loadAllPhotos(resolver: ContentResolver): List<Photo> {
     return photos.sortedByDescending { it.dateAdded }
 }
 
-private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): List<Photo> {
+private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>, screenW: Int, screenH: Int): List<Photo> {
     if (favIds.isEmpty()) return emptyList()
     val photos = mutableListOf<Photo>()
 
@@ -842,7 +924,8 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): Li
                 MediaStore.Video.Media.DURATION)
         } else {
             arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
-                MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE)
+                MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT)
         }
         for (chunk in idsList.chunked(500)) {
             val placeholders = chunk.joinToString(",") { "?" }
@@ -854,11 +937,18 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>): Li
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val durCol = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
+                val wCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH) else -1
+                val hCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT) else -1
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val uri = ContentUris.withAppendedId(contentUri, id)
+                    val name = cursor.getString(nameCol) ?: ""
                     val duration = if (isVideo) cursor.getLong(durCol) else 0L
-                    photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "", cursor.getLong(sizeCol), isVideo = isVideo, duration = duration))
+                    val w = if (!isVideo) cursor.getInt(wCol) else 0
+                    val h = if (!isVideo) cursor.getInt(hCol) else 0
+                    val isShot = !isVideo && looksLikeScreenshot(w, h, name, screenW, screenH)
+                    photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
+                        isVideo = isVideo, duration = duration, width = w, height = h, isScreenshot = isShot))
                 }
             }
         }
