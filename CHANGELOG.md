@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.13.0] - 2026-05-14
+
+**OCR translate flow.**
+
+- **On-device translation added to OCR.** Recognized text can now be translated from the OCR dialog using ML Kit language identification and translation.
+- **Target-language chips added.** Common targets include English, Spanish, French, German, Portuguese, Japanese, Korean, and Chinese.
+- **Translation feedback is explicit.** SnapCrop shows model preparation, Wi-Fi model-download guidance, source-to-target language labels, and copy support for the translated text.
+
 ## [v6.12.0] - 2026-05-14
 
 **One-tap last action tile.**

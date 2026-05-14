@@ -29,8 +29,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 60
-        versionName = "6.12.0"
+        versionCode = 61
+        versionName = "6.13.0"
     }
 
     signingConfigs {
@@ -91,5 +91,7 @@ dependencies {
     implementation(libs.mlkit.facedetection)
     implementation(libs.mlkit.barcodescanning)
     implementation(libs.mlkit.subjectsegmentation)
+    implementation(libs.mlkit.translate)
+    implementation(libs.mlkit.language.id)
     debugImplementation(libs.androidx.ui.tooling)
 }

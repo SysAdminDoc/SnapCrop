@@ -79,7 +79,8 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 - One-tap **face blur** powered by ML Kit (shows face count)
 
 **OCR**
-- Tap any text block to copy it
+- Tap any text block to copy it or translate it on-device
+- Translate recognized text with ML Kit language detection and downloadable offline translation models
 - Scan QR codes and barcodes
 - Double-tap a text block to crop directly to it
 
