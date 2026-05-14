@@ -99,7 +99,7 @@ class CropActivity : ComponentActivity() {
 
         // Reset state for the new image
         sourceUri = newUri
-        intentSourceHints = collectIntentHints(incomingIntent, newUri)
+        intentSourceHints = CropSourceHints.fromIntent(incomingIntent, newUri)
         isLoading.value = true
         bitmapState.value = null
         cropMethod.value = ""
@@ -292,35 +292,6 @@ class CropActivity : ComponentActivity() {
     private fun appCropProfilesEnabled(): Boolean =
         getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("app_crop_profiles", true)
 
-    private fun collectIntentHints(intent: Intent, uri: Uri): List<String> {
-        return listOfNotNull(
-            uri.toString(),
-            uri.authority,
-            uri.path,
-            intent.getStringExtra("android.intent.extra.PACKAGE_NAME"),
-            intent.getStringExtra("android.intent.extra.REFERRER_NAME")
-        ).filter { it.isNotBlank() }
-    }
-
-    private fun queryMediaHints(uri: Uri): List<String> {
-        val projection = arrayOf(
-            MediaStore.MediaColumns.DISPLAY_NAME,
-            MediaStore.MediaColumns.RELATIVE_PATH,
-            MediaStore.MediaColumns.OWNER_PACKAGE_NAME
-        )
-        return try {
-            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                if (!cursor.moveToFirst()) return@use emptyList()
-                projection.mapNotNull { column ->
-                    val index = cursor.getColumnIndex(column)
-                    if (index >= 0) cursor.getString(index) else null
-                }.filter { !it.isNullOrBlank() }
-            } ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
     private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val quality = prefs.getInt("jpeg_quality", 95)
@@ -373,10 +344,9 @@ class CropActivity : ComponentActivity() {
             originalBitmap?.let { bmp ->
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
-                currentCropHints = (intentSourceHints + queryMediaHints(uri))
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-                    .distinct()
+                currentCropHints = CropSourceHints.normalize(
+                    intentSourceHints + CropSourceHints.fromMedia(contentResolver, uri)
+                )
                 val result = AutoCrop.detectWithMethod(
                     bitmap = bmp,
                     statusBarPx = statusBarPx,
@@ -430,31 +400,7 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun applyPixelate(bitmap: Bitmap, pixRects: List<Rect>): Bitmap {
-        if (pixRects.isEmpty()) return bitmap
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
-        val blockSize = 12
-        for (pr in pixRects) {
-            val l = pr.left.coerceIn(0, result.width)
-            val t = pr.top.coerceIn(0, result.height)
-            val r = pr.right.coerceIn(0, result.width)
-            val b = pr.bottom.coerceIn(0, result.height)
-            if (r - l < 2 || b - t < 2) continue
-            var region: Bitmap? = null
-            var tiny: Bitmap? = null
-            var mosaic: Bitmap? = null
-            try {
-                region = Bitmap.createBitmap(result, l, t, r - l, b - t)
-                tiny = Bitmap.createScaledBitmap(region,
-                    ((r - l) / blockSize).coerceAtLeast(1),
-                    ((b - t) / blockSize).coerceAtLeast(1), false)
-                mosaic = Bitmap.createScaledBitmap(tiny, r - l, b - t, false)
-                canvas.drawBitmap(mosaic, l.toFloat(), t.toFloat(), null)
-            } finally {
-                region?.recycle(); tiny?.recycle(); mosaic?.recycle()
-            }
-        }
-        return result
+        return ImageRedactor.pixelate(bitmap, pixRects)
     }
 
     private fun applyDraw(bitmap: Bitmap, paths: List<DrawPath>): Bitmap {

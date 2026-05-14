@@ -271,18 +271,22 @@ class ScreenshotService : Service() {
                 } ?: return@launch
 
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                val sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri))
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
-                val cropRect = AutoCrop.detect(
+                val cropResult = AutoCrop.detectWithMethod(
                     bitmap = bitmap,
                     statusBarPx = statusBarPx,
                     navBarPx = navBarPx,
+                    sourceHints = sourceHints,
                     appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
                 )
+                val actionRule = ConditionalAutoActions.resolve(prefs, cropResult.method, sourceHints)
+                val cropRect = cropResult.rect
                 val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                         cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
-                if (isFullImage) {
+                if (isFullImage && actionRule == null) {
                     handler.post { Toast.makeText(this@ScreenshotService, "No borders detected", Toast.LENGTH_SHORT).show() }
                     return@launch
                 }
@@ -295,12 +299,26 @@ class ScreenshotService : Service() {
                     cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0))
                 )
 
+                var redactionCount = 0
+                if (actionRule != null) {
+                    val currentCropped = cropped ?: return@launch
+                    val actionResult = ConditionalAutoActions.redactSensitiveText(currentCropped)
+                    redactionCount = actionResult.redactionCount
+                    if (actionResult.bitmap !== currentCropped) {
+                        currentCropped.recycle()
+                        cropped = actionResult.bitmap
+                    }
+                }
+
                 val (fmt, quality, ext, mime) = getSaveFormat(prefs)
+                val savePath = actionRule?.let { ConditionalAutoActions.savePath(prefs, it) }
+                    ?: (prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
+                val displayPrefix = actionRule?.id ?: "SnapCrop"
 
                 val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "${displayPrefix}_${System.currentTimeMillis()}.$ext")
                     put(MediaStore.Images.Media.MIME_TYPE, mime)
-                    put(MediaStore.Images.Media.RELATIVE_PATH, prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
                     put(MediaStore.Images.Media.IS_PENDING, 1)
                 }
 
@@ -319,7 +337,13 @@ class ScreenshotService : Service() {
                             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                         }
 
-                        handler.post { Toast.makeText(this@ScreenshotService, "Autocropped & saved", Toast.LENGTH_SHORT).show() }
+                        val message = if (actionRule != null) {
+                            if (redactionCount > 0) "Auto-redacted $redactionCount items"
+                            else "Saved to ${actionRule.albumName}"
+                        } else {
+                            "Autocropped & saved"
+                        }
+                        handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show() }
                     } catch (e: IOException) {
                         contentResolver.delete(savedUri, null, null)
                     }

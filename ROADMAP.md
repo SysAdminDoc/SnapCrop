@@ -7,7 +7,7 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 ### Capture & automation
 - [x] Long-screenshot / scroll capture via AccessibilityService with auto-stitch (Huawei-style)
 - [x] App-specific auto-crop profiles (e.g. always strip Reddit's top bar, always strip Twitter navigation) via template-match
-- [ ] Conditional auto-actions: "if screenshot came from app X, auto-redact phone numbers + save to album Y"
+- [x] Conditional auto-actions: "if screenshot came from app X, auto-redact phone numbers + save to album Y"
 - [ ] Screen-recording clip trim + frame-grab pipeline (record -> pick frame -> edit)
 - [ ] Quick-tile "one-tap last action" - reruns the last edit pipeline on the newest screenshot
 
