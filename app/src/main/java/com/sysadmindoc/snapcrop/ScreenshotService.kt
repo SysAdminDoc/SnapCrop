@@ -31,8 +31,11 @@ class ScreenshotService : Service() {
         const val ACTION_SHARE = "com.sysadmindoc.snapcrop.SHARE"
         const val ACTION_DISMISS = "com.sysadmindoc.snapcrop.DISMISS_NOTIF"
         const val ACTION_DELAYED_CAPTURE = "com.sysadmindoc.snapcrop.DELAYED_CAPTURE"
+        const val ACTION_RUN_LAST_ACTION = "com.sysadmindoc.snapcrop.RUN_LAST_ACTION"
         const val EXTRA_URI = "extra_uri"
         const val EXTRA_DELAY_SECONDS = "extra_delay_seconds"
+        const val LAST_ACTION_QUICK_CROP = "quick_crop"
+        const val PREF_LAST_ACTION = "last_action"
         private const val DETECTED_NOTIF_ID = 2
         private const val COUNTDOWN_NOTIF_ID = 3
         @Volatile var isRunning = false
@@ -91,6 +94,10 @@ class ScreenshotService : Service() {
                 isRunning = true
                 startDelayedCapture(delaySec)
                 return START_STICKY
+            }
+            ACTION_RUN_LAST_ACTION -> {
+                runLastAction(stopWhenDone = !isRunning)
+                return START_NOT_STICKY
             }
         }
 
@@ -229,6 +236,71 @@ class ScreenshotService : Service() {
         return null
     }
 
+    private fun findMostRecentScreenshot(): Pair<Long, Uri>? {
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.RELATIVE_PATH
+        )
+        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
+
+        try {
+            contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection, null, null, sortOrder
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    val name = cursor.getString(1) ?: continue
+                    val path = cursor.getString(2) ?: ""
+                    val lowerName = name.lowercase()
+                    val lowerPath = path.lowercase()
+                    val isScreenshot = lowerPath.contains("screenshot") ||
+                            lowerPath.contains("screen") ||
+                            lowerName.contains("screenshot") ||
+                            lowerName.contains("screen")
+                    val isOurSave = path.contains("SnapCrop") || name.startsWith("SnapCrop_") ||
+                            name.startsWith("reddit_") || name.startsWith("twitter_")
+                    if (!isScreenshot || isOurSave) continue
+
+                    val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
+                    try {
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeStream(stream, null, opts)
+                            if (opts.outWidth > 0 && opts.outHeight > 0) return Pair(id, uri)
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        } catch (_: Exception) {
+        }
+        return null
+    }
+
+    private fun runLastAction(stopWhenDone: Boolean) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            val action = prefs.getString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP)
+                ?: LAST_ACTION_QUICK_CROP
+            if (action != LAST_ACTION_QUICK_CROP) {
+                handler.post { Toast.makeText(this@ScreenshotService, "No last action available", Toast.LENGTH_SHORT).show() }
+                if (stopWhenDone) stopSelf()
+                return@launch
+            }
+
+            val found = findMostRecentScreenshot()
+            if (found == null) {
+                handler.post { Toast.makeText(this@ScreenshotService, "No recent screenshot found", Toast.LENGTH_SHORT).show() }
+                if (stopWhenDone) stopSelf()
+                return@launch
+            }
+
+            quickSave(found.second, stopWhenDone = stopWhenDone)
+        }
+    }
+
     private fun launchEditor(uri: Uri) {
         // Show notification with action buttons as fallback
         showDetectedNotification(uri)
@@ -261,7 +333,7 @@ class ScreenshotService : Service() {
         }
     }
 
-    private fun quickSave(uri: Uri) {
+    private fun quickSave(uri: Uri, stopWhenDone: Boolean = false) {
         CoroutineScope(Dispatchers.IO).launch {
             var bitmap: Bitmap? = null
             var cropped: Bitmap? = null
@@ -337,6 +409,7 @@ class ScreenshotService : Service() {
                             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                         }
 
+                        prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()
                         val message = if (actionRule != null) {
                             if (redactionCount > 0) "Auto-redacted $redactionCount items"
                             else "Saved to ${actionRule.albumName}"
@@ -353,6 +426,7 @@ class ScreenshotService : Service() {
             } finally {
                 cropped?.recycle()
                 bitmap?.recycle()
+                if (stopWhenDone) stopSelf()
             }
         }
     }

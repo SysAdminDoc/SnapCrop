@@ -26,7 +26,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 ### Instant Screenshot Detection
 - Background service monitors for new screenshots and opens the editor automatically
 - Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions
-- Quick Settings tile to toggle monitoring on/off
+- Quick Settings tiles for monitoring, long screenshot capture, and rerunning the last Quick Crop action
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, auto-stitch, save, then continue editing
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums

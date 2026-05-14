@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.12.0] - 2026-05-14
+
+**One-tap last action tile.**
+
+- **Last action Quick Settings tile added.** A new tile reruns the saved Quick Crop action on the newest screenshot without opening the app.
+- **Quick Crop now records itself as the last action.** Notification Quick Crop and the new tile share the same crop/profile/conditional-auto-action pipeline.
+- **Foreground service cleanup is calmer.** Tile-triggered runs stop the service after completion when monitoring was not already active.
+
 ## [v6.11.0] - 2026-05-14
 
 **Screen-recording frame and clip workflow.**
