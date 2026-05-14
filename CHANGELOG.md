@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.14.0] - 2026-05-14
+
+**Smart Erase.**
+
+- **Heal was replaced with Smart Erase.** The draw toolbar now exposes a Smart object-removal brush instead of the old blemish-oriented Heal tool.
+- **Mask-based inpainting added.** Smart Erase rasterizes the stroke into a removal mask, expands it to cover object edges, fills from surrounding safe pixels, and feathers the boundary for calmer results.
+- **Preview semantics improved.** Smart Erase strokes now show a clear translucent removal mask on the canvas before export.
+
 ## [v6.13.0] - 2026-05-14
 
 **OCR translate flow.**

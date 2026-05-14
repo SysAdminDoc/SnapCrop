@@ -640,42 +640,9 @@ class CropActivity : ComponentActivity() {
                 continue
             }
 
-            // Heal — content-aware inpainting along stroke (average surrounding pixels)
-            if (dp.shapeType == "heal" && dp.points.size >= 2) {
-                val radius = (dp.strokeWidth * 1.5f).toInt().coerceAtLeast(3)
-                val w = result.width; val h = result.height
-                val srcPixels = IntArray(w * h) // read-only source
-                result.getPixels(srcPixels, 0, w, 0, 0, w, h)
-                val outPixels = srcPixels.copyOf() // writable output
-                for (pt in dp.points) {
-                    val cx = pt.x.toInt(); val cy = pt.y.toInt()
-                    for (dy in -radius..radius) {
-                        for (dx in -radius..radius) {
-                            val px = cx + dx; val py = cy + dy
-                            if (px < 0 || px >= w || py < 0 || py >= h) continue
-                            if (dx * dx + dy * dy > radius * radius) continue
-                            var sr = 0; var sg = 0; var sb = 0; var count = 0
-                            val sampleR = radius * 2
-                            for (sy in -sampleR..sampleR step 3) {
-                                for (sx in -sampleR..sampleR step 3) {
-                                    val dist = sx * sx + sy * sy
-                                    if (dist < radius * radius || dist > sampleR * sampleR) continue
-                                    val spx = (px + sx).coerceIn(0, w - 1)
-                                    val spy = (py + sy).coerceIn(0, h - 1)
-                                    val sp = srcPixels[spy * w + spx] // read from source, not output
-                                    sr += (sp shr 16) and 0xFF; sg += (sp shr 8) and 0xFF; sb += sp and 0xFF
-                                    count++
-                                }
-                            }
-                            if (count > 0) {
-                                val orig = srcPixels[py * w + px]
-                                outPixels[py * w + px] = (orig and 0xFF000000.toInt()) or
-                                    ((sr / count) shl 16) or ((sg / count) shl 8) or (sb / count)
-                            }
-                        }
-                    }
-                }
-                result.setPixels(outPixels, 0, w, 0, 0, w, h)
+            // Smart Erase — mask-based object removal with edge-aware inpainting.
+            if ((dp.shapeType == "smart_erase" || dp.shapeType == "heal") && dp.points.size >= 2) {
+                SmartEraseEngine.eraseInPlace(result, dp)
                 continue
             }
 

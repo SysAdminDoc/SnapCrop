@@ -70,7 +70,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 | Blur Brush | Gaussian blur along your stroke |
 | Eraser | Erase to transparent |
 | Flood Fill | Fill a region with your selected color |
-| Heal | Content-aware inpainting (removes blemishes) |
+| Smart Erase | Mask-based object removal with edge-aware inpainting |
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 
