@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.8.0] - 2026-05-14
+
+**Long screenshot capture.**
+
+- **Scrolling capture added.** SnapCrop now includes an AccessibilityService that captures the current screen, scrolls forward, and stitches overlapping frames into one long screenshot.
+- **Capture is reachable from real workflows.** The home screen explains setup and the app now ships a dedicated **Long screenshot** Quick Settings tile so captures can start from the app being captured.
+- **Exports stay consistent.** Long screenshots save into the configured SnapCrop folder using the user's PNG/JPEG/WebP format preference, then open in the editor for cleanup.
+
 ## [v6.7.3] - 2026-05-13
 
 **Home recent-crop trust polish.**

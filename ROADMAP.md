@@ -5,39 +5,39 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 ## Planned Features
 
 ### Capture & automation
-- Long-screenshot / scroll capture via AccessibilityService with auto-stitch (Huawei-style)
-- App-specific auto-crop profiles (e.g. always strip Reddit's top bar, always strip Twitter navigation) via template-match
-- Conditional auto-actions: "if screenshot came from app X, auto-redact phone numbers + save to album Y"
-- Screen-recording clip trim + frame-grab pipeline (record -> pick frame -> edit)
-- Quick-tile "one-tap last action" - reruns the last edit pipeline on the newest screenshot
+- [x] Long-screenshot / scroll capture via AccessibilityService with auto-stitch (Huawei-style)
+- [ ] App-specific auto-crop profiles (e.g. always strip Reddit's top bar, always strip Twitter navigation) via template-match
+- [ ] Conditional auto-actions: "if screenshot came from app X, auto-redact phone numbers + save to album Y"
+- [ ] Screen-recording clip trim + frame-grab pipeline (record -> pick frame -> edit)
+- [ ] Quick-tile "one-tap last action" - reruns the last edit pipeline on the newest screenshot
 
 ### AI assists
-- OCR auto-detect + "Translate this text" via ML Kit on-device translation
-- Smart-erase (LaMa/PowerPaint ONNX) replacing the heal tool for object removal
-- Auto-redact patterns (emails, phone numbers, credit cards, MAC/IP addresses) via regex + ML Kit entity extraction
-- AI reframe - content-aware repositioning when changing aspect ratio
-- Auto-tag + auto-album (group screenshots of the same conversation/game/site)
+- [ ] OCR auto-detect + "Translate this text" via ML Kit on-device translation
+- [ ] Smart-erase (LaMa/PowerPaint ONNX) replacing the heal tool for object removal
+- [ ] Auto-redact patterns (emails, phone numbers, credit cards, MAC/IP addresses) via regex + ML Kit entity extraction
+- [ ] AI reframe - content-aware repositioning when changing aspect ratio
+- [ ] Auto-tag + auto-album (group screenshots of the same conversation/game/site)
 
 ### Editor depth
-- Layered editing with reorderable layers panel (current tools are flat)
-- Vector annotation export to SVG alongside rasterized PNG
-- Snap-to-grid / snap-to-element for pixel-perfect placement
-- Text styles library (title/callout/caption presets with brand colors)
-- Gradient fill and pattern fill for shape crops
-- Speech-bubble tool for tutorials/memes
+- [ ] Layered editing with reorderable layers panel (current tools are flat)
+- [ ] Vector annotation export to SVG alongside rasterized PNG
+- [ ] Snap-to-grid / snap-to-element for pixel-perfect placement
+- [ ] Text styles library (title/callout/caption presets with brand colors)
+- [ ] Gradient fill and pattern fill for shape crops
+- [ ] Speech-bubble tool for tutorials/memes
 
 ### Sharing & export
-- Direct-share integrations: Telegram compress bypass, Imgur anonymous upload, self-hosted endpoint
-- Share as animated GIF from stitched screenshots or before/after
-- Batch rename with template (`%app%_%date%_%counter%`) on multi-select
-- Watermark presets per app destination (subtle for LinkedIn, loud for Twitter)
-- PDF report generation from a set of annotated screenshots (incident/bug reports)
+- [ ] Direct-share integrations: Telegram compress bypass, Imgur anonymous upload, self-hosted endpoint
+- [ ] Share as animated GIF from stitched screenshots or before/after
+- [ ] Batch rename with template (`%app%_%date%_%counter%`) on multi-select
+- [ ] Watermark presets per app destination (subtle for LinkedIn, loud for Twitter)
+- [ ] PDF report generation from a set of annotated screenshots (incident/bug reports)
 
 ### Gallery & library
-- Smart albums (by app, by detected face, by OCR keyword, by resolution)
-- Storage health: "Screenshots >90 days, unused, not favorited" bulk-clean UX
-- Per-album themes and covers
-- Cloud-sync optional: WebDAV/Nextcloud/Google Drive/Dropbox (user-provided creds)
+- [ ] Smart albums (by app, by detected face, by OCR keyword, by resolution)
+- [ ] Storage health: "Screenshots >90 days, unused, not favorited" bulk-clean UX
+- [ ] Per-album themes and covers
+- [ ] Cloud-sync optional: WebDAV/Nextcloud/Google Drive/Dropbox (user-provided creds)
 
 ## Competitive Research
 
@@ -49,12 +49,12 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 
 ## Nice-to-Haves
 
-- Tasker/Automate integration via `ACTION_SEND` + deep-links for advanced user pipelines
-- Wear OS companion - view latest screenshot, favorite it, or trigger "retake after 5s" from watch
-- Samsung DeX / desktop-mode larger editor canvas with mouse-first shortcuts
-- Backup/restore per-album tags and favorites as JSON
-- Optional Material You dynamic color theme alongside the AMOLED Catppuccin default
-- On-device "explain this screenshot" LLM (Gemma 2B / Phi-3.5 on-device) for accessibility summaries
+- [ ] Tasker/Automate integration via `ACTION_SEND` + deep-links for advanced user pipelines
+- [ ] Wear OS companion - view latest screenshot, favorite it, or trigger "retake after 5s" from watch
+- [ ] Samsung DeX / desktop-mode larger editor canvas with mouse-first shortcuts
+- [ ] Backup/restore per-album tags and favorites as JSON
+- [ ] Optional Material You dynamic color theme alongside the AMOLED Catppuccin default
+- [ ] On-device "explain this screenshot" LLM (Gemma 2B / Phi-3.5 on-device) for accessibility summaries
 
 ## Open-Source Research (Round 2)
 
@@ -117,5 +117,4 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 - **ML Kit Subject Segmentation** — `com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1` — entry: `SubjectSegmentation.getClient(SubjectSegmenterOptions.Builder().enableForegroundBitmap().build()).process(inputImage)`. Gotcha: first-call triggers background download of a ~20MB model; wrap in a progress UI since the first call can take 5-15s. Also: `enableForegroundBitmap()` returns raw ARGB; must composite with alpha over transparent for BG-remove — SnapCrop does this already.
 - **ML Kit on-device Translation** — `com.google.mlkit:translate:17.0.3` — entry: `TranslatorOptions.Builder().setSourceLanguage(TranslateLanguage.ENGLISH).setTargetLanguage(TranslateLanguage.SPANISH).build() → Translation.getClient(opts).downloadModelIfNeeded()` then `translator.translate(text)`. Gotcha: each language pair is ~30MB; prompt user for Wi-Fi + disk-space before downloading. Use `DownloadConditions.Builder().requireWifi().build()` to avoid cellular-data surprise.
 - **ONNX Runtime (LaMa inpaint for smart-erase)** — `com.microsoft.onnxruntime:onnxruntime-android:1.17.0` — entry: `OrtEnvironment.getEnvironment(); val session = env.createSession(modelPathBytes, SessionOptions())`. Gotcha: LaMa expects 512×512 fixed input; must tile-and-blend for larger strokes. Mask channel must be `{0,1}` float tensor, not `{0,255}` byte — easy off-by-255 bug.
-
 

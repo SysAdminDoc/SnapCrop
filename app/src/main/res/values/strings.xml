@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SnapCrop</string>
+    <string name="scroll_capture_service_label">SnapCrop Long screenshot</string>
+    <string name="scroll_capture_service_description">Captures the visible screen, scrolls forward, and stitches the frames into one long screenshot when you start the Long screenshot action.</string>
 </resources>
