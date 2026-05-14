@@ -93,6 +93,7 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 
 ### Gallery
 - Browse all photos and videos by album
+- Smart auto-albums group screenshot-like media into Screenshots, Chats, Games, and Sites without moving files
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for batch delete, share, resize, or PDF export

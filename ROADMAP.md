@@ -16,7 +16,7 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 - [x] Smart-erase replacing the heal tool for object removal (edge-aware on-device inpaint; LaMa/PowerPaint ONNX model not bundled because available ports are ~200MB)
 - [x] Auto-redact patterns (emails, phone numbers, credit cards, MAC/IP addresses) via regex + ML Kit entity extraction
 - [x] AI reframe - content-aware repositioning when changing aspect ratio
-- [ ] Auto-tag + auto-album (group screenshots of the same conversation/game/site)
+- [x] Auto-tag + auto-album (group screenshots of the same conversation/game/site)
 
 ### Editor depth
 - [ ] Layered editing with reorderable layers panel (current tools are flat)

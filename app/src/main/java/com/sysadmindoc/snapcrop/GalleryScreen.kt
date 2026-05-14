@@ -64,13 +64,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class Album(val name: String, val path: String, val coverUri: Uri, val count: Int)
+data class Album(
+    val name: String,
+    val path: String,
+    val coverUri: Uri,
+    val count: Int,
+    val isSmart: Boolean = false,
+    val subtitle: String = ""
+)
 data class Photo(
     val id: Long, val uri: Uri, val dateAdded: Long,
     val name: String = "", val size: Long = 0,
     val isVideo: Boolean = false, val duration: Long = 0,
     val width: Int = 0, val height: Int = 0,
-    val isScreenshot: Boolean = false
+    val isScreenshot: Boolean = false,
+    val albumPath: String = ""
 )
 
 /** Full physical display size, ignoring system bars / cutouts — screenshots are
@@ -106,6 +114,65 @@ internal fun looksLikeScreenshot(width: Int, height: Int, name: String, screenW:
 
 private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
 
+private const val ALL_PHOTOS_PATH = "__ALL__"
+private const val FAVORITES_PATH = "__FAVS__"
+private const val SMART_ALBUM_PREFIX = "__SMART__:"
+
+private data class SmartAlbumRule(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val keywords: List<String> = emptyList()
+) {
+    val path: String = "$SMART_ALBUM_PREFIX$id"
+
+    fun matches(photo: Photo): Boolean {
+        if (photo.isVideo || !photo.isScreenshot) return false
+        if (id == "screenshots") return true
+        val sourceText = "${photo.albumPath} ${photo.name}".lowercase()
+        return keywords.any { sourceText.contains(it) }
+    }
+}
+
+private val smartAlbumRules = listOf(
+    SmartAlbumRule(
+        id = "screenshots",
+        title = "Screenshots",
+        subtitle = "Detected by filename and screen-size signals"
+    ),
+    SmartAlbumRule(
+        id = "chats",
+        title = "Chats",
+        subtitle = "Messages, WhatsApp, Telegram, Discord, Slack",
+        keywords = listOf(
+            "message", "messages", "messenger", "whatsapp", "telegram", "signal",
+            "discord", "slack", "teams", "sms", "chat", "conversation"
+        )
+    ),
+    SmartAlbumRule(
+        id = "games",
+        title = "Games",
+        subtitle = "Game and launcher screenshots",
+        keywords = listOf(
+            "game", "gaming", "steam", "xbox", "playstation", "nintendo",
+            "minecraft", "roblox", "genshin", "pubg", "codm", "fortnite", "pokemon"
+        )
+    ),
+    SmartAlbumRule(
+        id = "sites",
+        title = "Sites",
+        subtitle = "Browser, Reddit, X/Twitter, YouTube, social pages",
+        keywords = listOf(
+            "chrome", "browser", "firefox", "edge", "brave", "safari", "web", "site",
+            "url", "reddit", "twitter", "x-twitter", "x.com", "youtube", "instagram",
+            "tiktok", "facebook", "linkedin"
+        )
+    )
+)
+
+private fun smartAlbumRuleFor(path: String): SmartAlbumRule? =
+    smartAlbumRules.firstOrNull { it.path == path }
+
 object FavoritesStore {
     private const val PREF_NAME = "snapcrop_favorites"
 
@@ -139,6 +206,7 @@ fun GalleryScreen(
     val scope = rememberCoroutineScope()
     val (screenW, screenH) = remember { getScreenSize(context) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -152,12 +220,20 @@ fun GalleryScreen(
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
     LaunchedEffect(refreshKey) {
-        withContext(Dispatchers.IO) { albums = loadAlbums(context.contentResolver) }
+        val refreshedCollections = withContext(Dispatchers.IO) {
+            loadAlbums(context.contentResolver) to loadSmartAlbums(context.contentResolver, screenW, screenH)
+        }
+        albums = refreshedCollections.first
+        smartAlbums = refreshedCollections.second
         // Also refresh current album photos if viewing one
         selectedAlbum?.let { path ->
             withContext(Dispatchers.IO) {
-                photos = if (path == "__ALL__") loadAllPhotos(context.contentResolver, screenW, screenH)
-                else loadPhotos(context.contentResolver, path, screenW, screenH)
+                photos = when {
+                    path == ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH)
+                    path == FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH)
+                    path.startsWith(SMART_ALBUM_PREFIX) -> loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH)
+                    else -> loadPhotos(context.contentResolver, path, screenW, screenH)
+                }
             }
         }
         isLoading = false
@@ -169,9 +245,13 @@ fun GalleryScreen(
             selectedIds.clear()
             withContext(Dispatchers.IO) {
                 photos = when (path) {
-                    "__ALL__" -> loadAllPhotos(context.contentResolver, screenW, screenH)
-                    "__FAVS__" -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH)
-                    else -> loadPhotos(context.contentResolver, path, screenW, screenH)
+                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH)
+                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH)
+                    else -> if (path.startsWith(SMART_ALBUM_PREFIX)) {
+                        loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH)
+                    } else {
+                        loadPhotos(context.contentResolver, path, screenW, screenH)
+                    }
                 }
             }
             isLoading = false
@@ -208,7 +288,11 @@ fun GalleryScreen(
                 else viewerIndex = viewerIndex.coerceIn(0, photos.size - 1)
                 scope.launch(Dispatchers.IO) {
                     val refreshed = loadAlbums(context.contentResolver)
-                    withContext(Dispatchers.Main) { albums = refreshed }
+                    val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH)
+                    withContext(Dispatchers.Main) {
+                        albums = refreshed
+                        smartAlbums = refreshedSmart
+                    }
                 }
             },
             onToggleFavorite = { photo ->
@@ -263,7 +347,11 @@ fun GalleryScreen(
                         // Refresh albums in background (counts changed)
                         scope.launch(Dispatchers.IO) {
                             val refreshed = loadAlbums(context.contentResolver)
-                            withContext(Dispatchers.Main) { albums = refreshed }
+                            val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH)
+                            withContext(Dispatchers.Main) {
+                                albums = refreshed
+                                smartAlbums = refreshedSmart
+                            }
                         }
                     }) { Icon(Icons.Default.Delete, "Delete selected", tint = Tertiary) }
                 }
@@ -277,10 +365,11 @@ fun GalleryScreen(
                 }
                 Text(
                     text = when (selectedAlbum) {
-                        "__ALL__" -> "All Photos"
-                        "__FAVS__" -> "Favorites"
+                        ALL_PHOTOS_PATH -> "All Photos"
+                        FAVORITES_PATH -> "Favorites"
                         null -> "Gallery"
-                        else -> selectedAlbum!!.trimEnd('/').substringAfterLast("/")
+                        else -> smartAlbumRuleFor(selectedAlbum!!)?.title
+                            ?: selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
                     modifier = Modifier.weight(1f),
@@ -329,11 +418,11 @@ fun GalleryScreen(
         }
 
         // Search bar (album view only)
-        if (selectedAlbum == null && !selectionMode && albums.isNotEmpty()) {
+        if (selectedAlbum == null && !selectionMode && (albums.isNotEmpty() || smartAlbums.isNotEmpty())) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search albums...", color = OnSurfaceVariant, fontSize = 14.sp) },
+                placeholder = { Text("Search albums and smart groups...", color = OnSurfaceVariant, fontSize = 14.sp) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -348,6 +437,11 @@ fun GalleryScreen(
 
         val filteredAlbums = if (searchQuery.isBlank()) albums
             else albums.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        val filteredSmartAlbums = if (searchQuery.isBlank()) smartAlbums
+            else smartAlbums.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                        it.subtitle.contains(searchQuery, ignoreCase = true)
+            }
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -358,11 +452,14 @@ fun GalleryScreen(
                 }
             }
         } else if (selectedAlbum == null) {
-            AlbumGrid(albums = filteredAlbums, onAlbumClick = { selectedAlbum = it.path },
-                onAllPhotos = { selectedAlbum = "__ALL__" },
-                onFavorites = { selectedAlbum = "__FAVS__" },
+            AlbumGrid(albums = filteredAlbums, smartAlbums = filteredSmartAlbums,
+                showLibraryCards = searchQuery.isBlank(),
+                totalMediaCount = albums.sumOf { it.count },
+                onAlbumClick = { selectedAlbum = it.path },
+                onAllPhotos = { selectedAlbum = ALL_PHOTOS_PATH },
+                onFavorites = { selectedAlbum = FAVORITES_PATH },
                 favCount = favIds.size,
-                emptyTitle = if (searchQuery.isBlank()) "No albums found" else "No matching albums",
+                emptyTitle = if (searchQuery.isBlank()) "No albums found" else "No matching albums or smart groups",
                 emptySubtitle = if (searchQuery.isBlank()) "Grant media access or add photos to see them here."
                     else "Try a different album name.")
         } else {
@@ -432,10 +529,19 @@ private fun GalleryEmptyState(
 }
 
 @Composable
-private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllPhotos: () -> Unit,
-                      onFavorites: () -> Unit, favCount: Int,
-                      emptyTitle: String, emptySubtitle: String) {
-    if (albums.isEmpty()) {
+private fun AlbumGrid(
+    albums: List<Album>,
+    smartAlbums: List<Album>,
+    showLibraryCards: Boolean,
+    totalMediaCount: Int,
+    onAlbumClick: (Album) -> Unit,
+    onAllPhotos: () -> Unit,
+    onFavorites: () -> Unit,
+    favCount: Int,
+    emptyTitle: String,
+    emptySubtitle: String
+) {
+    if (albums.isEmpty() && smartAlbums.isEmpty() && (!showLibraryCards || favCount == 0)) {
         GalleryEmptyState(
             icon = Icons.Default.Photo,
             title = emptyTitle,
@@ -450,41 +556,106 @@ private fun AlbumGrid(albums: List<Album>, onAlbumClick: (Album) -> Unit, onAllP
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // "All Photos" card first
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAllPhotos() },
-                colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Photo, null, Modifier.size(40.dp), tint = Primary)
-                        Spacer(Modifier.height(8.dp))
-                        Text("All Photos", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                        Text("${albums.sumOf { it.count }}", color = OnSurfaceVariant, fontSize = 12.sp)
+        if (showLibraryCards) {
+            // "All Photos" card first
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAllPhotos() },
+                    colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Photo, null, Modifier.size(40.dp), tint = Primary)
+                            Spacer(Modifier.height(8.dp))
+                            Text("All Photos", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text("$totalMediaCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // Favorites card
+            if (favCount > 0) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onFavorites() },
+                        colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Favorite, null, Modifier.size(40.dp), tint = Tertiary)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Favorites", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text("$favCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Favorites card
-        if (favCount > 0) {
-            item {
+        if (smartAlbums.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "Smart albums",
+                    color = OnSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                )
+            }
+            items(smartAlbums) { album ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onFavorites() },
-                    colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAlbumClick(album) },
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Favorite, null, Modifier.size(40.dp), tint = Tertiary)
-                            Spacer(Modifier.height(8.dp))
-                            Text("Favorites", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("$favCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Box(Modifier.fillMaxSize()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(album.coverUri).crossfade(true).size(300).build(),
+                            contentDescription = album.name,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            Modifier.align(Alignment.TopStart).padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 7.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.PhoneAndroid, null, tint = Tertiary, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Auto", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.68f)).padding(8.dp)) {
+                            Column {
+                                Text(album.name, color = Color.White, fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(album.subtitle, color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)
+                                Text("${album.count} matched", color = Tertiary, fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        if (albums.isNotEmpty() && smartAlbums.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text(
+                    "Albums",
+                    color = OnSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                )
             }
         }
 
@@ -875,6 +1046,37 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
     }.sortedByDescending { it.count }
 }
 
+private fun loadSmartAlbums(resolver: ContentResolver, screenW: Int, screenH: Int): List<Album> {
+    val screenshots = loadAllPhotos(resolver, screenW, screenH)
+        .filter { !it.isVideo && it.isScreenshot }
+    if (screenshots.isEmpty()) return emptyList()
+
+    return smartAlbumRules.mapNotNull { rule ->
+        val matches = screenshots.filter { rule.matches(it) }
+        val cover = matches.firstOrNull() ?: return@mapNotNull null
+        Album(
+            name = rule.title,
+            path = rule.path,
+            coverUri = cover.uri,
+            count = matches.size,
+            isSmart = true,
+            subtitle = rule.subtitle
+        )
+    }
+}
+
+private fun loadSmartAlbumPhotos(
+    resolver: ContentResolver,
+    smartAlbumPath: String,
+    screenW: Int,
+    screenH: Int
+): List<Photo> {
+    val rule = smartAlbumRuleFor(smartAlbumPath) ?: return emptyList()
+    return loadAllPhotos(resolver, screenW, screenH)
+        .filter { rule.matches(it) }
+        .sortedByDescending { it.dateAdded }
+}
+
 private fun loadPhotos(resolver: ContentResolver, albumPath: String, screenW: Int, screenH: Int): List<Photo> {
     val photos = mutableListOf<Photo>()
 
@@ -899,7 +1101,7 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String, screenW: In
             val w = cursor.getInt(wCol); val h = cursor.getInt(hCol)
             val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
-                width = w, height = h, isScreenshot = isShot))
+                width = w, height = h, isScreenshot = isShot, albumPath = albumPath))
         }
     }
 
@@ -918,7 +1120,8 @@ private fun loadPhotos(resolver: ContentResolver, albumPath: String, screenW: In
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
-                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol)))
+                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol),
+                albumPath = albumPath))
         }
     }
 
@@ -931,7 +1134,8 @@ private fun loadAllPhotos(resolver: ContentResolver, screenW: Int, screenH: Int)
     // Images
     val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
-        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT)
+        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT,
+        MediaStore.Images.Media.RELATIVE_PATH)
     resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
         "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
@@ -940,6 +1144,7 @@ private fun loadAllPhotos(resolver: ContentResolver, screenW: Int, screenH: Int)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
         val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
         val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
+        val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -947,13 +1152,15 @@ private fun loadAllPhotos(resolver: ContentResolver, screenW: Int, screenH: Int)
             val w = cursor.getInt(wCol); val h = cursor.getInt(hCol)
             val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
-                width = w, height = h, isScreenshot = isShot))
+                width = w, height = h, isScreenshot = isShot,
+                albumPath = cursor.getString(pathCol) ?: ""))
         }
     }
 
     // Videos
     val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
-        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
+        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE,
+        MediaStore.Video.Media.DURATION, MediaStore.Video.Media.RELATIVE_PATH)
     resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
         "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
@@ -961,11 +1168,13 @@ private fun loadAllPhotos(resolver: ContentResolver, screenW: Int, screenH: Int)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
         val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.RELATIVE_PATH)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
-                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol)))
+                cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol),
+                albumPath = cursor.getString(pathCol) ?: ""))
         }
     }
 
@@ -981,11 +1190,12 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>, scr
         val projection = if (isVideo) {
             arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
-                MediaStore.Video.Media.DURATION)
+                MediaStore.Video.Media.DURATION, MediaStore.MediaColumns.RELATIVE_PATH)
         } else {
             arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
-                MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT)
+                MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT,
+                MediaStore.MediaColumns.RELATIVE_PATH)
         }
         for (chunk in idsList.chunked(500)) {
             val placeholders = chunk.joinToString(",") { "?" }
@@ -999,6 +1209,7 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>, scr
                 val durCol = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
                 val wCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH) else -1
                 val hCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT) else -1
+                val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val uri = ContentUris.withAppendedId(contentUri, id)
@@ -1008,7 +1219,8 @@ private fun loadFavoritePhotos(resolver: ContentResolver, favIds: Set<Long>, scr
                     val h = if (!isVideo) cursor.getInt(hCol) else 0
                     val isShot = !isVideo && looksLikeScreenshot(w, h, name, screenW, screenH)
                     photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
-                        isVideo = isVideo, duration = duration, width = w, height = h, isScreenshot = isShot))
+                        isVideo = isVideo, duration = duration, width = w, height = h,
+                        isScreenshot = isShot, albumPath = cursor.getString(pathCol) ?: ""))
                 }
             }
         }
