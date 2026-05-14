@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.11.0] - 2026-05-14
+
+**Screen-recording frame and clip workflow.**
+
+- **Video frame workflow added.** Home and Gallery can now open a screen recording in a dedicated video tool, scrub to a frame, save it using the configured image format, and open it directly in the editor.
+- **Clip trimming added.** The video tool can save a selected time range as an MP4 into `Movies/SnapCrop` without transcoding.
+- **Gallery video handling improved.** Tapping a video now opens SnapCrop's frame/trim workflow, with an option to hand off playback to the system player.
+
 ## [v6.10.0] - 2026-05-14
 
 **Conditional Quick Crop auto-actions.**

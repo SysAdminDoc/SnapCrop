@@ -54,6 +54,11 @@
             android:theme="@style/Theme.SnapCrop" />
 
         <activity
+            android:name=".VideoClipActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SnapCrop" />
+
+        <activity
             android:name=".CropActivity"
             android:exported="true"
             android:theme="@style/Theme.SnapCrop"
