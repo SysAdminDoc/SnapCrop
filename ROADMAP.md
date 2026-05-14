@@ -12,7 +12,7 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 - [x] Quick-tile "one-tap last action" - reruns the last edit pipeline on the newest screenshot
 
 ### AI assists
-- [ ] OCR auto-detect + "Translate this text" via ML Kit on-device translation
+- [x] OCR auto-detect + "Translate this text" via ML Kit on-device translation
 - [ ] Smart-erase (LaMa/PowerPaint ONNX) replacing the heal tool for object removal
 - [ ] Auto-redact patterns (emails, phone numbers, credit cards, MAC/IP addresses) via regex + ML Kit entity extraction
 - [ ] AI reframe - content-aware repositioning when changing aspect ratio

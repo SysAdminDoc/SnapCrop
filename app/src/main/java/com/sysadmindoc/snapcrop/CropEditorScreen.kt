@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Crop
@@ -76,6 +78,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -383,6 +386,11 @@ fun CropEditorScreen(
     var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
+    var selectedOcrText by remember { mutableStateOf<String?>(null) }
+    var translateTarget by remember { mutableStateOf(TextTranslator.defaultTarget) }
+    var translation by remember { mutableStateOf<TextTranslation?>(null) }
+    var translationError by remember { mutableStateOf<String?>(null) }
+    var translating by remember { mutableStateOf(false) }
     var faceRedacting by remember { mutableStateOf(false) }
     var lastFaceCount by remember { mutableIntStateOf(-1) } // -1 = not scanned yet
     var showTextDialog by remember { mutableStateOf(false) }
@@ -429,6 +437,38 @@ fun CropEditorScreen(
                 v.vibrate(VibrationEffect.createOneShot(15, VibrationEffect.DEFAULT_AMPLITUDE))
             }
         } catch (_: Exception) {}
+    }
+
+    fun openOcrText(text: String) {
+        selectedOcrText = text
+        translation = null
+        translationError = null
+        translating = false
+    }
+
+    fun copyText(label: String, text: String, message: String) {
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+        haptic()
+    }
+
+    fun translateText(text: String) {
+        if (translating) return
+        translating = true
+        translation = null
+        translationError = null
+        scope.launch {
+            try {
+                translation = withContext(Dispatchers.IO) {
+                    TextTranslator.translate(text, translateTarget)
+                }
+            } catch (error: Throwable) {
+                translationError = TextTranslator.userMessage(error)
+            } finally {
+                translating = false
+            }
+        }
     }
 
     fun captureSnapshot() = EditorSnapshot(
@@ -778,7 +818,7 @@ fun CropEditorScreen(
                 EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "DRAW — ${drawTool.label.lowercase()}")
                 EditMode.OCR -> {
                     val info = if (ocrLoading) "SCANNING..." else buildString {
-                        append("OCR — tap block to copy")
+                        append("OCR — tap block for copy/translate")
                         if (ocrBlocks.isNotEmpty()) append(" | ${ocrBlocks.size} text")
                         if (scannedCodes.isNotEmpty()) append(" | ${scannedCodes.size} code")
                     }
@@ -790,24 +830,34 @@ fun CropEditorScreen(
             Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     if (ocrLoading && editMode == EditMode.OCR) {
                         CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
                         Spacer(Modifier.width(6.dp))
                     }
-                    Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                 }
                 if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
-                    TextButton(
-                        onClick = {
-                            val allText = ocrBlocks.joinToString("\n") { it.text }
-                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", allText))
-                            android.widget.Toast.makeText(context, "Copied all text (${ocrBlocks.size} blocks)", android.widget.Toast.LENGTH_SHORT).show()
-                            haptic()
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                    ) { Text("Copy All", color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = {
+                                val allText = ocrBlocks.joinToString("\n") { it.text }
+                                copyText("SnapCrop OCR", allText, "Copied all text (${ocrBlocks.size} blocks)")
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) { Text("Copy All", color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
+                        TextButton(
+                            onClick = {
+                                val allText = ocrBlocks.joinToString("\n") { it.text }
+                                openOcrText(allText)
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.Translate, null, tint = bannerColor, modifier = Modifier.size(13.dp))
+                            Spacer(Modifier.width(3.dp))
+                            Text("Translate", color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -1476,9 +1526,7 @@ fun CropEditorScreen(
                                                     } else {
                                                         val tappedText = ocrBlocks.find { it.bounds.contains(bx, by) }
                                                         if (tappedText != null) {
-                                                            val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                            cm.setPrimaryClip(ClipData.newPlainText("SnapCrop OCR", tappedText.text))
-                                                            android.widget.Toast.makeText(context, "Copied: ${tappedText.text.take(50)}", android.widget.Toast.LENGTH_SHORT).show()
+                                                            openOcrText(tappedText.text)
                                                             haptic()
                                                         }
                                                     }
@@ -2293,6 +2341,130 @@ fun CropEditorScreen(
                 Text(estLabel, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
             }
         }
+    }
+
+    if (selectedOcrText != null) {
+        val ocrText = selectedOcrText.orEmpty()
+        AlertDialog(
+            onDismissRequest = { selectedOcrText = null },
+            title = { Text("Text", color = OnSurface) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        ocrText,
+                        color = OnSurface,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 140.dp)
+                            .background(SurfaceContainer, RoundedCornerShape(8.dp))
+                            .border(1.dp, Outline, RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                            .verticalScroll(rememberScrollState())
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Translate to", color = OnSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            TextTranslator.targetLanguages.forEach { target ->
+                                FilterChip(
+                                    selected = translateTarget == target,
+                                    onClick = {
+                                        translateTarget = target
+                                        translation = null
+                                        translationError = null
+                                    },
+                                    label = { Text(target.label, fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryContainer,
+                                        selectedLabelColor = Primary,
+                                        containerColor = SurfaceVariant,
+                                        labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    when {
+                        translating -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Preparing on-device translation...", color = OnSurfaceVariant, fontSize = 12.sp)
+                        }
+                        translationError != null -> Text(
+                            translationError.orEmpty(),
+                            color = Tertiary,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                        translation != null -> {
+                            val result = translation!!
+                            val summary = if (result.alreadyTargetLanguage) {
+                                "Already ${result.targetLabel}"
+                            } else {
+                                "${result.sourceLabel} -> ${result.targetLabel}"
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(summary, color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    result.translatedText,
+                                    color = OnSurface,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 140.dp)
+                                        .background(SurfaceElevated, RoundedCornerShape(8.dp))
+                                        .border(1.dp, Outline, RoundedCornerShape(8.dp))
+                                        .padding(10.dp)
+                                        .verticalScroll(rememberScrollState())
+                                )
+                            }
+                        }
+                        else -> Text(
+                            "Language models download over Wi-Fi once per language pair.",
+                            color = OnSurfaceVariant,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = {
+                        val copy = translation?.translatedText ?: ocrText
+                        val label = if (translation != null) "SnapCrop Translation" else "SnapCrop OCR"
+                        val message = if (translation != null) "Copied translation" else "Copied text"
+                        copyText(label, copy, message)
+                    }) { Text("Copy", color = OnSurfaceVariant) }
+                    Button(
+                        onClick = { translateText(ocrText) },
+                        enabled = !translating,
+                        colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        if (translating) {
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Black)
+                        } else {
+                            Icon(Icons.Default.Translate, null, modifier = Modifier.size(16.dp), tint = Black)
+                        }
+                        Spacer(Modifier.width(6.dp))
+                        Text("Translate", color = Black)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedOcrText = null }) { Text("Close", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
     }
 
     // Resize dialog
