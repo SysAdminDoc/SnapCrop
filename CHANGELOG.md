@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.16.0] - 2026-05-14
+
+**AI Reframe.**
+
+- **Content-aware aspect-ratio reframing added.** After choosing a crop ratio, the new Reframe chip shifts the crop around detected objects, OCR text, and faces.
+- **Largest safe crop is preserved.** Reframe keeps the crop as large as possible for the selected ratio, then clamps it inside the image around the detected content center.
+- **Detection stays local.** The feature reuses existing on-device ML Kit object, text, and face detection paths.
+
 ## [v6.15.0] - 2026-05-14
 
 **Sensitive text auto-redaction.**

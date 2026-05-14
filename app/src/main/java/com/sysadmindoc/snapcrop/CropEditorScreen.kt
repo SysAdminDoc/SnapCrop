@@ -356,6 +356,7 @@ fun CropEditorScreen(
     var previewMode by remember { mutableStateOf(false) }
     var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
     var aiLoading by remember { mutableStateOf(false) }
+    var reframeLoading by remember { mutableStateOf(false) }
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
@@ -522,6 +523,7 @@ fun CropEditorScreen(
         cropRight = initialCropRect.right
         cropBottom = initialCropRect.bottom
         aiLoading = false
+        reframeLoading = false
     }
 
     LaunchedEffect(bitmap.width, bitmap.height) {
@@ -897,6 +899,51 @@ fun CropEditorScreen(
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = Tertiary.copy(alpha = 0.3f), selectedLabelColor = Tertiary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+            if (selectedRatio.ratio != null) {
+                FilterChip(
+                    selected = false,
+                    onClick = {
+                        val target = selectedRatio.ratio
+                        if (target != null && !reframeLoading) {
+                            pushUndo()
+                            reframeLoading = true
+                            scope.launch {
+                                val rect = withContext(Dispatchers.IO) {
+                                    SmartReframeEngine.reframe(bitmap, target)
+                                }
+                                cropLeft = rect.left
+                                cropTop = rect.top
+                                cropRight = rect.right
+                                cropBottom = rect.bottom
+                                reframeLoading = false
+                                android.widget.Toast.makeText(context, "Reframed around detected content", android.widget.Toast.LENGTH_SHORT).show()
+                                haptic()
+                            }
+                        }
+                    },
+                    enabled = !reframeLoading,
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (reframeLoading) {
+                                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp, color = Secondary)
+                            } else {
+                                Icon(Icons.Default.Psychology, null, tint = Secondary, modifier = Modifier.size(13.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text("Reframe", fontSize = 12.sp)
+                        }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = Secondary.copy(alpha = 0.25f),
+                        selectedLabelColor = Secondary,
+                        containerColor = Secondary.copy(alpha = 0.12f),
+                        labelColor = Secondary,
+                        disabledContainerColor = SurfaceVariant,
+                        disabledLabelColor = OnSurfaceVariant
+                    ),
                     shape = RoundedCornerShape(8.dp)
                 )
             }

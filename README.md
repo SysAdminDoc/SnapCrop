@@ -44,6 +44,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Drag corners/edges with edge magnetism (snaps to guides)
 - Precision mode — hold 800ms for 4x slower, pixel-perfect dragging
 - 18 aspect ratios including 7 shape crops (circle, star, heart, triangle, hexagon, diamond, rounded rect)
+- AI Reframe shifts selected aspect ratios around detected objects, text, and faces
 - Free rotation slider (-45 to +45 degrees)
 - Gradient backgrounds for shape crops (6 presets)
 - Grid overlays (rule of thirds / golden ratio)
