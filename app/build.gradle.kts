@@ -29,8 +29,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 62
-        versionName = "6.14.0"
+        versionCode = 63
+        versionName = "6.15.0"
     }
 
     signingConfigs {
@@ -93,5 +93,6 @@ dependencies {
     implementation(libs.mlkit.subjectsegmentation)
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
+    implementation(libs.mlkit.entity.extraction)
     debugImplementation(libs.androidx.ui.tooling)
 }

@@ -77,6 +77,7 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 **Pixelate**
 - Draw rectangles to mosaic-redact sensitive info
 - One-tap **face blur** powered by ML Kit (shows face count)
+- One-tap **Auto Text** detects emails, phones, payment cards, IP/MAC addresses, and ML Kit entities
 
 **OCR**
 - Tap any text block to copy it or translate it on-device

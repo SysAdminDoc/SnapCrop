@@ -2,7 +2,6 @@ package com.sysadmindoc.snapcrop
 
 import android.content.SharedPreferences
 import android.graphics.Bitmap
-import android.graphics.Rect
 
 data class AutoActionRule(
     val id: String,
@@ -32,13 +31,6 @@ object ConditionalAutoActions {
         )
     )
 
-    private val sensitivePatterns = listOf(
-        Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE),
-        Regex("(?<!\\d)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\d)"),
-        Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"),
-        Regex("(?<!\\d)(?:\\d[ -]*?){13,19}(?!\\d)")
-    )
-
     fun resolve(
         prefs: SharedPreferences,
         cropMethod: String,
@@ -57,22 +49,8 @@ object ConditionalAutoActions {
     }
 
     suspend fun redactSensitiveText(bitmap: Bitmap): AutoActionResult {
-        val rects = TextExtractor.extract(bitmap)
-            .filter { block -> sensitivePatterns.any { it.containsMatchIn(block.text) } }
-            .map { block -> block.bounds.padded(bitmap.width, bitmap.height) }
-
-        if (rects.isEmpty()) return AutoActionResult(bitmap, 0)
-        return AutoActionResult(ImageRedactor.pixelate(bitmap, rects), rects.size)
-    }
-
-    private fun Rect.padded(maxWidth: Int, maxHeight: Int): Rect {
-        val padX = (width() * 0.08f).toInt().coerceAtLeast(8)
-        val padY = (height() * 0.16f).toInt().coerceAtLeast(6)
-        return Rect(
-            (left - padX).coerceIn(0, maxWidth),
-            (top - padY).coerceIn(0, maxHeight),
-            (right + padX).coerceIn(0, maxWidth),
-            (bottom + padY).coerceIn(0, maxHeight)
-        )
+        val result = SensitiveTextDetector.detect(bitmap)
+        if (result.rects.isEmpty()) return AutoActionResult(bitmap, 0)
+        return AutoActionResult(ImageRedactor.pixelate(bitmap, result.rects), result.rects.size)
     }
 }

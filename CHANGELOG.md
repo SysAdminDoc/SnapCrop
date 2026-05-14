@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.15.0] - 2026-05-14
+
+**Sensitive text auto-redaction.**
+
+- **Shared sensitive-text detector added.** OCR text is now scanned for emails, phone numbers, credit-card candidates with Luhn validation, IP addresses, MAC addresses, and ML Kit entity matches.
+- **Pixelate mode gained Auto Text.** The editor can add redaction rectangles for detected sensitive text with one action, alongside the existing Blur Faces action.
+- **Quick Crop auto-actions use the same detector.** Conditional Reddit/X-Twitter redaction now benefits from the broader regex + ML Kit entity extraction path.
+
 ## [v6.14.0] - 2026-05-14
 
 **Smart Erase.**
