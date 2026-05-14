@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.17.0] - 2026-05-14
+
+**Smart auto-albums.**
+
+- **Gallery auto-tagging added.** Screenshot-like media is grouped into virtual smart albums for screenshots, chats, games, and sites without writing persistent tags or moving files.
+- **Auto albums stay lightweight.** Grouping uses MediaStore filename/path metadata plus SnapCrop's existing screenshot-size heuristic, so the gallery avoids OCR or bitmap decoding during album browsing.
+- **Album discovery improved.** Smart albums appear as labeled Auto cards, participate in album search, and open through the normal gallery grid/viewer/multi-select flow.
+
 ## [v6.16.0] - 2026-05-14
 
 **AI Reframe.**

@@ -29,8 +29,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 35
-        versionCode = 64
-        versionName = "6.16.0"
+        versionCode = 65
+        versionName = "6.17.0"
     }
 
     signingConfigs {
