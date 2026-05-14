@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -95,8 +96,35 @@ data class DrawPath(
     val shapeType: String? = null,
     val text: String? = null,
     val filled: Boolean = false,
-    val dashed: Boolean = false
+    val dashed: Boolean = false,
+    val visible: Boolean = true
 )
+
+private fun DrawPath.layerTitle(): String = when {
+    shapeType == "text" && !text.isNullOrBlank() -> "Text: ${text.take(22)}${if (text.length > 22) "..." else ""}"
+    shapeType == "emoji" && !text.isNullOrBlank() -> "Emoji $text"
+    shapeType == "callout" && !text.isNullOrBlank() -> "Callout $text"
+    shapeType == "rect" -> "Rectangle"
+    shapeType == "circle" -> "Circle"
+    shapeType == "line" -> "Line"
+    shapeType == "highlight" -> "Highlight"
+    shapeType == "spotlight" -> "Spotlight"
+    shapeType == "magnifier" -> "Magnifier"
+    shapeType == "neon" -> "Neon stroke"
+    shapeType == "blur" -> "Blur brush"
+    shapeType == "eraser" -> "Eraser"
+    shapeType == "fill" -> "Flood fill"
+    shapeType == "smart_erase" || shapeType == "heal" -> "Smart erase"
+    isArrow -> "Arrow"
+    else -> "Pen stroke"
+}
+
+private fun DrawPath.layerSubtitle(indexFromBottom: Int): String {
+    val order = "Layer ${indexFromBottom + 1}"
+    val shape = if (points.size == 1) "1 point" else "${points.size} points"
+    val state = if (visible) "Visible" else "Hidden"
+    return "$order - $state - $shape"
+}
 
 private enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
 
@@ -309,6 +337,117 @@ private fun getGradientBrush(gradIdx: Int, left: Float, top: Float, right: Float
 }
 
 @Composable
+private fun DrawLayerPanel(
+    drawPaths: List<DrawPath>,
+    onMoveLayer: (fromIndex: Int, toIndex: Int) -> Unit,
+    onToggleVisible: (index: Int) -> Unit,
+    onDeleteLayer: (index: Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        color = SurfaceVariant.copy(alpha = 0.36f),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Layers", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("Top layers render last", color = OnSurfaceVariant, fontSize = 10.sp)
+                }
+                Text("${drawPaths.size}", color = Secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
+
+            if (drawPaths.isEmpty()) {
+                Text(
+                    "Draw, place text, or add a callout to create a layer.",
+                    color = OnSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            } else {
+                drawPaths.asReversed().forEachIndexed { visualIndex, layer ->
+                    val actualIndex = drawPaths.lastIndex - visualIndex
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (layer.visible) Color.Black.copy(alpha = 0.18f)
+                                else Color.Black.copy(alpha = 0.08f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            Modifier.size(18.dp)
+                                .background(Color(layer.color), RoundedCornerShape(4.dp))
+                                .border(1.dp, OnSurfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                layer.layerTitle(),
+                                color = if (layer.visible) OnSurface else OnSurfaceVariant,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                layer.layerSubtitle(actualIndex),
+                                color = OnSurfaceVariant,
+                                fontSize = 10.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = { onToggleVisible(actualIndex) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                if (layer.visible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                if (layer.visible) "Hide layer" else "Show layer",
+                                tint = if (layer.visible) Secondary else OnSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        TextButton(
+                            onClick = { onMoveLayer(actualIndex, actualIndex + 1) },
+                            enabled = actualIndex < drawPaths.lastIndex,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                "Up",
+                                color = if (actualIndex < drawPaths.lastIndex) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            )
+                        }
+                        TextButton(
+                            onClick = { onMoveLayer(actualIndex, actualIndex - 1) },
+                            enabled = actualIndex > 0,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                "Down",
+                                color = if (actualIndex > 0) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            )
+                        }
+                        IconButton(
+                            onClick = { onDeleteLayer(actualIndex) },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, "Delete layer", tint = Tertiary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
@@ -376,6 +515,7 @@ fun CropEditorScreen(
     var dashedStroke by remember { mutableStateOf(false) }
     var calloutCounter by remember { mutableIntStateOf(1) }
     var eyedropperActive by remember { mutableStateOf(false) }
+    var showLayerPanel by remember { mutableStateOf(false) }
     var bgRemoving by remember { mutableStateOf(false) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
 
@@ -501,6 +641,36 @@ fun CropEditorScreen(
         undoStack.add(captureSnapshot())
         redoStack.clear()
         if (undoStack.size > 30) undoStack.removeAt(0)
+    }
+
+    fun addDrawLayer(path: DrawPath) {
+        drawPaths.add(path)
+        drawRedoStack.clear()
+    }
+
+    fun moveDrawLayer(fromIndex: Int, toIndex: Int) {
+        if (fromIndex !in drawPaths.indices || toIndex !in drawPaths.indices || fromIndex == toIndex) return
+        pushUndo()
+        val layer = drawPaths.removeAt(fromIndex)
+        drawPaths.add(toIndex, layer)
+        drawRedoStack.clear()
+        haptic()
+    }
+
+    fun updateDrawLayer(index: Int, transform: (DrawPath) -> DrawPath) {
+        if (index !in drawPaths.indices) return
+        pushUndo()
+        drawPaths[index] = transform(drawPaths[index])
+        drawRedoStack.clear()
+        haptic()
+    }
+
+    fun deleteDrawLayer(index: Int) {
+        if (index !in drawPaths.indices) return
+        pushUndo()
+        drawPaths.removeAt(index)
+        drawRedoStack.clear()
+        haptic()
     }
 
     fun undo() {
@@ -1227,6 +1397,16 @@ fun CropEditorScreen(
                             Text("Clear", color = Secondary, fontSize = 11.sp)
                         }
                     }
+                    TextButton(
+                        onClick = { showLayerPanel = !showLayerPanel },
+                        enabled = drawPaths.isNotEmpty() || showLayerPanel
+                    ) {
+                        Text(
+                            if (showLayerPanel) "Hide Layers" else "Layers ${drawPaths.size}",
+                            color = if (drawPaths.isNotEmpty() || showLayerPanel) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
             // Stroke width slider
@@ -1238,6 +1418,14 @@ fun CropEditorScreen(
                     valueRange = 2f..20f, modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
                         inactiveTrackColor = SurfaceVariant))
+            }
+            if (showLayerPanel) {
+                DrawLayerPanel(
+                    drawPaths = drawPaths,
+                    onMoveLayer = { from, to -> moveDrawLayer(from, to) },
+                    onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
+                    onDeleteLayer = { index -> deleteDrawLayer(index) }
+                )
             }
             // Emoji picker row
             if (drawTool == DrawTool.EMOJI) {
@@ -1567,7 +1755,7 @@ fun CropEditorScreen(
                                                         }
                                                         DrawTool.CALLOUT -> {
                                                             pushUndo()
-                                                            drawPaths.add(DrawPath(
+                                                            addDrawLayer(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
                                                                 shapeType = "callout", text = "${calloutCounter++}"
@@ -1576,7 +1764,7 @@ fun CropEditorScreen(
                                                         }
                                                         DrawTool.MAGNIFIER -> {
                                                             pushUndo()
-                                                            drawPaths.add(DrawPath(
+                                                            addDrawLayer(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
                                                                 shapeType = "magnifier"
@@ -1585,7 +1773,7 @@ fun CropEditorScreen(
                                                         }
                                                         DrawTool.EMOJI -> {
                                                             pushUndo()
-                                                            drawPaths.add(DrawPath(
+                                                            addDrawLayer(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = drawStrokeWidth,
                                                                 shapeType = "emoji", text = selectedEmoji
@@ -1594,7 +1782,7 @@ fun CropEditorScreen(
                                                         }
                                                         DrawTool.FILL -> {
                                                             pushUndo()
-                                                            drawPaths.add(DrawPath(
+                                                            addDrawLayer(DrawPath(
                                                                 points = listOf(PointF(bx, by)),
                                                                 color = drawColor, strokeWidth = 0f,
                                                                 shapeType = "fill"
@@ -1658,7 +1846,7 @@ fun CropEditorScreen(
                                                             (1.5f - velocity * 0.8f).coerceIn(0.6f, 1.5f) // slow=thick, fast=thin
                                                         } else 1f
                                                         val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; DrawTool.HEAL -> drawStrokeWidth * 4; else -> drawStrokeWidth }
-                                                        drawPaths.add(DrawPath(
+                                                        addDrawLayer(DrawPath(
                                                             points = when {
                                                                 shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
                                                                 drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER || drawTool == DrawTool.HEAL -> smoothPath(currentDrawPoints)
@@ -2273,6 +2461,7 @@ fun CropEditorScreen(
                     }
 
                     for (dp in drawPaths) {
+                        if (!dp.visible) continue
                         drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
                     }
 
@@ -2662,7 +2851,7 @@ fun CropEditorScreen(
                 TextButton(onClick = {
                     if (textDialogValue.isNotBlank() && textPlacePoint != null) {
                         pushUndo()
-                        drawPaths.add(DrawPath(
+                        addDrawLayer(DrawPath(
                             points = listOf(textPlacePoint!!),
                             color = drawColor,
                             strokeWidth = drawStrokeWidth,

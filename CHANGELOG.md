@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.18.0] - 2026-05-14
+
+**Layered editing.**
+
+- **Draw annotations now behave as layers.** Every committed stroke, shape, text label, emoji, callout, blur, erase, fill, spotlight, or magnifier remains individually represented in the editor stack.
+- **Reorderable layer panel added.** Draw mode can show a compact Layers panel with top-to-bottom ordering, Up/Down controls, per-layer visibility, and per-layer delete.
+- **Export respects layers.** Hidden layers are skipped in the canvas preview and raster export, while reordered layers render in the same order users see in the panel.
+
 ## [v6.17.0] - 2026-05-14
 
 **Smart auto-albums.**
