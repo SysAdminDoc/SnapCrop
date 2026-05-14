@@ -98,6 +98,7 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 
 ### More Tools
 - **Long Screenshot** — Accessibility-powered scroll capture with overlap stitching and editor handoff
+- **Screen Recording Tools** — Trim recordings and grab editable frames from video
 - **Image Stitching** — Combine 2+ images vertically or horizontally with reorder controls
 - **Collage Maker** — 25 grid layouts, adjustable gaps, multiple aspect ratios
 - **Device Frame Mockup** — Wrap screenshots in Pixel, iPhone, Samsung, or flat device frames

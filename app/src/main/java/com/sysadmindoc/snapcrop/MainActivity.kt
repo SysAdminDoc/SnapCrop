@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -93,6 +94,17 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) batchAutocrop(uris)
+    }
+
+    private val pickVideoLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            startActivity(Intent(this, VideoClipActivity::class.java).apply {
+                data = it
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+        }
     }
 
     private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {
@@ -247,6 +259,7 @@ class MainActivity : ComponentActivity() {
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
                                 onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
+                                onVideoClip = { pickVideoLauncher.launch("video/*") },
                                 longScreenshotReady = longScreenshotReady.value,
                                 onLongScreenshot = { requestLongScreenshot() },
                                 onDelayedCapture = { seconds ->
@@ -294,8 +307,8 @@ class MainActivity : ComponentActivity() {
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
                                 onPlayVideo = { uri ->
-                                    startActivity(Intent(Intent.ACTION_VIEW).apply {
-                                        setDataAndType(uri, "video/*")
+                                    startActivity(Intent(this@MainActivity, VideoClipActivity::class.java).apply {
+                                        data = uri
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     })
                                 },
@@ -788,6 +801,7 @@ private fun HomeScreen(
     onStitch: () -> Unit,
     onCollage: () -> Unit,
     onDeviceFrame: () -> Unit,
+    onVideoClip: () -> Unit,
     longScreenshotReady: Boolean,
     onLongScreenshot: () -> Unit,
     onDelayedCapture: (Int) -> Unit,
@@ -1110,12 +1124,22 @@ private fun HomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        HomeActionTile(
-            icon = Icons.Default.PhoneAndroid,
-            title = "Device mockup",
-            subtitle = "Wrap a screenshot in a polished phone frame.",
-            onClick = onDeviceFrame
-        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            HomeActionTile(
+                icon = Icons.Default.PhoneAndroid,
+                title = "Device mockup",
+                subtitle = "Wrap a screenshot in a polished phone frame.",
+                modifier = Modifier.weight(1f),
+                onClick = onDeviceFrame
+            )
+            HomeActionTile(
+                icon = Icons.Default.PlayCircle,
+                title = "Video frame",
+                subtitle = "Trim recordings or grab a frame to edit.",
+                modifier = Modifier.weight(1f),
+                onClick = onVideoClip
+            )
+        }
 
         // Stats
         if (cropCount > 0) {
