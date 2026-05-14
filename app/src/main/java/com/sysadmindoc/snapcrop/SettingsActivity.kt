@@ -104,6 +104,17 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var appCropProfiles by remember { mutableStateOf(prefs.getBoolean("app_crop_profiles", true)) }
+                    SettingToggle(
+                        title = "App crop profiles",
+                        subtitle = "Use built-in visual templates to strip Reddit, X/Twitter, and similar app chrome during auto-crop.",
+                        checked = appCropProfiles,
+                        onCheckedChange = {
+                            appCropProfiles = it
+                            prefs.edit().putBoolean("app_crop_profiles", it).apply()
+                        }
+                    )
+
                     // Image format selector
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text("Image Format", color = OnSurface, fontSize = 15.sp)

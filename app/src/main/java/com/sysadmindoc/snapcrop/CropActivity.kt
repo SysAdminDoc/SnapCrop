@@ -83,6 +83,8 @@ class CropActivity : ComponentActivity() {
     private val isSaving = mutableStateOf(false)
     private val showFlash = mutableStateOf(false)
     private var sourceUri: Uri? = null
+    private var intentSourceHints: List<String> = emptyList()
+    private var currentCropHints: List<String> = emptyList()
     private val rotationKey = mutableIntStateOf(0)
 
     private fun handleIntent(incomingIntent: Intent) {
@@ -97,6 +99,7 @@ class CropActivity : ComponentActivity() {
 
         // Reset state for the new image
         sourceUri = newUri
+        intentSourceHints = collectIntentHints(incomingIntent, newUri)
         isLoading.value = true
         bitmapState.value = null
         cropMethod.value = ""
@@ -146,7 +149,13 @@ class CropActivity : ComponentActivity() {
                             onAutoCrop = {
                                 val sbPx = SystemBars.statusBarHeight(resources)
                                 val nbPx = SystemBars.navigationBarHeight(resources)
-                                val result = AutoCrop.detectWithMethod(bmp, sbPx, nbPx)
+                                val result = AutoCrop.detectWithMethod(
+                                    bitmap = bmp,
+                                    statusBarPx = sbPx,
+                                    navBarPx = nbPx,
+                                    sourceHints = currentCropHints,
+                                    appProfilesEnabled = appCropProfilesEnabled()
+                                )
                                 cropMethod.value = result.method
                                 result.rect
                             },
@@ -280,6 +289,38 @@ class CropActivity : ComponentActivity() {
     private fun getDeletePref(): Boolean =
         getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("delete_original", true)
 
+    private fun appCropProfilesEnabled(): Boolean =
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("app_crop_profiles", true)
+
+    private fun collectIntentHints(intent: Intent, uri: Uri): List<String> {
+        return listOfNotNull(
+            uri.toString(),
+            uri.authority,
+            uri.path,
+            intent.getStringExtra("android.intent.extra.PACKAGE_NAME"),
+            intent.getStringExtra("android.intent.extra.REFERRER_NAME")
+        ).filter { it.isNotBlank() }
+    }
+
+    private fun queryMediaHints(uri: Uri): List<String> {
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,
+            MediaStore.MediaColumns.OWNER_PACKAGE_NAME
+        )
+        return try {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use emptyList()
+                projection.mapNotNull { column ->
+                    val index = cursor.getColumnIndex(column)
+                    if (index >= 0) cursor.getString(index) else null
+                }.filter { !it.isNullOrBlank() }
+            } ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val quality = prefs.getInt("jpeg_quality", 95)
@@ -332,7 +373,17 @@ class CropActivity : ComponentActivity() {
             originalBitmap?.let { bmp ->
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
-                val result = AutoCrop.detectWithMethod(bmp, statusBarPx, navBarPx)
+                currentCropHints = (intentSourceHints + queryMediaHints(uri))
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                val result = AutoCrop.detectWithMethod(
+                    bitmap = bmp,
+                    statusBarPx = statusBarPx,
+                    navBarPx = navBarPx,
+                    sourceHints = currentCropHints,
+                    appProfilesEnabled = appCropProfilesEnabled()
+                )
                 bitmapState.value = bmp
                 cropRect.value = result.rect
                 cropMethod.value = result.method

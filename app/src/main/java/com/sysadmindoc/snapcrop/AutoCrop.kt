@@ -16,11 +16,41 @@ object AutoCrop {
         val method: String // "border", "statusbar", "full"
     )
 
-    fun detect(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): Rect {
-        return detectWithMethod(bitmap, statusBarPx, navBarPx).rect
+    fun detect(
+        bitmap: Bitmap,
+        statusBarPx: Int = 0,
+        navBarPx: Int = 0,
+        sourceHints: List<String> = emptyList(),
+        appProfilesEnabled: Boolean = true
+    ): Rect {
+        return detectWithMethod(
+            bitmap = bitmap,
+            statusBarPx = statusBarPx,
+            navBarPx = navBarPx,
+            sourceHints = sourceHints,
+            appProfilesEnabled = appProfilesEnabled
+        ).rect
     }
 
-    fun detectWithMethod(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): CropResult {
+    fun detectWithMethod(
+        bitmap: Bitmap,
+        statusBarPx: Int = 0,
+        navBarPx: Int = 0,
+        sourceHints: List<String> = emptyList(),
+        appProfilesEnabled: Boolean = true
+    ): CropResult {
+        val baseResult = detectBase(bitmap, statusBarPx, navBarPx)
+        return AppCropProfiles.apply(
+            bitmap = bitmap,
+            baseResult = baseResult,
+            statusBarPx = statusBarPx,
+            navBarPx = navBarPx,
+            sourceHints = sourceHints,
+            enabled = appProfilesEnabled
+        )
+    }
+
+    private fun detectBase(bitmap: Bitmap, statusBarPx: Int = 0, navBarPx: Int = 0): CropResult {
         val w = bitmap.width
         val h = bitmap.height
 

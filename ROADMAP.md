@@ -6,7 +6,7 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 
 ### Capture & automation
 - [x] Long-screenshot / scroll capture via AccessibilityService with auto-stitch (Huawei-style)
-- [ ] App-specific auto-crop profiles (e.g. always strip Reddit's top bar, always strip Twitter navigation) via template-match
+- [x] App-specific auto-crop profiles (e.g. always strip Reddit's top bar, always strip Twitter navigation) via template-match
 - [ ] Conditional auto-actions: "if screenshot came from app X, auto-redact phone numbers + save to album Y"
 - [ ] Screen-recording clip trim + frame-grab pipeline (record -> pick frame -> edit)
 - [ ] Quick-tile "one-tap last action" - reruns the last edit pipeline on the newest screenshot
@@ -117,4 +117,3 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 - **ML Kit Subject Segmentation** — `com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1` — entry: `SubjectSegmentation.getClient(SubjectSegmenterOptions.Builder().enableForegroundBitmap().build()).process(inputImage)`. Gotcha: first-call triggers background download of a ~20MB model; wrap in a progress UI since the first call can take 5-15s. Also: `enableForegroundBitmap()` returns raw ARGB; must composite with alpha over transparent for BG-remove — SnapCrop does this already.
 - **ML Kit on-device Translation** — `com.google.mlkit:translate:17.0.3` — entry: `TranslatorOptions.Builder().setSourceLanguage(TranslateLanguage.ENGLISH).setTargetLanguage(TranslateLanguage.SPANISH).build() → Translation.getClient(opts).downloadModelIfNeeded()` then `translator.translate(text)`. Gotcha: each language pair is ~30MB; prompt user for Wi-Fi + disk-space before downloading. Use `DownloadConditions.Builder().requireWifi().build()` to avoid cellular-data surprise.
 - **ONNX Runtime (LaMa inpaint for smart-erase)** — `com.microsoft.onnxruntime:onnxruntime-android:1.17.0` — entry: `OrtEnvironment.getEnvironment(); val session = env.createSession(modelPathBytes, SessionOptions())`. Gotcha: LaMa expects 512×512 fixed input; must tile-and-blend for larger strokes. Mask channel must be `{0,1}` float tensor, not `{0,255}` byte — easy off-by-255 bug.
-

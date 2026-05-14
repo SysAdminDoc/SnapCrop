@@ -133,7 +133,13 @@ class MainActivity : ComponentActivity() {
                 try {
                     contentResolver.openInputStream(uri)?.use { stream ->
                         val bitmap = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
-                        val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
+                        val cropRect = AutoCrop.detect(
+                            bitmap = bitmap,
+                            statusBarPx = statusBarPx,
+                            navBarPx = navBarPx,
+                            appProfilesEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                                .getBoolean("app_crop_profiles", true)
+                        )
                         val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                                 cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
