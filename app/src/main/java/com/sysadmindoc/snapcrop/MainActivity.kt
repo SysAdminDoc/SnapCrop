@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -67,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private val hasPermissions = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
     private val hasFileManagePermission = mutableStateOf(false)
+    private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
@@ -238,6 +241,8 @@ class MainActivity : ComponentActivity() {
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
                                 onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
+                                longScreenshotReady = longScreenshotReady.value,
+                                onLongScreenshot = { requestLongScreenshot() },
                                 onDelayedCapture = { seconds ->
                                     val intent = Intent(this@MainActivity, ScreenshotService::class.java).apply {
                                         action = ScreenshotService.ACTION_DELAYED_CAPTURE
@@ -348,6 +353,7 @@ class MainActivity : ComponentActivity() {
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
         hasFileManagePermission.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
             Environment.isExternalStorageManager() else true
+        refreshLongScreenshotState()
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getBoolean("auto_start", false)
@@ -666,6 +672,48 @@ class MainActivity : ComponentActivity() {
         serviceRunning.value = true
     }
 
+    private fun refreshLongScreenshotState() {
+        longScreenshotReady.value = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                (ScrollCaptureService.isReady() || isScrollCaptureEnabled())
+    }
+
+    private fun requestLongScreenshot() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Toast.makeText(this, "Long screenshot requires Android 11 or newer", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (!ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 2500L)) {
+            openAccessibilitySettings()
+            return
+        }
+
+        moveTaskToBack(true)
+    }
+
+    private fun openAccessibilitySettings() {
+        Toast.makeText(
+            this,
+            "Enable SnapCrop Long screenshot, then add its Quick Settings tile.",
+            Toast.LENGTH_LONG
+        ).show()
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun isScrollCaptureEnabled(): Boolean {
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        val component = ComponentName(this, ScrollCaptureService::class.java)
+        val fullName = component.flattenToString()
+        val shortName = component.flattenToShortString()
+        return enabledServices.split(':').any {
+            it.equals(fullName, ignoreCase = true) ||
+                    it.equals(shortName, ignoreCase = true)
+        }
+    }
+
     private fun loadRecentCrops() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -734,6 +782,8 @@ private fun HomeScreen(
     onStitch: () -> Unit,
     onCollage: () -> Unit,
     onDeviceFrame: () -> Unit,
+    longScreenshotReady: Boolean,
+    onLongScreenshot: () -> Unit,
     onDelayedCapture: (Int) -> Unit,
     batchProgress: String,
     batchFraction: Float,
@@ -1018,6 +1068,19 @@ private fun HomeScreen(
                 }
             }
         }
+
+        Spacer(Modifier.height(8.dp))
+
+        HomeActionTile(
+            icon = Icons.Default.ScreenshotMonitor,
+            title = "Long screenshot",
+            subtitle = if (longScreenshotReady) {
+                "Scroll, stitch, save, and open the result automatically."
+            } else {
+                "Enable Accessibility once, then capture from Quick Settings."
+            },
+            onClick = onLongScreenshot
+        )
 
         Spacer(Modifier.height(8.dp))
 

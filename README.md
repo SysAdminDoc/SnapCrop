@@ -28,6 +28,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions
 - Quick Settings tile to toggle monitoring on/off
 - Delayed capture mode (3 / 5 / 10 second countdown)
+- Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, auto-stitch, save, then continue editing
 - Survives reboots — auto-starts with your device
 
 ### Smart Auto-Crop
@@ -94,6 +95,7 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 - Home recent crops include explicit delete confirmation for safe cleanup
 
 ### More Tools
+- **Long Screenshot** — Accessibility-powered scroll capture with overlap stitching and editor handoff
 - **Image Stitching** — Combine 2+ images vertically or horizontally with reorder controls
 - **Collage Maker** — 25 grid layouts, adjustable gaps, multiple aspect ratios
 - **Device Frame Mockup** — Wrap screenshots in Pixel, iPhone, Samsung, or flat device frames
