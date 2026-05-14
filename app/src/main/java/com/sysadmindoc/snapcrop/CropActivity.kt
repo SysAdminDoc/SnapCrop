@@ -68,6 +68,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.Locale
 
 class CropActivity : ComponentActivity() {
 
@@ -1170,6 +1171,137 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
+    private fun buildAnnotationSvg(cropRect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>): String? {
+        val width = cropRect.width().coerceAtLeast(1)
+        val height = cropRect.height().coerceAtLeast(1)
+        val elements = StringBuilder()
+
+        fun Float.svgNum(): String = String.format(Locale.US, "%.2f", this)
+        fun colorHex(color: Int): String = String.format(Locale.US, "#%06X", color and 0x00FFFFFF)
+        fun alpha(color: Int, multiplier: Float = 1f): Float =
+            (((color ushr 24) and 0xFF) / 255f * multiplier).coerceIn(0f, 1f)
+        fun xml(value: String): String = value
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&apos;")
+        fun sx(x: Float): Float = x - cropRect.left
+        fun sy(y: Float): Float = y - cropRect.top
+        fun pathData(points: List<android.graphics.PointF>): String = buildString {
+            points.forEachIndexed { index, point ->
+                append(if (index == 0) "M " else " L ")
+                append(sx(point.x).svgNum()).append(' ').append(sy(point.y).svgNum())
+            }
+        }
+        fun dash(dp: DrawPath): String =
+            if (dp.dashed) " stroke-dasharray=\"${(dp.strokeWidth * 3).svgNum()} ${(dp.strokeWidth * 2).svgNum()}\"" else ""
+        fun strokeAttrs(dp: DrawPath, opacity: Float = alpha(dp.color)): String =
+            """fill="none" stroke="${colorHex(dp.color)}" stroke-width="${dp.strokeWidth.svgNum()}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity.svgNum()}"${dash(dp)}"""
+
+        pixRects.forEachIndexed { index, rect ->
+            val left = (rect.left - cropRect.left).coerceIn(0, width).toFloat()
+            val top = (rect.top - cropRect.top).coerceIn(0, height).toFloat()
+            val right = (rect.right - cropRect.left).coerceIn(0, width).toFloat()
+            val bottom = (rect.bottom - cropRect.top).coerceIn(0, height).toFloat()
+            if (right > left && bottom > top) {
+                elements.append("""  <rect id="pixelate-${index + 1}" x="${left.svgNum()}" y="${top.svgNum()}" width="${(right - left).svgNum()}" height="${(bottom - top).svgNum()}" fill="#000000" opacity="0.35" stroke="#F38BA8" stroke-width="2"/>""")
+                    .append('\n')
+            }
+        }
+
+        drawPaths.forEachIndexed { index, dp ->
+            if (!dp.visible || dp.points.isEmpty()) return@forEachIndexed
+            val id = "layer-${index + 1}"
+            val stroke = strokeAttrs(dp)
+            when (dp.shapeType) {
+                "rect" -> if (dp.points.size >= 2) {
+                    val p1 = dp.points.first(); val p2 = dp.points.last()
+                    val left = sx(minOf(p1.x, p2.x)); val top = sy(minOf(p1.y, p2.y))
+                    val w = kotlin.math.abs(p2.x - p1.x); val h = kotlin.math.abs(p2.y - p1.y)
+                    val fill = if (dp.filled) colorHex(dp.color) else "none"
+                    val fillOpacity = if (dp.filled) alpha(dp.color).svgNum() else "1"
+                    elements.append("""  <rect id="$id" x="${left.svgNum()}" y="${top.svgNum()}" width="${w.svgNum()}" height="${h.svgNum()}" fill="$fill" fill-opacity="$fillOpacity" stroke="${colorHex(dp.color)}" stroke-width="${dp.strokeWidth.svgNum()}"${dash(dp)}/>""").append('\n')
+                }
+                "circle" -> if (dp.points.size >= 2) {
+                    val p1 = dp.points.first(); val p2 = dp.points.last()
+                    val cx = sx((p1.x + p2.x) / 2f); val cy = sy((p1.y + p2.y) / 2f)
+                    val rx = kotlin.math.abs(p2.x - p1.x) / 2f; val ry = kotlin.math.abs(p2.y - p1.y) / 2f
+                    val fill = if (dp.filled) colorHex(dp.color) else "none"
+                    val fillOpacity = if (dp.filled) alpha(dp.color).svgNum() else "1"
+                    elements.append("""  <ellipse id="$id" cx="${cx.svgNum()}" cy="${cy.svgNum()}" rx="${rx.svgNum()}" ry="${ry.svgNum()}" fill="$fill" fill-opacity="$fillOpacity" stroke="${colorHex(dp.color)}" stroke-width="${dp.strokeWidth.svgNum()}"${dash(dp)}/>""").append('\n')
+                }
+                "line" -> if (dp.points.size >= 2) {
+                    val p1 = dp.points.first(); val p2 = dp.points.last()
+                    elements.append("""  <line id="$id" x1="${sx(p1.x).svgNum()}" y1="${sy(p1.y).svgNum()}" x2="${sx(p2.x).svgNum()}" y2="${sy(p2.y).svgNum()}" $stroke/>""").append('\n')
+                }
+                "text" -> if (!dp.text.isNullOrBlank()) {
+                    val p = dp.points.first()
+                    elements.append("""  <text id="$id" x="${sx(p.x).svgNum()}" y="${sy(p.y).svgNum()}" fill="${colorHex(dp.color)}" font-size="${(dp.strokeWidth * 3).svgNum()}" font-family="sans-serif">${xml(dp.text)}</text>""").append('\n')
+                }
+                "emoji" -> if (!dp.text.isNullOrBlank()) {
+                    val p = dp.points.first()
+                    elements.append("""  <text id="$id" x="${sx(p.x).svgNum()}" y="${sy(p.y).svgNum()}" font-size="${(dp.strokeWidth * 5).svgNum()}" font-family="sans-serif">${xml(dp.text)}</text>""").append('\n')
+                }
+                "callout" -> if (!dp.text.isNullOrBlank()) {
+                    val p = dp.points.first()
+                    val r = dp.strokeWidth * 2f
+                    val textColor = if (dp.color == 0xFFFFFFFF.toInt() || dp.color == 0xFFFFFF00.toInt()) "#000000" else "#FFFFFF"
+                    elements.append("""  <circle id="$id" cx="${sx(p.x).svgNum()}" cy="${sy(p.y).svgNum()}" r="${r.svgNum()}" fill="${colorHex(dp.color)}"/>""").append('\n')
+                    elements.append("""  <text id="$id-label" x="${sx(p.x).svgNum()}" y="${(sy(p.y) + r * 0.4f).svgNum()}" fill="$textColor" font-size="${(r * 1.2f).svgNum()}" font-family="sans-serif" text-anchor="middle">${xml(dp.text)}</text>""").append('\n')
+                }
+                "spotlight" -> if (dp.points.size >= 2) {
+                    val p1 = dp.points.first(); val p2 = dp.points.last()
+                    val left = sx(minOf(p1.x, p2.x)); val top = sy(minOf(p1.y, p2.y))
+                    val w = kotlin.math.abs(p2.x - p1.x); val h = kotlin.math.abs(p2.y - p1.y)
+                    elements.append("""  <rect id="$id" x="${left.svgNum()}" y="${top.svgNum()}" width="${w.svgNum()}" height="${h.svgNum()}" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.8"/>""").append('\n')
+                }
+                "magnifier" -> {
+                    val p = dp.points.first()
+                    elements.append("""  <circle id="$id" cx="${sx(p.x).svgNum()}" cy="${(sy(p.y) - 140f).svgNum()}" r="120" fill="none" stroke="${colorHex(dp.color)}" stroke-width="3"/>""").append('\n')
+                }
+                "fill" -> {
+                    val p = dp.points.first()
+                    elements.append("""  <circle id="$id" cx="${sx(p.x).svgNum()}" cy="${sy(p.y).svgNum()}" r="${(dp.strokeWidth.coerceAtLeast(8f)).svgNum()}" fill="${colorHex(dp.color)}" opacity="0.5"/>""").append('\n')
+                }
+                "highlight" -> if (dp.points.size >= 2) {
+                    elements.append("""  <path id="$id" d="${pathData(dp.points)}" ${strokeAttrs(dp, alpha(dp.color, 0.4f))}/>""").append('\n')
+                }
+                "blur", "eraser", "smart_erase", "heal", "neon" -> if (dp.points.size >= 2) {
+                    elements.append("""  <path id="$id" d="${pathData(dp.points)}" $stroke/>""").append('\n')
+                }
+                else -> if (dp.points.size >= 2) {
+                    elements.append("""  <path id="$id" d="${pathData(dp.points)}" $stroke/>""").append('\n')
+                    if (dp.isArrow && dp.points.size >= 2) {
+                        val last = dp.points.last(); val prev = dp.points[dp.points.size - 2]
+                        val dx = last.x - prev.x; val dy = last.y - prev.y
+                        val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+                        if (len > 0f) {
+                            val ux = dx / len; val uy = dy / len
+                            val headLength = dp.strokeWidth * 4f
+                            val headWidth = dp.strokeWidth * 2.5f
+                            val tipX = sx(last.x); val tipY = sy(last.y)
+                            val leftX = sx(last.x - ux * headLength + uy * headWidth)
+                            val leftY = sy(last.y - uy * headLength - ux * headWidth)
+                            val rightX = sx(last.x - ux * headLength - uy * headWidth)
+                            val rightY = sy(last.y - uy * headLength + ux * headWidth)
+                            elements.append("""  <path id="$id-arrow" d="M ${tipX.svgNum()} ${tipY.svgNum()} L ${leftX.svgNum()} ${leftY.svgNum()} M ${tipX.svgNum()} ${tipY.svgNum()} L ${rightX.svgNum()} ${rightY.svgNum()}" $stroke/>""").append('\n')
+                        }
+                    }
+                }
+            }
+        }
+
+        if (elements.isEmpty()) return null
+        return buildString {
+            append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
+            append("""<svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">""").append('\n')
+            append("""  <title>SnapCrop annotation layers</title>""").append('\n')
+            append(elements)
+            append("</svg>\n")
+        }
+    }
+
     private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
         if (isSaving.value) return
         isSaving.value = true
@@ -1184,7 +1316,9 @@ class CropActivity : ComponentActivity() {
                 if (watermarked !== cropped) cropped.recycle()
                 cropped = watermarked
                 val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
-                saveToGallery(cropped, resolveFilename(), deleteOriginal, forcePng = hasShapeCrop)
+                val name = resolveFilename()
+                val annotationSvg = buildAnnotationSvg(rect, pixRects, drawPaths)
+                saveToGallery(cropped, name, deleteOriginal, forcePng = hasShapeCrop, annotationSvg = annotationSvg)
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@CropActivity, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1339,7 +1473,35 @@ class CropActivity : ComponentActivity() {
         return bestBytes to bestQuality
     }
 
-    private fun saveToGallery(bitmap: Bitmap, name: String, deleteOriginal: Boolean, forcePng: Boolean = false) {
+    private fun saveSvgSidecar(name: String, savePath: String, svg: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.svg")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/svg+xml")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, savePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+            ?: return false
+        return try {
+            contentResolver.openOutputStream(uri)?.use { it.write(svg.toByteArray(Charsets.UTF_8)) }
+                ?: throw IOException("Failed to open SVG output stream")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            true
+        } catch (_: IOException) {
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            false
+        }
+    }
+
+    private fun saveToGallery(
+        bitmap: Bitmap,
+        name: String,
+        deleteOriginal: Boolean,
+        forcePng: Boolean = false,
+        annotationSvg: String? = null
+    ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
         @Suppress("DEPRECATION")
@@ -1373,7 +1535,8 @@ class CropActivity : ComponentActivity() {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
-                val msg = "Saved (${sizeKb}KB, q=$usedQuality)"
+                val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
+                val msg = "Saved (${sizeKb}KB, q=$usedQuality)" + if (svgSaved) " + SVG" else ""
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
                 if (deleteOriginal) deleteOriginalFile()
             } else {
@@ -1382,7 +1545,9 @@ class CropActivity : ComponentActivity() {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
-                val msg = if (deleteOriginal) "Saved to $savePath" else "Copy saved to $savePath"
+                val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
+                val msg = (if (deleteOriginal) "Saved to $savePath" else "Copy saved to $savePath") +
+                    if (svgSaved) " + SVG" else ""
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
                 if (deleteOriginal) deleteOriginalFile()
             }
