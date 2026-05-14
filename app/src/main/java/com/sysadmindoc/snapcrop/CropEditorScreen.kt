@@ -393,6 +393,8 @@ fun CropEditorScreen(
     var translating by remember { mutableStateOf(false) }
     var faceRedacting by remember { mutableStateOf(false) }
     var lastFaceCount by remember { mutableIntStateOf(-1) } // -1 = not scanned yet
+    var textRedacting by remember { mutableStateOf(false) }
+    var lastTextRedactionCount by remember { mutableIntStateOf(-1) }
     var showTextDialog by remember { mutableStateOf(false) }
     var textDialogValue by remember { mutableStateOf("") }
     var textPlacePoint by remember { mutableStateOf<PointF?>(null) }
@@ -959,39 +961,83 @@ fun CropEditorScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                // Smart redact faces
-                FilledTonalButton(
-                    onClick = {
-                        if (!faceRedacting) {
-                            faceRedacting = true
-                            scope.launch {
-                                val faces = FaceDetector.detect(bitmap)
-                                if (faces.isNotEmpty()) pushUndo()
-                                pixelateRects.addAll(faces)
-                                lastFaceCount = faces.size
-                                faceRedacting = false
-                                if (faces.isEmpty()) {
-                                    android.widget.Toast.makeText(context, "No faces found", android.widget.Toast.LENGTH_SHORT).show()
-                                } else {
-                                    android.widget.Toast.makeText(context, "Redacted ${faces.size} face(s)", android.widget.Toast.LENGTH_SHORT).show()
-                                    haptic()
+                Row(
+                    modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = {
+                            if (!faceRedacting) {
+                                faceRedacting = true
+                                scope.launch {
+                                    val faces = FaceDetector.detect(bitmap)
+                                    if (faces.isNotEmpty()) pushUndo()
+                                    pixelateRects.addAll(faces)
+                                    lastFaceCount = faces.size
+                                    faceRedacting = false
+                                    if (faces.isEmpty()) {
+                                        android.widget.Toast.makeText(context, "No faces found", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Redacted ${faces.size} face(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                        haptic()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !faceRedacting,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        if (faceRedacting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Tertiary)
+                        else {
+                            Text("Blur Faces", fontSize = 11.sp, color = Tertiary)
+                            if (lastFaceCount >= 0) {
+                                Spacer(Modifier.width(4.dp))
+                                Surface(color = Tertiary, shape = RoundedCornerShape(8.dp)) {
+                                    Text("$lastFaceCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                        fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
-                    },
-                    enabled = !faceRedacting,
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    if (faceRedacting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Tertiary)
-                    else {
-                        Text("Blur Faces", fontSize = 11.sp, color = Tertiary)
-                        if (lastFaceCount >= 0) {
-                            Spacer(Modifier.width(4.dp))
-                            Surface(color = Tertiary, shape = RoundedCornerShape(8.dp)) {
-                                Text("$lastFaceCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                                    fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            if (!textRedacting) {
+                                textRedacting = true
+                                scope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        SensitiveTextDetector.detect(bitmap)
+                                    }
+                                    if (result.rects.isNotEmpty()) pushUndo()
+                                    pixelateRects.addAll(result.rects)
+                                    lastTextRedactionCount = result.rects.size
+                                    textRedacting = false
+                                    if (result.rects.isEmpty()) {
+                                        android.widget.Toast.makeText(context, "No sensitive text found", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Redacted ${result.rects.size} text block(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                        haptic()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !textRedacting,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Primary.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        if (textRedacting) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = Primary)
+                        else {
+                            Text("Auto Text", fontSize = 11.sp, color = Primary)
+                            if (lastTextRedactionCount >= 0) {
+                                Spacer(Modifier.width(4.dp))
+                                Surface(color = Primary, shape = RoundedCornerShape(8.dp)) {
+                                    Text("$lastTextRedactionCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                        fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
