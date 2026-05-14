@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.10.0] - 2026-05-14
+
+**Conditional Quick Crop auto-actions.**
+
+- **Opt-in automation rules added.** Quick Crop can now recognize Reddit and X/Twitter screenshots, run OCR privacy redaction, and save into app-specific SnapCrop subalbums.
+- **Sensitive text is redacted automatically.** Matching Quick Crop flows pixelate detected emails, phone numbers, IP addresses, and credit-card-like number blocks before saving.
+- **Automation stays explicit.** The feature is controlled by a new **Quick Crop auto-actions** setting and leaves the normal editor save flow unchanged.
+
 ## [v6.9.0] - 2026-05-14
 
 **App-specific auto-crop profiles.**

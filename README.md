@@ -29,6 +29,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Quick Settings tile to toggle monitoring on/off
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, auto-stitch, save, then continue editing
+- Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums
 - Survives reboots — auto-starts with your device
 
 ### Smart Auto-Crop

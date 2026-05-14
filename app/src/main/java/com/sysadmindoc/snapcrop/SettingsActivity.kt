@@ -397,6 +397,19 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var conditionalAutoActions by remember {
+                        mutableStateOf(prefs.getBoolean("conditional_auto_actions", false))
+                    }
+                    SettingToggle(
+                        title = "Quick Crop auto-actions",
+                        subtitle = "When ON, recognized app screenshots can auto-redact sensitive text and save into app-specific albums.",
+                        checked = conditionalAutoActions,
+                        onCheckedChange = {
+                            conditionalAutoActions = it
+                            prefs.edit().putBoolean("conditional_auto_actions", it).apply()
+                        }
+                    )
+
                     Spacer(Modifier.height(20.dp))
 
                     // Storage section
