@@ -615,7 +615,11 @@ fun CropEditorScreen(
     } else 0
 
     val methodLabel = when (cropMethod) {
-        "border" -> "Border"; "statusbar" -> "Bars"; "ai" -> "AI"; else -> ""
+        "border" -> "Border"
+        "border+bars" -> "Bars+Border"
+        "statusbar" -> "Bars"
+        "ai" -> "AI"
+        else -> if (cropMethod.startsWith("profile:")) cropMethod.substringAfter(":") else ""
     }
 
     Column(

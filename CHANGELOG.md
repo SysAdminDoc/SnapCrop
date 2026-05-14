@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.9.0] - 2026-05-14
+
+**App-specific auto-crop profiles.**
+
+- **Profile-aware auto-crop added.** Auto-crop now applies conservative built-in visual templates for Reddit and X/Twitter chrome after the standard bar/border crop.
+- **Source hints improve confidence.** SnapCrop reads MediaStore/share URI hints when available, so shared or tagged images can trigger the right profile without broad over-cropping.
+- **Users stay in control.** Settings now includes an **App crop profiles** toggle, and the editor crop badge shows the matched profile when one is applied.
+
 ## [v6.8.0] - 2026-05-14
 
 **Long screenshot capture.**

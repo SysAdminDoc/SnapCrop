@@ -270,9 +270,15 @@ class ScreenshotService : Service() {
                     BitmapFactory.decodeStream(stream)
                 } ?: return@launch
 
+                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
-                val cropRect = AutoCrop.detect(bitmap, statusBarPx, navBarPx)
+                val cropRect = AutoCrop.detect(
+                    bitmap = bitmap,
+                    statusBarPx = statusBarPx,
+                    navBarPx = navBarPx,
+                    appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
+                )
                 val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                         cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
@@ -289,7 +295,6 @@ class ScreenshotService : Service() {
                     cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0))
                 )
 
-                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val (fmt, quality, ext, mime) = getSaveFormat(prefs)
 
                 val values = ContentValues().apply {

@@ -34,6 +34,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 ### Smart Auto-Crop
 - **System bar stripping** — Reads exact status/nav bar heights from Android (works on transparent bars too)
 - **Border detection** — Removes uniform borders from any screenshot, light or dark mode
+- **App crop profiles** — Optional visual templates strip known Reddit and X/Twitter chrome when detected
 - **AI crop** — ML Kit object detection for content-aware cropping
 
 ### Powerful Editor — 5 Modes
