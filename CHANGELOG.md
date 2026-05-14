@@ -2,6 +2,14 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [v6.19.0] - 2026-05-14
+
+**SVG annotation sidecars.**
+
+- **Vector annotation export added.** Saving an annotated crop now writes a same-name `.svg` sidecar when visible draw layers or pixelate rectangles exist.
+- **Layer order is preserved.** SVG output uses the same visible layer order as the editor/export pipeline and skips hidden layers.
+- **Scoped-storage compatible.** SVG sidecars are written through MediaStore with `image/svg+xml` in the configured SnapCrop save location.
+
 ## [v6.18.0] - 2026-05-14
 
 **Layered editing.**

@@ -75,6 +75,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
+Annotated saves include a same-name SVG sidecar for visible vector layers and redaction rectangles.
 
 **Pixelate**
 - Draw rectangles to mosaic-redact sensitive info
