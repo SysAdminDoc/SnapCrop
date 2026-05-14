@@ -19,7 +19,7 @@ Roadmap for SnapCrop, the Android screenshot tool with auto-detect, auto-crop, a
 - [x] Auto-tag + auto-album (group screenshots of the same conversation/game/site)
 
 ### Editor depth
-- [ ] Layered editing with reorderable layers panel (current tools are flat)
+- [x] Layered editing with reorderable layers panel (current tools are flat)
 - [ ] Vector annotation export to SVG alongside rasterized PNG
 - [ ] Snap-to-grid / snap-to-element for pixel-perfect placement
 - [ ] Text styles library (title/callout/caption presets with brand colors)

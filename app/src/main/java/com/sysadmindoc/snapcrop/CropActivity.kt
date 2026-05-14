@@ -404,7 +404,8 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun applyDraw(bitmap: Bitmap, paths: List<DrawPath>): Bitmap {
-        if (paths.isEmpty()) return bitmap
+        val visiblePaths = paths.filter { it.visible }
+        if (visiblePaths.isEmpty()) return bitmap
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -412,7 +413,7 @@ class CropActivity : ComponentActivity() {
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
-        for (dp in paths) {
+        for (dp in visiblePaths) {
             if (dp.points.isEmpty()) continue
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
