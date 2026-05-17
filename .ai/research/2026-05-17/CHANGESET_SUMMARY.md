@@ -306,3 +306,31 @@ Verification for this continuation batch:
 - Existing warnings remain for deprecated activity-result callbacks, one
   AutoMirrored icon migration, and the known CycloneDX configuration-time
   dependency-resolution message.
+
+## Roadmap Continuation - P1.9 - 2026-05-17
+
+Implemented P1.9, "Tablet, foldable, and desktop-mode editor layout":
+
+- Added `EditorAdaptiveLayout` with tested phone/wide thresholds and side-panel
+  width selection.
+- Kept the compact phone editor recognizable while wide windows use a
+  persistent right-side inspector for mode selection, crop controls, redaction
+  tools, draw tools/layers, and adjustment sliders.
+- Moved phone-only scrolling mode/tool/adjust rows out of the wide path and
+  moved reset, auto-crop, AI crop, background removal, and palette controls into
+  the inspector for large screens.
+- Added keyboard shortcuts for save, undo/redo, crop nudging, preview toggling,
+  and keyboard zoom; added mouse-wheel zoom while preserving existing pinch and
+  drag-pan behavior.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, and `README.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin`: passed.
+- `.\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest`: passed in
+  1m 6s after the side-panel toolbar and pointer-routing refinements.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 3m 13s after the pointer-routing refinement.
+- Existing warnings remain for the known CycloneDX configuration-time
+  dependency-resolution message.

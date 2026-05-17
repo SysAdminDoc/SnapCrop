@@ -25,7 +25,8 @@ repository research and roadmap planning pass.
 | L12b | `app/src/main/java/com/sysadmindoc/snapcrop/EditorCanvas.kt` | Extracted reusable crop-handle and gradient rendering helpers. |
 | L12c | `app/src/main/java/com/sysadmindoc/snapcrop/EditorLayers.kt` | Extracted draw layer panel. |
 | L12d | `app/src/main/java/com/sysadmindoc/snapcrop/EditorPreview.kt` | Extracted before/after preview surface. |
-| L12e | `docs/EDITOR_REGRESSION_CHECKLIST.md` | Manual regression checklist for editor refactors. |
+| L12e | `app/src/main/java/com/sysadmindoc/snapcrop/EditorAdaptiveLayout.kt` | Adaptive editor phone/wide thresholds and side-panel sizing. |
+| L12f | `docs/EDITOR_REGRESSION_CHECKLIST.md` | Manual regression checklist for editor refactors. |
 | L13 | `app/src/main/java/com/sysadmindoc/snapcrop/CropActivity.kt` | Save/share/export/SVG sidecar pipeline. |
 | L14 | `app/src/main/java/com/sysadmindoc/snapcrop/MainActivity.kt` | Home, permissions, batch operations, recent crops. |
 | L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, index-backed smart albums, favorites, PDF export. |

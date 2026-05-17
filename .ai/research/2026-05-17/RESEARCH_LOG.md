@@ -244,6 +244,26 @@ Result:
 - Added `UserAppProfileStoreTest` for JSON round-trip, source/OCR matching, and
   user crop-band application.
 
+### Pass 12: P1.9 adaptive editor implementation pass
+
+Targets:
+
+- `CropEditorScreen` mode/tool/adjust density.
+- Extracted layout thresholds for phone vs tablet/foldable/desktop windows.
+- Keyboard and pointer affordances for larger-screen editing.
+
+Result:
+
+- Added `EditorAdaptiveLayout` with tested width/height thresholds and side
+  panel widths.
+- Wrapped the editor in adaptive constraints. Phone keeps the existing compact
+  toolbar path; wide windows gain a persistent right inspector.
+- Moved mode selection, crop controls, redaction actions, draw tools/layers, and
+  adjustment sliders into the wide inspector. The wide path hides the phone-only
+  scrolling rows to reduce toolbar density.
+- Added keyboard shortcuts for save, undo/redo, crop nudging, preview toggling,
+  and keyboard zoom, plus mouse-wheel zoom.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -285,4 +305,4 @@ strategic direction.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
   intended in the initial planning run. Later autonomous roadmap continuation
-  passes did include code changes for P0.1 through P0.5 and P1.6 through P1.8.
+  passes did include code changes for P0.1 through P0.5 and P1.6 through P1.9.

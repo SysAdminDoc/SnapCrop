@@ -52,6 +52,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Tap dimensions for exact pixel input
 - Before/after swipe comparison
 - Live file size estimate
+- Adaptive wide editor layout with persistent side controls for tablets, foldables, and desktop-mode windows
 - Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
 
 **Draw — 16 Tools**
