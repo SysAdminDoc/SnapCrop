@@ -104,7 +104,7 @@ layers without mutating the source screenshot.
 - Search screenshot albums by filename, source hints, indexed categories, dimensions, and OCR/barcode text after using OCR in the editor
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
-- Multi-select for batch delete, share, resize, or PDF export
+- Multi-select for batch delete, share, resize, batch rename, or PDF report export
 - Favorites, search, and sort by date/name/size
 - Rebuild or purge the local screenshot index from Settings
 - Home recent crops include explicit delete confirmation for safe cleanup
@@ -122,6 +122,10 @@ layers without mutating the source screenshot.
 - **Formats:** PNG, JPEG, or WebP with quality slider
 - **Target file size:** Set a KB budget, SnapCrop auto-adjusts quality to hit it
 - **Custom filenames:** Templates with `%timestamp%`, `%date%`, `%time%`, `%counter%`
+- **Batch rename:** Gallery-selected screenshots can use `%app%`, `%date%`,
+  `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates
+- **PDF reports:** Gallery selections can be bundled with title, notes,
+  timestamps, source/dimension metadata, and an optional OCR appendix
 - **Save location:** Pictures, DCIM, or Downloads
 - **Extras:** Export border, watermark overlay, EXIF stripping,
   editable project sidecars, delete-original toggle

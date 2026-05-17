@@ -60,7 +60,8 @@ aligned with `origin/main`.
 - `ScreenshotService`: foreground MediaStore observer, screenshot detection,
   quick crop, delayed capture, notification actions, last-action execution.
 - `MainActivity`: home screen, permissions, recent crops, manual pick, batch
-  crop/resize, stitch/collage/device-frame/video workflows.
+  crop/resize/rename, PDF report export, stitch/collage/device-frame/video
+  workflows.
 - `CropActivity`: bitmap loading, crop/export pipeline, share/clipboard/save,
   SVG sidecar generation for visible vector annotations and redaction
   rectangles, and `.snapcrop.json` project sidecar open/save.
@@ -76,7 +77,9 @@ aligned with `origin/main`.
 - `EditorPreview`: before/after preview rendering and divider gestures.
 - `GalleryScreen`: MediaStore-backed gallery, optional local screenshot
   intelligence index integration, smart auto-albums, search, favorites,
-  multi-select, PDF export, photo/video viewer.
+  multi-select, batch rename, PDF report export, photo/video viewer.
+- `ExportWorkflowModels`: export metadata and batch rename template token
+  expansion/sanitization shared by gallery export workflows.
 - `ScrollCaptureService`: AccessibilityService long-screenshot capture. It uses
   `takeScreenshot()`, throttles capture attempts, strips system bars, scrolls,
   stops on repeated/stuck content, stitches up to ten frames behind a time
@@ -131,8 +134,8 @@ and Android system integration.
   conditional auto-actions.
 - Privacy tooling: sensitive text detection, face blur, pixelate mode, delete
   confirmations, source/replacement copy, EXIF strip, and local-first ML.
-- Media workflows: gallery, smart albums, batch crop/resize, video frame/trim,
-  stitch, collage, PDF export, and device mockup.
+- Media workflows: gallery, smart albums, batch crop/resize/rename, video
+  frame/trim, stitch, collage, PDF report export, and device mockup.
 - Release hygiene improved over prior versions: externalized signing secrets and
   signed release build path documented.
 
@@ -161,6 +164,13 @@ and Android system integration.
   Reddit and X/Twitter; custom profiles can match source/package hints or OCR
   keywords, apply crop bands, and drive Quick Crop album/redaction/export
   actions. Future work can add richer visual training and profile sharing UX.
+- Export/reporting now has a stronger local-first foundation. Gallery
+  selections can create PDF incident reports with title, notes, timestamps,
+  image metadata, source hints, dimensions, index categories, and optional OCR
+  appendix pages; selected images can also be batch-renamed with `%app%`,
+  `%date%`, `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates.
+  P1.10 still needs explicit opt-in network export targets and Android share
+  shortcuts before it is complete.
 - Smart albums now use an opt-in local intelligence index for metadata,
   source-hint categories, favorite state, and editor OCR/barcode tokens. Future
   work can add background OCR/model-state progress, but the current design

@@ -334,3 +334,37 @@ Verification for this continuation batch:
   passed in 3m 13s after the pointer-routing refinement.
 - Existing warnings remain for the known CycloneDX configuration-time
   dependency-resolution message.
+
+## Roadmap Continuation - P1.10 Local Reporting Batch - 2026-05-17
+
+Implemented the local-first portion of P1.10, "Export and reporting workflows":
+
+- Added `ExportWorkflowModels` with export metadata and batch rename template
+  token expansion/sanitization.
+- Replaced the gallery image-only PDF action with a report dialog for title,
+  notes, and optional OCR appendix generation.
+- PDF reports now include a cover page, timestamp, selected-image metadata,
+  MediaStore source hints where available, dimensions, size, date, local-index
+  category hints, image pages, and optional OCR appendix pages.
+- Added gallery batch rename from multi-select using `%app%`, `%date%`,
+  `%time%`, `%timestamp%`, `%counter%`, and `%profile%` tokens.
+- Added `BatchRenameTemplateTest` for token expansion and filename
+  sanitization.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, and `README.md`.
+
+Verification for this continuation batch so far:
+
+- `.\gradlew.bat :app:testDebugUnitTest`: passed in 29s after fixing PDF
+  constants and tightening rename-template tests.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 2m 29s.
+- Existing warnings remain for deprecated activity-result callbacks and the
+  AutoMirrored icon migration, plus the known CycloneDX configuration-time
+  dependency-resolution message.
+
+Remaining P1.10 work:
+
+- Add explicit opt-in network export targets for self-hosted HTTP,
+  WebDAV/Nextcloud, and Imgur anonymous upload.
+- Add Android share shortcuts for frequent export destinations.

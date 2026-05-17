@@ -264,6 +264,27 @@ Result:
 - Added keyboard shortcuts for save, undo/redo, crop nudging, preview toggling,
   and keyboard zoom, plus mouse-wheel zoom.
 
+### Pass 13: P1.10 local export/reporting implementation pass
+
+Targets:
+
+- Existing gallery PDF export path.
+- Multi-select export and rename workflows.
+- Local-first incident bundle support before introducing opt-in network
+  destinations.
+
+Result:
+
+- Added a report dialog and PDF report builder with cover, notes, timestamps,
+  image metadata, source hints, dimensions, local index categories, image pages,
+  and optional OCR appendix pages.
+- Added batch rename templates for `%app%`, `%date%`, `%time%`, `%timestamp%`,
+  `%counter%`, and `%profile%`.
+- Added focused JVM coverage for rename token expansion and filename
+  sanitization.
+- Left P1.10 open for the next pass because network export targets and Android
+  share shortcuts are separate privacy-sensitive deliverables.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.

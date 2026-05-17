@@ -157,7 +157,9 @@ Implemented features confirmed by live files and history:
 - first editor split into model, canvas-helper, layer-panel, preview, and
   adaptive layout-helper files,
 - adaptive editor wide layout with a persistent right inspector for
-  tablet/foldable/desktop-mode windows.
+  tablet/foldable/desktop-mode windows,
+- local PDF incident report export with title/notes/metadata/OCR appendix and
+  gallery batch rename templates.
 
 ## Repo Hygiene Findings
 
