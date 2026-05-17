@@ -39,6 +39,9 @@ All notable changes to SnapCrop will be documented in this file.
   before/after preview code out of `CropEditorScreen.kt`.
 - Added an editor regression checklist and a small model-helper regression test
   for extracted adjustment, aspect-ratio, filter, and path behavior.
+- Upgraded Long Screenshot capture to a ten-frame/time-guarded flow with
+  repeated-frame stop detection, sticky-header/footer aware stitching, and a
+  review screen with Save & Edit, Retry, and Discard before gallery save.
 
 ## [v6.19.0] - 2026-05-14
 

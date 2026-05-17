@@ -60,7 +60,9 @@ Kotlin source size indicators from `app/src/main`:
 | `ScreenshotService.kt` | 533 | Screenshot monitor, quick crop, last action |
 | `SettingsActivity.kt` | 467 | Export and behavior preferences |
 | `CollageActivity.kt` | 453 | Collage workflow |
-| `ScrollCaptureService.kt` | 412 | Long screenshot capture/stitch |
+| `ScrollCaptureService.kt` | 504 | Long screenshot capture, stop reasons, stitcher |
+| `LongScreenshotReviewActivity.kt` | 242 | Long screenshot preview/save/retry/discard |
+| `LongScreenshotStore.kt` | 94 | Long screenshot temp file and MediaStore save helpers |
 | `StitchActivity.kt` | 376 | Stitch workflow |
 | `VideoClipActivity.kt` | 325 | Video frame/trim UI |
 | `DeviceFrameActivity.kt` | 308 | Device mockup export |
@@ -135,7 +137,8 @@ Implemented features confirmed by live files and history:
 - screenshot monitoring and quick crop,
 - delayed capture,
 - last-action Quick Settings tile,
-- long screenshot capture,
+- long screenshot capture with ten-frame/time guard, sticky-aware stitcher, and
+  review/retry before save,
 - Reddit/X app crop profiles,
 - conditional auto-actions with sensitive text redaction,
 - OCR, barcode, face detection, object detection, subject segmentation,

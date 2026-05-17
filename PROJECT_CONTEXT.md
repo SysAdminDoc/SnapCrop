@@ -78,7 +78,12 @@ aligned with `origin/main`.
   favorites, multi-select, PDF export, photo/video viewer.
 - `ScrollCaptureService`: AccessibilityService long-screenshot capture. It uses
   `takeScreenshot()`, throttles capture attempts, strips system bars, scrolls,
-  stitches, saves, and opens the editor.
+  stops on repeated/stuck content, stitches up to ten frames behind a time
+  guard, and opens a review flow before save.
+- `LongScreenshotReviewActivity`: preview, Save & Edit, Retry, and Discard for
+  captured long screenshots before they are committed to MediaStore.
+- `LongScreenshotStore`: shared temporary-review and MediaStore save helpers
+  for long screenshots.
 - `SmartEraseEngine`: local mask-based edge-aware fill. No large ONNX inpainting
   model is bundled.
 - `SmartReframeEngine`: ML Kit object, text, and face bounds unioned into
@@ -148,7 +153,10 @@ and Android system integration.
 - App profiles and conditional actions currently cover Reddit and X/Twitter only.
 - Smart albums are heuristic and do not yet maintain a persistent OCR/entity/app
   index.
-- Long-screenshot stitch quality is basic and capped at five frames.
+- Long-screenshot capture now has ten-frame/time-guarded capture,
+  repeated-frame stop detection, sticky-header/footer aware stitching, and
+  review/retry before save. It still needs real-device QA across chat, browser,
+  settings, and feed apps because Accessibility scroll behavior is app-specific.
 - The first editor split now extracts model/state, layer panel, before/after
   preview, and small canvas helpers. The editor remains dense; tablet/foldable
   / DeX layouts and toolbar/tool-control extraction are high-leverage future
