@@ -67,7 +67,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.Locale
+
+private data class CropExportFormat(
+    val format: Bitmap.CompressFormat,
+    val quality: Int,
+    val ext: String,
+    val mime: String
+)
 
 class CropActivity : ComponentActivity() {
 
@@ -85,6 +93,10 @@ class CropActivity : ComponentActivity() {
     private var sourceUri: Uri? = null
     private var intentSourceHints: List<String> = emptyList()
     private var currentCropHints: List<String> = emptyList()
+    private val initialPixelateRects = mutableStateOf<List<Rect>>(emptyList())
+    private val initialDrawPaths = mutableStateOf<List<DrawPath>>(emptyList())
+    private val initialAdjustments = mutableStateOf<FloatArray?>(null)
+    private val projectLoadError = mutableStateOf<String?>(null)
     private val rotationKey = mutableIntStateOf(0)
 
     private fun handleIntent(incomingIntent: Intent) {
@@ -97,18 +109,28 @@ class CropActivity : ComponentActivity() {
         }
         if (newUri == null) { finish(); return }
 
-        // Reset state for the new image
-        sourceUri = newUri
+        // Reset state for the new image or project sidecar.
+        sourceUri = null
         intentSourceHints = CropSourceHints.fromIntent(incomingIntent, newUri)
         isLoading.value = true
         bitmapState.value = null
         cropMethod.value = ""
+        initialPixelateRects.value = emptyList()
+        initialDrawPaths.value = emptyList()
+        initialAdjustments.value = null
+        projectLoadError.value = null
 
         showFlash.value = incomingIntent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
         if (showFlash.value) vibrateShort()
 
         lifecycleScope.launch(Dispatchers.IO) {
-            loadBitmap(newUri)
+            val mimeType = incomingIntent.type ?: contentResolver.getType(newUri)
+            if (SnapCropProjectSidecar.looksLikeProject(mimeType, newUri.lastPathSegment)) {
+                loadProjectSidecar(newUri)
+            } else {
+                sourceUri = newUri
+                loadBitmap(newUri)
+            }
             withContext(Dispatchers.Main) { isLoading.value = false }
         }
     }
@@ -126,7 +148,7 @@ class CropActivity : ComponentActivity() {
         setContent {
             SnapCropTheme {
                 val showDeleteConfirm = remember { mutableStateOf(false) }
-                val replaceOriginalOnSave = remember { getDeletePref() }
+                val replaceOriginalOnSave = remember { effectiveDeleteOriginalOnSave() }
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     if (isLoading.value) {
                         CircularProgressIndicator(
@@ -140,7 +162,10 @@ class CropActivity : ComponentActivity() {
                             bitmap = bmp,
                             initialCropRect = cropRect.value,
                             cropMethod = cropMethod.value,
-                            onSave = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = getDeletePref()) },
+                            initialPixelateRects = initialPixelateRects.value,
+                            initialDrawPaths = initialDrawPaths.value,
+                            initialAdjustments = initialAdjustments.value,
+                            onSave = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
                             onSaveCopy = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = false) },
                             onShare = { rect, pix, draw, adj -> shareCropped(bmp, rect, pix, draw, adj) },
                             onCopyClipboard = { rect, pix, draw, adj -> copyToClipboard(bmp, rect, pix, draw, adj) },
@@ -199,6 +224,44 @@ class CropActivity : ComponentActivity() {
                         )
                     }
 
+                    projectLoadError.value?.let { message ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black)
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Surface(
+                                color = SurfaceVariant,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "Project source unavailable",
+                                        color = OnSurface,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        message,
+                                        color = OnSurfaceVariant,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                    Spacer(Modifier.height(16.dp))
+                                    TextButton(onClick = { finish() }) {
+                                        Text("Close", color = Primary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Saving overlay
                     if (isSaving.value) {
                         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)),
@@ -224,7 +287,7 @@ class CropActivity : ComponentActivity() {
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
-                                        if (getDeletePref())
+                                        if (effectiveDeleteOriginalOnSave())
                                             "Replacing the source after the crop is written"
                                         else
                                             "Writing a separate copy to your save location",
@@ -291,7 +354,21 @@ class CropActivity : ComponentActivity() {
     private fun appCropProfilesEnabled(): Boolean =
         getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("app_crop_profiles", true)
 
+    private fun projectSidecarsEnabled(): Boolean =
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("project_sidecars", true)
+
+    private fun effectiveDeleteOriginalOnSave(): Boolean =
+        getDeletePref() && !projectSidecarsEnabled()
+
     private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
+        val resolved = getExportFormat(forcePng = false)
+        return resolved.format to resolved.quality
+    }
+
+    private fun getExportFormat(forcePng: Boolean): CropExportFormat {
+        if (forcePng) {
+            return CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+        }
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val quality = prefs.getInt("jpeg_quality", 95)
         return when {
@@ -299,10 +376,10 @@ class CropActivity : ComponentActivity() {
                 @Suppress("DEPRECATION")
                 val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
                           else Bitmap.CompressFormat.WEBP
-                fmt to quality
+                CropExportFormat(fmt, quality, "webp", "image/webp")
             }
-            prefs.getBoolean("use_jpeg", false) -> Bitmap.CompressFormat.JPEG to quality
-            else -> Bitmap.CompressFormat.PNG to 100
+            prefs.getBoolean("use_jpeg", false) -> CropExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+            else -> CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
         }
     }
 
@@ -319,7 +396,34 @@ class CropActivity : ComponentActivity() {
         } catch (_: Exception) {}
     }
 
-    private fun loadBitmap(uri: Uri) {
+    private fun loadProjectSidecar(uri: Uri) {
+        try {
+            val json = contentResolver.openInputStream(uri)?.use { stream ->
+                stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } ?: throw IOException("Failed to open project sidecar")
+            val project = SnapCropProjectSidecar.decode(json)
+            val source = project.sourceUri?.let { Uri.parse(it) }
+            if (source == null) {
+                showProjectError("This project sidecar does not include a source image URI.")
+                return
+            }
+            sourceUri = source
+            intentSourceHints = listOf("snapcrop_project")
+            loadBitmap(source, project)
+        } catch (e: Exception) {
+            showProjectError("SnapCrop could not open this project sidecar: ${e.message ?: "unknown error"}")
+        }
+    }
+
+    private fun showProjectError(message: String) {
+        runOnUiThread {
+            bitmapState.value = null
+            projectLoadError.value = message
+            isLoading.value = false
+        }
+    }
+
+    private fun loadBitmap(uri: Uri, project: SnapCropProject? = null) {
         try {
             // First pass: get dimensions
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -341,33 +445,59 @@ class CropActivity : ComponentActivity() {
             }
 
             originalBitmap?.let { bmp ->
-                val statusBarPx = SystemBars.statusBarHeight(resources)
-                val navBarPx = SystemBars.navigationBarHeight(resources)
+                bitmapState.value = bmp
                 currentCropHints = CropSourceHints.normalize(
                     intentSourceHints + CropSourceHints.fromMedia(contentResolver, uri)
                 )
-                val result = AutoCrop.detectWithMethod(
-                    bitmap = bmp,
-                    statusBarPx = statusBarPx,
-                    navBarPx = navBarPx,
-                    sourceHints = currentCropHints,
-                    appProfilesEnabled = appCropProfilesEnabled()
-                )
-                bitmapState.value = bmp
-                cropRect.value = result.rect
-                cropMethod.value = result.method
+                if (project != null) {
+                    cropRect.value = project.cropRect.coerceInside(bmp.width, bmp.height)
+                    cropMethod.value = "project"
+                    initialPixelateRects.value = project.pixelateRects
+                    initialDrawPaths.value = project.drawLayers
+                    initialAdjustments.value = project.adjustments
+                } else {
+                    val statusBarPx = SystemBars.statusBarHeight(resources)
+                    val navBarPx = SystemBars.navigationBarHeight(resources)
+                    val result = AutoCrop.detectWithMethod(
+                        bitmap = bmp,
+                        statusBarPx = statusBarPx,
+                        navBarPx = navBarPx,
+                        sourceHints = currentCropHints,
+                        appProfilesEnabled = appCropProfilesEnabled()
+                    )
+                    cropRect.value = result.rect
+                    cropMethod.value = result.method
+                }
             } ?: run {
+                if (project != null) {
+                    showProjectError("The original image referenced by this project is missing or inaccessible: ${project.sourceUri}")
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (project != null) {
+                showProjectError("The original image referenced by this project is missing or inaccessible: ${project.sourceUri}")
+            } else {
                 runOnUiThread {
                     Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
-        } catch (e: Exception) {
-            runOnUiThread {
-                Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
-                finish()
-            }
         }
+    }
+
+    private fun Rect.coerceInside(width: Int, height: Int): Rect {
+        val safeW = width.coerceAtLeast(1)
+        val safeH = height.coerceAtLeast(1)
+        val l = left.coerceIn(0, safeW - 1)
+        val t = top.coerceIn(0, safeH - 1)
+        val r = right.coerceIn(l + 1, safeW)
+        val b = bottom.coerceIn(t + 1, safeH)
+        return Rect(l, t, r, b)
     }
 
     private fun rotateBitmap() {
@@ -1300,6 +1430,52 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun buildProjectSidecarJson(
+        rect: Rect,
+        pixRects: List<Rect>,
+        drawPaths: List<DrawPath>,
+        adj: FloatArray,
+        deleteOriginal: Boolean,
+        exportFormat: CropExportFormat,
+        savePath: String
+    ): String {
+        val source = sourceUri
+        val bitmap = bitmapState.value
+        val project = SnapCropProject(
+            sourceUri = source?.toString(),
+            sourceSha256 = source?.let { sha256OfUri(it) },
+            sourceWidth = bitmap?.width ?: 0,
+            sourceHeight = bitmap?.height ?: 0,
+            cropRect = Rect(rect),
+            adjustments = adj.copyOf(),
+            pixelateRects = pixRects.map { Rect(it) },
+            drawLayers = drawPaths,
+            exportFormat = exportFormat.ext,
+            exportMimeType = exportFormat.mime,
+            exportQuality = exportFormat.quality,
+            exportSavePath = savePath,
+            deleteOriginal = deleteOriginal
+        )
+        return SnapCropProjectSidecar.encode(project)
+    }
+
+    private fun sha256OfUri(uri: Uri): String? {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            contentResolver.openInputStream(uri)?.use { input ->
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    digest.update(buffer, 0, read)
+                }
+            } ?: return null
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
         if (isSaving.value) return
         isSaving.value = true
@@ -1316,7 +1492,22 @@ class CropActivity : ComponentActivity() {
                 val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
                 val name = resolveFilename()
                 val annotationSvg = buildAnnotationSvg(rect, pixRects, drawPaths)
-                saveToGallery(cropped, name, deleteOriginal, forcePng = hasShapeCrop, annotationSvg = annotationSvg)
+                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+                val exportFormat = getExportFormat(forcePng = hasShapeCrop)
+                val projectSidecarJson = if (projectSidecarsEnabled()) {
+                    buildProjectSidecarJson(rect, pixRects, drawPaths, adj, deleteOriginal, exportFormat, savePath)
+                } else {
+                    null
+                }
+                saveToGallery(
+                    bitmap = cropped,
+                    name = name,
+                    deleteOriginal = deleteOriginal,
+                    forcePng = hasShapeCrop,
+                    annotationSvg = annotationSvg,
+                    projectSidecarJson = projectSidecarJson
+                )
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@CropActivity, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1492,18 +1683,42 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun saveProjectSidecar(name: String, savePath: String, json: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.snapcrop.json")
+            put(MediaStore.MediaColumns.MIME_TYPE, SnapCropProjectSidecar.MIME_TYPE)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, savePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+            ?: return false
+        return try {
+            contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                ?: throw IOException("Failed to open project output stream")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            true
+        } catch (_: IOException) {
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            false
+        }
+    }
+
     private fun saveToGallery(
         bitmap: Bitmap,
         name: String,
         deleteOriginal: Boolean,
         forcePng: Boolean = false,
-        annotationSvg: String? = null
+        annotationSvg: String? = null,
+        projectSidecarJson: String? = null
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
-        val isWebp = format.isWebpFormat()
-        val ext = when { format == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
-        val mime = when { format == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
+        val exportFormat = getExportFormat(forcePng)
+        val format = exportFormat.format
+        val quality = exportFormat.quality
+        val ext = exportFormat.ext
+        val mime = exportFormat.mime
 
         val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
 
@@ -1532,7 +1747,10 @@ class CropActivity : ComponentActivity() {
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
-                val msg = "Saved (${sizeKb}KB, q=$usedQuality)" + if (svgSaved) " + SVG" else ""
+                val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
+                val msg = "Saved (${sizeKb}KB, q=$usedQuality)" +
+                    (if (svgSaved) " + SVG" else "") +
+                    (if (projectSaved) " + Project" else "")
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
                 if (deleteOriginal) deleteOriginalFile()
             } else {
@@ -1542,8 +1760,10 @@ class CropActivity : ComponentActivity() {
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
+                val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
                 val msg = (if (deleteOriginal) "Saved to $savePath" else "Copy saved to $savePath") +
-                    if (svgSaved) " + SVG" else ""
+                    (if (svgSaved) " + SVG" else "") +
+                    (if (projectSaved) " + Project" else "")
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
                 if (deleteOriginal) deleteOriginalFile()
             }

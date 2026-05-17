@@ -106,6 +106,7 @@ dependencies {
     implementation(libs.mlkit.entity.extraction)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(libs.json)
     debugImplementation(libs.androidx.ui.tooling)
 }
 

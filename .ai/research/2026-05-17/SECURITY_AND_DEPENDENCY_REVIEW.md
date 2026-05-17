@@ -14,6 +14,7 @@ Research date: 2026-05-17
 | navigation-compose | 2.9.8 | Metadata showed 2.9.8. | Baseline upgraded in P0.2. |
 | lifecycle-runtime-ktx | 2.10.0 | Metadata showed 2.10.0. | Baseline upgraded in P0.2. |
 | Coil Compose | 2.7.0 | Coil 2 metadata still showed 2.7.0; Coil 3 stable line exists at 3.4.0. | Stay on 2.7.0 unless a Coil 3 migration is planned/tested. |
+| org.json test dependency | 20251224 | Maven Central metadata showed latest 20251224. | JVM-test only; used to test project sidecar JSON without adding runtime APK dependency. |
 | ML Kit object/text/face/barcode/translate/language-id | Current catalog versions | Metadata indicated current stable versions for inspected artifacts. | No urgent upgrade; focus on runtime error UX. |
 | ML Kit subject segmentation/entity extraction | Beta artifacts | Metadata indicated current beta artifacts for inspected coordinates. | Treat as beta-risk features; add fallback/status UX. |
 
@@ -58,7 +59,8 @@ Recommended controls:
 - Android app-data backup remains disabled because preferences can reveal local
   paths, favorites, automation toggles, and screenshot workflow habits.
 - Sidecar privacy review before saving source URI/path, OCR text, or entity
-  metadata.
+  metadata. P0.4 sidecars currently store source URI/hash and editable geometry,
+  not OCR transcript text.
 
 ## aCropalypse-Style Export Risk
 
@@ -95,5 +97,5 @@ Recommended controls:
 
 1. Add export regression tests for stale-byte/redaction safety.
 2. Review tracked `.idsig` artifacts and remove if not intentionally versioned.
-3. Before implementing project sidecars or screenshot indexing, document
-   source-URI/path, OCR text, and entity metadata privacy rules.
+3. Before adding screenshot indexing, document OCR text and entity metadata
+   privacy rules and purge controls.

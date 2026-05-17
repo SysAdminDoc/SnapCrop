@@ -76,6 +76,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
 Annotated saves include a same-name SVG sidecar for visible vector layers and redaction rectangles.
+Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
+then reopened later to restore the crop, redactions, adjustment state, and draw
+layers without mutating the source screenshot.
 
 **Pixelate**
 - Draw rectangles to mosaic-redact sensitive info
@@ -116,7 +119,8 @@ Annotated saves include a same-name SVG sidecar for visible vector layers and re
 - **Target file size:** Set a KB budget, SnapCrop auto-adjusts quality to hit it
 - **Custom filenames:** Templates with `%timestamp%`, `%date%`, `%time%`, `%counter%`
 - **Save location:** Pictures, DCIM, or Downloads
-- **Extras:** Export border, watermark overlay, EXIF stripping, delete-original toggle
+- **Extras:** Export border, watermark overlay, EXIF stripping,
+  editable project sidecars, delete-original toggle
 
 ---
 

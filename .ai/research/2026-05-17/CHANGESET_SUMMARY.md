@@ -141,3 +141,40 @@ Verification for this continuation batch:
   AutoMirrored icon migration, and one non-null Elvis expression.
 - CycloneDX still prints the known configuration-time resolution warning for
   `releaseRuntimeClasspath`; the task succeeds.
+
+## Roadmap Continuation - P0.4 - 2026-05-17
+
+Implemented P0.4, "Build non-destructive project sidecars":
+
+- Added `SnapCropProjectSidecar` and a versioned `.snapcrop.json` schema for
+  source URI/hash, source dimensions, crop rect, adjustment array, pixelate
+  rectangles, draw layers, visibility/order, text/fill/dash properties, and
+  export settings.
+- Added JSON project sidecar export through MediaStore next to image/SVG
+  exports when the new `project_sidecars` setting is enabled.
+- Added an `Editable project sidecars` setting. The setting defaults on and
+  makes the main save path non-destructive so project sidecars do not point at a
+  deleted source image.
+- Added share/view intent filters for SnapCrop project JSON files and
+  `CropActivity` loading of sidecars back into the editor.
+- Added recoverable project-load UI when the sidecar source image is missing or
+  inaccessible.
+- Added `SnapCropProjectSidecarTest` for encode/decode defaults, project
+  detection, and editable layer state preservation.
+- Added a JVM-only `org.json` test dependency so sidecar serialization can be
+  tested outside the Android runtime.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`,
+  `SOURCE_REGISTER.md`, `RESEARCH_LOG.md`, and local `CLAUDE.md` notes.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin`: passed.
+- `.\gradlew.bat :app:testDebugUnitTest`: passed after adding the JVM JSON test
+  dependency and running the sidecar test under Robolectric for Android
+  geometry classes.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 5m 19s.
+- Existing warnings remain for legacy activity-result callbacks, AutoMirrored
+  icons, `Bitmap.recycle()`, one non-null Elvis expression, unstripped bundled
+  native ML Kit libraries, and the known CycloneDX configuration-time
+  resolution warning.

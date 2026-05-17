@@ -104,6 +104,17 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", true)) }
+                    SettingToggle(
+                        title = "Editable project sidecars",
+                        subtitle = "Save a .snapcrop.json file next to exports so crops, redactions, and layers can be reopened later. Keeps the source image when enabled.",
+                        checked = projectSidecars,
+                        onCheckedChange = {
+                            projectSidecars = it
+                            prefs.edit().putBoolean("project_sidecars", it).apply()
+                        }
+                    )
+
                     var appCropProfiles by remember { mutableStateOf(prefs.getBoolean("app_crop_profiles", true)) }
                     SettingToggle(
                         title = "App crop profiles",

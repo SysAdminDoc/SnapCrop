@@ -29,6 +29,12 @@ All notable changes to SnapCrop will be documented in this file.
   existing notification fallback when background editor launch is blocked.
 - Added an in-app Accessibility disclosure before sending users to Android
   settings for Long Screenshot setup.
+- Added editable `.snapcrop.json` project sidecars with a versioned schema for
+  source URI/hash, crop rect, adjustments, pixelate rectangles, draw layers, and
+  export settings.
+- Added project-sidecar open support for JSON share/view intents and an
+  `Editable project sidecars` setting. While sidecars are enabled, main Save
+  keeps the source image so the project can be reopened.
 
 ## [v6.19.0] - 2026-05-14
 

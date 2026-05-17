@@ -111,6 +111,7 @@ repository research and roadmap planning pass.
 | D15 | https://developer.android.com/jetpack/androidx/releases/navigation | AndroidX navigation releases. |
 | D16 | https://developer.android.com/jetpack/androidx/releases/lifecycle | AndroidX lifecycle releases. |
 | D17 | https://coil-kt.github.io/coil/changelog/ | Coil changelog. |
+| D18 | https://repo.maven.apache.org/maven2/org/json/json/maven-metadata.xml | JVM test dependency metadata for sidecar JSON tests. |
 
 ## Security And Supply Chain Sources
 

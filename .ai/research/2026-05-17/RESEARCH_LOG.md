@@ -138,6 +138,23 @@ Result:
   editor when Android blocks background launch.
 - Long Screenshot needs a clear in-app disclosure before Accessibility settings.
 
+### Pass 7: P0.4 sidecar implementation pass
+
+Targets:
+
+- Existing SVG sidecar export flow.
+- `CropActivity` save/open flow and `CropEditorScreen` state handoff.
+- Draw layer, pixelate rectangle, crop, and adjustment state representation.
+- JVM test coverage for JSON encode/decode.
+
+Result:
+
+- Added a versioned `.snapcrop.json` schema and serializer.
+- Added save/open wiring without rewriting the monolithic editor.
+- Added a project-sidecar setting; enabled sidecars keep the source image so
+  re-openable projects do not point at a deleted original.
+- Added sidecar serialization tests using a JVM `org.json` test dependency.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
