@@ -107,7 +107,7 @@ fun CropEditorScreen(
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
-    onRemoveBg: () -> Unit,
+    onRemoveBg: ((String?) -> Unit) -> Unit,
     onResize: (Int) -> Unit,
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
@@ -165,10 +165,11 @@ fun CropEditorScreen(
     var eyedropperActive by remember { mutableStateOf(false) }
     var showLayerPanel by remember { mutableStateOf(false) }
     var bgRemoving by remember { mutableStateOf(false) }
+    var bgRemovalStatus by remember { mutableStateOf<String?>(null) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
 
     // Reset bgRemoving and stale palette when bitmap changes (BG removal, rotation, resize)
-    LaunchedEffect(bitmap) { bgRemoving = false; paletteColors = emptyList() }
+    LaunchedEffect(bitmap) { bgRemoving = false; bgRemovalStatus = null; paletteColors = emptyList() }
 
     var showPalette by remember { mutableStateOf(false) }
     var showResizeDialog by remember { mutableStateOf(false) }
@@ -179,6 +180,7 @@ fun CropEditorScreen(
     var translateTarget by remember { mutableStateOf(TextTranslator.defaultTarget) }
     var translation by remember { mutableStateOf<TextTranslation?>(null) }
     var translationError by remember { mutableStateOf<String?>(null) }
+    var translationStatus by remember { mutableStateOf<String?>(null) }
     var translating by remember { mutableStateOf(false) }
     var faceRedacting by remember { mutableStateOf(false) }
     var lastFaceCount by remember { mutableIntStateOf(-1) } // -1 = not scanned yet
@@ -234,6 +236,7 @@ fun CropEditorScreen(
         selectedOcrText = text
         translation = null
         translationError = null
+        translationStatus = null
         translating = false
     }
 
@@ -249,14 +252,21 @@ fun CropEditorScreen(
         translating = true
         translation = null
         translationError = null
+        translationStatus = MlKitStatus.TRANSLATION_IDENTIFYING
         scope.launch {
             try {
                 translation = withContext(Dispatchers.IO) {
-                    TextTranslator.translate(text, translateTarget)
+                    TextTranslator.translate(
+                        text = text,
+                        target = translateTarget,
+                        context = context.applicationContext,
+                        onProgress = { message -> scope.launch { translationStatus = message } }
+                    )
                 }
             } catch (error: Throwable) {
                 translationError = TextTranslator.userMessage(error)
             } finally {
+                translationStatus = null
                 translating = false
             }
         }
@@ -533,6 +543,19 @@ fun CropEditorScreen(
         selectedRatio = AspectRatio.FREE
     }
 
+    fun startBackgroundRemoval() {
+        if (bgRemoving) return
+        bgRemoving = true
+        bgRemovalStatus = MlKitStatus.SUBJECT_SEGMENTATION_STARTING
+        onRemoveBg { message ->
+            bgRemoving = false
+            bgRemovalStatus = message
+            if (!message.isNullOrBlank()) {
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     fun selectEditMode(mode: EditMode) {
         if (editMode == mode && mode != EditMode.CROP) {
             editMode = EditMode.CROP
@@ -736,12 +759,7 @@ fun CropEditorScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilledTonalButton(
-                            onClick = {
-                                if (!bgRemoving) {
-                                    bgRemoving = true
-                                    onRemoveBg()
-                                }
-                            },
+                            onClick = { startBackgroundRemoval() },
                             enabled = !bgRemoving,
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
                             shape = RoundedCornerShape(8.dp),
@@ -761,6 +779,9 @@ fun CropEditorScreen(
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                         ) { Text("Colors", fontSize = 11.sp, color = Color(0xFFFAB387)) }
+                    }
+                    bgRemovalStatus?.let { status ->
+                        Text(status, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
                     }
                     if (showPalette && paletteColors.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -2704,12 +2725,7 @@ fun CropEditorScreen(
                     }
 
                     FilledTonalButton(
-                        onClick = {
-                            if (!bgRemoving) {
-                                bgRemoving = true
-                                onRemoveBg()
-                            }
-                        },
+                        onClick = { startBackgroundRemoval() },
                         enabled = !bgRemoving,
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
                         shape = RoundedCornerShape(12.dp),
@@ -2733,6 +2749,15 @@ fun CropEditorScreen(
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
                     ) { Text("Colors", fontSize = 13.sp, color = Color(0xFFFAB387)) }
+                }
+                bgRemovalStatus?.let { status ->
+                    Text(
+                        status,
+                        color = OnSurfaceVariant,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    )
                 }
             }
 
@@ -2862,7 +2887,12 @@ fun CropEditorScreen(
                         translating -> Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("Preparing on-device translation...", color = OnSurfaceVariant, fontSize = 12.sp)
+                            Text(
+                                translationStatus ?: "Preparing on-device translation...",
+                                color = OnSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
                         }
                         translationError != null -> Text(
                             translationError.orEmpty(),
@@ -2895,7 +2925,7 @@ fun CropEditorScreen(
                             }
                         }
                         else -> Text(
-                            "Language models download over Wi-Fi once per language pair.",
+                            "Language models download over Wi-Fi once per language pair. If Play Services reports storage or model errors, free space and retry.",
                             color = OnSurfaceVariant,
                             fontSize = 11.sp,
                             lineHeight = 15.sp

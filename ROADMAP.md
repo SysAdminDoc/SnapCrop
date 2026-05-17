@@ -415,7 +415,7 @@ Implemented 2026-05-17:
 
 ## P2: Research And Advanced Capabilities
 
-### 11. [ ] ML Kit robustness and model-state UX
+### 11. [x] ML Kit robustness and model-state UX
 
 Evidence: L11 uses several ML Kit clients. E7/E8 include official guidance and
 known issue classes; subject segmentation and translation may involve model
@@ -432,6 +432,20 @@ Deliverables:
 Acceptance:
 
 - Failed ML features degrade predictably and do not silently look like no-ops.
+
+Implemented 2026-05-17:
+
+- Added centralized `MlKitStatus` and `MlKitStatusStore` helpers for ML Kit
+  feature labels, Google Play services checks, retry guidance, and cached
+  model readiness/error state.
+- Translation now reports language identification, Wi-Fi model download, and
+  on-device translation progress, and caches successful language-pair model
+  readiness.
+- Background removal now returns a structured subject-segmentation result
+  instead of silently returning the original bitmap on ML failure; the editor
+  shows first-run model/download guidance and failure/no-subject messages.
+- Added Play Services/storage/Wi-Fi retry messages for ML failures and unit
+  coverage for the new status text.
 
 ### 12. [ ] Optional advanced erase backend
 

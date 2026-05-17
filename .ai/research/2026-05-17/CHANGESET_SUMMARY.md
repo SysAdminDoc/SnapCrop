@@ -307,6 +307,34 @@ Verification for this continuation batch:
   AutoMirrored icon migration, and the known CycloneDX configuration-time
   dependency-resolution message.
 
+## Roadmap Continuation - P2.11 ML Kit Robustness - 2026-05-17
+
+Implemented P2.11, "ML Kit robustness and model-state UX":
+
+- Added `MlKitStatus` for centralized ML Kit feature labels, Play Services
+  availability checks, and Wi-Fi/storage/model/retry guidance.
+- Added `MlKitStatusStore` for cached translation model readiness and
+  subject-segmentation success/error status.
+- Updated translation to report identifying/downloading/translating stages,
+  require Wi-Fi model download with clearer status copy, and cache successful
+  language-pair readiness.
+- Updated background removal to return `BackgroundRemovalResult` instead of
+  silently returning the original bitmap on subject-segmentation failure.
+- Updated the editor to show subject-segmentation first-run/download guidance,
+  visible failure/no-subject messages, and richer translation progress.
+- Added `MlKitStatusTest`.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`, and
+  `SOURCE_REGISTER.md`.
+
+Verification for this continuation batch so far:
+
+- `.\gradlew.bat :app:testDebugUnitTest`: passed in 1m 4s.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 3m 23s.
+- Existing warnings remain for deprecated activity-result callbacks and the
+  known CycloneDX configuration-time dependency-resolution message.
+
 ## Roadmap Continuation - P1.9 - 2026-05-17
 
 Implemented P1.9, "Tablet, foldable, and desktop-mode editor layout":

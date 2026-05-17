@@ -308,6 +308,25 @@ Result:
   persistence.
 - Marked P1.10 complete in `ROADMAP.md`.
 
+### Pass 15: P2.11 ML Kit robustness implementation pass
+
+Targets:
+
+- Translation model download/status UX.
+- Subject segmentation/background removal failure visibility.
+- Shared ML Kit retry guidance for Play Services, Wi-Fi, storage, and model
+  readiness failures.
+
+Result:
+
+- Added `MlKitStatus` and `MlKitStatusStore` as the central ML status and
+  readiness cache.
+- Translation now emits identifying/downloading/translating progress and caches
+  successful language-pair downloads.
+- Background removal now reports structured changed/failure state and surfaces
+  first-run/download/no-subject guidance in the editor.
+- Added status-message tests and marked P2.11 complete.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.

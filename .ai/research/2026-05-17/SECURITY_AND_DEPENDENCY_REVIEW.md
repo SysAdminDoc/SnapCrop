@@ -65,6 +65,11 @@ Recommended controls:
   metadata. P0.4 sidecars currently store source URI/hash and editable geometry,
   not OCR transcript text.
 
+P2.11 status: translation and subject segmentation now use centralized status
+messages for Play Services, Wi-Fi, storage, and retry guidance; successful
+translation model pairs and subject-segmentation readiness/error state are
+cached locally in app preferences.
+
 ## aCropalypse-Style Export Risk
 
 Android CVE-2023-21036 showed why image editors must ensure cropped/redacted
