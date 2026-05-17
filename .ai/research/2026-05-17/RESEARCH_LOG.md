@@ -221,6 +221,29 @@ Result:
 - Changed the screenshot cleanup selection to select non-favorite screenshots.
 - Added `ScreenshotIndexClassifierTest`.
 
+### Pass 11: P1.8 user-visible app rules implementation pass
+
+Targets:
+
+- App crop profile detector and preview/explanation surface.
+- Settings controls for built-in and user-trained profile rules.
+- Quick Crop conditional auto-actions and profile-pack portability.
+
+Result:
+
+- Added `UserAppProfileStore`, a JSON profile-pack store for custom rules with
+  source/package hints, OCR keywords, crop bands, album destination, redaction
+  preference, and export format.
+- Expanded `AppCropProfiles` to expose built-in Reddit/X profile summaries,
+  return profile-match previews, and apply user crop bands.
+- Added Settings App rules controls for built-in visibility, user rule creation,
+  enable/delete, copy/import JSON packs, and selected-image testing.
+- Wired user profiles into editor/batch auto-crop and Quick Crop. Quick Crop can
+  run OCR only when a custom rule needs OCR keywords, then save with
+  rule-specific album/redaction/export behavior and an explanatory toast.
+- Added `UserAppProfileStoreTest` for JSON round-trip, source/OCR matching, and
+  user crop-band application.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -262,4 +285,4 @@ strategic direction.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
   intended in the initial planning run. Later autonomous roadmap continuation
-  passes did include code changes for P0.1 through P0.5, P1.6, and P1.7.
+  passes did include code changes for P0.1 through P0.5 and P1.6 through P1.8.

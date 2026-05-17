@@ -30,12 +30,13 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, review, retry if needed, save, then continue editing
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums
+- User app rules can route Quick Crop by source app/package hints or OCR keywords, with per-rule crop bands, album, redaction, and export format
 - Survives reboots — auto-starts with your device
 
 ### Smart Auto-Crop
 - **System bar stripping** — Reads exact status/nav bar heights from Android (works on transparent bars too)
 - **Border detection** — Removes uniform borders from any screenshot, light or dark mode
-- **App crop profiles** — Optional visual templates strip known Reddit and X/Twitter chrome when detected
+- **App crop profiles** — Optional built-in and user-created rules strip app chrome when source hints, OCR keywords, or visual templates match
 - **AI crop** — ML Kit object detection for content-aware cropping
 
 ### Powerful Editor — 5 Modes

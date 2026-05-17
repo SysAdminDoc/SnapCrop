@@ -21,6 +21,8 @@ object AutoCrop {
         statusBarPx: Int = 0,
         navBarPx: Int = 0,
         sourceHints: List<String> = emptyList(),
+        profileTextHints: List<String> = emptyList(),
+        userProfiles: List<UserAppCropProfile> = emptyList(),
         appProfilesEnabled: Boolean = true
     ): Rect {
         return detectWithMethod(
@@ -28,6 +30,8 @@ object AutoCrop {
             statusBarPx = statusBarPx,
             navBarPx = navBarPx,
             sourceHints = sourceHints,
+            profileTextHints = profileTextHints,
+            userProfiles = userProfiles,
             appProfilesEnabled = appProfilesEnabled
         ).rect
     }
@@ -37,6 +41,8 @@ object AutoCrop {
         statusBarPx: Int = 0,
         navBarPx: Int = 0,
         sourceHints: List<String> = emptyList(),
+        profileTextHints: List<String> = emptyList(),
+        userProfiles: List<UserAppCropProfile> = emptyList(),
         appProfilesEnabled: Boolean = true
     ): CropResult {
         val baseResult = detectBase(bitmap, statusBarPx, navBarPx)
@@ -46,6 +52,30 @@ object AutoCrop {
             statusBarPx = statusBarPx,
             navBarPx = navBarPx,
             sourceHints = sourceHints,
+            profileTextHints = profileTextHints,
+            userProfiles = userProfiles,
+            enabled = appProfilesEnabled
+        )
+    }
+
+    fun explainProfileMatch(
+        bitmap: Bitmap,
+        statusBarPx: Int = 0,
+        navBarPx: Int = 0,
+        sourceHints: List<String> = emptyList(),
+        profileTextHints: List<String> = emptyList(),
+        userProfiles: List<UserAppCropProfile> = emptyList(),
+        appProfilesEnabled: Boolean = true
+    ): AppCropProfilePreview? {
+        val baseResult = detectBase(bitmap, statusBarPx, navBarPx)
+        return AppCropProfiles.evaluate(
+            bitmap = bitmap,
+            baseResult = baseResult,
+            statusBarPx = statusBarPx,
+            navBarPx = navBarPx,
+            sourceHints = sourceHints,
+            profileTextHints = profileTextHints,
+            userProfiles = userProfiles,
             enabled = appProfilesEnabled
         )
     }

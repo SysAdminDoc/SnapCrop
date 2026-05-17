@@ -132,6 +132,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val statusBarPx = SystemBars.statusBarHeight(resources)
             val navBarPx = SystemBars.navigationBarHeight(resources)
+            val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            val userProfiles = UserAppProfileStore.load(prefs)
             var done = 0; var failed = 0
             val total = uris.size
 
@@ -148,8 +150,9 @@ class MainActivity : ComponentActivity() {
                             bitmap = bitmap,
                             statusBarPx = statusBarPx,
                             navBarPx = navBarPx,
-                            appProfilesEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
-                                .getBoolean("app_crop_profiles", true)
+                            sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri)),
+                            userProfiles = userProfiles,
+                            appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
                         )
                         val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                                 cropRect.right == bitmap.width && cropRect.bottom == bitmap.height

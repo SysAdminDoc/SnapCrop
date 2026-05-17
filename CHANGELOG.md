@@ -46,6 +46,10 @@ All notable changes to SnapCrop will be documented in this file.
   controls, category-backed smart albums, indexed gallery search, OCR/barcode
   token capture from the editor OCR flow, and non-favorite screenshot cleanup
   selection.
+- Added a visible app rules system: built-in Reddit/X profiles now appear in
+  Settings with confidence/preview/test support, and users can create/import/
+  export custom source/OCR-based crop profiles with album, redaction, and export
+  format actions for Quick Crop.
 
 ## [v6.19.0] - 2026-05-14
 

@@ -140,8 +140,9 @@ Implemented features confirmed by live files and history:
 - last-action Quick Settings tile,
 - long screenshot capture with ten-frame/time guard, sticky-aware stitcher, and
   review/retry before save,
-- Reddit/X app crop profiles,
-- conditional auto-actions with sensitive text redaction,
+- Reddit/X app crop profiles plus user-created source/OCR app rules,
+- conditional auto-actions with rule-specific album, redaction, export format,
+  and save-outcome explanations,
 - OCR, barcode, face detection, object detection, subject segmentation,
   translation, entity extraction,
 - smart erase,
@@ -158,9 +159,9 @@ Implemented features confirmed by live files and history:
 ## Repo Hygiene Findings
 
 - `rg` found no TODO/FIXME markers outside build output.
-- JVM/Robolectric tests now cover auto-crop, app profiles, sensitive text
-  patterns, Smart Erase behavior, project sidecars, and extracted editor model
-  helpers.
+- JVM/Robolectric tests now cover auto-crop, app profiles, user profile-pack
+  matching/round-trip, sensitive text patterns, Smart Erase behavior, project
+  sidecars, and extracted editor model helpers.
 - `rg` found no `RoundedCornerShape(50...)`, `RoundedCornerShape(999...)`, or
   `CircleShape` matches in source during the UI-rule scan.
 - `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts even though

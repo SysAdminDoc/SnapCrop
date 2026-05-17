@@ -96,8 +96,9 @@ aligned with `origin/main`.
   phone, payment-card candidates, IP, MAC, IBAN, and address-style entities.
 - `TextTranslator`: ML Kit language ID plus on-device translation with Wi-Fi
   model download.
-- `AppCropProfiles` and `ConditionalAutoActions`: built-in Reddit and X/Twitter
-  profile/automation rules.
+- `AppCropProfiles`, `UserAppProfileStore`, and `ConditionalAutoActions`:
+  built-in Reddit/X profile rules plus user-created source/OCR crop profiles
+  with Quick Crop album, redaction, and export-format actions.
 - `SECURITY.md`: permission matrix, backup posture, local-first privacy notes,
   release hygiene, and policy references.
 - `SnapCropProjectSidecar`: versioned JSON schema for source URI/hash, crop
@@ -154,7 +155,10 @@ and Android system integration.
 - Non-destructive editing now has a first project sidecar path. Future work can
   expand it into richer source relinking, thumbnails, migration tests, and
   user-facing sidecar management.
-- App profiles and conditional actions currently cover Reddit and X/Twitter only.
+- App profiles now have a user-visible Settings rules system. Built-ins cover
+  Reddit and X/Twitter; custom profiles can match source/package hints or OCR
+  keywords, apply crop bands, and drive Quick Crop album/redaction/export
+  actions. Future work can add richer visual training and profile sharing UX.
 - Smart albums now use an opt-in local intelligence index for metadata,
   source-hint categories, favorite state, and editor OCR/barcode tokens. Future
   work can add background OCR/model-state progress, but the current design
