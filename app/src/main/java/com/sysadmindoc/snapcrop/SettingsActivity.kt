@@ -96,7 +96,7 @@ class SettingsActivity : ComponentActivity() {
 
                     SettingToggle(
                         title = "Replace original on Save",
-                        subtitle = "When ON (default), Save deletes the screenshot you cropped from. Use Save Copy to keep both.",
+                        subtitle = "When ON (default), manual Save deletes the screenshot you cropped from. Android may ask you to confirm deletion.",
                         checked = deleteOriginal,
                         onCheckedChange = {
                             deleteOriginal = it

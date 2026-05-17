@@ -19,6 +19,16 @@ All notable changes to SnapCrop will be documented in this file.
 - Migrated the app module to AGP 9 built-in Kotlin by removing the legacy
   `org.jetbrains.kotlin.android` plugin and using `kotlin.compilerOptions` for
   the JVM target.
+- Added `SECURITY.md` and README privacy notes with a permission matrix,
+  backup posture, release hygiene, and policy references.
+- Removed the all-files access permission; Android 11+ deletions now use
+  scoped-storage confirmation instead of `MANAGE_EXTERNAL_STORAGE`.
+- Disabled Android app-data backup so local paths, favorites, automation
+  toggles, and export preferences are not silently backed up.
+- Made display-over-apps optional for screenshot monitoring by relying on the
+  existing notification fallback when background editor launch is blocked.
+- Added an in-app Accessibility disclosure before sending users to Android
+  settings for Long Screenshot setup.
 
 ## [v6.19.0] - 2026-05-14
 

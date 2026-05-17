@@ -9,7 +9,6 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.lifecycle.lifecycleScope
@@ -69,11 +68,11 @@ class MainActivity : ComponentActivity() {
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
-    private val hasFileManagePermission = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
+    private val showAccessibilityDisclosure = mutableStateOf(false)
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -280,21 +279,6 @@ class MainActivity : ComponentActivity() {
                                         Uri.parse("package:$packageName")
                                     ))
                                 },
-                                hasFileManagePermission = hasFileManagePermission.value,
-                                onRequestFileManage = {
-                                    try {
-                                        startActivity(Intent(
-                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                            Uri.parse("package:$packageName")
-                                        ))
-                                    } catch (_: Exception) {
-                                        try {
-                                            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                                        } catch (_: Exception) {
-                                            Toast.makeText(this@MainActivity, "Open Settings > Apps > SnapCrop > Permissions to grant file access", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenCrop = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
@@ -320,6 +304,42 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
+
+                if (showAccessibilityDisclosure.value) {
+                    AlertDialog(
+                        onDismissRequest = { showAccessibilityDisclosure.value = false },
+                        title = { Text("Enable long screenshot access?", color = OnSurface) },
+                        text = {
+                            Text(
+                                "Long Screenshot uses Android Accessibility only after you start the action. It captures the visible screen, reads window structure enough to scroll, and performs scroll gestures to stitch frames. Frames stay on this device and are saved to your SnapCrop folder; SnapCrop does not upload or share Accessibility data. You can skip this and still use manual crop, stitch, gallery, and editor tools.",
+                                color = OnSurfaceVariant,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showAccessibilityDisclosure.value = false
+                                    openAccessibilitySettings()
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Primary)
+                            ) {
+                                Text("Open settings")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showAccessibilityDisclosure.value = false },
+                                colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
+                            ) {
+                                Text("Not now")
+                            }
+                        },
+                        containerColor = Surface,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
 
                 // Resize dialog
@@ -370,8 +390,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
-        hasFileManagePermission.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
-            Environment.isExternalStorageManager() else true
         refreshLongScreenshotState()
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
@@ -611,21 +629,8 @@ class MainActivity : ComponentActivity() {
 
     private fun requestDeleteUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        // MANAGE_EXTERNAL_STORAGE grants direct delete without system confirmation
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                var count = 0
-                for (uri in uris) {
-                    try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
-                }
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Deleted $count photos", Toast.LENGTH_SHORT).show()
-                    galleryRefreshKey.intValue++
-                    loadRecentCrops()
-                }
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+ without MANAGE_EXTERNAL_STORAGE: system delete confirmation dialog
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: use scoped-storage delete confirmation instead of all-files access.
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
                 @Suppress("DEPRECATION")
@@ -668,14 +673,6 @@ class MainActivity : ComponentActivity() {
                 requestPermissions()
                 return
             }
-            // Android 12+ needs SYSTEM_ALERT_WINDOW to launch activities from services
-            if (Build.VERSION.SDK_INT >= 31 && !Settings.canDrawOverlays(this)) {
-                startActivity(Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                ))
-                return
-            }
             startMonitoring()
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", true).apply()
@@ -700,7 +697,7 @@ class MainActivity : ComponentActivity() {
         }
 
         if (!ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 2500L)) {
-            openAccessibilitySettings()
+            showAccessibilityDisclosure.value = true
             return
         }
 
@@ -807,8 +804,6 @@ private fun HomeScreen(
     onBatchCancel: () -> Unit,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
-    hasFileManagePermission: Boolean,
-    onRequestFileManage: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
@@ -871,7 +866,7 @@ private fun HomeScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Media permissions required", color = OnSurface, fontWeight = FontWeight.Medium)
                         Text(
-                            "Allow SnapCrop to detect screenshots, show notifications, and open images for editing.",
+                            "Allow photos/videos so SnapCrop can find screenshots. Notifications keep monitoring visible and provide edit/share actions.",
                             color = OnSurfaceVariant,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
@@ -892,7 +887,7 @@ private fun HomeScreen(
             }
         }
 
-        // Overlay permission (needed on Android 12+ to open editor from background)
+        // Overlay permission (optional on Android 12+; notifications remain the fallback)
         if (hasPermissions && !hasOverlayPermission && Build.VERSION.SDK_INT >= 31) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -903,8 +898,8 @@ private fun HomeScreen(
                     Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Open editor from screenshots", color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text("Display-over-apps lets the crop editor appear immediately after a screenshot.",
+                        Text("Instant editor launch", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text("Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.",
                             color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 }
@@ -914,31 +909,6 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text("Grant display access", color = Color.Black) }
-            }
-        }
-
-        // File management permission (needed on Android 11+ to delete without prompts)
-        if (hasPermissions && !hasFileManagePermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Seamless cleanup", color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text("All-files access removes the source screenshot after Save without Android asking each time.",
-                            color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
-                    }
-                }
-                Button(
-                    onClick = onRequestFileManage,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("Grant file access", color = Color.Black) }
             }
         }
 

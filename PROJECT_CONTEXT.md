@@ -16,8 +16,8 @@ collage, device frames, video frame extraction, long screenshots, and ML Kit
 assists.
 
 The current repository version is `6.19.0` / `versionCode 67` in
-`app/build.gradle.kts`. The latest checked commit before the dependency
-baseline continuation was `744a25e ci: add Android verification pipeline` on
+`app/build.gradle.kts`. The latest checked commit before the permission/privacy
+continuation was `98a7c72 build: update Android dependency baselines` on
 `main`, aligned with `origin/main`.
 
 ## Working Rules
@@ -81,6 +81,8 @@ baseline continuation was `744a25e ci: add Android verification pipeline` on
   model download.
 - `AppCropProfiles` and `ConditionalAutoActions`: built-in Reddit and X/Twitter
   profile/automation rules.
+- `SECURITY.md`: permission matrix, backup posture, local-first privacy notes,
+  release hygiene, and policy references.
 
 ## Product Philosophy
 
@@ -125,12 +127,11 @@ and Android system integration.
   Compose, Lifecycle, Navigation Compose, and Material 3. ML Kit dependencies
   remain intentionally separate because the research pass found the current
   ML Kit selections already at latest stable or latest beta metadata.
-- `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`, AccessibilityService, and
-  foreground-service special use all require careful user education, fallback
-  behavior, and Play policy justification.
-- `android:allowBackup="true"` is enabled. That may be acceptable, but privacy
-  settings, recent/favorites metadata, and automation profiles should be audited
-  against expected backup behavior.
+- Permissions and Play-policy posture are hardened: SnapCrop no longer requests
+  all-files access, Android 11+ deletes use scoped-storage confirmation,
+  display-over-apps is optional with notification fallback, Long Screenshot
+  shows an Accessibility disclosure before settings, foreground-service
+  special-use metadata is more explicit, and `android:allowBackup` is disabled.
 - Non-destructive editing is incomplete. SVG sidecars preserve visible vector
   annotation output, but there is no re-openable project state sidecar for crop,
   adjustments, layer properties, and source URI lineage.

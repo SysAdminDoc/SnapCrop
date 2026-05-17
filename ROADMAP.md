@@ -18,7 +18,8 @@ Local evidence:
 - L4: `.github/workflows/build.yml` verification, dependency-review, and
   release artifact workflow.
 - L5: `app/src/main/AndroidManifest.xml` permissions, exported components,
-  foreground-service special-use metadata, and backup setting.
+  foreground-service special-use metadata, no all-files access, and disabled
+  app-data backup setting.
 - L6: `app/src/main/java/com/sysadmindoc/snapcrop/CropEditorScreen.kt`, about
   2,821 lines.
 - L7: `CropActivity.kt` SVG sidecar export and raster save pipeline.
@@ -147,20 +148,30 @@ Acceptance:
 - Any behavior changes are captured in `CHANGELOG.md` and `CLAUDE.md`.
 - Rollback path is clear in commits.
 
-### 3. [ ] Harden permissions, privacy posture, and Play policy documentation
+### 3. [x] Harden permissions, privacy posture, and Play policy documentation
 
-Evidence: L5 declares `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`,
-AccessibilityService, foreground-service special use, media permissions, and
-`android:allowBackup="true"`. E2 and E3 require careful special-use and
-all-files justification. E10 gives mobile security control categories.
+Status: Completed 2026-05-17. The manifest no longer requests
+`MANAGE_EXTERNAL_STORAGE`; Android 11+ cleanup uses scoped-storage delete
+confirmation. `android:allowBackup` is now false, `SECURITY.md` and README
+document permissions/privacy/release posture, display-over-apps is optional with
+notification fallback, Long Screenshot shows an in-app Accessibility disclosure
+before opening system settings, and the foreground-service special-use subtype
+now names the screenshot-monitoring/user-controls use case.
+
+Evidence: Before completion, L5 declared `MANAGE_EXTERNAL_STORAGE`,
+`SYSTEM_ALERT_WINDOW`, AccessibilityService, foreground-service special use,
+media permissions, and `android:allowBackup="true"`. E2 and E3 required careful
+special-use and all-files justification; Google Play Accessibility guidance also
+requires clear user-facing disclosure for AccessibilityService use. E10 gives
+mobile security control categories.
 
 Deliverables:
 
 - Document why each sensitive permission exists and what happens without it.
-- Add or verify in-app education for all-files access, overlay/background
-  launch fallback, AccessibilityService long screenshots, and notification
-  permission.
-- Audit `allowBackup=true` against stored preferences such as favorites,
+- Remove or justify all-files access, and verify in-app education for
+  overlay/background launch fallback, AccessibilityService long screenshots,
+  and notification permission.
+- Audit backup behavior against stored preferences such as favorites,
   automation rules, save paths, and recent crop metadata. Decide whether to
   exclude sensitive keys or disable backup.
 - Verify foreground-service special-use subtype text and Play Console wording.

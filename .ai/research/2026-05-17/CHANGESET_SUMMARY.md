@@ -110,3 +110,34 @@ Verification for this continuation batch:
   warning for `releaseRuntimeClasspath`; the SBOM task succeeds.
 - Existing Kotlin deprecation warnings remain for legacy activity-result
   callbacks, AutoMirrored icon migrations, and `Bitmap.recycle()` calls.
+
+## Roadmap Continuation - P0.3 - 2026-05-17
+
+Implemented P0.3, "Harden permissions, privacy posture, and Play policy
+documentation":
+
+- Removed `MANAGE_EXTERNAL_STORAGE` from the manifest. Android 11+ deletion now
+  uses scoped-storage confirmation; service-side Quick Crop leaves the source in
+  place on Android 11+ because services cannot show delete confirmation.
+- Set `android:allowBackup="false"` after auditing stored preferences such as
+  save paths, favorites, automation toggles, format settings, and last action.
+- Made display-over-apps optional for monitoring. The home screen explains the
+  notification fallback, and the monitor tile starts the foreground service
+  without requiring overlay access.
+- Added an in-app Accessibility disclosure before opening system Accessibility
+  settings for Long Screenshot setup.
+- Updated the foreground-service special-use subtype string to describe
+  screenshot monitoring and persistent user controls.
+- Added `SECURITY.md` and README privacy/permission notes.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`,
+  `SOURCE_REGISTER.md`, `RESEARCH_LOG.md`,
+  `SECURITY_AND_DEPENDENCY_REVIEW.md`, and local `CLAUDE.md` notes.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 2m 47s.
+- Existing Kotlin warnings remain for legacy activity-result callbacks, one
+  AutoMirrored icon migration, and one non-null Elvis expression.
+- CycloneDX still prints the known configuration-time resolution warning for
+  `releaseRuntimeClasspath`; the task succeeds.

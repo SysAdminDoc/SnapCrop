@@ -11,7 +11,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -404,8 +403,9 @@ class ScreenshotService : Service() {
                         values.put(MediaStore.Images.Media.IS_PENDING, 0)
                         contentResolver.update(savedUri, values, null, null)
 
-                        // Delete original screenshot (only works with MANAGE_EXTERNAL_STORAGE or own files)
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+                        // Services cannot show Android 11+ scoped-storage delete confirmation.
+                        // On newer devices, leave the source screenshot in place.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                         }
 

@@ -130,6 +130,28 @@ Grab the latest APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/
 
 ---
 
+## Privacy and Permissions
+
+SnapCrop is local-first: no ads, no analytics SDKs, and no required network
+export path. See [SECURITY.md](SECURITY.md) for the permission matrix and
+release/security policy.
+
+- Media permissions let SnapCrop find screenshots, show the gallery, and edit
+  user-selected images and videos.
+- Notifications keep the screenshot monitor visible and expose Edit, Share, and
+  Quick Crop actions.
+- Display-over-apps is optional. Without it, screenshots still produce a
+  notification that opens the editor.
+- Long Screenshot uses Accessibility only after the user starts that workflow;
+  SnapCrop shows an in-app disclosure before opening Android Accessibility
+  settings.
+- SnapCrop does not request all-files access. On Android 11+, source screenshot
+  cleanup uses Android's scoped delete confirmation.
+- Android app-data backup is disabled so local paths, favorites, automation
+  toggles, and export preferences are not silently backed up by SnapCrop.
+
+---
+
 ## Tech Stack
 
 | | |
@@ -141,6 +163,7 @@ Grab the latest APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/
 | **Image Loading** | Coil 2.7 |
 | **Min SDK** | 29 (Android 10) |
 | **Target SDK** | 35 |
+| **Compile SDK** | 36 |
 
 ---
 

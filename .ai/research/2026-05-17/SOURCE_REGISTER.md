@@ -64,6 +64,9 @@ repository research and roadmap planning pass.
 | A7 | https://developer.android.com/about/versions/16/behavior-changes-all | Android 16 behavior changes. |
 | A8 | https://developer.android.com/training/sharing/send | Android sharing guidance. |
 | A9 | https://developer.android.com/reference/android/webkit/WebView#createPrintDocumentAdapter() | Android print/PDF reference. |
+| A10 | https://support.google.com/googleplay/android-developer/answer/10964491 | Google Play AccessibilityService policy and disclosure expectations. |
+| A11 | https://developer.android.com/guide/topics/manifest/application-element | Manifest backup attribute reference. |
+| A12 | https://developer.android.com/identity/data/autobackup | Android Auto Backup behavior and include/exclude rules. |
 
 ## ML Kit And AI Edge Sources
 
