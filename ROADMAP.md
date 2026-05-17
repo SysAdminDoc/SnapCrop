@@ -21,7 +21,9 @@ Local evidence:
   foreground-service special-use metadata, no all-files access, and disabled
   app-data backup setting.
 - L6: `app/src/main/java/com/sysadmindoc/snapcrop/CropEditorScreen.kt`, about
-  2,821 lines.
+  2,423 lines after the first editor split, plus extracted
+  `EditorModels.kt`, `EditorCanvas.kt`, `EditorLayers.kt`, and
+  `EditorPreview.kt`.
 - L7: `CropActivity.kt` SVG sidecar export and raster save pipeline.
 - L8: `ScrollCaptureService.kt` five-frame AccessibilityService long screenshot
   pipeline.
@@ -212,20 +214,29 @@ Acceptance:
 - Sidecar versioning handles future schema changes.
 - Missing source image produces a clear recoverable state.
 
-### 5. [ ] Split the editor before adding more surface area
+### 5. [x] Split the editor before adding more surface area
 
-Evidence: L6 shows `CropEditorScreen.kt` is about 2,821 lines and owns UI,
-gesture handling, rendering, layers, tools, controls, and state.
+Status: Completed 2026-05-17. The editor now has focused model/state helpers
+in `EditorModels.kt`, reusable canvas helpers in `EditorCanvas.kt`, the draw
+layer panel in `EditorLayers.kt`, and the before/after preview in
+`EditorPreview.kt`. `CropEditorScreen.kt` still owns the main gesture/canvas
+workflow, but it is no longer the permanent home for every future editor
+surface. `docs/EDITOR_REGRESSION_CHECKLIST.md` records the manual verification
+surface for crop handles, pinch zoom, draw tools, layer visibility/order,
+undo/redo, SVG export, sidecar reopen, and save/share flows.
+
+Evidence: L6 previously showed `CropEditorScreen.kt` at about 2,821 lines and
+owning UI, gesture handling, rendering, layers, tools, controls, and state.
 
 Deliverables:
 
-- Extract editor model/state, tool controls, layer panel, export preview, and
-  canvas rendering into focused files or modules.
+- Extract editor model/state, layer panel, export preview, and reusable canvas
+  rendering helpers into focused files or modules.
 - Preserve current gesture behavior; do not introduce parallel gesture detectors
   that conflict with the established `awaitEachGesture` pattern documented in
   `CLAUDE.md`.
 - Add a regression checklist for crop handles, pinch zoom, draw tools, layer
-  visibility/order, undo/redo, SVG export, and save/share.
+  visibility/order, undo/redo, SVG export, sidecar reopen, and save/share.
 
 Acceptance:
 
@@ -305,6 +316,9 @@ Deliverables:
 - Use adaptive layout for side panels on wide screens.
 - Keep dense phone toolbar but move layer/tools/adjustments into persistent
   side panels on tablets, foldables, and DeX-style windows.
+- Continue extracting toolbar/tool controls as part of the adaptive layout work
+  so the split follows the actual phone/tablet UI shape instead of a
+  parameter-heavy wrapper.
 - Add keyboard shortcuts and mouse wheel/pan affordances where platform-typical.
 
 Acceptance:

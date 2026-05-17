@@ -178,3 +178,35 @@ Verification for this continuation batch:
   icons, `Bitmap.recycle()`, one non-null Elvis expression, unstripped bundled
   native ML Kit libraries, and the known CycloneDX configuration-time
   resolution warning.
+
+## Roadmap Continuation - P0.5 - 2026-05-17
+
+Implemented P0.5, "Split the editor before adding more surface area":
+
+- Extracted editor model/state helpers into `EditorModels.kt`, including draw
+  path state, drag handles, edit/draw tools, aspect ratios, adjustment defaults,
+  undo snapshots, and image-filter matrices.
+- Extracted reusable canvas helpers into `EditorCanvas.kt` for crop handles and
+  gradient crop backgrounds.
+- Extracted the draw layer panel into `EditorLayers.kt`.
+- Extracted the before/after preview surface and divider gesture into
+  `EditorPreview.kt`.
+- Preserved the existing `awaitEachGesture` gesture approach and avoided
+  introducing competing pointer detectors in the main edit canvas.
+- Added `EditorModelsTest` for extracted adjustment defaults, aspect-ratio
+  mapping, filter fallback, renderable filter matrices, and short-path
+  smoothing behavior.
+- Added `docs/EDITOR_REGRESSION_CHECKLIST.md` for manual crop, gesture, draw,
+  layer, undo/redo, SVG export, sidecar reopen, save/share, and preview
+  regression coverage.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, and `CHANGELOG.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin`: passed.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest`: passed.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 2m 14s.
+- Existing warnings remain for the known CycloneDX configuration-time
+  dependency-resolution message.

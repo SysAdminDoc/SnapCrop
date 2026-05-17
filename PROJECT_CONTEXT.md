@@ -16,9 +16,9 @@ collage, device frames, video frame extraction, long screenshots, and ML Kit
 assists.
 
 The current repository version is `6.19.0` / `versionCode 67` in
-`app/build.gradle.kts`. The latest checked commit before the permission/privacy
-continuation was `98a7c72 build: update Android dependency baselines` on
-`main`, aligned with `origin/main`.
+`app/build.gradle.kts`. The latest checked commit before the editor split
+continuation was `bf62c24 feat: add editable project sidecars` on `main`,
+aligned with `origin/main`.
 
 ## Working Rules
 
@@ -65,8 +65,15 @@ continuation was `98a7c72 build: update Android dependency baselines` on
   SVG sidecar generation for visible vector annotations and redaction
   rectangles, and `.snapcrop.json` project sidecar open/save.
 - `CropEditorScreen`: large Compose editor surface. Current line count is about
-  2,821 lines, so future work should avoid increasing this file without a
-  clear extraction plan.
+  2,423 lines after the first split. It still owns the central gesture/canvas
+  workflow, so future tool additions should prefer extracted helpers or
+  adaptive-layout driven components.
+- `EditorModels`: shared editor data/state helpers, draw tools, aspect ratios,
+  image-filter metadata, adjustment defaults, and undo snapshot model.
+- `EditorCanvas`: reusable canvas helpers for crop handles and gradient
+  backgrounds.
+- `EditorLayers`: draw-layer panel and layer labels.
+- `EditorPreview`: before/after preview rendering and divider gestures.
 - `GalleryScreen`: MediaStore-backed gallery, smart auto-albums, search,
   favorites, multi-select, PDF export, photo/video viewer.
 - `ScrollCaptureService`: AccessibilityService long-screenshot capture. It uses
@@ -142,8 +149,10 @@ and Android system integration.
 - Smart albums are heuristic and do not yet maintain a persistent OCR/entity/app
   index.
 - Long-screenshot stitch quality is basic and capped at five frames.
-- The editor is dense and monolithic; tablet/foldable/DeX layouts and extracted
-  editor modules are high-leverage future work.
+- The first editor split now extracts model/state, layer panel, before/after
+  preview, and small canvas helpers. The editor remains dense; tablet/foldable
+  / DeX layouts and toolbar/tool-control extraction are high-leverage future
+  work.
 - Two `.idsig` artifacts are tracked even though APK/signature byproducts are in
   `.gitignore`.
 
