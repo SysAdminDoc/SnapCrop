@@ -74,8 +74,9 @@ aligned with `origin/main`.
   backgrounds.
 - `EditorLayers`: draw-layer panel and layer labels.
 - `EditorPreview`: before/after preview rendering and divider gestures.
-- `GalleryScreen`: MediaStore-backed gallery, smart auto-albums, search,
-  favorites, multi-select, PDF export, photo/video viewer.
+- `GalleryScreen`: MediaStore-backed gallery, optional local screenshot
+  intelligence index integration, smart auto-albums, search, favorites,
+  multi-select, PDF export, photo/video viewer.
 - `ScrollCaptureService`: AccessibilityService long-screenshot capture. It uses
   `takeScreenshot()`, throttles capture attempts, strips system bars, scrolls,
   stops on repeated/stuck content, stitches up to ten frames behind a time
@@ -84,6 +85,9 @@ aligned with `origin/main`.
   captured long screenshots before they are committed to MediaStore.
 - `LongScreenshotStore`: shared temporary-review and MediaStore save helpers
   for long screenshots.
+- `ScreenshotIndexStore`: opt-in local SQLite index for screenshot/media source
+  hints, dimensions, favorite state, categories, and OCR/barcode tokens captured
+  from the editor OCR flow.
 - `SmartEraseEngine`: local mask-based edge-aware fill. No large ONNX inpainting
   model is bundled.
 - `SmartReframeEngine`: ML Kit object, text, and face bounds unioned into
@@ -151,8 +155,10 @@ and Android system integration.
   expand it into richer source relinking, thumbnails, migration tests, and
   user-facing sidecar management.
 - App profiles and conditional actions currently cover Reddit and X/Twitter only.
-- Smart albums are heuristic and do not yet maintain a persistent OCR/entity/app
-  index.
+- Smart albums now use an opt-in local intelligence index for metadata,
+  source-hint categories, favorite state, and editor OCR/barcode tokens. Future
+  work can add background OCR/model-state progress, but the current design
+  avoids rescanning every image unless the user explicitly rebuilds the index.
 - Long-screenshot capture now has ten-frame/time-guarded capture,
   repeated-frame stop detection, sticky-header/footer aware stitching, and
   review/retry before save. It still needs real-device QA across chat, browser,

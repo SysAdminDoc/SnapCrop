@@ -5,9 +5,9 @@ Research date: 2026-05-17
 Scoring: 1 low, 5 high. Priority is based on impact, confidence, risk
 reduction, fit with SnapCrop's philosophy, and implementation leverage.
 
-Continuation status: roadmap items 1 through 6 were implemented on
-2026-05-17. The remaining highest-priority open item is Persistent screenshot
-intelligence index.
+Continuation status: roadmap items 1 through 7 were implemented on
+2026-05-17. The remaining highest-priority open item is User-visible app
+profile/rules system.
 
 | Candidate | Impact | Confidence | Risk reduction | Fit | Effort | Tier | Rationale |
 |---|---:|---:|---:|---:|---:|---|---|

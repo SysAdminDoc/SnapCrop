@@ -42,6 +42,10 @@ All notable changes to SnapCrop will be documented in this file.
 - Upgraded Long Screenshot capture to a ten-frame/time-guarded flow with
   repeated-frame stop detection, sticky-header/footer aware stitching, and a
   review screen with Save & Edit, Retry, and Discard before gallery save.
+- Added an opt-in local screenshot intelligence index with rebuild/purge
+  controls, category-backed smart albums, indexed gallery search, OCR/barcode
+  token capture from the editor OCR flow, and non-favorite screenshot cleanup
+  selection.
 
 ## [v6.19.0] - 2026-05-14
 

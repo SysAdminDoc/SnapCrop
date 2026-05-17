@@ -276,9 +276,20 @@ Acceptance:
 - Better merges on chat, browser, settings, and feed screenshots.
 - Failures produce understandable messages instead of corrupted tall images.
 
-### 7. [ ] Persistent screenshot intelligence index
+### 7. [x] Persistent screenshot intelligence index
 
-Evidence: L10 smart albums are currently heuristic; L11 already has OCR,
+Status: Completed 2026-05-17. SnapCrop now has an opt-in local
+`ScreenshotIndexStore` SQLite index for media IDs, URIs, names, album/source
+hints, dimensions, date, size, favorite state, screenshot state, categories, and
+search text. Settings exposes enable, rebuild, and purge controls with local
+storage copy. Gallery rebuilds/loads the index when enabled, smart albums use
+persisted categories for chats, games, sites, documents, codes, payments, and
+sensitive/payment-like screenshots, and album views can search names, source
+hints, dimensions, categories, and OCR/barcode tokens captured when the user
+runs OCR in the editor. The cleanup button now selects non-favorite
+screenshots so users can bulk-delete old raw captures more safely.
+
+Evidence: L10 smart albums were previously heuristic; L11 already had OCR,
 barcode, entity, face, and object capabilities. E13 datasets provide evaluation
 ideas for UI/screenshot understanding.
 

@@ -242,3 +242,34 @@ Verification for this continuation batch:
 - Existing warnings remain for deprecated `Bitmap.recycle()` calls in
   `ScrollCaptureService` and the known CycloneDX configuration-time
   dependency-resolution message.
+
+## Roadmap Continuation - P1.7 - 2026-05-17
+
+Implemented P1.7, "Persistent screenshot intelligence index":
+
+- Added `ScreenshotIndexStore`, an opt-in local SQLite index for media IDs,
+  URIs, names, album/source hints, dimensions, dates, sizes, favorite state,
+  screenshot state, category labels, and searchable text.
+- Added source/category classification for screenshots, chats, games, sites,
+  documents, codes, payments, sensitive/payment-like screenshots, and favorites.
+- Added Settings controls to enable the index, rebuild it from MediaStore, and
+  purge it.
+- Wired Gallery to rebuild/load the index when enabled, enrich photos with
+  indexed categories/search text, expand smart albums, and search photo grids
+  by indexed source/category hints.
+- Captured OCR and barcode text into the index when the user runs OCR in the
+  editor on an indexed source image.
+- Changed the screenshot cleanup shortcut to select non-favorite screenshots,
+  making bulk cleanup safer.
+- Added `ScreenshotIndexClassifierTest`.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`,
+  `SOURCE_REGISTER.md`, `RESEARCH_LOG.md`, and `STATE_OF_REPO.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest`: passed.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 3m 34s.
+- Existing warnings remain for deprecated `onActivityResult` in `CropActivity`
+  and the known CycloneDX configuration-time dependency-resolution message.

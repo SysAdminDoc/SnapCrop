@@ -54,11 +54,12 @@ Kotlin source size indicators from `app/src/main`:
 | `EditorLayers.kt` | 169 | Draw layer panel and labels |
 | `EditorPreview.kt` | 118 | Before/after preview surface and divider gesture |
 | `EditorCanvas.kt` | 43 | Crop handle and gradient rendering helpers |
-| `CropActivity.kt` | 1,519 | Bitmap load/export/save/share/SVG sidecars |
+| `CropActivity.kt` | 1,526 | Bitmap load/export/save/share/SVG sidecars/OCR index updates |
 | `MainActivity.kt` | 1,240 | Home, permissions, recent crops, batch tools |
-| `GalleryScreen.kt` | 1,171 | Gallery, smart albums, viewer, PDF |
+| `GalleryScreen.kt` | 1,259 | Gallery, index-backed smart albums, viewer, PDF |
 | `ScreenshotService.kt` | 533 | Screenshot monitor, quick crop, last action |
-| `SettingsActivity.kt` | 467 | Export and behavior preferences |
+| `SettingsActivity.kt` | 557 | Export, behavior, and index preferences |
+| `ScreenshotIndexStore.kt` | 342 | Opt-in local screenshot intelligence index |
 | `CollageActivity.kt` | 453 | Collage workflow |
 | `ScrollCaptureService.kt` | 504 | Long screenshot capture, stop reasons, stitcher |
 | `LongScreenshotReviewActivity.kt` | 242 | Long screenshot preview/save/retry/discard |
@@ -145,7 +146,8 @@ Implemented features confirmed by live files and history:
   translation, entity extraction,
 - smart erase,
 - AI reframe,
-- gallery with heuristic smart albums,
+- gallery with opt-in local screenshot intelligence index, indexed smart
+  albums, and searchable source/category/OCR hints,
 - video frame extraction and MP4 trim,
 - stitch, collage, device mockup, PDF export,
 - layered draw editing,

@@ -101,6 +101,7 @@ fun CropEditorScreen(
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
+    onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
     replaceOriginalOnSave: Boolean
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
@@ -599,6 +600,12 @@ fun CropEditorScreen(
                                     val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
                                     ocrBlocks = textDeferred.await()
                                     scannedCodes = codeDeferred.await()
+                                    if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
+                                        onOcrIndexed(
+                                            ocrBlocks.joinToString("\n") { it.text },
+                                            scannedCodes.map { it.rawValue }
+                                        )
+                                    }
                                     ocrLoading = false
                                 }
                             }

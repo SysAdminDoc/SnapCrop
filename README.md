@@ -98,11 +98,13 @@ layers without mutating the source screenshot.
 
 ### Gallery
 - Browse all photos and videos by album
-- Smart auto-albums group screenshot-like media into Screenshots, Chats, Games, and Sites without moving files
+- Optional local intelligence index powers smart auto-albums for Screenshots, Chats, Games, Sites, Documents, Codes, and Payments without moving files
+- Search screenshot albums by filename, source hints, indexed categories, dimensions, and OCR/barcode text after using OCR in the editor
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for batch delete, share, resize, or PDF export
 - Favorites, search, and sort by date/name/size
+- Rebuild or purge the local screenshot index from Settings
 - Home recent crops include explicit delete confirmation for safe cleanup
 
 ### More Tools
@@ -151,6 +153,8 @@ release/security policy.
   settings.
 - SnapCrop does not request all-files access. On Android 11+, source screenshot
   cleanup uses Android's scoped delete confirmation.
+- The screenshot intelligence index is opt-in, local-only, and can be rebuilt
+  or purged from Settings.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop.
 

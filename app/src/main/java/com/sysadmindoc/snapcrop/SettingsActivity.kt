@@ -34,6 +34,7 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val (screenW, screenH) = getScreenSize(this)
 
         setContent {
             SnapCropTheme {
@@ -125,6 +126,88 @@ class SettingsActivity : ComponentActivity() {
                             prefs.edit().putBoolean("app_crop_profiles", it).apply()
                         }
                     )
+
+                    Spacer(Modifier.height(20.dp))
+
+                    Text("Library Intelligence", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    var screenshotIndexEnabled by remember {
+                        mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false))
+                    }
+                    var screenshotIndexStatus by remember {
+                        mutableStateOf("Indexed items: ${ScreenshotIndexStore(this@SettingsActivity).count()}")
+                    }
+                    SettingToggle(
+                        title = "Screenshot intelligence index",
+                        subtitle = "Opt-in local index for screenshot names, source hints, dimensions, favorites, and categories. Stored only on this device.",
+                        checked = screenshotIndexEnabled,
+                        onCheckedChange = {
+                            screenshotIndexEnabled = it
+                            prefs.edit().putBoolean(ScreenshotIndexStore.PREF_ENABLED, it).apply()
+                            screenshotIndexStatus = if (it) "Index enabled. Rebuild to refresh." else "Index disabled."
+                        }
+                    )
+                    if (screenshotIndexEnabled) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Local index controls", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text(
+                                    screenshotIndexStatus,
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            screenshotIndexStatus = "Rebuilding index..."
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val count = ScreenshotIndexStore(this@SettingsActivity)
+                                                    .rebuildFromMediaStore(
+                                                        contentResolver,
+                                                        screenW,
+                                                        screenH,
+                                                        FavoritesStore.getAllIds(this@SettingsActivity)
+                                                    )
+                                                withContext(Dispatchers.Main) {
+                                                    screenshotIndexStatus = "Indexed items: $count"
+                                                    android.widget.Toast.makeText(
+                                                        this@SettingsActivity,
+                                                        "Screenshot index rebuilt",
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("Rebuild")
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            ScreenshotIndexStore(this@SettingsActivity).purge()
+                                            screenshotIndexStatus = "Indexed items: 0"
+                                            android.widget.Toast.makeText(
+                                                this@SettingsActivity,
+                                                "Screenshot index purged",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                        },
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("Purge", color = Tertiary)
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     // Image format selector
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {

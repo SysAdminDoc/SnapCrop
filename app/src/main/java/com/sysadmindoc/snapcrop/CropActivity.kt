@@ -220,6 +220,17 @@ class CropActivity : ComponentActivity() {
                             onRotate = { rotateBitmap() },
                             onFlipH = { flipBitmap(horizontal = true) },
                             onFlipV = { flipBitmap(horizontal = false) },
+                            onOcrIndexed = { text, codes ->
+                                val uri = sourceUri
+                                val indexEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                                    .getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
+                                if (uri != null && indexEnabled) {
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        ScreenshotIndexStore(this@CropActivity)
+                                            .updateRecognizedText(uri, text, codes)
+                                    }
+                                }
+                            },
                             replaceOriginalOnSave = replaceOriginalOnSave
                         )
                     }

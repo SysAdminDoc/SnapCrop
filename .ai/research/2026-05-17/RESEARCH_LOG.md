@@ -197,6 +197,30 @@ Result:
 - Added `ScrollStitcherTest` for sticky chrome reduction and repeated-frame
   detection.
 
+### Pass 10: P1.7 screenshot intelligence index implementation pass
+
+Targets:
+
+- Gallery smart albums and album/photo search.
+- Settings controls for opt-in local index management.
+- Editor OCR/barcode flow as a source of durable tokens.
+
+Result:
+
+- Added `ScreenshotIndexStore`, a local SQLite index for media IDs, URIs,
+  source hints, dimensions, date, size, favorites, screenshot state,
+  categories, and search text.
+- Added source/category classification for chats, games, sites, documents,
+  codes, payments, sensitive/payment-like screenshots, and favorites.
+- Added Settings enable/rebuild/purge controls with local-only storage copy.
+- Wired Gallery to rebuild/load the index when enabled, enrich photos with
+  indexed categories/search text, power expanded smart albums, and search album
+  contents by indexed hints.
+- Captured OCR and barcode text into the index when the user runs OCR in the
+  editor.
+- Changed the screenshot cleanup selection to select non-favorite screenshots.
+- Added `ScreenshotIndexClassifierTest`.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -238,4 +262,4 @@ strategic direction.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
   intended in the initial planning run. Later autonomous roadmap continuation
-  passes did include code changes for P0.1 through P0.5 and P1.6.
+  passes did include code changes for P0.1 through P0.5, P1.6, and P1.7.

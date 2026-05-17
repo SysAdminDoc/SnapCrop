@@ -28,7 +28,10 @@ repository research and roadmap planning pass.
 | L12e | `docs/EDITOR_REGRESSION_CHECKLIST.md` | Manual regression checklist for editor refactors. |
 | L13 | `app/src/main/java/com/sysadmindoc/snapcrop/CropActivity.kt` | Save/share/export/SVG sidecar pipeline. |
 | L14 | `app/src/main/java/com/sysadmindoc/snapcrop/MainActivity.kt` | Home, permissions, batch operations, recent crops. |
-| L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, smart albums, favorites, PDF export. |
+| L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, index-backed smart albums, favorites, PDF export. |
+| L15a | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotIndexStore.kt` | Opt-in local screenshot intelligence index. |
+| L15b | `app/src/main/java/com/sysadmindoc/snapcrop/SettingsActivity.kt` | Index enable/rebuild/purge controls. |
+| L15c | `app/src/test/java/com/sysadmindoc/snapcrop/ScreenshotIndexClassifierTest.kt` | Source/category classifier coverage. |
 | L16 | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` | Screenshot monitoring, quick crop, delayed capture, last action. |
 | L17 | `app/src/main/java/com/sysadmindoc/snapcrop/ScrollCaptureService.kt` | Long screenshot capture and stitch implementation. |
 | L17a | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotReviewActivity.kt` | Long screenshot review, retry, and save handoff. |
