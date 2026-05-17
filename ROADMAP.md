@@ -183,7 +183,15 @@ Acceptance:
 - The app remains usable without optional permissions.
 - Backup behavior is intentional and documented.
 
-### 4. [ ] Build non-destructive project sidecars
+### 4. [x] Build non-destructive project sidecars
+
+Status: Completed 2026-05-17. SnapCrop now has a versioned
+`.snapcrop.json` project schema, an `Editable project sidecars` setting,
+MediaStore JSON sidecar export next to image/SVG exports, JSON share/view intent
+support for reopening projects, editor initialization from saved crop,
+adjustment, pixelate, and draw-layer state, and a recoverable source-missing
+screen. While editable sidecars are enabled, the main save path keeps the source
+image so the project can actually reopen.
 
 Evidence: L7 shows SVG sidecars now preserve visible vector output, but project
 state is not re-openable. Competitors and annotation engines in E12 commonly

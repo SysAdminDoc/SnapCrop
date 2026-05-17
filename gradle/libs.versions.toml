@@ -19,6 +19,7 @@ mlkitEntityExtraction = "16.0.0-beta6"
 junit = "4.13.2"
 robolectric = "4.16.1"
 cyclonedx = "3.2.4"
+json = "20251224"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -43,6 +44,7 @@ mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.
 mlkit-entity-extraction = { group = "com.google.mlkit", name = "entity-extraction", version.ref = "mlkitEntityExtraction" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+json = { group = "org.json", name = "json", version.ref = "json" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

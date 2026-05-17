@@ -62,7 +62,8 @@ continuation was `98a7c72 build: update Android dependency baselines` on
 - `MainActivity`: home screen, permissions, recent crops, manual pick, batch
   crop/resize, stitch/collage/device-frame/video workflows.
 - `CropActivity`: bitmap loading, crop/export pipeline, share/clipboard/save,
-  SVG sidecar generation for visible vector annotations and redaction rectangles.
+  SVG sidecar generation for visible vector annotations and redaction
+  rectangles, and `.snapcrop.json` project sidecar open/save.
 - `CropEditorScreen`: large Compose editor surface. Current line count is about
   2,821 lines, so future work should avoid increasing this file without a
   clear extraction plan.
@@ -83,6 +84,8 @@ continuation was `98a7c72 build: update Android dependency baselines` on
   profile/automation rules.
 - `SECURITY.md`: permission matrix, backup posture, local-first privacy notes,
   release hygiene, and policy references.
+- `SnapCropProjectSidecar`: versioned JSON schema for source URI/hash, crop
+  rect, adjustment state, pixelate rectangles, draw layers, and export settings.
 
 ## Product Philosophy
 
@@ -132,9 +135,9 @@ and Android system integration.
   display-over-apps is optional with notification fallback, Long Screenshot
   shows an Accessibility disclosure before settings, foreground-service
   special-use metadata is more explicit, and `android:allowBackup` is disabled.
-- Non-destructive editing is incomplete. SVG sidecars preserve visible vector
-  annotation output, but there is no re-openable project state sidecar for crop,
-  adjustments, layer properties, and source URI lineage.
+- Non-destructive editing now has a first project sidecar path. Future work can
+  expand it into richer source relinking, thumbnails, migration tests, and
+  user-facing sidecar management.
 - App profiles and conditional actions currently cover Reddit and X/Twitter only.
 - Smart albums are heuristic and do not yet maintain a persistent OCR/entity/app
   index.

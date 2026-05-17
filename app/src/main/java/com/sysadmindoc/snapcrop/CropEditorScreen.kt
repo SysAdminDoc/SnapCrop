@@ -203,6 +203,23 @@ private enum class AspectRatio(val label: String, val ratio: Float?) {
     DIAMOND("Diamond", 1f)
 }
 
+private fun aspectRatioForShapeCrop(value: Float): AspectRatio = when (value.roundToInt()) {
+    1 -> AspectRatio.CIRCLE
+    2 -> AspectRatio.ROUNDED
+    3 -> AspectRatio.STAR
+    4 -> AspectRatio.HEART
+    5 -> AspectRatio.TRIANGLE
+    6 -> AspectRatio.HEXAGON
+    7 -> AspectRatio.DIAMOND
+    else -> AspectRatio.FREE
+}
+
+private fun filterFromOrdinal(value: Float): ImageFilter =
+    ImageFilter.entries.getOrElse(value.roundToInt()) { ImageFilter.NONE }
+
+private fun FloatArray?.adjustValue(index: Int, default: Float): Float =
+    this?.getOrNull(index) ?: default
+
 private data class EditorSnapshot(
     val crop: Rect,
     val bright: Float, val contr: Float, val sat: Float, val warm: Float, val vig: Float,
@@ -452,6 +469,9 @@ fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
+    initialPixelateRects: List<Rect> = emptyList(),
+    initialDrawPaths: List<DrawPath> = emptyList(),
+    initialAdjustments: FloatArray? = null,
     onSave: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
     onSaveCopy: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
     onShare: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
@@ -493,18 +513,18 @@ fun CropEditorScreen(
 
     var activeHandle by remember { mutableStateOf(DragHandle.NONE) }
     var previewMode by remember { mutableStateOf(false) }
-    var selectedRatio by remember { mutableStateOf(AspectRatio.FREE) }
+    var selectedRatio by remember { mutableStateOf(aspectRatioForShapeCrop(initialAdjustments.adjustValue(3, 0f))) }
     var aiLoading by remember { mutableStateOf(false) }
     var reframeLoading by remember { mutableStateOf(false) }
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
-    val pixelateRects = remember { mutableStateListOf<Rect>() }
+    val pixelateRects = remember { mutableStateListOf<Rect>().apply { addAll(initialPixelateRects) } }
     var pixDragStart by remember { mutableStateOf<Offset?>(null) }
     var pixDragCurrent by remember { mutableStateOf<Offset?>(null) }
 
     // Draw mode
-    val drawPaths = remember { mutableStateListOf<DrawPath>() }
+    val drawPaths = remember { mutableStateListOf<DrawPath>().apply { addAll(initialDrawPaths) } }
     val drawRedoStack = remember { mutableStateListOf<DrawPath>() }
     val currentDrawPoints = remember { mutableStateListOf<PointF>() }
     var drawColor by remember { mutableIntStateOf(0xFFFF0000.toInt()) }
@@ -544,26 +564,26 @@ fun CropEditorScreen(
     var selectedEmoji by remember { mutableStateOf(commonEmojis[0]) }
 
     // Adjust mode (brightness/contrast/saturation)
-    var brightness by remember { mutableFloatStateOf(0f) }    // -100 to 100
-    var contrast by remember { mutableFloatStateOf(1f) }      // 0.5 to 2.0
-    var saturation by remember { mutableFloatStateOf(1f) }    // 0.0 to 2.0
-    var warmth by remember { mutableFloatStateOf(0f) }        // -50 to 50 (red/blue shift)
-    var vignette by remember { mutableFloatStateOf(0f) }     // 0 to 1 (edge darkening)
-    var sharpen by remember { mutableFloatStateOf(0f) }      // 0 to 2 (convolution kernel strength)
-    var highlights by remember { mutableFloatStateOf(0f) }   // -100 to 100 (bright area adjustment)
-    var shadows by remember { mutableFloatStateOf(0f) }      // -100 to 100 (dark area adjustment)
-    var tiltShift by remember { mutableFloatStateOf(0f) }    // 0 to 1 (linear blur top/bottom)
-    var denoise by remember { mutableFloatStateOf(0f) }      // 0 to 1 (noise reduction strength)
+    var brightness by remember { mutableFloatStateOf(initialAdjustments.adjustValue(0, 0f)) }    // -100 to 100
+    var contrast by remember { mutableFloatStateOf(initialAdjustments.adjustValue(1, 1f)) }      // 0.5 to 2.0
+    var saturation by remember { mutableFloatStateOf(initialAdjustments.adjustValue(2, 1f)) }    // 0.0 to 2.0
+    var warmth by remember { mutableFloatStateOf(initialAdjustments.adjustValue(4, 0f)) }        // -50 to 50 (red/blue shift)
+    var vignette by remember { mutableFloatStateOf(initialAdjustments.adjustValue(5, 0f)) }     // 0 to 1 (edge darkening)
+    var sharpen by remember { mutableFloatStateOf(initialAdjustments.adjustValue(7, 0f)) }      // 0 to 2 (convolution kernel strength)
+    var highlights by remember { mutableFloatStateOf(initialAdjustments.adjustValue(9, 0f)) }   // -100 to 100 (bright area adjustment)
+    var shadows by remember { mutableFloatStateOf(initialAdjustments.adjustValue(10, 0f)) }      // -100 to 100 (dark area adjustment)
+    var tiltShift by remember { mutableFloatStateOf(initialAdjustments.adjustValue(11, 0f)) }    // 0 to 1 (linear blur top/bottom)
+    var denoise by remember { mutableFloatStateOf(initialAdjustments.adjustValue(12, 0f)) }      // 0 to 1 (noise reduction strength)
     // Curves: per-channel midpoint adjustments (-100 to 100)
-    var curveR by remember { mutableFloatStateOf(0f) }
-    var curveG by remember { mutableFloatStateOf(0f) }
-    var curveB by remember { mutableFloatStateOf(0f) }
-    var selectedFilter by remember { mutableStateOf(ImageFilter.NONE) }
+    var curveR by remember { mutableFloatStateOf(initialAdjustments.adjustValue(14, 0f)) }
+    var curveG by remember { mutableFloatStateOf(initialAdjustments.adjustValue(15, 0f)) }
+    var curveB by remember { mutableFloatStateOf(initialAdjustments.adjustValue(16, 0f)) }
+    var selectedFilter by remember { mutableStateOf(filterFromOrdinal(initialAdjustments.adjustValue(6, 0f))) }
     var showCropInputDialog by remember { mutableStateOf(false) }
-    var gradientBg by remember { mutableIntStateOf(0) } // 0=none, 1-6=gradient presets
+    var gradientBg by remember { mutableIntStateOf(initialAdjustments.adjustValue(13, 0f).roundToInt().coerceIn(0, 6)) } // 0=none, 1-6=gradient presets
     var showUndoHistory by remember { mutableStateOf(false) }
     var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
-    var rotationAngle by remember { mutableFloatStateOf(0f) } // -45 to 45 degrees for straightening
+    var rotationAngle by remember { mutableFloatStateOf(initialAdjustments.adjustValue(8, 0f)) } // -45 to 45 degrees for straightening
 
     // Pre-allocate Paint for vignette to avoid allocation in DrawScope
     val vigPaint = remember { android.graphics.Paint() }
