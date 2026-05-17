@@ -11,10 +11,12 @@ research, Android platform guidance, dependency metadata, and security review.
 Local evidence:
 
 - L1: `app/build.gradle.kts` version `6.19.0`, minSdk 29, targetSdk 35,
-  compileSdk 35, release signing fallback behavior.
+  compileSdk 36, release signing fallback behavior, and AGP built-in Kotlin
+  compiler configuration.
 - L2: `gradle/libs.versions.toml` dependency versions.
-- L3: `gradle/wrapper/gradle-wrapper.properties` Gradle 8.11.1.
-- L4: `.github/workflows/build.yml` manual release build workflow.
+- L3: `gradle/wrapper/gradle-wrapper.properties` Gradle 9.4.1.
+- L4: `.github/workflows/build.yml` verification, dependency-review, and
+  release artifact workflow.
 - L5: `app/src/main/AndroidManifest.xml` permissions, exported components,
   foreground-service special-use metadata, and backup setting.
 - L6: `app/src/main/java/com/sysadmindoc/snapcrop/CropEditorScreen.kt`, about
@@ -109,14 +111,25 @@ Acceptance:
 - Release workflow produces traceable build artifacts and dependency metadata.
 - Local contributors can still build with debug signing fallback.
 
-### 2. [ ] Update and gate Android dependency baselines
+### 2. [x] Update and gate Android dependency baselines
 
-Evidence: L2 currently uses AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01,
-core-ktx 1.15.0, activity-compose 1.9.3, navigation-compose 2.8.5, and
-lifecycle-runtime-ktx 2.8.7. E9 metadata on 2026-05-17 showed newer stable
+Status: Completed 2026-05-17. The project now builds on Gradle 9.4.1,
+AGP 9.2.1, Kotlin/Compose compiler plugin 2.3.21, compileSdk 36,
+Compose BOM 2026.05.00, Core KTX 1.18.0, Activity Compose 1.13.0,
+Lifecycle Runtime KTX 2.10.0, Navigation Compose 2.9.8, and Material 3 1.4.0.
+The migration follows AGP 9 built-in Kotlin by removing the legacy
+`org.jetbrains.kotlin.android` plugin and using `kotlin.compilerOptions`.
+`targetSdk` intentionally remains 35; target-behavior changes belong to the
+separate policy/platform audit.
+
+Evidence: Before completion, L2 used AGP 8.7.3, Kotlin 2.0.21, Compose BOM
+2024.12.01, core-ktx 1.15.0, activity-compose 1.9.3, navigation-compose 2.8.5,
+and lifecycle-runtime-ktx 2.8.7. E9 metadata on 2026-05-17 showed newer stable
 baselines including AGP 9.2.1, Kotlin 2.3.21, Compose BOM 2026.05.00,
 core-ktx 1.18.0, activity-compose 1.13.0, navigation-compose 2.9.8, and
-lifecycle-runtime-ktx 2.10.0.
+lifecycle-runtime-ktx 2.10.0. Android's AGP guidance maps AGP 9.2 to Gradle
+9.4.1, and Android's built-in Kotlin migration guide requires removing
+`kotlin-android` under AGP 9.
 
 Deliverables:
 

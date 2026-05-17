@@ -79,3 +79,34 @@ Verification for this continuation batch:
   `releaseRuntimeClasspath`; the SBOM task still succeeds and writes JSON/XML
   to `app/build/reports/cyclonedx-direct/`.
 - Transient `.kotlin/errors/errors-1774623214671.log` was removed.
+
+## Roadmap Continuation - P0.2 - 2026-05-17
+
+Implemented P0.2, "Update and gate Android dependency baselines":
+
+- Updated the Gradle wrapper from 8.11.1 to 9.4.1.
+- Updated AGP from 8.7.3 to 9.2.1.
+- Updated the Kotlin/Compose compiler plugin from 2.0.21 to 2.3.21.
+- Updated compileSdk from 35 to 36 while intentionally keeping targetSdk 35
+  for the separate platform behavior and policy audit.
+- Updated AndroidX/Compose baselines: Compose BOM 2026.05.00, Core KTX 1.18.0,
+  Activity Compose 1.13.0, Lifecycle Runtime KTX 2.10.0, Navigation Compose
+  2.9.8, and Material 3 1.4.0.
+- Migrated to AGP 9 built-in Kotlin by removing the legacy
+  `org.jetbrains.kotlin.android` plugin and moving JVM target configuration to
+  `kotlin.compilerOptions`.
+- Fixed the ignored local `local.properties` SDK path escaping after newer lint
+  flagged the Windows drive separator. That file is intentionally untracked.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, and local
+  `CLAUDE.md` notes.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:lintDebug --rerun-tasks`: passed after correcting the
+  ignored local SDK path.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed.
+- The build still prints the existing CycloneDX configuration-time resolution
+  warning for `releaseRuntimeClasspath`; the SBOM task succeeds.
+- Existing Kotlin deprecation warnings remain for legacy activity-result
+  callbacks, AutoMirrored icon migrations, and `Bitmap.recycle()` calls.

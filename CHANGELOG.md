@@ -12,6 +12,13 @@ All notable changes to SnapCrop will be documented in this file.
   matching, sensitive text pattern detection, and Smart Erase behavior.
 - Added a release checklist covering version sync, verification, signing,
   privacy/policy review, and artifact handling.
+- Updated the Android build baseline to Gradle 9.4.1, AGP 9.2.1,
+  Kotlin/Compose compiler 2.3.21, compileSdk 36, Compose BOM 2026.05.00,
+  Material 3 1.4.0, Activity Compose 1.13.0, Lifecycle 2.10.0,
+  Navigation Compose 2.9.8, and Core KTX 1.18.0.
+- Migrated the app module to AGP 9 built-in Kotlin by removing the legacy
+  `org.jetbrains.kotlin.android` plugin and using `kotlin.compilerOptions` for
+  the JVM target.
 
 ## [v6.19.0] - 2026-05-14
 
