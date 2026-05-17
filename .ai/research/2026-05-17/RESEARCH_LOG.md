@@ -285,6 +285,29 @@ Result:
 - Left P1.10 open for the next pass because network export targets and Android
   share shortcuts are separate privacy-sensitive deliverables.
 
+### Pass 14: P1.10 network export and share shortcut implementation pass
+
+Targets:
+
+- Explicit Settings-gated network exports that preserve SnapCrop's local-first
+  default.
+- HTTP, WebDAV/Nextcloud, and Imgur behavior matched to the target's practical
+  upload shape.
+- Android-native share destination shortcuts without inventing an account or
+  cloud dependency.
+
+Result:
+
+- Added network export settings that are off by default and must be configured
+  before the report dialog exposes an upload checkbox.
+- Added HTTP multipart PDF upload, WebDAV/Nextcloud PDF PUT, and Imgur
+  anonymous selected-image upload.
+- Added a chooser callback receiver and share-target store so the Android share
+  sheet can surface frequently chosen destinations first.
+- Added focused tests for network export configuration and share shortcut
+  persistence.
+- Marked P1.10 complete in `ROADMAP.md`.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.

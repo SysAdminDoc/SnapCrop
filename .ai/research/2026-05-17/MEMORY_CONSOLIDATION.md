@@ -43,8 +43,10 @@ set.
   `d34b7b2 feat: export svg annotation sidecars`.
 - The app is Kotlin/Compose/Material3 with minSdk 29, targetSdk 35, compileSdk
   35.
-- The app is positioned as local-first and privacy-first. README states no ads,
-  no tracking, and no internet requirement.
+- The app is positioned as local-first and privacy-first. README still states
+  no ads, no tracking, and no required internet path; as of P1.10, optional
+  network exports exist but are off by default and require explicit Settings
+  configuration.
 - ML Kit is used through Google Play Services and current repo dependencies
   cover object, text, face, barcode, subject segmentation, language ID,
   translation, and entity extraction.

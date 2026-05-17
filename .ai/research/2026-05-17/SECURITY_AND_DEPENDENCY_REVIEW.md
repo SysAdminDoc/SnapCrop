@@ -46,9 +46,9 @@ Remaining recommendations:
 
 ## Privacy And Data Handling
 
-README positions SnapCrop as no ads, no tracking, and no internet requirement.
-Future network integrations must preserve that by being explicit, optional, and
-off by default.
+README positions SnapCrop as no ads, no tracking, and no required internet path.
+P1.10 network exports preserve that by being explicit, optional, off by
+default, and configurable only from Settings before report/image upload.
 
 Recommended controls:
 
@@ -58,6 +58,9 @@ Recommended controls:
 - Permission matrix in README or `SECURITY.md`.
 - Android app-data backup remains disabled because preferences can reveal local
   paths, favorites, automation toggles, and screenshot workflow habits.
+- `INTERNET` is now present for optional HTTP/WebDAV/Imgur exports. Keep the
+  report dialog upload checkbox off unless the user has enabled and configured
+  a target in Settings.
 - Sidecar privacy review before saving source URI/path, OCR text, or entity
   metadata. P0.4 sidecars currently store source URI/hash and editable geometry,
   not OCR transcript text.

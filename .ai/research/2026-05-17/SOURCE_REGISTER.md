@@ -35,6 +35,11 @@ repository research and roadmap planning pass.
 | L15c | `app/src/test/java/com/sysadmindoc/snapcrop/ScreenshotIndexClassifierTest.kt` | Source/category classifier coverage. |
 | L15d | `app/src/main/java/com/sysadmindoc/snapcrop/ExportWorkflowModels.kt` | Export metadata and batch rename token expansion/sanitization. |
 | L15e | `app/src/test/java/com/sysadmindoc/snapcrop/BatchRenameTemplateTest.kt` | Batch rename template regression coverage. |
+| L15f | `app/src/main/java/com/sysadmindoc/snapcrop/NetworkExportClient.kt` | Explicit opt-in HTTP/WebDAV/Imgur export target implementation. |
+| L15g | `app/src/main/java/com/sysadmindoc/snapcrop/ShareTargetStore.kt` | Frequent share destination persistence. |
+| L15h | `app/src/main/java/com/sysadmindoc/snapcrop/ShareTargetReceiver.kt` | Android chooser callback receiver for selected share targets. |
+| L15i | `app/src/test/java/com/sysadmindoc/snapcrop/NetworkExportClientTest.kt` | Network export configuration regression coverage. |
+| L15j | `app/src/test/java/com/sysadmindoc/snapcrop/ShareTargetStoreTest.kt` | Share target shortcut persistence regression coverage. |
 | L16 | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` | Screenshot monitoring, quick crop, delayed capture, last action. |
 | L17 | `app/src/main/java/com/sysadmindoc/snapcrop/ScrollCaptureService.kt` | Long screenshot capture and stitch implementation. |
 | L17a | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotReviewActivity.kt` | Long screenshot review, retry, and save handoff. |

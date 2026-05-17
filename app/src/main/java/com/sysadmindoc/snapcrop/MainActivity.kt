@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.ComponentName
@@ -65,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -406,9 +408,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showReportDialogState.value) {
+                    val networkSettings = NetworkExportSettings.fromPrefs(prefs)
                     var reportTitle by remember(reportUris.value) { mutableStateOf("SnapCrop incident report") }
                     var notes by remember(reportUris.value) { mutableStateOf("") }
                     var includeOcr by remember(reportUris.value) { mutableStateOf(false) }
+                    var uploadAfterSave by remember(reportUris.value, networkSettings) { mutableStateOf(false) }
                     AlertDialog(
                         onDismissRequest = { showReportDialogState.value = false },
                         title = { Text("Create PDF report", color = OnSurface) },
@@ -471,13 +475,48 @@ class MainActivity : ComponentActivity() {
                                         fontSize = 13.sp
                                     )
                                 }
+                                Spacer(Modifier.height(8.dp))
+                                if (networkSettings.enabled) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = uploadAfterSave,
+                                            onCheckedChange = { uploadAfterSave = it && networkSettings.isConfigured },
+                                            enabled = networkSettings.isConfigured,
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = Primary,
+                                                uncheckedColor = OnSurfaceVariant,
+                                                disabledUncheckedColor = Outline
+                                            )
+                                        )
+                                        Column {
+                                            Text(
+                                                "Upload after saving",
+                                                color = if (networkSettings.isConfigured) OnSurfaceVariant else Outline,
+                                                fontSize = 13.sp
+                                            )
+                                            Text(
+                                                if (networkSettings.isConfigured) networkSettings.destinationLabel
+                                                else "Configure the network target in Settings",
+                                                color = OnSurfaceVariant,
+                                                fontSize = 11.sp,
+                                                lineHeight = 15.sp
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        "Network upload is off in Settings",
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
                         },
                         confirmButton = {
                             TextButton(
                                 onClick = {
                                     showReportDialogState.value = false
-                                    exportPdfReport(reportUris.value, reportTitle, notes, includeOcr)
+                                    exportPdfReport(reportUris.value, reportTitle, notes, includeOcr, uploadAfterSave)
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
                             ) { Text("Create") }
@@ -738,7 +777,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun exportPdfReport(uris: List<Uri>, title: String, notes: String, includeOcr: Boolean) {
+    private fun exportPdfReport(
+        uris: List<Uri>,
+        title: String,
+        notes: String,
+        includeOcr: Boolean,
+        uploadAfterSave: Boolean
+    ) {
         if (uris.isEmpty()) return
         batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
@@ -797,13 +842,24 @@ class MainActivity : ComponentActivity() {
                 if (includeOcr && appendix.isNotEmpty()) {
                     pageNumber = drawOcrAppendixPages(doc, pageNumber, appendix)
                 }
-                val saved = savePdfDocument(doc, "SnapCrop_Report_$createdAt.pdf")
+                val displayName = "SnapCrop_Report_$createdAt.pdf"
+                val pdfBytes = ByteArrayOutputStream().use { out ->
+                    doc.writeTo(out)
+                    out.toByteArray()
+                }
+                val saved = savePdfBytes(displayName, pdfBytes)
+                val uploadResult = if (saved && uploadAfterSave) {
+                    uploadReportArtifacts(displayName, pdfBytes, uris)
+                } else {
+                    null
+                }
                 withContext(Dispatchers.Main) {
                     batchProgress.value = ""
+                    val uploadSuffix = uploadResult?.let { "\n${it.message}" }.orEmpty()
                     Toast.makeText(
                         this@MainActivity,
-                        if (saved) "PDF report saved to Documents/SnapCrop" else "PDF report failed",
-                        Toast.LENGTH_SHORT
+                        if (saved) "PDF report saved to Documents/SnapCrop$uploadSuffix" else "PDF report failed",
+                        if (uploadResult != null) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
                     ).show()
                 }
             } catch (_: Exception) {
@@ -814,6 +870,41 @@ class MainActivity : ComponentActivity() {
             } finally {
                 doc.close()
             }
+        }
+    }
+
+    private fun uploadReportArtifacts(
+        displayName: String,
+        pdfBytes: ByteArray,
+        sourceUris: List<Uri>
+    ): NetworkExportResult {
+        val settings = NetworkExportSettings.fromPrefs(getSharedPreferences("snapcrop", MODE_PRIVATE))
+        if (!settings.isConfigured) {
+            return NetworkExportResult(false, settings.target, 0, "Network export is not configured")
+        }
+        if (settings.target != NetworkExportTarget.IMGUR) {
+            return NetworkExportClient.uploadReportPdf(settings, displayName, pdfBytes)
+        }
+
+        var uploaded = 0
+        var lastFailure: NetworkExportResult? = null
+        sourceUris.forEachIndexed { index, uri ->
+            val metadata = loadExportItemMetadata(uri)
+            val mime = contentResolver.getType(uri) ?: "image/png"
+            if (!mime.startsWith("image/")) return@forEachIndexed
+            val bytes = try {
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            } ?: return@forEachIndexed
+            val name = metadata.displayName.ifBlank { "snapcrop_${index + 1}.png" }
+            val result = NetworkExportClient.uploadImageToImgur(settings, name, mime, bytes)
+            if (result.success) uploaded++ else lastFailure = result
+        }
+        return if (uploaded > 0) {
+            NetworkExportResult(true, NetworkExportTarget.IMGUR, 200, "Imgur uploaded $uploaded image(s)")
+        } else {
+            lastFailure ?: NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "No images uploaded to Imgur")
         }
     }
 
@@ -1024,7 +1115,7 @@ class MainActivity : ComponentActivity() {
         return pageNumber + 1
     }
 
-    private fun savePdfDocument(doc: PdfDocument, displayName: String): Boolean {
+    private fun savePdfBytes(displayName: String, pdfBytes: ByteArray): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
@@ -1035,7 +1126,12 @@ class MainActivity : ComponentActivity() {
         return try {
             pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
             val uri = pdfUri ?: return false
-            contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) } ?: return false
+            val opened = contentResolver.openOutputStream(uri)
+            if (opened == null) {
+                contentResolver.delete(uri, null, null)
+                return false
+            }
+            opened.use { it.write(pdfBytes) }
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
@@ -1209,7 +1305,7 @@ class MainActivity : ComponentActivity() {
                         putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(cleanUris))
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    startActivity(Intent.createChooser(intent, null))
+                    startShareChooser(intent)
                 }
             }
         } else {
@@ -1218,8 +1314,26 @@ class MainActivity : ComponentActivity() {
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, null))
+            startShareChooser(intent)
         }
+    }
+
+    private fun startShareChooser(baseIntent: Intent) {
+        val callbackFlags = PendingIntent.FLAG_UPDATE_CURRENT or
+                (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
+        val callback = PendingIntent.getBroadcast(
+            this,
+            1001,
+            Intent(this, ShareTargetReceiver::class.java),
+            callbackFlags
+        )
+        val chooser = Intent.createChooser(baseIntent, null, callback.intentSender).apply {
+            val shortcuts = ShareTargetStore.buildInitialIntents(this@MainActivity, baseIntent)
+            if (shortcuts.isNotEmpty()) {
+                putExtra(Intent.EXTRA_INITIAL_INTENTS, shortcuts)
+            }
+        }
+        startActivity(chooser)
     }
 
     private fun requestDeleteUris(uris: List<Uri>) {
