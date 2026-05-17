@@ -2,6 +2,17 @@
 
 All notable changes to SnapCrop will be documented in this file.
 
+## [Unreleased]
+
+**Verification and release hardening.**
+
+- Added CI lanes for lint, unit tests, debug assemble, release assemble,
+  dependency review, and release SBOM artifacts.
+- Added a starter JVM/Robolectric unit-test surface for auto-crop, app profile
+  matching, sensitive text pattern detection, and Smart Erase behavior.
+- Added a release checklist covering version sync, verification, signing,
+  privacy/policy review, and artifact handling.
+
 ## [v6.19.0] - 2026-05-14
 
 **SVG annotation sidecars.**

@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
@@ -120,7 +121,7 @@ object VideoClipExporter {
                     0,
                     sampleSize,
                     (sampleTime - startUs).coerceAtLeast(0L),
-                    extractor.sampleFlags
+                    toMuxerBufferFlags(extractor.sampleFlags)
                 )
                 muxer.writeSampleData(outputTrack, buffer, info)
                 extractor.advance()
@@ -133,6 +134,17 @@ object VideoClipExporter {
             }
             muxer?.release()
         }
+    }
+
+    private fun toMuxerBufferFlags(sampleFlags: Int): Int {
+        var flags = 0
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC != 0) {
+            flags = flags or MediaCodec.BUFFER_FLAG_KEY_FRAME
+        }
+        if (sampleFlags and MediaExtractor.SAMPLE_FLAG_PARTIAL_FRAME != 0) {
+            flags = flags or MediaCodec.BUFFER_FLAG_PARTIAL_FRAME
+        }
+        return flags
     }
 
     private fun safeMaxInputSize(format: MediaFormat): Int {

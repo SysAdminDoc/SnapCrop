@@ -676,14 +676,14 @@ fun CropEditorScreen(
     fun undo() {
         if (undoStack.isEmpty()) return
         redoStack.add(captureSnapshot())
-        restoreSnapshot(undoStack.removeLast())
+        restoreSnapshot(undoStack.removeAt(undoStack.lastIndex))
         haptic()
     }
 
     fun redo() {
         if (redoStack.isEmpty()) return
         undoStack.add(captureSnapshot())
-        restoreSnapshot(redoStack.removeLast())
+        restoreSnapshot(redoStack.removeAt(redoStack.lastIndex))
         haptic()
     }
 
@@ -1366,7 +1366,7 @@ fun CropEditorScreen(
                                     drawColor = newColor
                                     if (!recentColors.contains(newColor)) {
                                         recentColors.add(0, newColor)
-                                        if (recentColors.size > 4) recentColors.removeLast()
+                                        if (recentColors.size > 4) recentColors.removeAt(recentColors.lastIndex)
                                     }
                                     eyedropperActive = false
                                     showColorPicker = false

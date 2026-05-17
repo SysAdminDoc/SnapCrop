@@ -16,9 +16,9 @@ collage, device frames, video frame extraction, long screenshots, and ML Kit
 assists.
 
 The current repository version is `6.19.0` / `versionCode 67` in
-`app/build.gradle.kts`. The latest checked commit at this research pass was
-`d34b7b2 feat: export svg annotation sidecars` on `main`, aligned with
-`origin/main`.
+`app/build.gradle.kts`. The latest checked commit at the roadmap-continuation
+pass was `7557311 docs: plan SnapCrop roadmap from research` on `main`, aligned
+with `origin/main`.
 
 ## Working Rules
 
@@ -111,9 +111,10 @@ and Android system integration.
 
 - Root roadmap previously mixed completed features with open ideas. The
   2026-05-17 `ROADMAP.md` replaces it with prioritized evidence-backed work.
-- No dedicated unit/instrumentation test suite was found under source control.
-- GitHub Actions currently builds release APK on manual dispatch only; it does
-  not run lint, tests, dependency review, SBOM generation, or tag/release upload.
+- A starter JVM/Robolectric unit-test surface now covers auto-crop, app profile
+  matching, sensitive text pattern detection, and Smart Erase behavior.
+- GitHub Actions now has lint/test/debug assemble/release assemble,
+  dependency-review, and CycloneDX SBOM artifact lanes.
 - Dependencies are behind current stable AndroidX/Kotlin/Compose baselines as of
   2026-05-17 metadata.
 - `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`, AccessibilityService, and

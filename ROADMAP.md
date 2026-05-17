@@ -81,7 +81,13 @@ that competitors and OEM screenshot tools do not combine cleanly.
 
 ## P0: Stabilize The Foundation
 
-### 1. Add a real verification and release-quality CI lane
+### 1. [x] Add a real verification and release-quality CI lane
+
+Status: Completed 2026-05-17. CI now runs lint, unit tests, debug assemble,
+and release assemble; pull requests get dependency review; release/manual runs
+produce a CycloneDX SBOM artifact; the repo has a starter unit-test surface for
+auto-crop, app profile matching, sensitive text patterns, and Smart Erase; and
+`docs/RELEASE_CHECKLIST.md` records the signed-release checklist.
 
 Evidence: L4 shows only manual `assembleRelease`; L2/L3 show modern Android
 stack versions; E14 provides dependency review and SBOM tooling.
@@ -103,7 +109,7 @@ Acceptance:
 - Release workflow produces traceable build artifacts and dependency metadata.
 - Local contributors can still build with debug signing fallback.
 
-### 2. Update and gate Android dependency baselines
+### 2. [ ] Update and gate Android dependency baselines
 
 Evidence: L2 currently uses AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01,
 core-ktx 1.15.0, activity-compose 1.9.3, navigation-compose 2.8.5, and
@@ -128,7 +134,7 @@ Acceptance:
 - Any behavior changes are captured in `CHANGELOG.md` and `CLAUDE.md`.
 - Rollback path is clear in commits.
 
-### 3. Harden permissions, privacy posture, and Play policy documentation
+### 3. [ ] Harden permissions, privacy posture, and Play policy documentation
 
 Evidence: L5 declares `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`,
 AccessibilityService, foreground-service special use, media permissions, and
@@ -153,7 +159,7 @@ Acceptance:
 - The app remains usable without optional permissions.
 - Backup behavior is intentional and documented.
 
-### 4. Build non-destructive project sidecars
+### 4. [ ] Build non-destructive project sidecars
 
 Evidence: L7 shows SVG sidecars now preserve visible vector output, but project
 state is not re-openable. Competitors and annotation engines in E12 commonly
@@ -174,7 +180,7 @@ Acceptance:
 - Sidecar versioning handles future schema changes.
 - Missing source image produces a clear recoverable state.
 
-### 5. Split the editor before adding more surface area
+### 5. [ ] Split the editor before adding more surface area
 
 Evidence: L6 shows `CropEditorScreen.kt` is about 2,821 lines and owns UI,
 gesture handling, rendering, layers, tools, controls, and state.
@@ -196,7 +202,7 @@ Acceptance:
 
 ## P1: Deepen Screenshot-Specific Workflows
 
-### 6. Long-screenshot stitcher v2
+### 6. [ ] Long-screenshot stitcher v2
 
 Evidence: L8 caps capture at five frames and uses a simple sampled pixel
 difference stitcher. E1 documents `takeScreenshot()` behavior and rate-limit
@@ -217,7 +223,7 @@ Acceptance:
 - Better merges on chat, browser, settings, and feed screenshots.
 - Failures produce understandable messages instead of corrupted tall images.
 
-### 7. Persistent screenshot intelligence index
+### 7. [ ] Persistent screenshot intelligence index
 
 Evidence: L10 smart albums are currently heuristic; L11 already has OCR,
 barcode, entity, face, and object capabilities. E13 datasets provide evaluation
@@ -237,7 +243,7 @@ Acceptance:
 - Search works by text/entity/app-like hints without rescanning every image.
 - Users can bulk-clean old non-favorite screenshots safely.
 
-### 8. Expand app profiles into a user-visible rules system
+### 8. [ ] Expand app profiles into a user-visible rules system
 
 Evidence: L9 currently covers Reddit and X/Twitter only. ShareX in E12 shows
 the value of capture -> action recipes, while SnapCrop already has Quick Crop
@@ -256,7 +262,7 @@ Acceptance:
 - A user can create a profile for one app without code changes.
 - Conditional auto-actions explain what they changed and where the image went.
 
-### 9. Tablet, foldable, and desktop-mode editor layout
+### 9. [ ] Tablet, foldable, and desktop-mode editor layout
 
 Evidence: L6 editor density, existing Compose stack, Android large-screen
 guidance implied by platform changes in E5/E6, and user workflows that benefit
@@ -274,7 +280,7 @@ Acceptance:
 - Phone UI remains recognizable.
 - Wide layouts reduce toolbar scrolling and improve layer/edit precision.
 
-### 10. Export and reporting workflows
+### 10. [ ] Export and reporting workflows
 
 Evidence: Existing PDF export and SVG sidecars in L7/L10; competitors in E12
 emphasize upload, report, and workflow automation.
@@ -297,7 +303,7 @@ Acceptance:
 
 ## P2: Research And Advanced Capabilities
 
-### 11. ML Kit robustness and model-state UX
+### 11. [ ] ML Kit robustness and model-state UX
 
 Evidence: L11 uses several ML Kit clients. E7/E8 include official guidance and
 known issue classes; subject segmentation and translation may involve model
@@ -315,7 +321,7 @@ Acceptance:
 
 - Failed ML features degrade predictably and do not silently look like no-ops.
 
-### 12. Optional advanced erase backend
+### 12. [ ] Optional advanced erase backend
 
 Evidence: L11 local Smart Erase avoids a large model. E13 lists LaMa and ONNX
 Runtime Android as possible research references.
@@ -332,7 +338,7 @@ Acceptance:
 - No large model is bundled by default.
 - Any advanced backend is opt-in and measurably better on screenshot objects.
 
-### 13. Dataset-backed evaluation harness
+### 13. [ ] Dataset-backed evaluation harness
 
 Evidence: L11 has ML and heuristic engines; E13 includes UI/screenshot datasets
 and model/tooling references.
@@ -349,7 +355,7 @@ Acceptance:
 - Changes to heuristics can be compared before/after.
 - Dataset license constraints are documented before any fixture is committed.
 
-### 14. Screenshot explanation and accessibility summaries
+### 14. [ ] Screenshot explanation and accessibility summaries
 
 Evidence: E13 includes local model directions such as Gemma and LiteRT, but the
 repo currently has no local LLM runtime. This remains exploratory.
