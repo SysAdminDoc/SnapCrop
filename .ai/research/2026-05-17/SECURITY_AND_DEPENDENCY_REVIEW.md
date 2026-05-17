@@ -70,6 +70,11 @@ messages for Play Services, Wi-Fi, storage, and retry guidance; successful
 translation model pairs and subject-segmentation readiness/error state are
 cached locally in app preferences.
 
+P2.12 status: advanced erase model packs remain inactive. The registry requires
+license, size, latency, battery, and private benchmark evidence before any
+downloaded inpainting backend can activate; no large model is bundled by
+default.
+
 ## aCropalypse-Style Export Risk
 
 Android CVE-2023-21036 showed why image editors must ensure cropped/redacted

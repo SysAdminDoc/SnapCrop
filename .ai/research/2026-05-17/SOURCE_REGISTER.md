@@ -55,6 +55,9 @@ repository research and roadmap planning pass.
 | L21b | `app/src/test/java/com/sysadmindoc/snapcrop/MlKitStatusTest.kt` | ML Kit status/retry guidance regression coverage. |
 | L22 | `app/src/main/java/com/sysadmindoc/snapcrop/BackgroundRemover.kt` | Subject segmentation/background remove. |
 | L23 | `app/src/main/java/com/sysadmindoc/snapcrop/SmartEraseEngine.kt` | Local smart erase engine. |
+| L23a | `app/src/main/java/com/sysadmindoc/snapcrop/AdvancedEraseBackend.kt` | Opt-in advanced erase backend activation gates. |
+| L23b | `app/src/test/java/com/sysadmindoc/snapcrop/AdvancedEraseBackendTest.kt` | Advanced erase backend gate regression coverage. |
+| L23c | `docs/ADVANCED_ERASE_EVALUATION.md` | Advanced erase activation gates and private benchmark plan. |
 | L24 | `app/src/main/java/com/sysadmindoc/snapcrop/SmartReframeEngine.kt` | Object/text/face based reframe. |
 | L25 | `git log -10 --oneline --decorate --date=short` | Recent development trajectory. |
 | L26 | `git ls-files "*.apk" "*.idsig"` | Tracked release byproduct finding. |

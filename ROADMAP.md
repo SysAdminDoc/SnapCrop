@@ -447,7 +447,7 @@ Implemented 2026-05-17:
 - Added Play Services/storage/Wi-Fi retry messages for ML failures and unit
   coverage for the new status text.
 
-### 12. [ ] Optional advanced erase backend
+### 12. [x] Optional advanced erase backend
 
 Evidence: L11 local Smart Erase avoids a large model. E13 lists LaMa and ONNX
 Runtime Android as possible research references.
@@ -463,6 +463,18 @@ Acceptance:
 
 - No large model is bundled by default.
 - Any advanced backend is opt-in and measurably better on screenshot objects.
+
+Implemented 2026-05-17:
+
+- Added `AdvancedEraseBackendRegistry` with Local Smart Erase as the default
+  backend and a downloaded model-pack candidate that remains inactive until
+  license, size, latency, battery, and benchmark gates pass.
+- Added Settings visibility for the experimental erase model-pack opt-in while
+  forcing the selected backend back to Local Smart Erase because no candidate is
+  currently qualified.
+- Added `docs/ADVANCED_ERASE_EVALUATION.md` with activation gates and a private
+  screenshot mask benchmark plan.
+- Added unit coverage for backend activation gates.
 
 ### 13. [ ] Dataset-backed evaluation harness
 

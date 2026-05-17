@@ -81,6 +81,8 @@ Annotated saves include a same-name SVG sidecar for visible vector layers and re
 Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
 then reopened later to restore the crop, redactions, adjustment state, and draw
 layers without mutating the source screenshot.
+Smart Erase remains local by default; experimental downloaded erase model packs
+are blocked behind explicit opt-in and evaluation gates.
 
 **Pixelate**
 - Draw rectangles to mosaic-redact sensitive info
