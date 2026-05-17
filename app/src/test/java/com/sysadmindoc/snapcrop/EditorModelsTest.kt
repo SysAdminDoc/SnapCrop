@@ -51,4 +51,17 @@ class EditorModelsTest {
 
         assertEquals(points, smoothPath(points))
     }
+
+    @Test
+    fun adaptiveLayoutClassKeepsPhonesOnCompactPath() {
+        assertEquals(EditorLayoutClass.Phone, editorLayoutClass(393f, 852f))
+        assertEquals(EditorLayoutClass.Phone, editorLayoutClass(820f, 1180f))
+    }
+
+    @Test
+    fun adaptiveLayoutClassUsesWideInspectorForLargeWindows() {
+        assertEquals(EditorLayoutClass.Wide, editorLayoutClass(900f, 600f))
+        assertEquals(312f, editorSidePanelWidthDp(900f), 0.0001f)
+        assertEquals(360f, editorSidePanelWidthDp(1280f), 0.0001f)
+    }
 }

@@ -7,11 +7,22 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -473,11 +484,565 @@ fun CropEditorScreen(
         else -> if (cropMethod.startsWith("profile:")) cropMethod.substringAfter(":") else ""
     }
 
-    Column(
+    val editorFocusRequester = remember { FocusRequester() }
+    val modeOptions = listOf(
+        Triple("Crop", EditMode.CROP, Primary),
+        Triple("Pixelate", EditMode.PIXELATE, Tertiary),
+        Triple("Draw", EditMode.DRAW, Secondary),
+        Triple("OCR", EditMode.OCR, Color(0xFFCBA6F7)),
+        Triple("Adjust", EditMode.ADJUST, Color(0xFFFAB387))
+    )
+
+    fun exportAdjustments(): FloatArray {
+        val shapeCrop = when (selectedRatio) {
+            AspectRatio.CIRCLE -> 1f
+            AspectRatio.ROUNDED -> 2f
+            AspectRatio.STAR -> 3f
+            AspectRatio.HEART -> 4f
+            AspectRatio.TRIANGLE -> 5f
+            AspectRatio.HEXAGON -> 6f
+            AspectRatio.DIAMOND -> 7f
+            else -> 0f
+        }
+        return floatArrayOf(
+            brightness, contrast, saturation, shapeCrop, warmth, vignette,
+            selectedFilter.ordinal.toFloat(), sharpen, rotationAngle,
+            highlights, shadows, tiltShift, denoise, gradientBg.toFloat(),
+            curveR, curveG, curveB
+        )
+    }
+
+    fun currentCropRect() = Rect(cropLeft, cropTop, cropRight, cropBottom)
+
+    fun resetCrop() {
+        pushUndo()
+        cropLeft = 0
+        cropTop = 0
+        cropRight = bitmap.width
+        cropBottom = bitmap.height
+        selectedRatio = AspectRatio.FREE
+    }
+
+    fun runAutoCrop() {
+        pushUndo()
+        val r = onAutoCrop()
+        cropLeft = r.left
+        cropTop = r.top
+        cropRight = r.right
+        cropBottom = r.bottom
+        selectedRatio = AspectRatio.FREE
+    }
+
+    fun selectEditMode(mode: EditMode) {
+        if (editMode == mode && mode != EditMode.CROP) {
+            editMode = EditMode.CROP
+            return
+        }
+        editMode = mode
+        if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
+            ocrLoading = true
+            scope.launch {
+                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
+                val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
+                ocrBlocks = textDeferred.await()
+                scannedCodes = codeDeferred.await()
+                if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
+                    onOcrIndexed(
+                        ocrBlocks.joinToString("\n") { it.text },
+                        scannedCodes.map { it.rawValue }
+                    )
+                }
+                ocrLoading = false
+            }
+        }
+    }
+
+    fun nudgeCrop(dx: Int, dy: Int) {
+        val width = cropRight - cropLeft
+        val height = cropBottom - cropTop
+        cropLeft = (cropLeft + dx).coerceIn(0, bitmap.width - width)
+        cropTop = (cropTop + dy).coerceIn(0, bitmap.height - height)
+        cropRight = cropLeft + width
+        cropBottom = cropTop + height
+    }
+
+    fun zoomBy(factor: Float) {
+        val next = (zoomLevel * factor).coerceIn(1f, 5f)
+        if (next <= 1.01f) {
+            zoomLevel = 1f
+            panX = 0f
+            panY = 0f
+        } else {
+            zoomLevel = next
+        }
+    }
+
+    fun handleEditorShortcut(event: androidx.compose.ui.input.key.KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown) return false
+        return when {
+            event.isCtrlPressed && event.key == Key.Z -> {
+                undo()
+                true
+            }
+            event.isCtrlPressed && event.key == Key.Y -> {
+                redo()
+                true
+            }
+            event.isCtrlPressed && event.key == Key.S -> {
+                onSave(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), exportAdjustments())
+                true
+            }
+            event.key == Key.DirectionLeft && editMode == EditMode.CROP -> {
+                pushUndo()
+                nudgeCrop(if (event.isShiftPressed) -10 else -1, 0)
+                true
+            }
+            event.key == Key.DirectionRight && editMode == EditMode.CROP -> {
+                pushUndo()
+                nudgeCrop(if (event.isShiftPressed) 10 else 1, 0)
+                true
+            }
+            event.key == Key.DirectionUp && editMode == EditMode.CROP -> {
+                if (event.isCtrlPressed) zoomBy(1.08f) else {
+                    pushUndo()
+                    nudgeCrop(0, if (event.isShiftPressed) -10 else -1)
+                }
+                true
+            }
+            event.key == Key.DirectionDown && editMode == EditMode.CROP -> {
+                if (event.isCtrlPressed) zoomBy(0.92f) else {
+                    pushUndo()
+                    nudgeCrop(0, if (event.isShiftPressed) 10 else 1)
+                }
+                true
+            }
+            event.key == Key.Enter -> {
+                previewMode = !previewMode
+                true
+            }
+            else -> false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        runCatching { editorFocusRequester.requestFocus() }
+    }
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .systemBarsPadding()
+            .focusRequester(editorFocusRequester)
+            .onPreviewKeyEvent { handleEditorShortcut(it) }
+            .focusable()
+    ) {
+        val isWideLayout = editorLayoutClass(maxWidth.value, maxHeight.value) == EditorLayoutClass.Wide
+        val sidePanelWidth = editorSidePanelWidthDp(maxWidth.value).dp
+
+        @Composable
+        fun PanelSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+            Column(
+                Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(title, color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                content()
+            }
+        }
+
+        @Composable
+        fun PanelSlider(
+            label: String,
+            value: Float,
+            range: ClosedFloatingPointRange<Float>,
+            color: Color,
+            valueLabel: String,
+            onChange: (Float) -> Unit
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(label, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(76.dp))
+                Slider(
+                    value = value,
+                    onValueChange = onChange,
+                    valueRange = range,
+                    modifier = Modifier.weight(1f),
+                    colors = SliderDefaults.colors(
+                        thumbColor = color,
+                        activeTrackColor = color,
+                        inactiveTrackColor = SurfaceVariant
+                    )
+                )
+                Text(valueLabel, color = OnSurfaceVariant, fontSize = 10.sp, modifier = Modifier.width(34.dp))
+            }
+        }
+
+        @Composable
+        fun WideEditorSidePanel() {
+            Column(
+                modifier = Modifier
+                    .width(sidePanelWidth)
+                    .fillMaxHeight()
+                    .background(SurfaceContainer.copy(alpha = 0.78f))
+                    .border(1.dp, SurfaceVariant.copy(alpha = 0.65f))
+                    .verticalScroll(rememberScrollState())
+                    .padding(12.dp)
+            ) {
+                Text("Editor", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(12.dp))
+
+                PanelSection("Mode") {
+                    modeOptions.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { (label, mode, color) ->
+                                FilterChip(
+                                    selected = editMode == mode,
+                                    onClick = { selectEditMode(mode) },
+                                    label = { Text(label, fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = color.copy(alpha = 0.25f),
+                                        selectedLabelColor = color,
+                                        containerColor = SurfaceVariant,
+                                        labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                PanelSection("Crop") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilledTonalButton(
+                            onClick = { resetCrop() },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) { Text("Reset", fontSize = 11.sp) }
+                        FilledTonalButton(
+                            onClick = { runAutoCrop() },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) { Text("Auto", fontSize = 11.sp) }
+                        FilledTonalButton(
+                            onClick = { if (!aiLoading) { pushUndo(); aiLoading = true; onSmartCrop() } },
+                            enabled = !aiLoading,
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) { Text("AI", fontSize = 11.sp, color = Tertiary) }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilledTonalButton(
+                            onClick = {
+                                if (!bgRemoving) {
+                                    bgRemoving = true
+                                    onRemoveBg()
+                                }
+                            },
+                            enabled = !bgRemoving,
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) { Text("BG", fontSize = 11.sp, color = Secondary) }
+                        FilledTonalButton(
+                            onClick = {
+                                if (paletteColors.isEmpty()) {
+                                    scope.launch(Dispatchers.Default) {
+                                        val colors = ColorPaletteExtractor.extract(bitmap)
+                                        paletteColors = colors
+                                    }
+                                }
+                                showPalette = !showPalette
+                            },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) { Text("Colors", fontSize = 11.sp, color = Color(0xFFFAB387)) }
+                    }
+                    if (showPalette && paletteColors.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            paletteColors.take(5).forEach { pc ->
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.clickable {
+                                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
+                                        android.widget.Toast.makeText(context, "Copied ${pc.hex}", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                ) {
+                                    Box(
+                                        Modifier.size(24.dp)
+                                            .background(Color(pc.color), RoundedCornerShape(4.dp))
+                                            .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                    )
+                                    Text(pc.hex, fontSize = 7.sp, color = OnSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    AspectRatio.entries.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { ratio ->
+                                FilterChip(
+                                    selected = selectedRatio == ratio,
+                                    onClick = {
+                                        pushUndo()
+                                        selectedRatio = ratio
+                                        if (ratio.ratio != null) applyAspectRatio(ratio)
+                                    },
+                                    label = { Text(ratio.label, fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryContainer,
+                                        selectedLabelColor = Primary,
+                                        containerColor = SurfaceVariant,
+                                        labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                        }
+                    }
+                    PanelSlider(
+                        label = "Straighten",
+                        value = rotationAngle,
+                        range = -45f..45f,
+                        color = Primary,
+                        valueLabel = String.format("%.1f", rotationAngle),
+                        onChange = { rotationAngle = it }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = gridMode < 2,
+                            onClick = { gridMode = (gridMode + 1) % 3 },
+                            label = { Text(when (gridMode) { 0 -> "Thirds"; 1 -> "Golden"; else -> "Grid off" }, fontSize = 10.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryContainer,
+                                selectedLabelColor = Primary,
+                                containerColor = SurfaceVariant,
+                                labelColor = OnSurfaceVariant
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Flip, "Flip V", tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
+                        }
+                    }
+                }
+
+                if (editMode == EditMode.PIXELATE) {
+                    PanelSection("Redaction") {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilledTonalButton(
+                                onClick = {
+                                    if (!faceRedacting) {
+                                        faceRedacting = true
+                                        scope.launch {
+                                            val faces = FaceDetector.detect(bitmap)
+                                            if (faces.isNotEmpty()) pushUndo()
+                                            pixelateRects.addAll(faces)
+                                            lastFaceCount = faces.size
+                                            faceRedacting = false
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (faces.isEmpty()) "No faces found" else "Redacted ${faces.size} face(s)",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                            if (faces.isNotEmpty()) haptic()
+                                        }
+                                    }
+                                },
+                                enabled = !faceRedacting,
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) { Text("Blur Faces", color = Tertiary, fontSize = 11.sp) }
+                            FilledTonalButton(
+                                onClick = {
+                                    if (!textRedacting) {
+                                        textRedacting = true
+                                        scope.launch {
+                                            val result = withContext(Dispatchers.IO) { SensitiveTextDetector.detect(bitmap) }
+                                            if (result.rects.isNotEmpty()) pushUndo()
+                                            pixelateRects.addAll(result.rects)
+                                            lastTextRedactionCount = result.rects.size
+                                            textRedacting = false
+                                            android.widget.Toast.makeText(
+                                                context,
+                                                if (result.rects.isEmpty()) "No sensitive text found" else "Redacted ${result.rects.size} text block(s)",
+                                                android.widget.Toast.LENGTH_SHORT
+                                            ).show()
+                                            if (result.rects.isNotEmpty()) haptic()
+                                        }
+                                    }
+                                },
+                                enabled = !textRedacting,
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Primary.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) { Text("Auto Text", color = Primary, fontSize = 11.sp) }
+                        }
+                        if (pixelateRects.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = { pushUndo(); pixelateRects.removeLastOrNull() }) {
+                                    Text("Undo redact", color = Tertiary, fontSize = 11.sp)
+                                }
+                                TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
+                                    Text("Clear", color = Tertiary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (editMode == EditMode.DRAW || drawPaths.isNotEmpty()) {
+                    PanelSection("Draw") {
+                        DrawTool.entries.chunked(3).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                row.forEach { tool ->
+                                    FilterChip(
+                                        selected = drawTool == tool,
+                                        onClick = { drawTool = tool; editMode = EditMode.DRAW },
+                                        label = { Text(tool.label, fontSize = 9.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = PrimaryContainer,
+                                            selectedLabelColor = Primary,
+                                            containerColor = SurfaceVariant,
+                                            labelColor = OnSurfaceVariant
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (drawTool == DrawTool.RECT || drawTool == DrawTool.CIRCLE) {
+                                FilterChip(
+                                    selected = shapeFilled,
+                                    onClick = { shapeFilled = !shapeFilled },
+                                    label = { Text("Fill", fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryContainer,
+                                        selectedLabelColor = Primary,
+                                        containerColor = SurfaceVariant,
+                                        labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                            if (drawTool in listOf(DrawTool.PEN, DrawTool.ARROW, DrawTool.LINE, DrawTool.RECT, DrawTool.CIRCLE)) {
+                                FilterChip(
+                                    selected = dashedStroke,
+                                    onClick = { dashedStroke = !dashedStroke },
+                                    label = { Text("Dash", fontSize = 10.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryContainer,
+                                        selectedLabelColor = Primary,
+                                        containerColor = SurfaceVariant,
+                                        labelColor = OnSurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                            }
+                            IconButton(onClick = { eyedropperActive = !eyedropperActive }, modifier = Modifier.size(30.dp)) {
+                                Icon(Icons.Default.Colorize, "Pick color", tint = if (eyedropperActive) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            drawColors.take(7).forEach { (color, _) ->
+                                Box(
+                                    Modifier
+                                        .size(if (drawColor == color) 24.dp else 18.dp)
+                                        .background(Color(color), RoundedCornerShape(3.dp))
+                                        .clickable { drawColor = color; eyedropperActive = false }
+                                )
+                            }
+                        }
+                        PanelSlider(
+                            label = "Stroke",
+                            value = drawStrokeWidth,
+                            range = 2f..20f,
+                            color = Secondary,
+                            valueLabel = "${drawStrokeWidth.toInt()}px",
+                            onChange = { drawStrokeWidth = it }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (drawPaths.isNotEmpty()) {
+                                TextButton(onClick = { pushUndo(); drawPaths.removeLastOrNull()?.let { drawRedoStack.add(it) } }) {
+                                    Text("Undo", color = Secondary, fontSize = 11.sp)
+                                }
+                            }
+                            if (drawRedoStack.isNotEmpty()) {
+                                TextButton(onClick = { pushUndo(); drawRedoStack.removeLastOrNull()?.let { drawPaths.add(it) } }) {
+                                    Text("Redo", color = Secondary, fontSize = 11.sp)
+                                }
+                            }
+                            if (drawPaths.isNotEmpty()) {
+                                TextButton(onClick = { pushUndo(); drawPaths.clear(); drawRedoStack.clear() }) {
+                                    Text("Clear", color = Secondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        DrawLayerPanel(
+                            drawPaths = drawPaths,
+                            onMoveLayer = { from, to -> moveDrawLayer(from, to) },
+                            onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
+                            onDeleteLayer = { index -> deleteDrawLayer(index) }
+                        )
+                    }
+                }
+
+                if (editMode == EditMode.ADJUST) {
+                    val adjustColor = Color(0xFFFAB387)
+                    PanelSection("Adjust") {
+                        ImageFilter.entries.chunked(2).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                row.forEach { filter ->
+                                    FilterChip(
+                                        selected = selectedFilter == filter,
+                                        onClick = { selectedFilter = filter },
+                                        label = { Text(filter.label, fontSize = 10.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = adjustColor.copy(alpha = 0.3f),
+                                            selectedLabelColor = adjustColor,
+                                            containerColor = SurfaceVariant,
+                                            labelColor = OnSurfaceVariant
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        PanelSlider("Brightness", brightness, -100f..100f, adjustColor, "${brightness.toInt()}") { brightness = it }
+                        PanelSlider("Contrast", contrast, 0.5f..2f, adjustColor, String.format("%.1f", contrast)) { contrast = it }
+                        PanelSlider("Saturation", saturation, 0f..2f, adjustColor, String.format("%.1f", saturation)) { saturation = it }
+                        PanelSlider("Warmth", warmth, -50f..50f, adjustColor, "${warmth.toInt()}") { warmth = it }
+                        PanelSlider("Vignette", vignette, 0f..1f, adjustColor, "${(vignette * 100).toInt()}%") { vignette = it }
+                        PanelSlider("Sharpen", sharpen, 0f..2f, adjustColor, String.format("%.1f", sharpen)) { sharpen = it }
+                        PanelSlider("Highlights", highlights, -100f..100f, adjustColor, "${highlights.toInt()}") { highlights = it }
+                        PanelSlider("Shadows", shadows, -100f..100f, adjustColor, "${shadows.toInt()}") { shadows = it }
+                        PanelSlider("Tilt", tiltShift, 0f..1f, adjustColor, "${(tiltShift * 100).toInt()}%") { tiltShift = it }
+                        PanelSlider("Denoise", denoise, 0f..1f, adjustColor, "${(denoise * 100).toInt()}%") { denoise = it }
+                        PanelSlider("Red curve", curveR, -100f..100f, Color(0xFFFF6B6B), "${curveR.toInt()}") { curveR = it }
+                        PanelSlider("Green curve", curveG, -100f..100f, Color(0xFF51CF66), "${curveG.toInt()}") { curveG = it }
+                        PanelSlider("Blue curve", curveB, -100f..100f, Color(0xFF339AF0), "${curveB.toInt()}") { curveB = it }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(onClick = {
+                                brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f
+                                vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f
+                                tiltShift = 0f; denoise = 0f; curveR = 0f; curveG = 0f; curveB = 0f
+                                selectedFilter = ImageFilter.NONE
+                            }) { Text("Reset", color = adjustColor, fontSize = 11.sp) }
+                        }
+                    }
+                }
+            }
+        }
+
+    Column(
+        modifier = Modifier.fillMaxSize()
     ) {
         // Top bar — Row 1: navigation + info
         Row(
@@ -577,55 +1142,31 @@ fun CropEditorScreen(
             }
         }
 
-        // Top bar — Row 2: mode tabs (scrollable)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val modeChip = @Composable { label: String, mode: EditMode, color: Color ->
-                FilterChip(
-                    selected = editMode == mode,
-                    onClick = {
-                        if (editMode == mode && mode != EditMode.CROP) editMode = EditMode.CROP
-                        else {
-                            editMode = mode
-                            if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
-                                ocrLoading = true
-                                scope.launch {
-                                    val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
-                                    val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
-                                    ocrBlocks = textDeferred.await()
-                                    scannedCodes = codeDeferred.await()
-                                    if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
-                                        onOcrIndexed(
-                                            ocrBlocks.joinToString("\n") { it.text },
-                                            scannedCodes.map { it.rawValue }
-                                        )
-                                    }
-                                    ocrLoading = false
-                                }
-                            }
-                        }
-                    },
-                    label = { Text(label, fontSize = 11.sp) },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = color.copy(alpha = 0.25f), selectedLabelColor = color,
-                        containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
-                    shape = RoundedCornerShape(8.dp)
-                )
+        // Top bar — Row 2: mode tabs (scrollable on phones, side panel on wide layouts)
+        if (!isWideLayout) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                modeOptions.forEach { (label, mode, color) ->
+                    FilterChip(
+                        selected = editMode == mode,
+                        onClick = { selectEditMode(mode) },
+                        label = { Text(label, fontSize = 11.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = color.copy(alpha = 0.25f), selectedLabelColor = color,
+                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+                // Transform tools
+                IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Flip, "Flip V", tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
             }
-            modeChip("Crop", EditMode.CROP, Primary)
-            modeChip("Pixelate", EditMode.PIXELATE, Tertiary)
-            modeChip("Draw", EditMode.DRAW, Secondary)
-            modeChip("OCR", EditMode.OCR, Color(0xFFCBA6F7))
-            modeChip("Adjust", EditMode.ADJUST, Color(0xFFFAB387))
-            // Transform tools
-            IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Flip, "Flip V", tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
         }
 
         // Mode indicator
@@ -680,7 +1221,7 @@ fun CropEditorScreen(
         }
 
         // Aspect ratio chips (only in crop mode)
-        if (editMode == EditMode.CROP) Row(
+        if (!isWideLayout && editMode == EditMode.CROP) Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
@@ -774,7 +1315,7 @@ fun CropEditorScreen(
         }
 
         // Gradient background picker (shows when shape crop is selected)
-        if (editMode == EditMode.CROP && selectedRatio in listOf(AspectRatio.CIRCLE, AspectRatio.ROUNDED, AspectRatio.STAR, AspectRatio.HEART, AspectRatio.TRIANGLE, AspectRatio.HEXAGON, AspectRatio.DIAMOND)) {
+        if (!isWideLayout && editMode == EditMode.CROP && selectedRatio in listOf(AspectRatio.CIRCLE, AspectRatio.ROUNDED, AspectRatio.STAR, AspectRatio.HEART, AspectRatio.TRIANGLE, AspectRatio.HEXAGON, AspectRatio.DIAMOND)) {
             val gradLabels = listOf("None", "Sunset", "Ocean", "Purple", "Dark", "Mint", "Fire")
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
@@ -798,7 +1339,7 @@ fun CropEditorScreen(
         }
 
         // Straighten angle slider (crop mode only, when angle != 0 or user taps)
-        if (editMode == EditMode.CROP) {
+        if (!isWideLayout && editMode == EditMode.CROP) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("Straighten", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(64.dp))
@@ -817,7 +1358,7 @@ fun CropEditorScreen(
         }
 
         // Tool options row (pixelate/draw mode)
-        if (editMode == EditMode.PIXELATE) {
+        if (!isWideLayout && editMode == EditMode.PIXELATE) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
@@ -916,7 +1457,7 @@ fun CropEditorScreen(
             }
         }
 
-        if (editMode == EditMode.DRAW) {
+        if (!isWideLayout && editMode == EditMode.DRAW) {
             // Tool + color row
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1093,7 +1634,7 @@ fun CropEditorScreen(
         }
 
         // Adjust mode sliders
-        if (editMode == EditMode.ADJUST) {
+        if (!isWideLayout && editMode == EditMode.ADJUST) {
             val adjustColor = Color(0xFFFAB387)
             // Filter presets
             Row(
@@ -1250,7 +1791,26 @@ fun CropEditorScreen(
         }
 
         // Canvas area
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Scroll) {
+                                val scrollY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                                if (scrollY != 0f) {
+                                    zoomBy(if (scrollY > 0f) 0.9f else 1.1f)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    }
+                }
+        ) {
             // Zoom indicator
             if (zoomLevel > 1.05f) {
                 Surface(
@@ -2108,70 +2668,76 @@ fun CropEditorScreen(
                 }
             }
         }
+            if (isWideLayout) {
+                WideEditorSidePanel()
+            }
+        }
 
         // Bottom toolbar
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                FilledTonalButton(
-                    onClick = { pushUndo(); cropLeft = 0; cropTop = 0; cropRight = bitmap.width; cropBottom = bitmap.height; selectedRatio = AspectRatio.FREE },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) { Icon(Icons.Default.CropFree, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Reset", fontSize = 13.sp) }
+            if (!isWideLayout) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    FilledTonalButton(
+                        onClick = { resetCrop() },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) { Icon(Icons.Default.CropFree, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Reset", fontSize = 13.sp) }
 
-                FilledTonalButton(
-                    onClick = { pushUndo(); val r = onAutoCrop(); cropLeft = r.left; cropTop = r.top; cropRight = r.right; cropBottom = r.bottom; selectedRatio = AspectRatio.FREE },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Auto", fontSize = 13.sp) }
+                    FilledTonalButton(
+                        onClick = { runAutoCrop() },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text("Auto", fontSize = 13.sp) }
 
-                FilledTonalButton(
-                    onClick = { if (!aiLoading) { pushUndo(); aiLoading = true; onSmartCrop() } },
-                    enabled = !aiLoading,
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    if (aiLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Tertiary)
-                    else Icon(Icons.Default.Psychology, null, Modifier.size(16.dp), tint = Tertiary)
-                    Spacer(Modifier.width(4.dp)); Text("AI", fontSize = 13.sp, color = Tertiary)
-                }
+                    FilledTonalButton(
+                        onClick = { if (!aiLoading) { pushUndo(); aiLoading = true; onSmartCrop() } },
+                        enabled = !aiLoading,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        if (aiLoading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Tertiary)
+                        else Icon(Icons.Default.Psychology, null, Modifier.size(16.dp), tint = Tertiary)
+                        Spacer(Modifier.width(4.dp)); Text("AI", fontSize = 13.sp, color = Tertiary)
+                    }
 
-                FilledTonalButton(
-                    onClick = {
-                        if (!bgRemoving) {
-                            bgRemoving = true
-                            onRemoveBg()
-                        }
-                    },
-                    enabled = !bgRemoving,
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    if (bgRemoving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Secondary)
-                    else Text("BG", fontSize = 13.sp, color = Secondary)
-                }
-
-                FilledTonalButton(
-                    onClick = {
-                        if (paletteColors.isEmpty()) {
-                            scope.launch(Dispatchers.Default) {
-                                val colors = ColorPaletteExtractor.extract(bitmap)
-                                paletteColors = colors
+                    FilledTonalButton(
+                        onClick = {
+                            if (!bgRemoving) {
+                                bgRemoving = true
+                                onRemoveBg()
                             }
-                        }
-                        showPalette = !showPalette
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                ) { Text("Colors", fontSize = 13.sp, color = Color(0xFFFAB387)) }
+                        },
+                        enabled = !bgRemoving,
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        if (bgRemoving) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Secondary)
+                        else Text("BG", fontSize = 13.sp, color = Secondary)
+                    }
+
+                    FilledTonalButton(
+                        onClick = {
+                            if (paletteColors.isEmpty()) {
+                                scope.launch(Dispatchers.Default) {
+                                    val colors = ColorPaletteExtractor.extract(bitmap)
+                                    paletteColors = colors
+                                }
+                            }
+                            showPalette = !showPalette
+                        },
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                    ) { Text("Colors", fontSize = 13.sp, color = Color(0xFFFAB387)) }
+                }
             }
 
             // Color palette display
-            if (showPalette && paletteColors.isNotEmpty()) {
+            if (!isWideLayout && showPalette && paletteColors.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -2197,22 +2763,21 @@ fun CropEditorScreen(
             Spacer(Modifier.height(6.dp))
 
             // Action icons row
-            val shapeCrop = when (selectedRatio) { AspectRatio.CIRCLE -> 1f; AspectRatio.ROUNDED -> 2f; AspectRatio.STAR -> 3f; AspectRatio.HEART -> 4f; AspectRatio.TRIANGLE -> 5f; AspectRatio.HEXAGON -> 6f; AspectRatio.DIAMOND -> 7f; else -> 0f }
-            val adj = floatArrayOf(brightness, contrast, saturation, shapeCrop, warmth, vignette, selectedFilter.ordinal.toFloat(), sharpen, rotationAngle, highlights, shadows, tiltShift, denoise, gradientBg.toFloat(), curveR, curveG, curveB)
+            val adj = exportAdjustments()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Delete original", tint = Tertiary) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
-                IconButton(onClick = { onShare(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onShare(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, "Share", tint = OnSurface) }
-                IconButton(onClick = { onCopyClipboard(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onCopyClipboard(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.ContentCopy, "Clipboard", tint = OnSurface) }
-                IconButton(onClick = { onSaveCopy(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onSaveCopy(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Save, "Save Copy", tint = OnSurface) }
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(Rect(cropLeft, cropTop, cropRight, cropBottom), pixelateRects.toList(), drawPaths.toList(), adj) },
+            Button(onClick = { onSave(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
@@ -2242,6 +2807,7 @@ fun CropEditorScreen(
                 Text(estLabel, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
             }
         }
+    }
     }
 
     if (selectedOcrText != null) {

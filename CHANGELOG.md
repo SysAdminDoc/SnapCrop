@@ -50,6 +50,10 @@ All notable changes to SnapCrop will be documented in this file.
   Settings with confidence/preview/test support, and users can create/import/
   export custom source/OCR-based crop profiles with album, redaction, and export
   format actions for Quick Crop.
+- Added an adaptive editor layout for tablet/foldable/desktop-width windows:
+  wide layouts use a persistent right inspector for modes, crop controls,
+  redaction, draw layers, and adjustments, with keyboard shortcuts and
+  mouse-wheel zoom support.
 
 ## [v6.19.0] - 2026-05-14
 

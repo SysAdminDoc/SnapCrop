@@ -340,7 +340,7 @@ Implemented 2026-05-17:
 - Added regression tests for profile-pack round-trip, source/OCR matching, and
   user crop-band application.
 
-### 9. [ ] Tablet, foldable, and desktop-mode editor layout
+### 9. [x] Tablet, foldable, and desktop-mode editor layout
 
 Evidence: L6 editor density, existing Compose stack, Android large-screen
 guidance implied by platform changes in E5/E6, and user workflows that benefit
@@ -360,6 +360,19 @@ Acceptance:
 
 - Phone UI remains recognizable.
 - Wide layouts reduce toolbar scrolling and improve layer/edit precision.
+
+Implemented 2026-05-17:
+
+- Added an adaptive editor layout classifier and tested phone vs wide-window
+  thresholds.
+- Kept the phone toolbar path intact while wide windows move mode selection,
+  crop controls, redaction tools, draw tools/layers, and adjustment sliders into
+  a persistent right-side inspector.
+- Added keyboard shortcuts for save, undo/redo, crop nudging, preview toggling,
+  and keyboard zoom, plus mouse-wheel zoom while preserving existing drag/pinch
+  behavior.
+- Reduced wide-layout toolbar density by hiding the phone-only mode/tool rows
+  and moving reset/auto/AI/background/color controls into the inspector.
 
 ### 10. [ ] Export and reporting workflows
 

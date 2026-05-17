@@ -154,14 +154,18 @@ Implemented features confirmed by live files and history:
 - layered draw editing,
 - SVG annotation sidecars,
 - editable `.snapcrop.json` project sidecars,
-- first editor split into model, canvas-helper, layer-panel, and preview files.
+- first editor split into model, canvas-helper, layer-panel, preview, and
+  adaptive layout-helper files,
+- adaptive editor wide layout with a persistent right inspector for
+  tablet/foldable/desktop-mode windows.
 
 ## Repo Hygiene Findings
 
 - `rg` found no TODO/FIXME markers outside build output.
 - JVM/Robolectric tests now cover auto-crop, app profiles, user profile-pack
   matching/round-trip, sensitive text patterns, Smart Erase behavior, project
-  sidecars, and extracted editor model helpers.
+  sidecars, extracted editor model helpers, and adaptive editor layout
+  thresholds.
 - `rg` found no `RoundedCornerShape(50...)`, `RoundedCornerShape(999...)`, or
   `CircleShape` matches in source during the UI-rule scan.
 - `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts even though

@@ -103,6 +103,8 @@ aligned with `origin/main`.
   release hygiene, and policy references.
 - `SnapCropProjectSidecar`: versioned JSON schema for source URI/hash, crop
   rect, adjustment state, pixelate rectangles, draw layers, and export settings.
+- `EditorAdaptiveLayout`: phone vs wide editor layout thresholds and side-panel
+  sizing for tablet/foldable/desktop-mode editor surfaces.
 
 ## Product Philosophy
 
@@ -168,9 +170,10 @@ and Android system integration.
   review/retry before save. It still needs real-device QA across chat, browser,
   settings, and feed apps because Accessibility scroll behavior is app-specific.
 - The first editor split now extracts model/state, layer panel, before/after
-  preview, and small canvas helpers. The editor remains dense; tablet/foldable
-  / DeX layouts and toolbar/tool-control extraction are high-leverage future
-  work.
+  preview, and small canvas helpers. Wide windows now use a persistent right
+  inspector for mode/crop/redaction/draw/layer/adjust controls plus keyboard
+  shortcuts and wheel zoom. Future work can continue extracting the inspector
+  into smaller reusable tool panels.
 - Two `.idsig` artifacts are tracked even though APK/signature byproducts are in
   `.gitignore`.
 
