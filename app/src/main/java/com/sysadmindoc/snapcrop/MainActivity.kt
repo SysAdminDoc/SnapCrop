@@ -573,10 +573,7 @@ class MainActivity : ComponentActivity() {
                 shareDir.mkdirs()
                 shareDir.listFiles()?.forEach { it.delete() } // clean old
                 val (fmt, qual, ext) = getSaveFormat()
-                @Suppress("DEPRECATION")
-                val isWebp = fmt == android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
-                        || fmt == android.graphics.Bitmap.CompressFormat.WEBP_LOSSLESS
-                        || fmt == android.graphics.Bitmap.CompressFormat.WEBP
+                val isWebp = fmt.isWebpFormat()
                 val cleanUris = mutableListOf<Uri>()
                 for ((i, uri) in uris.withIndex()) {
                     val mime = try { contentResolver.getType(uri) ?: "" } catch (_: Exception) { "" }

@@ -24,16 +24,6 @@ object SensitiveTextDetector {
         )
     }
 
-    private val sensitivePatterns = listOf(
-        Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE),
-        Regex("(?<!\\d)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\d)"),
-        Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"),
-        Regex("\\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\\b", RegexOption.IGNORE_CASE),
-        Regex("\\b(?:[0-9A-F]{1,4}:){2,7}[0-9A-F]{1,4}\\b", RegexOption.IGNORE_CASE)
-    )
-
-    private val cardCandidate = Regex("(?<!\\d)(?:\\d[ -]*?){13,19}(?!\\d)")
-
     suspend fun detect(bitmap: Bitmap): SensitiveTextResult {
         val blocks = TextExtractor.extract(bitmap)
         if (blocks.isEmpty()) return SensitiveTextResult(emptyList(), 0, 0)
@@ -50,7 +40,7 @@ object SensitiveTextDetector {
         }
 
         val regexBlocks = blocks
-            .filter { block -> containsSensitivePattern(block.text) }
+            .filter { block -> SensitiveTextPatterns.containsSensitivePattern(block.text) }
             .toSet()
 
         val entityRanges = extractSensitiveEntityRanges(joined)
@@ -68,14 +58,6 @@ object SensitiveTextDetector {
             regexCount = regexBlocks.size,
             entityCount = entityBlocks.size
         )
-    }
-
-    private fun containsSensitivePattern(text: String): Boolean {
-        if (sensitivePatterns.any { it.containsMatchIn(text) }) return true
-        return cardCandidate.findAll(text).any { match ->
-            val digits = match.value.filter { it.isDigit() }
-            digits.length in 13..19 && passesLuhn(digits)
-        }
     }
 
     private suspend fun extractSensitiveEntityRanges(text: String): List<IntRange> {
@@ -99,8 +81,28 @@ object SensitiveTextDetector {
         Entity.TYPE_ADDRESS -> true
         else -> false
     }
+}
 
-    private fun passesLuhn(digits: String): Boolean {
+internal object SensitiveTextPatterns {
+    private val sensitivePatterns = listOf(
+        Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE),
+        Regex("(?<!\\d)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\d)"),
+        Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b"),
+        Regex("\\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\\b", RegexOption.IGNORE_CASE),
+        Regex("\\b(?:[0-9A-F]{1,4}:){2,7}[0-9A-F]{1,4}\\b", RegexOption.IGNORE_CASE)
+    )
+
+    private val cardCandidate = Regex("(?<!\\d)(?:\\d[ -]*?){13,19}(?!\\d)")
+
+    fun containsSensitivePattern(text: String): Boolean {
+        if (sensitivePatterns.any { it.containsMatchIn(text) }) return true
+        return cardCandidate.findAll(text).any { match ->
+            val digits = match.value.filter { it.isDigit() }
+            digits.length in 13..19 && passesLuhn(digits)
+        }
+    }
+
+    fun passesLuhn(digits: String): Boolean {
         var sum = 0
         var alternate = false
         for (i in digits.length - 1 downTo 0) {
@@ -114,20 +116,20 @@ object SensitiveTextDetector {
         }
         return sum > 0 && sum % 10 == 0
     }
+}
 
-    private fun IntRange.overlaps(other: IntRange): Boolean =
-        first <= other.last && other.first <= last
+private fun IntRange.overlaps(other: IntRange): Boolean =
+    first <= other.last && other.first <= last
 
-    private fun Rect.padded(maxWidth: Int, maxHeight: Int): Rect {
-        val padX = (width() * 0.08f).toInt().coerceAtLeast(8)
-        val padY = (height() * 0.16f).toInt().coerceAtLeast(6)
-        return Rect(
-            (left - padX).coerceIn(0, maxWidth),
-            (top - padY).coerceIn(0, maxHeight),
-            (right + padX).coerceIn(0, maxWidth),
-            (bottom + padY).coerceIn(0, maxHeight)
-        )
-    }
+private fun Rect.padded(maxWidth: Int, maxHeight: Int): Rect {
+    val padX = (width() * 0.08f).toInt().coerceAtLeast(8)
+    val padY = (height() * 0.16f).toInt().coerceAtLeast(6)
+    return Rect(
+        (left - padX).coerceIn(0, maxWidth),
+        (top - padY).coerceIn(0, maxHeight),
+        (right + padX).coerceIn(0, maxWidth),
+        (bottom + padY).coerceIn(0, maxHeight)
+    )
 }
 
 private suspend fun <T> Task<T>.awaitResult(): T =

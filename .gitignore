@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin/
 /local.properties
 /.idea
 .DS_Store
@@ -20,4 +21,3 @@ local.properties
 *.apk
 CLAUDE.md
 keystore.properties
-

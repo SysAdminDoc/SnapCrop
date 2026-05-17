@@ -49,3 +49,33 @@ plan.
   AutoMirrored icon replacements, and deprecated `Bitmap.recycle()` calls in
   existing source.
 - Generated transient `.kotlin/errors/errors-1779041807951.log` was removed.
+
+## Roadmap Continuation - 2026-05-17
+
+Implemented P0.1, "Add a real verification and release-quality CI lane":
+
+- Added JUnit/Robolectric test dependencies and enabled Android resources for
+  local unit tests.
+- Added tests for `AutoCrop`, `AppCropProfiles`, `SensitiveTextPatterns`, and
+  `SmartEraseEngine`.
+- Extracted sensitive text regex/Luhn matching into `SensitiveTextPatterns` so
+  the privacy rules can be tested without invoking OCR or ML Kit entity
+  extraction.
+- Replaced the manual-only GitHub Actions workflow with lint, test, debug
+  assemble, release assemble, dependency-review, and release SBOM artifact jobs.
+- Applied the CycloneDX Gradle plugin to the app project.
+- Added `docs/RELEASE_CHECKLIST.md`.
+- Removed a tracked generated Kotlin compiler error log and ignored `.kotlin/`
+  for future local builds.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, and `CHANGELOG.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:testDebugUnitTest :app:cyclonedxDirectBom`: passed.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`: passed in 2m 52s.
+- The build still prints existing Kotlin deprecation warnings for
+  `onActivityResult` and one AutoMirrored icon migration.
+- CycloneDX prints a configuration-time dependency-resolution warning for
+  `releaseRuntimeClasspath`; the SBOM task still succeeds and writes JSON/XML
+  to `app/build/reports/cyclonedx-direct/`.
+- Transient `.kotlin/errors/errors-1774623214671.log` was removed.

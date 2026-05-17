@@ -1361,8 +1361,7 @@ class CropActivity : ComponentActivity() {
             val (format, quality) = getSaveFormat()
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
             val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
-            @Suppress("DEPRECATION")
-            val isWebp = shareFmt == Bitmap.CompressFormat.WEBP_LOSSY || shareFmt == Bitmap.CompressFormat.WEBP_LOSSLESS || shareFmt == Bitmap.CompressFormat.WEBP
+            val isWebp = shareFmt.isWebpFormat()
             val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
@@ -1504,8 +1503,7 @@ class CropActivity : ComponentActivity() {
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val (format, quality) = if (forcePng) Bitmap.CompressFormat.PNG to 100 else getSaveFormat()
-        @Suppress("DEPRECATION")
-        val isWebp = format == Bitmap.CompressFormat.WEBP_LOSSY || format == Bitmap.CompressFormat.WEBP_LOSSLESS || format == Bitmap.CompressFormat.WEBP
+        val isWebp = format.isWebpFormat()
         val ext = when { format == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
         val mime = when { format == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
 

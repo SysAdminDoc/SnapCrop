@@ -1,9 +1,11 @@
 import java.util.Properties
+import org.cyclonedx.model.Component
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.cyclonedx.bom)
 }
 
 // Load signing credentials from gitignored keystore.properties (local builds)
@@ -72,6 +74,12 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -94,5 +102,13 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
     debugImplementation(libs.androidx.ui.tooling)
+}
+
+tasks.cyclonedxDirectBom {
+    projectType.set(Component.Type.APPLICATION)
+    includeConfigs.set(listOf("releaseRuntimeClasspath"))
+    skipConfigs.set(listOf(".*[Tt]est.*", "debug.*", "androidTest.*"))
 }

@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -32,15 +33,25 @@ class LongScreenshotTileService : TileService() {
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+        startActivityAndCollapseCompat(intent, requestCode = 20)
+        updateTile()
+    }
+
+    @SuppressLint("StartActivityAndCollapseDeprecated")
+    private fun startActivityAndCollapseCompat(intent: Intent, requestCode: Int) {
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(
-                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+                PendingIntent.getActivity(
+                    this,
+                    requestCode,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
             )
         } else {
             @Suppress("DEPRECATION")
             startActivityAndCollapse(intent)
         }
-        updateTile()
     }
 
     private fun updateTile() {
