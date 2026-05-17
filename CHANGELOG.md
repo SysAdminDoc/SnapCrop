@@ -35,6 +35,10 @@ All notable changes to SnapCrop will be documented in this file.
 - Added project-sidecar open support for JSON share/view intents and an
   `Editable project sidecars` setting. While sidecars are enabled, main Save
   keeps the source image so the project can be reopened.
+- Split reusable editor model/state, canvas helper, layer panel, and
+  before/after preview code out of `CropEditorScreen.kt`.
+- Added an editor regression checklist and a small model-helper regression test
+  for extracted adjustment, aspect-ratio, filter, and path behavior.
 
 ## [v6.19.0] - 2026-05-14
 

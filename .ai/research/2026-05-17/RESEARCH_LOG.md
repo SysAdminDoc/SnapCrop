@@ -155,6 +155,25 @@ Result:
   re-openable projects do not point at a deleted original.
 - Added sidecar serialization tests using a JVM `org.json` test dependency.
 
+### Pass 8: P0.5 editor split implementation pass
+
+Targets:
+
+- `CropEditorScreen.kt` top-level models and helpers.
+- Draw layer panel rendering.
+- Before/after preview surface and divider gesture.
+- Low-risk extracted model regression tests.
+
+Result:
+
+- Extracted editor models, draw tools, aspect ratios, filters, snapshots, and
+  adjustment defaults into `EditorModels.kt`.
+- Extracted crop-handle and gradient helpers into `EditorCanvas.kt`.
+- Extracted the layer panel into `EditorLayers.kt`.
+- Extracted preview rendering into `EditorPreview.kt` while preserving the
+  existing `awaitEachGesture` pattern.
+- Added `EditorModelsTest` and `docs/EDITOR_REGRESSION_CHECKLIST.md`.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -196,4 +215,4 @@ strategic direction.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
   intended in the initial planning run. Later autonomous roadmap continuation
-  passes did include code changes for P0.1, P0.2, and P0.3.
+  passes did include code changes for P0.1 through P0.5.

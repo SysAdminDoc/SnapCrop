@@ -21,6 +21,11 @@ repository research and roadmap planning pass.
 | L10 | `.github/workflows/build.yml` | CI/release workflow state. |
 | L11 | `app/src/main/AndroidManifest.xml` | Permissions, services, exported components, backup. |
 | L12 | `app/src/main/java/com/sysadmindoc/snapcrop/CropEditorScreen.kt` | Editor size, UI architecture, layer/tool surface. |
+| L12a | `app/src/main/java/com/sysadmindoc/snapcrop/EditorModels.kt` | Extracted editor model/state, filters, snapshots. |
+| L12b | `app/src/main/java/com/sysadmindoc/snapcrop/EditorCanvas.kt` | Extracted reusable crop-handle and gradient rendering helpers. |
+| L12c | `app/src/main/java/com/sysadmindoc/snapcrop/EditorLayers.kt` | Extracted draw layer panel. |
+| L12d | `app/src/main/java/com/sysadmindoc/snapcrop/EditorPreview.kt` | Extracted before/after preview surface. |
+| L12e | `docs/EDITOR_REGRESSION_CHECKLIST.md` | Manual regression checklist for editor refactors. |
 | L13 | `app/src/main/java/com/sysadmindoc/snapcrop/CropActivity.kt` | Save/share/export/SVG sidecar pipeline. |
 | L14 | `app/src/main/java/com/sysadmindoc/snapcrop/MainActivity.kt` | Home, permissions, batch operations, recent crops. |
 | L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, smart albums, favorites, PDF export. |

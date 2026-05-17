@@ -42,13 +42,18 @@ Key repository files:
 - `ROADMAP.md`: replaced with the 2026-05-17 prioritized roadmap.
 - `app/build.gradle.kts`: Android app build, signing, version.
 - `gradle/libs.versions.toml`: dependency catalog.
-- `.github/workflows/build.yml`: manual release assemble workflow.
+- `.github/workflows/build.yml`: lint/test/build/dependency-review/SBOM
+  workflow after P0.1 continuation.
 
 Kotlin source size indicators from `app/src/main`:
 
 | File | Approx lines | Observation |
 |---|---:|---|
-| `CropEditorScreen.kt` | 2,821 | Monolithic editor UI/state/render/tool surface |
+| `CropEditorScreen.kt` | 2,423 | Main editor gesture/canvas workflow after first split |
+| `EditorModels.kt` | 224 | Editor model/state helpers, filters, snapshots |
+| `EditorLayers.kt` | 169 | Draw layer panel and labels |
+| `EditorPreview.kt` | 118 | Before/after preview surface and divider gesture |
+| `EditorCanvas.kt` | 43 | Crop handle and gradient rendering helpers |
 | `CropActivity.kt` | 1,519 | Bitmap load/export/save/share/SVG sidecars |
 | `MainActivity.kt` | 1,240 | Home, permissions, recent crops, batch tools |
 | `GalleryScreen.kt` | 1,171 | Gallery, smart albums, viewer, PDF |
@@ -70,19 +75,19 @@ Live build settings from `app/build.gradle.kts` and version catalog:
 
 - `applicationId`: `com.sysadmindoc.snapcrop`
 - `namespace`: `com.sysadmindoc.snapcrop`
-- `compileSdk`: 35
+- `compileSdk`: 36
 - `minSdk`: 29
 - `targetSdk`: 35
 - `versionCode`: 67
 - `versionName`: `6.19.0`
-- Gradle wrapper: 8.11.1
-- AGP: 8.7.3
-- Kotlin: 2.0.21
-- Compose BOM: 2024.12.01
-- Material3: 1.3.1
+- Gradle wrapper: 9.4.1
+- AGP: 9.2.1
+- Kotlin/Compose compiler plugin: 2.3.21
+- Compose BOM: 2026.05.00
+- Material3: 1.4.0
 - Coil Compose: 2.7.0
-- AndroidX core/activity/navigation/lifecycle are behind latest stable metadata
-  retrieved on 2026-05-17.
+- AndroidX core/activity/navigation/lifecycle were upgraded to the latest
+  stable metadata found on 2026-05-17.
 - ML Kit dependencies were at latest stable or latest beta metadata for the
   specific artifacts inspected on 2026-05-17.
 
@@ -96,24 +101,9 @@ Release signing:
 
 ## CI State
 
-`.github/workflows/build.yml` currently:
-
-- runs on `workflow_dispatch`,
-- checks out the repo,
-- sets up Java,
-- runs Gradle setup,
-- runs `./gradlew assembleRelease`,
-- uploads an APK artifact.
-
-Gaps:
-
-- no PR trigger,
-- no lint,
-- no unit/instrumentation tests,
-- no dependency review,
-- no SBOM,
-- no release upload/tag path,
-- no explicit signing-secret validation.
+`.github/workflows/build.yml` currently runs lint, JVM unit tests, debug
+assemble, release assemble, dependency review on pull requests, and CycloneDX
+SBOM artifact generation for release/manual runs.
 
 ## Manifest And Permissions
 
@@ -123,16 +113,17 @@ Observed in `AndroidManifest.xml`:
 - `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_SPECIAL_USE`,
 - `POST_NOTIFICATIONS`,
 - `RECEIVE_BOOT_COMPLETED`,
-- `SYSTEM_ALERT_WINDOW`,
+- optional `SYSTEM_ALERT_WINDOW` with notification fallback,
 - `VIBRATE`,
-- `MANAGE_EXTERNAL_STORAGE` with scoped-storage lint ignore,
-- `android:allowBackup="true"`,
+- no all-files access permission,
+- `android:allowBackup="false"`,
 - exported `MainActivity`,
 - exported `CropActivity` for `ACTION_SEND image/*`,
 - exported `ScrollCaptureService` with `BIND_ACCESSIBILITY_SERVICE`,
 - exported Quick Settings tile services with `BIND_QUICK_SETTINGS_TILE`,
 - non-exported `ScreenshotService`, `BootReceiver`, and `FileProvider`,
-- foreground-service special-use subtype property for screenshot monitoring.
+- foreground-service special-use subtype property for screenshot monitoring
+  and persistent user controls.
 
 Security/policy implications are covered in
 `SECURITY_AND_DEPENDENCY_REVIEW.md`.
@@ -155,12 +146,16 @@ Implemented features confirmed by live files and history:
 - video frame extraction and MP4 trim,
 - stitch, collage, device mockup, PDF export,
 - layered draw editing,
-- SVG annotation sidecars.
+- SVG annotation sidecars,
+- editable `.snapcrop.json` project sidecars,
+- first editor split into model, canvas-helper, layer-panel, and preview files.
 
 ## Repo Hygiene Findings
 
 - `rg` found no TODO/FIXME markers outside build output.
-- `rg` found no test source directories or test dependencies.
+- JVM/Robolectric tests now cover auto-crop, app profiles, sensitive text
+  patterns, Smart Erase behavior, project sidecars, and extracted editor model
+  helpers.
 - `rg` found no `RoundedCornerShape(50...)`, `RoundedCornerShape(999...)`, or
   `CircleShape` matches in source during the UI-rule scan.
 - `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts even though
