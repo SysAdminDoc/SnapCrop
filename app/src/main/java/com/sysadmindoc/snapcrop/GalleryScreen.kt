@@ -242,6 +242,7 @@ fun GalleryScreen(
     onDeleteUris: (List<Uri>) -> Unit,
     onExportPdf: (List<Uri>) -> Unit,
     onBatchResize: (List<Uri>) -> Unit,
+    onBatchRename: (List<Uri>) -> Unit,
     onBack: () -> Unit,
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
@@ -383,7 +384,7 @@ fun GalleryScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("${selectedIds.size} selected", color = OnSurface, fontSize = 16.sp,
                         fontWeight = FontWeight.Medium)
-                    Text("Share, export, resize, or delete", color = OnSurfaceVariant, fontSize = 11.sp)
+                    Text("Share, report, rename, resize, or delete", color = OnSurfaceVariant, fontSize = 11.sp)
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                     IconButton(onClick = {
@@ -398,6 +399,10 @@ fun GalleryScreen(
                         val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
                     }) { Icon(Icons.Default.PictureAsPdf, "Export PDF", tint = OnSurface) }
+                    IconButton(onClick = {
+                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onBatchRename(uris); selectedIds.clear() }
+                    }) { Icon(Icons.Default.SortByAlpha, "Rename selected", tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }

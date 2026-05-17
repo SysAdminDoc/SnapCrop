@@ -1,10 +1,15 @@
 package com.sysadmindoc.snapcrop
 
 import android.Manifest
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
@@ -60,10 +65,18 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
 
 class MainActivity : ComponentActivity() {
+    private companion object {
+        const val PDF_WIDTH = 1240
+        const val PDF_HEIGHT = 1754
+        const val PAGE_MARGIN = 72f
+    }
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
@@ -126,6 +139,10 @@ class MainActivity : ComponentActivity() {
     private val batchCancelled = mutableStateOf(false)
     private val resizeUris = mutableStateOf<List<Uri>>(emptyList())
     private val showResizeDialogState = mutableStateOf(false)
+    private val reportUris = mutableStateOf<List<Uri>>(emptyList())
+    private val showReportDialogState = mutableStateOf(false)
+    private val renameUris = mutableStateOf<List<Uri>>(emptyList())
+    private val showRenameDialogState = mutableStateOf(false)
 
     private fun batchAutocrop(uris: List<Uri>) {
         batchCancelled.value = false
@@ -213,6 +230,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SnapCropTheme {
                 var selectedTab by remember { mutableIntStateOf(0) }
+                val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
 
                 Scaffold(
                     containerColor = Color.Black,
@@ -301,8 +319,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onShareUris = { uris -> shareImages(uris) },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
-                                onExportPdf = { uris -> exportPdf(uris) },
+                                onExportPdf = { uris -> showReportDialog(uris) },
                                 onBatchResize = { uris -> showResizeDialog(uris) },
+                                onBatchRename = { uris -> showRenameDialog(uris) },
                                 onBack = { selectedTab = 0 }
                             )
                         }
@@ -385,6 +404,179 @@ class MainActivity : ComponentActivity() {
                         containerColor = SurfaceVariant
                     )
                 }
+
+                if (showReportDialogState.value) {
+                    var reportTitle by remember(reportUris.value) { mutableStateOf("SnapCrop incident report") }
+                    var notes by remember(reportUris.value) { mutableStateOf("") }
+                    var includeOcr by remember(reportUris.value) { mutableStateOf(false) }
+                    AlertDialog(
+                        onDismissRequest = { showReportDialogState.value = false },
+                        title = { Text("Create PDF report", color = OnSurface) },
+                        text = {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 360.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    "${reportUris.value.size} images will be bundled with metadata.",
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                OutlinedTextField(
+                                    value = reportTitle,
+                                    onValueChange = { reportTitle = it },
+                                    label = { Text("Title") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Outline,
+                                        focusedTextColor = OnSurface,
+                                        unfocusedTextColor = OnSurface,
+                                        cursorColor = Primary
+                                    )
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = notes,
+                                    onValueChange = { notes = it },
+                                    label = { Text("Notes") },
+                                    minLines = 3,
+                                    maxLines = 5,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Outline,
+                                        focusedTextColor = OnSurface,
+                                        unfocusedTextColor = OnSurface,
+                                        cursorColor = Primary
+                                    )
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = includeOcr,
+                                        onCheckedChange = { includeOcr = it },
+                                        colors = CheckboxDefaults.colors(
+                                            checkedColor = Primary,
+                                            uncheckedColor = OnSurfaceVariant
+                                        )
+                                    )
+                                    Text(
+                                        "Append OCR text when available",
+                                        color = OnSurfaceVariant,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    showReportDialogState.value = false
+                                    exportPdfReport(reportUris.value, reportTitle, notes, includeOcr)
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Primary)
+                            ) { Text("Create") }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showReportDialogState.value = false },
+                                colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
+                            ) { Text("Cancel") }
+                        },
+                        containerColor = SurfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                if (showRenameDialogState.value) {
+                    var template by remember(renameUris.value) {
+                        mutableStateOf(prefs.getString("batch_rename_template", "%app%_%date%_%counter%") ?: "%app%_%date%_%counter%")
+                    }
+                    var profileName by remember(renameUris.value) {
+                        mutableStateOf(prefs.getString("batch_rename_profile", "SnapCrop") ?: "SnapCrop")
+                    }
+                    AlertDialog(
+                        onDismissRequest = { showRenameDialogState.value = false },
+                        title = { Text("Batch rename", color = OnSurface) },
+                        text = {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                Text(
+                                    "${renameUris.value.size} images will be renamed in place.",
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                OutlinedTextField(
+                                    value = template,
+                                    onValueChange = { template = it },
+                                    label = { Text("Template") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Outline,
+                                        focusedTextColor = OnSurface,
+                                        unfocusedTextColor = OnSurface,
+                                        cursorColor = Primary
+                                    )
+                                )
+                                Text(
+                                    "Tokens: %app%, %date%, %time%, %timestamp%, %counter%, %profile%",
+                                    color = OnSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = profileName,
+                                    onValueChange = { profileName = it },
+                                    label = { Text("Profile name") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = Primary,
+                                        unfocusedBorderColor = Outline,
+                                        focusedTextColor = OnSurface,
+                                        unfocusedTextColor = OnSurface,
+                                        cursorColor = Primary
+                                    )
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    prefs.edit()
+                                        .putString("batch_rename_template", template)
+                                        .putString("batch_rename_profile", profileName)
+                                        .apply()
+                                    showRenameDialogState.value = false
+                                    batchRename(renameUris.value, template, profileName)
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Primary)
+                            ) { Text("Rename") }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = { showRenameDialogState.value = false },
+                                colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
+                            ) { Text("Cancel") }
+                        },
+                        containerColor = SurfaceVariant,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
             }
         }
     }
@@ -435,6 +627,16 @@ class MainActivity : ComponentActivity() {
     private fun showResizeDialog(uris: List<Uri>) {
         resizeUris.value = uris
         showResizeDialogState.value = true
+    }
+
+    private fun showReportDialog(uris: List<Uri>) {
+        reportUris.value = uris
+        showReportDialogState.value = true
+    }
+
+    private fun showRenameDialog(uris: List<Uri>) {
+        renameUris.value = uris
+        showRenameDialogState.value = true
     }
 
     private fun batchResize(uris: List<Uri>, maxDim: Int) {
@@ -495,78 +697,468 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun exportPdf(uris: List<Uri>) {
+    private fun batchRename(uris: List<Uri>, template: String, profileName: String) {
         if (uris.isEmpty()) return
+        batchCancelled.value = false
+        lifecycleScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val usedNames = mutableSetOf<String>()
+            var renamed = 0
+            var failed = 0
+            uris.forEachIndexed { index, uri ->
+                if (batchCancelled.value) return@forEachIndexed
+                withContext(Dispatchers.Main) {
+                    batchProgress.value = "Renaming ${index + 1}/${uris.size}..."
+                    batchProgressFraction.floatValue = index.toFloat() / uris.size
+                }
+                val metadata = loadExportItemMetadata(uri)
+                val extension = metadata.displayName.substringAfterLast('.', "")
+                    .ifBlank { extensionForMime(contentResolver.getType(uri)) }
+                val base = BatchRenameTemplate.resolve(template, metadata, index + 1, now, profileName)
+                val displayName = uniqueDisplayName(base, extension, usedNames)
+                try {
+                    val values = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                    }
+                    if (contentResolver.update(uri, values, null, null) > 0) renamed++ else failed++
+                } catch (_: Exception) {
+                    failed++
+                }
+            }
+            withContext(Dispatchers.Main) {
+                batchProgress.value = ""
+                val msg = buildString {
+                    append("Renamed $renamed/${uris.size}")
+                    if (failed > 0) append(" ($failed need write access or failed)")
+                    if (batchCancelled.value) append(" (stopped)")
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                galleryRefreshKey.intValue++
+            }
+        }
+    }
+
+    private fun exportPdfReport(uris: List<Uri>, title: String, notes: String, includeOcr: Boolean) {
+        if (uris.isEmpty()) return
+        batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
             val doc = PdfDocument()
+            val createdAt = System.currentTimeMillis()
+            val indexEntries = if (getSharedPreferences("snapcrop", MODE_PRIVATE)
+                    .getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) {
+                try { ScreenshotIndexStore(this@MainActivity).loadEntryMap() } catch (_: Exception) { emptyMap() }
+            } else {
+                emptyMap()
+            }
+            val appendix = mutableListOf<Pair<ExportItemMetadata, String>>()
+            var pageNumber = 1
+            var imagePages = 0
             try {
-                var pageNum = 1
-                val maxPdfDim = 2048 // Limit page dimensions to prevent OOM on large images
-                for (uri in uris) {
-                    var bmp = contentResolver.openInputStream(uri)?.use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    } ?: continue
-                    // Downscale large images to prevent OOM
-                    if (bmp.width > maxPdfDim || bmp.height > maxPdfDim) {
-                        val scale = maxPdfDim.toFloat() / maxOf(bmp.width, bmp.height)
-                        val scaled = android.graphics.Bitmap.createScaledBitmap(
-                            bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true)
-                        bmp.recycle()
-                        bmp = scaled
-                    }
-                    val pageInfo = PdfDocument.PageInfo.Builder(bmp.width, bmp.height, pageNum).create()
-                    val page = doc.startPage(pageInfo)
-                    page.canvas.drawBitmap(bmp, 0f, 0f, null)
-                    doc.finishPage(page)
-                    bmp.recycle()
-                    pageNum++
-                }
-                if (pageNum == 1) {
+                pageNumber = drawReportCoverPage(
+                    doc = doc,
+                    pageNumber = pageNumber,
+                    title = title.ifBlank { "SnapCrop incident report" },
+                    notes = notes,
+                    itemCount = uris.size,
+                    createdAt = createdAt,
+                    includeOcr = includeOcr
+                )
+                uris.forEachIndexed { index, uri ->
+                    if (batchCancelled.value) return@forEachIndexed
                     withContext(Dispatchers.Main) {
+                        batchProgress.value = "Building report ${index + 1}/${uris.size}..."
+                        batchProgressFraction.floatValue = index.toFloat() / uris.size
+                    }
+                    val metadata = loadExportItemMetadata(uri, mediaIdFromUri(uri)?.let { indexEntries[it] })
+                    val bitmap = decodeReportBitmap(uri) ?: return@forEachIndexed
+                    if (includeOcr) {
+                        val extractedText = try {
+                            TextExtractor.extract(bitmap).joinToString("\n") { it.text.trim() }.trim()
+                        } catch (_: Exception) {
+                            ""
+                        }
+                        val appendixText = extractedText.ifBlank { metadata.recognizedText }.trim()
+                        if (appendixText.isNotBlank()) {
+                            appendix.add(metadata to appendixText)
+                        }
+                    }
+                    pageNumber = drawReportImagePage(doc, pageNumber, index + 1, uris.size, bitmap, metadata)
+                    imagePages++
+                    bitmap.recycle()
+                }
+
+                if (imagePages == 0) {
+                    withContext(Dispatchers.Main) {
+                        batchProgress.value = ""
                         Toast.makeText(this@MainActivity, "No images to export", Toast.LENGTH_SHORT).show()
                     }
                     return@launch
                 }
-
-                val values = android.content.ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.pdf")
-                    put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/SnapCrop")
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                if (includeOcr && appendix.isNotEmpty()) {
+                    pageNumber = drawOcrAppendixPages(doc, pageNumber, appendix)
                 }
-                var pdfUri: Uri? = null
-                try {
-                    pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
-                    if (pdfUri != null) {
-                        val pdfOs = contentResolver.openOutputStream(pdfUri)
-                        if (pdfOs != null) {
-                            pdfOs.use { doc.writeTo(it) }
-                        } else {
-                            contentResolver.delete(pdfUri, null, null)
-                            pdfUri = null
-                            throw Exception("Failed to open output stream for PDF")
-                        }
-                        values.clear()
-                        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        contentResolver.update(pdfUri!!, values, null, null)
-                        withContext(Dispatchers.Main) {
-                            Toast.makeText(this@MainActivity, "PDF saved to Documents/SnapCrop", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: Exception) {
+                val saved = savePdfDocument(doc, "SnapCrop_Report_$createdAt.pdf")
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "PDF export failed", Toast.LENGTH_SHORT).show()
+                    batchProgress.value = ""
+                    Toast.makeText(
+                        this@MainActivity,
+                        if (saved) "PDF report saved to Documents/SnapCrop" else "PDF report failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    batchProgress.value = ""
+                    Toast.makeText(this@MainActivity, "PDF report failed", Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 doc.close()
             }
         }
+    }
+
+    private fun loadExportItemMetadata(
+        uri: Uri,
+        indexEntry: ScreenshotIndexEntry? = null
+    ): ExportItemMetadata {
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.RELATIVE_PATH,
+            MediaStore.MediaColumns.OWNER_PACKAGE_NAME,
+            MediaStore.MediaColumns.WIDTH,
+            MediaStore.MediaColumns.HEIGHT,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.DATE_ADDED
+        )
+        var displayName = uri.lastPathSegment ?: "screenshot"
+        var relativePath = ""
+        var owner = ""
+        var width = 0
+        var height = 0
+        var size = 0L
+        var dateAdded = 0L
+        try {
+            contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    displayName = cursor.getStringIfPresent(MediaStore.MediaColumns.DISPLAY_NAME) ?: displayName
+                    relativePath = cursor.getStringIfPresent(MediaStore.MediaColumns.RELATIVE_PATH).orEmpty()
+                    owner = cursor.getStringIfPresent(MediaStore.MediaColumns.OWNER_PACKAGE_NAME).orEmpty()
+                    width = cursor.getIntIfPresent(MediaStore.MediaColumns.WIDTH)
+                    height = cursor.getIntIfPresent(MediaStore.MediaColumns.HEIGHT)
+                    size = cursor.getLongIfPresent(MediaStore.MediaColumns.SIZE)
+                    dateAdded = cursor.getLongIfPresent(MediaStore.MediaColumns.DATE_ADDED)
+                }
+            }
+        } catch (_: Exception) {
+            indexEntry?.let {
+                displayName = it.name
+                relativePath = it.albumPath
+                width = it.width
+                height = it.height
+                size = it.size
+                dateAdded = it.dateAdded
+            }
+        }
+        return ExportItemMetadata(
+            displayName = displayName,
+            relativePath = relativePath.ifBlank { indexEntry?.albumPath.orEmpty() },
+            sourceHint = owner,
+            width = if (width > 0) width else indexEntry?.width ?: 0,
+            height = if (height > 0) height else indexEntry?.height ?: 0,
+            sizeBytes = if (size > 0) size else indexEntry?.size ?: 0L,
+            dateAddedSeconds = if (dateAdded > 0) dateAdded else indexEntry?.dateAdded ?: 0L,
+            categories = indexEntry?.categories ?: emptySet(),
+            recognizedText = indexEntry?.searchText.orEmpty()
+        )
+    }
+
+    private fun decodeReportBitmap(uri: Uri): android.graphics.Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        try {
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        } catch (_: Exception) {
+            return null
+        }
+        var sample = 1
+        while (bounds.outWidth / sample > 2400 || bounds.outHeight / sample > 2400) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
+        return try {
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun drawReportCoverPage(
+        doc: PdfDocument,
+        pageNumber: Int,
+        title: String,
+        notes: String,
+        itemCount: Int,
+        createdAt: Long,
+        includeOcr: Boolean
+    ): Int {
+        val page = doc.startPage(PdfDocument.PageInfo.Builder(PDF_WIDTH, PDF_HEIGHT, pageNumber).create())
+        val canvas = page.canvas
+        canvas.drawColor(android.graphics.Color.WHITE)
+        var y = 110f
+        y = drawWrappedText(canvas, title, PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, titlePaint(), 48f)
+        y += 34f
+        y = drawWrappedText(
+            canvas,
+            "Created ${formatTimestamp(createdAt)}\n$itemCount screenshot images\nOCR appendix: ${if (includeOcr) "enabled" else "off"}",
+            PAGE_MARGIN,
+            y,
+            PDF_WIDTH - PAGE_MARGIN * 2,
+            bodyPaint(),
+            28f
+        )
+        if (notes.isNotBlank()) {
+            y += 42f
+            y = drawWrappedText(canvas, "Notes", PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 30f)
+            y += 10f
+            drawWrappedText(canvas, notes, PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, bodyPaint(), 26f, maxLines = 18)
+        }
+        drawPdfFooter(canvas, pageNumber)
+        doc.finishPage(page)
+        return pageNumber + 1
+    }
+
+    private fun drawReportImagePage(
+        doc: PdfDocument,
+        pageNumber: Int,
+        itemNumber: Int,
+        totalItems: Int,
+        bitmap: android.graphics.Bitmap,
+        metadata: ExportItemMetadata
+    ): Int {
+        val page = doc.startPage(PdfDocument.PageInfo.Builder(PDF_WIDTH, PDF_HEIGHT, pageNumber).create())
+        val canvas = page.canvas
+        canvas.drawColor(android.graphics.Color.WHITE)
+        var y = 72f
+        y = drawWrappedText(
+            canvas,
+            "Image $itemNumber of $totalItems",
+            PAGE_MARGIN,
+            y,
+            PDF_WIDTH - PAGE_MARGIN * 2,
+            sectionPaint(),
+            32f
+        )
+        val metaText = buildString {
+            append(metadata.displayName)
+            if (metadata.sourceHint.isNotBlank()) append("\nSource: ").append(metadata.sourceHint)
+            if (metadata.relativePath.isNotBlank()) append("\nAlbum: ").append(metadata.relativePath)
+            append("\nDimensions: ").append(metadata.width.takeIf { it > 0 } ?: bitmap.width)
+                .append(" x ").append(metadata.height.takeIf { it > 0 } ?: bitmap.height)
+            if (metadata.sizeBytes > 0) append("\nSize: ").append(formatSize(metadata.sizeBytes))
+            if (metadata.dateAddedSeconds > 0) append("\nDate added: ").append(formatTimestamp(metadata.dateAddedSeconds * 1000))
+            if (metadata.categories.isNotEmpty()) append("\nTags: ").append(metadata.categories.joinToString(", "))
+        }
+        y = drawWrappedText(canvas, metaText, PAGE_MARGIN, y + 8f, PDF_WIDTH - PAGE_MARGIN * 2, smallPaint(), 22f, maxLines = 7)
+        val imageTop = y + 24f
+        val imageBottom = PDF_HEIGHT - 120f
+        val maxWidth = PDF_WIDTH - PAGE_MARGIN * 2
+        val maxHeight = imageBottom - imageTop
+        val scale = minOf(maxWidth / bitmap.width.toFloat(), maxHeight / bitmap.height.toFloat())
+        val drawWidth = bitmap.width * scale
+        val drawHeight = bitmap.height * scale
+        val left = PAGE_MARGIN + (maxWidth - drawWidth) / 2f
+        val top = imageTop + (maxHeight - drawHeight) / 2f
+        val dst = RectF(left, top, left + drawWidth, top + drawHeight)
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(210, 218, 226)
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawBitmap(bitmap, null, dst, null)
+        canvas.drawRect(dst, border)
+        drawPdfFooter(canvas, pageNumber)
+        doc.finishPage(page)
+        return pageNumber + 1
+    }
+
+    private fun drawOcrAppendixPages(
+        doc: PdfDocument,
+        startPageNumber: Int,
+        entries: List<Pair<ExportItemMetadata, String>>
+    ): Int {
+        var pageNumber = startPageNumber
+        var page = doc.startPage(PdfDocument.PageInfo.Builder(PDF_WIDTH, PDF_HEIGHT, pageNumber).create())
+        var canvas = page.canvas
+        canvas.drawColor(android.graphics.Color.WHITE)
+        var y = 76f
+        y = drawWrappedText(canvas, "OCR appendix", PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 34f)
+        val textPaint = smallPaint()
+        val maxWidth = PDF_WIDTH - PAGE_MARGIN * 2
+        val bottom = PDF_HEIGHT - 120f
+
+        fun nextPage() {
+            drawPdfFooter(canvas, pageNumber)
+            doc.finishPage(page)
+            pageNumber++
+            page = doc.startPage(PdfDocument.PageInfo.Builder(PDF_WIDTH, PDF_HEIGHT, pageNumber).create())
+            canvas = page.canvas
+            canvas.drawColor(android.graphics.Color.WHITE)
+            y = 76f
+            y = drawWrappedText(canvas, "OCR appendix", PAGE_MARGIN, y, maxWidth, sectionPaint(), 34f)
+        }
+
+        entries.forEach { (metadata, text) ->
+            val headingLines = wrapTextLines(metadata.displayName, sectionPaint(), maxWidth)
+            if (y + headingLines.size * 30f > bottom) nextPage()
+            headingLines.forEach { line ->
+                canvas.drawText(line, PAGE_MARGIN, y, sectionPaint())
+                y += 30f
+            }
+            val lines = wrapTextLines(text.take(4000), textPaint, maxWidth)
+            lines.forEach { line ->
+                if (y + 22f > bottom) nextPage()
+                canvas.drawText(line, PAGE_MARGIN, y, textPaint)
+                y += 22f
+            }
+            y += 22f
+        }
+        drawPdfFooter(canvas, pageNumber)
+        doc.finishPage(page)
+        return pageNumber + 1
+    }
+
+    private fun savePdfDocument(doc: PdfDocument, displayName: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/SnapCrop")
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        var pdfUri: Uri? = null
+        return try {
+            pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+            val uri = pdfUri ?: return false
+            contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) } ?: return false
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            contentResolver.update(uri, values, null, null)
+            true
+        } catch (_: Exception) {
+            pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
+            false
+        }
+    }
+
+    private fun drawWrappedText(
+        canvas: android.graphics.Canvas,
+        text: String,
+        x: Float,
+        startY: Float,
+        maxWidth: Float,
+        paint: Paint,
+        lineHeight: Float,
+        maxLines: Int = Int.MAX_VALUE
+    ): Float {
+        var y = startY
+        var linesDrawn = 0
+        for (line in wrapTextLines(text, paint, maxWidth)) {
+            if (linesDrawn >= maxLines) break
+            canvas.drawText(line, x, y, paint)
+            y += lineHeight
+            linesDrawn++
+        }
+        return y
+    }
+
+    private fun wrapTextLines(text: String, paint: Paint, maxWidth: Float): List<String> {
+        val lines = mutableListOf<String>()
+        text.split('\n').forEach { paragraph ->
+            var current = ""
+            paragraph.split(' ').filter { it.isNotBlank() }.forEach { word ->
+                val candidate = if (current.isBlank()) word else "$current $word"
+                if (paint.measureText(candidate) <= maxWidth || current.isBlank()) {
+                    current = candidate
+                } else {
+                    lines.add(current)
+                    current = word
+                }
+            }
+            if (current.isNotBlank()) lines.add(current)
+            if (paragraph.isBlank()) lines.add("")
+        }
+        return lines.ifEmpty { listOf("") }
+    }
+
+    private fun drawPdfFooter(canvas: android.graphics.Canvas, pageNumber: Int) {
+        val paint = smallPaint().apply { color = android.graphics.Color.rgb(92, 103, 115) }
+        canvas.drawText("SnapCrop local report", PAGE_MARGIN, PDF_HEIGHT - 54f, paint)
+        canvas.drawText("Page $pageNumber", PDF_WIDTH - PAGE_MARGIN - 96f, PDF_HEIGHT - 54f, paint)
+    }
+
+    private fun titlePaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(20, 29, 39)
+        textSize = 38f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+
+    private fun sectionPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(25, 94, 145)
+        textSize = 24f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+
+    private fun bodyPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(34, 44, 55)
+        textSize = 21f
+    }
+
+    private fun smallPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.rgb(56, 68, 80)
+        textSize = 16f
+    }
+
+    private fun formatTimestamp(millis: Long): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(millis))
+
+    private fun formatSize(bytes: Long): String = when {
+        bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
+        bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
+        else -> "$bytes B"
+    }
+
+    private fun mediaIdFromUri(uri: Uri): Long? = try {
+        ContentUris.parseId(uri)
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun uniqueDisplayName(base: String, extension: String, usedNames: MutableSet<String>): String {
+        var suffix = 0
+        while (true) {
+            val candidateBase = if (suffix == 0) base else "${base}_${suffix + 1}"
+            val candidate = if (extension.isBlank()) candidateBase else "$candidateBase.$extension"
+            if (usedNames.add(candidate.lowercase(Locale.US))) return candidate
+            suffix++
+        }
+    }
+
+    private fun extensionForMime(mime: String?): String = when (mime) {
+        "image/jpeg" -> "jpg"
+        "image/webp" -> "webp"
+        "image/png" -> "png"
+        else -> "png"
+    }
+
+    private fun android.database.Cursor.getStringIfPresent(column: String): String? {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getString(index) else null
+    }
+
+    private fun android.database.Cursor.getIntIfPresent(column: String): Int {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getInt(index) else 0
+    }
+
+    private fun android.database.Cursor.getLongIfPresent(column: String): Long {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getLong(index) else 0L
     }
 
     private fun shareImages(uris: List<Uri>) {

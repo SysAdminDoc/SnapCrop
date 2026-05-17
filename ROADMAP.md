@@ -395,6 +395,23 @@ Acceptance:
 - Network exports are opt-in, auditable, and never undermine the local-first
   default.
 
+Implemented 2026-05-17, local-first reporting batch:
+
+- Replaced the old image-only gallery PDF action with a report dialog that
+  captures title, notes, and an optional OCR appendix.
+- PDF reports now include a cover page, creation timestamp, selected-image
+  metadata, app/source hints where MediaStore exposes them, dimensions, size,
+  date, category hints from the local index, and image pages sized for review.
+- Added gallery batch rename with templates for `%app%`, `%date%`, `%time%`,
+  `%timestamp%`, `%counter%`, and `%profile%`, plus filename sanitization and
+  unit coverage for token expansion.
+
+Remaining:
+
+- Add explicit opt-in network export targets for self-hosted HTTP,
+  WebDAV/Nextcloud, and Imgur anonymous upload.
+- Add Android share shortcuts for frequent export destinations.
+
 ## P2: Research And Advanced Capabilities
 
 ### 11. [ ] ML Kit robustness and model-state UX

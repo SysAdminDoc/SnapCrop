@@ -54,6 +54,11 @@ All notable changes to SnapCrop will be documented in this file.
   wide layouts use a persistent right inspector for modes, crop controls,
   redaction, draw layers, and adjustments, with keyboard shortcuts and
   mouse-wheel zoom support.
+- Upgraded gallery PDF export into a local incident report builder with title,
+  notes, timestamps, image metadata, source hints, dimensions, and optional OCR
+  appendix pages.
+- Added gallery batch rename templates for `%app%`, `%date%`, `%time%`,
+  `%timestamp%`, `%counter%`, and `%profile%`, with filename sanitization.
 
 ## [v6.19.0] - 2026-05-14
 

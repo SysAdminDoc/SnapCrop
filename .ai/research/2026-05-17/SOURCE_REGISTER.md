@@ -33,6 +33,8 @@ repository research and roadmap planning pass.
 | L15a | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotIndexStore.kt` | Opt-in local screenshot intelligence index. |
 | L15b | `app/src/main/java/com/sysadmindoc/snapcrop/SettingsActivity.kt` | Index enable/rebuild/purge controls and App rules management UI. |
 | L15c | `app/src/test/java/com/sysadmindoc/snapcrop/ScreenshotIndexClassifierTest.kt` | Source/category classifier coverage. |
+| L15d | `app/src/main/java/com/sysadmindoc/snapcrop/ExportWorkflowModels.kt` | Export metadata and batch rename token expansion/sanitization. |
+| L15e | `app/src/test/java/com/sysadmindoc/snapcrop/BatchRenameTemplateTest.kt` | Batch rename template regression coverage. |
 | L16 | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` | Screenshot monitoring, quick crop, delayed capture, last action. |
 | L17 | `app/src/main/java/com/sysadmindoc/snapcrop/ScrollCaptureService.kt` | Long screenshot capture and stitch implementation. |
 | L17a | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotReviewActivity.kt` | Long screenshot review, retry, and save handoff. |
