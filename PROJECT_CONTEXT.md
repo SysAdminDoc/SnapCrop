@@ -16,9 +16,9 @@ collage, device frames, video frame extraction, long screenshots, and ML Kit
 assists.
 
 The current repository version is `6.19.0` / `versionCode 67` in
-`app/build.gradle.kts`. The latest checked commit at the roadmap-continuation
-pass was `7557311 docs: plan SnapCrop roadmap from research` on `main`, aligned
-with `origin/main`.
+`app/build.gradle.kts`. The latest checked commit before the dependency
+baseline continuation was `744a25e ci: add Android verification pipeline` on
+`main`, aligned with `origin/main`.
 
 ## Working Rules
 
@@ -39,9 +39,14 @@ with `origin/main`.
 ## Stack
 
 - Kotlin, Jetpack Compose, Material 3.
-- Android minSdk 29, targetSdk 35, compileSdk 35.
-- Gradle wrapper 8.11.1.
-- Android Gradle Plugin 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01.
+- Android minSdk 29, targetSdk 35, compileSdk 36.
+- Gradle wrapper 9.4.1.
+- Android Gradle Plugin 9.2.1 with AGP built-in Kotlin. Do not reapply
+  `org.jetbrains.kotlin.android`; keep the Compose compiler plugin pinned from
+  the version catalog.
+- Kotlin/Compose compiler plugin 2.3.21, Compose BOM 2026.05.00,
+  Material 3 1.4.0, Activity Compose 1.13.0, Lifecycle Runtime KTX 2.10.0,
+  Navigation Compose 2.9.8, Core KTX 1.18.0.
 - Coil 2.7.0.
 - ML Kit: object detection, text recognition, face detection, barcode scanning,
   subject segmentation, language identification, translation, and entity
@@ -115,8 +120,11 @@ and Android system integration.
   matching, sensitive text pattern detection, and Smart Erase behavior.
 - GitHub Actions now has lint/test/debug assemble/release assemble,
   dependency-review, and CycloneDX SBOM artifact lanes.
-- Dependencies are behind current stable AndroidX/Kotlin/Compose baselines as of
-  2026-05-17 metadata.
+- Android dependency baselines are now current stable as of 2026-05-17 metadata
+  for AGP, Gradle, Kotlin/Compose compiler, Compose BOM, Core KTX, Activity
+  Compose, Lifecycle, Navigation Compose, and Material 3. ML Kit dependencies
+  remain intentionally separate because the research pass found the current
+  ML Kit selections already at latest stable or latest beta metadata.
 - `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`, AccessibilityService, and
   foreground-service special use all require careful user education, fallback
   behavior, and Play policy justification.
