@@ -31,6 +31,9 @@ repository research and roadmap planning pass.
 | L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, smart albums, favorites, PDF export. |
 | L16 | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` | Screenshot monitoring, quick crop, delayed capture, last action. |
 | L17 | `app/src/main/java/com/sysadmindoc/snapcrop/ScrollCaptureService.kt` | Long screenshot capture and stitch implementation. |
+| L17a | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotReviewActivity.kt` | Long screenshot review, retry, and save handoff. |
+| L17b | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotStore.kt` | Long screenshot temporary review files and MediaStore persistence. |
+| L17c | `app/src/test/java/com/sysadmindoc/snapcrop/ScrollStitcherTest.kt` | Stitcher regression coverage for sticky chrome and stuck frames. |
 | L18 | `app/src/main/java/com/sysadmindoc/snapcrop/AppCropProfiles.kt` | Built-in Reddit/X crop profile rules. |
 | L19 | `app/src/main/java/com/sysadmindoc/snapcrop/ConditionalAutoActions.kt` | Conditional Quick Crop automation rules. |
 | L20 | `app/src/main/java/com/sysadmindoc/snapcrop/SensitiveTextDetector.kt` | Sensitive text detection. |

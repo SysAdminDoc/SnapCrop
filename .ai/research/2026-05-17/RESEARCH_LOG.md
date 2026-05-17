@@ -174,6 +174,29 @@ Result:
   existing `awaitEachGesture` pattern.
 - Added `EditorModelsTest` and `docs/EDITOR_REGRESSION_CHECKLIST.md`.
 
+### Pass 9: P1.6 long-screenshot stitcher v2 implementation pass
+
+Targets:
+
+- `ScrollCaptureService` frame capture loop, stop conditions, and stitcher.
+- Long screenshot save flow.
+- Regression coverage for overlap matching and stuck scroll detection.
+
+Result:
+
+- Raised the long-screenshot frame cap from five to ten behind an 18-second
+  safety guard.
+- Added explicit stop reasons for repeated/stuck content, capture failure, end
+  of scrollable content, frame cap, and time cap.
+- Added `LongScreenshotReviewActivity` so captures are previewed before
+  MediaStore save, with Save & Edit, Retry, and Discard controls.
+- Added `LongScreenshotStore` for temporary review files and shared MediaStore
+  persistence.
+- Reworked `ScrollStitcher` to search for overlap below repeated top chrome,
+  trim repeated bottom chrome, and use denser band/edge scoring.
+- Added `ScrollStitcherTest` for sticky chrome reduction and repeated-frame
+  detection.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -215,4 +238,4 @@ strategic direction.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
   intended in the initial planning run. Later autonomous roadmap continuation
-  passes did include code changes for P0.1 through P0.5.
+  passes did include code changes for P0.1 through P0.5 and P1.6.

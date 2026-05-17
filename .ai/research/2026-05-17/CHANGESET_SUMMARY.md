@@ -210,3 +210,35 @@ Verification for this continuation batch:
   passed in 2m 14s.
 - Existing warnings remain for the known CycloneDX configuration-time
   dependency-resolution message.
+
+## Roadmap Continuation - P1.6 - 2026-05-17
+
+Implemented P1.6, "Long-screenshot stitcher v2":
+
+- Increased Accessibility long-screenshot capture from five frames to ten
+  frames, with an 18-second safety cap.
+- Added explicit stop reasons for repeated/stuck content, capture failure,
+  end-of-scroll, frame cap, and time cap.
+- Added `LongScreenshotReviewActivity` so a captured long screenshot is written
+  to a temporary review file and previewed before gallery save. The review UI
+  supports Save & Edit, Retry, and Discard.
+- Added `LongScreenshotStore` for shared temporary review-file handling and
+  MediaStore save behavior.
+- Updated the FileProvider paths and manifest for the review flow.
+- Reworked `ScrollStitcher` to search below repeated top chrome for the true
+  overlap, trim repeated bottom chrome from intermediate frames, and use denser
+  band/edge scoring.
+- Added `ScrollStitcherTest` for sticky header/footer reduction and stuck-frame
+  detection.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`,
+  `SOURCE_REGISTER.md`, `RESEARCH_LOG.md`, and `STATE_OF_REPO.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest`: passed.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 2m 57s.
+- Existing warnings remain for deprecated `Bitmap.recycle()` calls in
+  `ScrollCaptureService` and the known CycloneDX configuration-time
+  dependency-resolution message.

@@ -245,12 +245,22 @@ Acceptance:
 
 ## P1: Deepen Screenshot-Specific Workflows
 
-### 6. [ ] Long-screenshot stitcher v2
+### 6. [x] Long-screenshot stitcher v2
 
-Evidence: L8 caps capture at five frames and uses a simple sampled pixel
-difference stitcher. E1 documents `takeScreenshot()` behavior and rate-limit
-errors. ScreenshotTile in E12 is an Android reference for AccessibilityService
-capture.
+Status: Completed 2026-05-17. Long screenshot capture now allows up to ten
+frames behind an 18-second safety guard, stops with explicit reasons for end of
+content, repeated/stuck frames, capture failure, frame cap, or time cap, and
+opens a review screen before gallery save. The review screen previews the tall
+image and offers Save & Edit, Retry, and Discard. The stitcher now searches for
+true overlap below repeated top chrome, trims repeated bottom chrome from
+intermediate frames, uses denser normalized band/edge scoring, and has
+Robolectric coverage for stuck-frame detection and sticky-header/footer
+reduction.
+
+Evidence: L8 previously capped capture at five frames and used a simple sampled
+pixel difference stitcher. E1 documents `takeScreenshot()` behavior and
+rate-limit errors. ScreenshotTile in E12 is an Android reference for
+AccessibilityService capture.
 
 Deliverables:
 
