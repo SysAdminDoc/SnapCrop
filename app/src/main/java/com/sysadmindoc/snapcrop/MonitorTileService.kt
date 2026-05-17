@@ -1,10 +1,6 @@
 package com.sysadmindoc.snapcrop
 
-import android.annotation.SuppressLint
-import android.app.PendingIntent
 import android.content.Intent
-import android.os.Build
-import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import androidx.core.content.ContextCompat
@@ -23,14 +19,8 @@ class MonitorTileService : TileService() {
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", false).apply()
         } else {
-            if (Build.VERSION.SDK_INT >= 31 && !Settings.canDrawOverlays(this)) {
-                // Can't start without overlay permission — open app
-                val intent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                startActivityAndCollapseCompat(intent, requestCode = 10)
-                return
-            }
+            // Overlay access is optional; ScreenshotService shows notification actions
+            // when Android blocks immediate background editor launch.
             ContextCompat.startForegroundService(this, Intent(this, ScreenshotService::class.java))
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", true).apply()
@@ -45,22 +35,5 @@ class MonitorTileService : TileService() {
         tile.label = "SnapCrop"
         tile.subtitle = if (running) "Monitoring" else "Off"
         tile.updateTile()
-    }
-
-    @SuppressLint("StartActivityAndCollapseDeprecated")
-    private fun startActivityAndCollapseCompat(intent: Intent, requestCode: Int) {
-        if (Build.VERSION.SDK_INT >= 34) {
-            startActivityAndCollapse(
-                PendingIntent.getActivity(
-                    this,
-                    requestCode,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            startActivityAndCollapse(intent)
-        }
     }
 }

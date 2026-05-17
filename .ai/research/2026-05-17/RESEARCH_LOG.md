@@ -118,6 +118,26 @@ Result:
 - Remote/network integrations should remain off by default because the product
   positioning is local-first.
 
+### Pass 6: P0.3 policy-hardening refresh
+
+Targets:
+
+- Google Play all-files access policy.
+- Google Play AccessibilityService policy and disclosure expectations.
+- Android manifest backup attributes and Auto Backup behavior.
+- Current app permission prompts, deletion paths, overlay fallback, and
+  Accessibility setup flow.
+
+Result:
+
+- `MANAGE_EXTERNAL_STORAGE` was not defensible for prompt-free media deletion
+  because scoped-storage delete confirmation already covers the workflow.
+- App-data backup should be disabled because preferences can expose local save
+  paths, favorites, automation toggles, and screenshot workflow habits.
+- Overlay access should stay optional because notification actions can open the
+  editor when Android blocks background launch.
+- Long Screenshot needs a clear in-app disclosure before Accessibility settings.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.
@@ -158,4 +178,5 @@ strategic direction.
   refreshed before upgrade implementation.
 - No emulator/device QA was performed in this planning run.
 - No source code changes beyond documentation/context/roadmap pointers were
-  intended in this run.
+  intended in the initial planning run. Later autonomous roadmap continuation
+  passes did include code changes for P0.1, P0.2, and P0.3.

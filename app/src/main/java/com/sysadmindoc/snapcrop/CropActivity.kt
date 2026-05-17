@@ -19,7 +19,6 @@ import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -260,8 +259,7 @@ class CropActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     showDeleteConfirm.value = false
-                                    val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                        !Environment.isExternalStorageManager()
+                                    val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                                     deleteOriginalFile()
                                     if (!needsDialog) {
                                         Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
@@ -1558,10 +1556,7 @@ class CropActivity : ComponentActivity() {
 
     private fun deleteOriginalFile() {
         val uri = sourceUri ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
-            // MANAGE_EXTERNAL_STORAGE: direct delete without system confirmation
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
                 @Suppress("DEPRECATION")
