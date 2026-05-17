@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -421,6 +422,142 @@ class SettingsActivity : ComponentActivity() {
                                 ),
                                 shape = RoundedCornerShape(8.dp)
                             )
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
+                    // Network export section
+                    var networkExportsEnabled by remember {
+                        mutableStateOf(prefs.getBoolean(NetworkExportSettings.PREF_ENABLED, false))
+                    }
+                    var networkTarget by remember {
+                        mutableStateOf(NetworkExportTarget.fromPref(prefs.getString(NetworkExportSettings.PREF_TARGET, NetworkExportTarget.HTTP.prefValue)))
+                    }
+                    var networkEndpoint by remember {
+                        mutableStateOf(prefs.getString(NetworkExportSettings.PREF_ENDPOINT, "") ?: "")
+                    }
+                    var networkAuthorization by remember {
+                        mutableStateOf(prefs.getString(NetworkExportSettings.PREF_AUTHORIZATION, "") ?: "")
+                    }
+                    var imgurClientId by remember {
+                        mutableStateOf(prefs.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, "") ?: "")
+                    }
+                    Text("Network Exports", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    SettingToggle(
+                        title = "Enable network export targets",
+                        subtitle = "Off by default. Reports stay local unless you explicitly upload from the report dialog.",
+                        checked = networkExportsEnabled,
+                        onCheckedChange = {
+                            networkExportsEnabled = it
+                            prefs.edit().putBoolean(NetworkExportSettings.PREF_ENABLED, it).apply()
+                        }
+                    )
+                    if (networkExportsEnabled) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text("Upload target", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    NetworkExportTarget.entries.forEach { target ->
+                                        FilterChip(
+                                            selected = networkTarget == target,
+                                            onClick = {
+                                                networkTarget = target
+                                                prefs.edit().putString(NetworkExportSettings.PREF_TARGET, target.prefValue).apply()
+                                            },
+                                            label = { Text(target.label, fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = PrimaryContainer,
+                                                selectedLabelColor = Primary,
+                                                containerColor = Surface,
+                                                labelColor = OnSurfaceVariant
+                                            ),
+                                            shape = RoundedCornerShape(8.dp)
+                                        )
+                                    }
+                                }
+                                if (networkTarget == NetworkExportTarget.IMGUR) {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = imgurClientId,
+                                        onValueChange = {
+                                            imgurClientId = it.trim()
+                                            prefs.edit().putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId).apply()
+                                        },
+                                        singleLine = true,
+                                        label = { Text("Imgur client ID") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Primary,
+                                            unfocusedBorderColor = Outline,
+                                            focusedTextColor = OnSurface,
+                                            unfocusedTextColor = OnSurface,
+                                            cursorColor = Primary
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    Text(
+                                        "Imgur uploads selected images, not PDF reports.",
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                } else {
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = networkEndpoint,
+                                        onValueChange = {
+                                            networkEndpoint = it.trim()
+                                            prefs.edit().putString(NetworkExportSettings.PREF_ENDPOINT, networkEndpoint).apply()
+                                        },
+                                        singleLine = true,
+                                        label = { Text(if (networkTarget == NetworkExportTarget.WEBDAV) "WebDAV folder or file URL" else "HTTP upload endpoint") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Primary,
+                                            unfocusedBorderColor = Outline,
+                                            focusedTextColor = OnSurface,
+                                            unfocusedTextColor = OnSurface,
+                                            cursorColor = Primary
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(
+                                        value = networkAuthorization,
+                                        onValueChange = {
+                                            networkAuthorization = it
+                                            prefs.edit().putString(NetworkExportSettings.PREF_AUTHORIZATION, it).apply()
+                                        },
+                                        singleLine = true,
+                                        label = { Text("Authorization header value") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Primary,
+                                            unfocusedBorderColor = Outline,
+                                            focusedTextColor = OnSurface,
+                                            unfocusedTextColor = OnSurface,
+                                            cursorColor = Primary
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    Text(
+                                        "Example: Bearer token or Basic credentials. Leave blank for no auth.",
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 

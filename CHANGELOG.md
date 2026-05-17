@@ -59,6 +59,10 @@ All notable changes to SnapCrop will be documented in this file.
   appendix pages.
 - Added gallery batch rename templates for `%app%`, `%date%`, `%time%`,
   `%timestamp%`, `%counter%`, and `%profile%`, with filename sanitization.
+- Added opt-in network export targets for PDF reports/images: self-hosted HTTP
+  multipart upload, WebDAV/Nextcloud PUT, and Imgur anonymous image upload.
+- Added share-sheet destination shortcuts that remember chosen Android share
+  components and surface the most-used targets first.
 
 ## [v6.19.0] - 2026-05-14
 

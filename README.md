@@ -126,6 +126,10 @@ layers without mutating the source screenshot.
   `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates
 - **PDF reports:** Gallery selections can be bundled with title, notes,
   timestamps, source/dimension metadata, and an optional OCR appendix
+- **Opt-in network exports:** Settings can enable explicit HTTP, WebDAV/
+  Nextcloud, or Imgur upload targets; uploads are never used by default
+- **Share shortcuts:** The Android share sheet can surface the destinations you
+  choose most often
 - **Save location:** Pictures, DCIM, or Downloads
 - **Extras:** Export border, watermark overlay, EXIF stripping,
   editable project sidecars, delete-original toggle
@@ -145,7 +149,8 @@ Grab the latest APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/
 ## Privacy and Permissions
 
 SnapCrop is local-first: no ads, no analytics SDKs, and no required network
-export path. See [SECURITY.md](SECURITY.md) for the permission matrix and
+export path. Optional upload targets are off by default and must be configured
+in Settings. See [SECURITY.md](SECURITY.md) for the permission matrix and
 release/security policy.
 
 - Media permissions let SnapCrop find screenshots, show the gallery, and edit
@@ -161,6 +166,8 @@ release/security policy.
   cleanup uses Android's scoped delete confirmation.
 - The screenshot intelligence index is opt-in, local-only, and can be rebuilt
   or purged from Settings.
+- Network exports are opt-in. HTTP/WebDAV report uploads and Imgur image
+  uploads run only after the user enables and configures a target.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop.
 

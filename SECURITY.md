@@ -5,7 +5,8 @@ Updated: 2026-05-17
 SnapCrop is local-first. Core screenshot detection, cropping, annotation,
 redaction, gallery, stitch, collage, video-frame extraction, and export
 workflows run on device. The app does not include ads, analytics SDKs, or a
-network export path.
+required network export path. Optional network exports are off by default and
+must be explicitly configured in Settings before a report dialog can upload.
 
 ## Reporting Security Issues
 
@@ -20,6 +21,7 @@ version, Android version, device model, and steps to reproduce.
 | `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_EXTERNAL_STORAGE` on Android 12 and lower | Find screenshots, open media, show gallery/video workflows, batch process user media. | Manual picker flows still work where Android grants a URI; background screenshot monitoring and gallery features are limited. | Media access is limited to local user media through Android media APIs. |
 | `POST_NOTIFICATIONS` | Foreground screenshot monitor notification plus Edit, Share, and Quick Crop actions. | Monitoring cannot provide the same persistent status/actions and may be blocked by the platform. | Runtime permission on modern Android. |
 | `SYSTEM_ALERT_WINDOW` | Optional instant editor launch after a screenshot on Android 12+. | SnapCrop still detects screenshots and shows notification actions; users can tap the notification to edit. | Optional special access; not required for core editing. |
+| `INTERNET` | Optional user-configured network exports to HTTP, WebDAV/Nextcloud, or Imgur. | Local save, edit, report, and share workflows still work. | Network targets are disabled by default and require explicit user configuration before upload. |
 | AccessibilityService | User-started Long Screenshot capture: screen capture, scroll gesture, and stitch while the user is preparing a long capture. | Long Screenshot is unavailable; manual crop, stitch, gallery, and editor workflows still work. | SnapCrop is not an accessibility tool. The app shows an in-app disclosure before opening Accessibility settings. |
 | Foreground service `specialUse` | Persistent screenshot monitor that watches for new screenshots and exposes user controls. | Automatic detection is off; users can still manually pick or share images into SnapCrop. | Manifest subtype explains screenshot monitoring for Play review. |
 | Quick Settings tile binding | Monitor, Long Screenshot, and Last Action tiles. | Tiles are unavailable; in-app buttons remain available. | Tile services are protected by Android's tile binding permission. |

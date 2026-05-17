@@ -368,3 +368,31 @@ Remaining P1.10 work:
 - Add explicit opt-in network export targets for self-hosted HTTP,
   WebDAV/Nextcloud, and Imgur anonymous upload.
 - Add Android share shortcuts for frequent export destinations.
+
+## Roadmap Continuation - P1.10 Network And Share Batch - 2026-05-17
+
+Completed the remaining P1.10 export/reporting deliverables:
+
+- Added `NetworkExportClient` and Settings controls for explicit opt-in network
+  export targets. Network exports remain off by default.
+- HTTP endpoint export posts the generated PDF report as multipart form data.
+- WebDAV/Nextcloud export PUTs the generated PDF report to the configured file
+  or folder URL.
+- Imgur anonymous export uploads selected images with a user-provided client ID
+  because Imgur does not accept PDF reports as images.
+- Added chooser-backed share shortcuts: `ShareTargetReceiver` records the
+  chosen Android share component, and later share sheets receive the most-used
+  targets through `Intent.EXTRA_INITIAL_INTENTS`.
+- Added `NetworkExportClientTest` and `ShareTargetStoreTest`.
+- Updated `AndroidManifest.xml`, `SECURITY.md`, `ROADMAP.md`,
+  `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`, and research notes.
+
+Verification for this continuation batch so far:
+
+- `.\gradlew.bat :app:testDebugUnitTest`: passed in 34s after the final
+  share-target warning cleanup.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 3m 14s.
+- Existing warnings remain for deprecated activity-result callbacks, one
+  AutoMirrored icon migration, and the known CycloneDX configuration-time
+  dependency-resolution message.

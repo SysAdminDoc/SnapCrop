@@ -33,8 +33,8 @@ Local evidence:
 - L11: `SensitiveTextDetector.kt`, `TextTranslator.kt`,
   `BackgroundRemover.kt`, `SmartEraseEngine.kt`, `SmartReframeEngine.kt`.
 - L12: `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts.
-- L13: `README.md` privacy positioning: no ads, no tracking, no internet
-  requirement.
+- L13: `README.md` privacy positioning: no ads, no tracking, no required
+  internet path; optional network exports must remain explicit.
 - L14: `CHANGELOG.md` current v6.19.0 release story.
 
 External evidence:
@@ -374,7 +374,7 @@ Implemented 2026-05-17:
 - Reduced wide-layout toolbar density by hiding the phone-only mode/tool rows
   and moving reset/auto/AI/background/color controls into the inspector.
 
-### 10. [ ] Export and reporting workflows
+### 10. [x] Export and reporting workflows
 
 Evidence: Existing PDF export and SVG sidecars in L7/L10; competitors in E12
 emphasize upload, report, and workflow automation.
@@ -395,7 +395,7 @@ Acceptance:
 - Network exports are opt-in, auditable, and never undermine the local-first
   default.
 
-Implemented 2026-05-17, local-first reporting batch:
+Implemented 2026-05-17:
 
 - Replaced the old image-only gallery PDF action with a report dialog that
   captures title, notes, and an optional OCR appendix.
@@ -405,12 +405,13 @@ Implemented 2026-05-17, local-first reporting batch:
 - Added gallery batch rename with templates for `%app%`, `%date%`, `%time%`,
   `%timestamp%`, `%counter%`, and `%profile%`, plus filename sanitization and
   unit coverage for token expansion.
-
-Remaining:
-
-- Add explicit opt-in network export targets for self-hosted HTTP,
-  WebDAV/Nextcloud, and Imgur anonymous upload.
-- Add Android share shortcuts for frequent export destinations.
+- Added Settings-gated network exports that are off by default. HTTP endpoint
+  exports use multipart PDF upload, WebDAV/Nextcloud exports use PUT, and Imgur
+  anonymous export uploads selected images with a user-provided client ID.
+- Added chooser-backed share shortcuts by recording chosen share components and
+  surfacing the most-used destinations first in later Android share sheets.
+- Added regression coverage for network export configuration and share target
+  shortcut persistence.
 
 ## P2: Research And Advanced Capabilities
 

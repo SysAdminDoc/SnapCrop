@@ -80,6 +80,10 @@ aligned with `origin/main`.
   multi-select, batch rename, PDF report export, photo/video viewer.
 - `ExportWorkflowModels`: export metadata and batch rename template token
   expansion/sanitization shared by gallery export workflows.
+- `NetworkExportClient`: explicit opt-in HTTP multipart, WebDAV/Nextcloud PUT,
+  and Imgur anonymous image upload support for report/export workflows.
+- `ShareTargetStore` and `ShareTargetReceiver`: chooser callback persistence
+  for most-used Android share destinations.
 - `ScrollCaptureService`: AccessibilityService long-screenshot capture. It uses
   `takeScreenshot()`, throttles capture attempts, strips system bars, scrolls,
   stops on repeated/stuck content, stitches up to ten frames behind a time
@@ -169,8 +173,10 @@ and Android system integration.
   image metadata, source hints, dimensions, index categories, and optional OCR
   appendix pages; selected images can also be batch-renamed with `%app%`,
   `%date%`, `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates.
-  P1.10 still needs explicit opt-in network export targets and Android share
-  shortcuts before it is complete.
+  Network exports are available only when explicitly enabled/configured in
+  Settings, with HTTP multipart PDF upload, WebDAV/Nextcloud PUT, and Imgur
+  anonymous image upload. The share sheet records chosen components and surfaces
+  the most-used destinations first on later shares.
 - Smart albums now use an opt-in local intelligence index for metadata,
   source-hint categories, favorite state, and editor OCR/barcode tokens. Future
   work can add background OCR/model-state progress, but the current design

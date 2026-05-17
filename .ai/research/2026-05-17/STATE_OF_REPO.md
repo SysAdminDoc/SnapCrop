@@ -118,13 +118,15 @@ Observed in `AndroidManifest.xml`:
 - `RECEIVE_BOOT_COMPLETED`,
 - optional `SYSTEM_ALERT_WINDOW` with notification fallback,
 - `VIBRATE`,
+- `INTERNET` for explicit opt-in HTTP/WebDAV/Imgur exports,
 - no all-files access permission,
 - `android:allowBackup="false"`,
 - exported `MainActivity`,
 - exported `CropActivity` for `ACTION_SEND image/*`,
 - exported `ScrollCaptureService` with `BIND_ACCESSIBILITY_SERVICE`,
 - exported Quick Settings tile services with `BIND_QUICK_SETTINGS_TILE`,
-- non-exported `ScreenshotService`, `BootReceiver`, and `FileProvider`,
+- non-exported `ScreenshotService`, `BootReceiver`, `ShareTargetReceiver`, and
+  `FileProvider`,
 - foreground-service special-use subtype property for screenshot monitoring
   and persistent user controls.
 
@@ -159,15 +161,20 @@ Implemented features confirmed by live files and history:
 - adaptive editor wide layout with a persistent right inspector for
   tablet/foldable/desktop-mode windows,
 - local PDF incident report export with title/notes/metadata/OCR appendix and
-  gallery batch rename templates.
+  gallery batch rename templates,
+- Settings-gated network export targets for HTTP multipart PDF upload,
+  WebDAV/Nextcloud PDF PUT, and Imgur anonymous image upload,
+- chooser-backed share shortcuts that remember selected Android share targets
+  and surface frequent destinations first.
 
 ## Repo Hygiene Findings
 
 - `rg` found no TODO/FIXME markers outside build output.
 - JVM/Robolectric tests now cover auto-crop, app profiles, user profile-pack
   matching/round-trip, sensitive text patterns, Smart Erase behavior, project
-  sidecars, extracted editor model helpers, and adaptive editor layout
-  thresholds.
+  sidecars, extracted editor model helpers, adaptive editor layout thresholds,
+  export rename templates, network export configuration, and share shortcut
+  persistence.
 - `rg` found no `RoundedCornerShape(50...)`, `RoundedCornerShape(999...)`, or
   `CircleShape` matches in source during the UI-rule scan.
 - `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts even though
