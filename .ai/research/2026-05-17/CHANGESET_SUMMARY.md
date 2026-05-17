@@ -273,3 +273,36 @@ Verification for this continuation batch:
   passed in 3m 34s.
 - Existing warnings remain for deprecated `onActivityResult` in `CropActivity`
   and the known CycloneDX configuration-time dependency-resolution message.
+
+## Roadmap Continuation - P1.8 - 2026-05-17
+
+Implemented P1.8, "Expand app profiles into a user-visible rules system":
+
+- Added `UserAppProfileStore`, a JSON-backed profile-pack store for custom app
+  rules with source/package hints, OCR keywords, crop bands, album destination,
+  redaction preference, and export format.
+- Expanded `AppCropProfiles` with built-in profile summaries, profile-match
+  previews, user-profile matching, and user crop-band application.
+- Added a Settings App rules panel that exposes Reddit/X built-ins, creates and
+  toggles/deletes user rules, copies/imports profile-pack JSON, and tests a
+  selected image against the current rules.
+- Wired user profiles into editor auto-crop, batch auto-crop, and Quick Crop.
+  Quick Crop now optionally runs OCR for keyword-backed rules, applies
+  rule-specific redaction and export format, saves to the rule album, and
+  explains the save/redaction/export outcome in the toast.
+- Added `UserAppProfileStoreTest` for profile-pack round-trip,
+  source-plus-OCR matching, and user crop-band application.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, and `README.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:compileDebugKotlin :app:testDebugUnitTest`: passed in
+  2m 56s.
+- `.\gradlew.bat :app:testDebugUnitTest`: passed after tightening the float
+  assertion in the new profile-store test.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 3m 49s.
+- Existing warnings remain for deprecated activity-result callbacks, one
+  AutoMirrored icon migration, and the known CycloneDX configuration-time
+  dependency-resolution message.

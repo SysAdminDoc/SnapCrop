@@ -6,6 +6,7 @@ import android.graphics.Rect
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 private data class CropProfileTemplate(
     val id: String,
@@ -13,7 +14,8 @@ private data class CropProfileTemplate(
     val aliases: List<String>,
     val accentColors: List<Int>,
     val topDp: Int = 56,
-    val bottomDp: Int = 56
+    val bottomDp: Int = 56,
+    val automationSummary: String
 )
 
 private data class CropProfileMatch(
@@ -22,21 +24,66 @@ private data class CropProfileMatch(
     val hasHint: Boolean
 )
 
+private data class ProfileCropCandidate(
+    val id: String,
+    val label: String,
+    val type: String,
+    val confidence: Float,
+    val reason: String,
+    val rect: Rect,
+    val method: String,
+    val actionSummary: String
+)
+
+data class BuiltInAppCropProfileInfo(
+    val id: String,
+    val label: String,
+    val aliases: List<String>,
+    val cropPreview: String,
+    val confidencePreview: String,
+    val automationSummary: String
+)
+
+data class AppCropProfilePreview(
+    val id: String,
+    val label: String,
+    val type: String,
+    val confidence: Float,
+    val reason: String,
+    val rect: Rect,
+    val method: String,
+    val actionSummary: String
+)
+
 object AppCropProfiles {
     private val templates = listOf(
         CropProfileTemplate(
             id = "reddit",
             label = "Reddit",
             aliases = listOf("reddit", "com.reddit.frontpage"),
-            accentColors = listOf(0xFFFF4500.toInt(), 0xFFFF5700.toInt(), 0xFFD93A00.toInt())
+            accentColors = listOf(0xFFFF4500.toInt(), 0xFFFF5700.toInt(), 0xFFD93A00.toInt()),
+            automationSummary = "Quick Crop can redact sensitive text and save to the Reddit album."
         ),
         CropProfileTemplate(
             id = "twitter",
             label = "X/Twitter",
             aliases = listOf("twitter", "x.com", "com.twitter.android"),
-            accentColors = listOf(0xFF1D9BF0.toInt(), 0xFF1DA1F2.toInt(), 0xFF0F8CEB.toInt())
+            accentColors = listOf(0xFF1D9BF0.toInt(), 0xFF1DA1F2.toInt(), 0xFF0F8CEB.toInt()),
+            automationSummary = "Quick Crop can redact sensitive text and save to the X-Twitter album."
         )
     )
+
+    fun builtInProfiles(): List<BuiltInAppCropProfileInfo> =
+        templates.map { template ->
+            BuiltInAppCropProfileInfo(
+                id = template.id,
+                label = template.label,
+                aliases = template.aliases,
+                cropPreview = "Trims about ${template.topDp}dp from the top and ${template.bottomDp}dp from the bottom when app chrome is detected.",
+                confidencePreview = "Source/package hints are accepted at high confidence; visual-only matches require at least 78% confidence.",
+                automationSummary = template.automationSummary
+            )
+        }
 
     fun apply(
         bitmap: Bitmap,
@@ -44,33 +91,132 @@ object AppCropProfiles {
         statusBarPx: Int,
         navBarPx: Int,
         sourceHints: List<String>,
+        profileTextHints: List<String> = emptyList(),
+        userProfiles: List<UserAppCropProfile> = emptyList(),
         enabled: Boolean
     ): AutoCrop.CropResult {
-        if (!enabled || bitmap.width < 240 || bitmap.height < 320) return baseResult
+        val preview = evaluate(
+            bitmap = bitmap,
+            baseResult = baseResult,
+            statusBarPx = statusBarPx,
+            navBarPx = navBarPx,
+            sourceHints = sourceHints,
+            profileTextHints = profileTextHints,
+            userProfiles = userProfiles,
+            enabled = enabled
+        ) ?: return baseResult
+
+        return AutoCrop.CropResult(preview.rect, preview.method)
+    }
+
+    fun evaluate(
+        bitmap: Bitmap,
+        baseResult: AutoCrop.CropResult,
+        statusBarPx: Int,
+        navBarPx: Int,
+        sourceHints: List<String>,
+        profileTextHints: List<String> = emptyList(),
+        userProfiles: List<UserAppCropProfile> = emptyList(),
+        enabled: Boolean
+    ): AppCropProfilePreview? {
+        if (!enabled || bitmap.width < 240 || bitmap.height < 320) return null
         val base = baseResult.rect
         if (base.height() < bitmap.height * 0.45f || base.width() < bitmap.width * 0.6f) {
-            return baseResult
+            return null
         }
 
         val density = estimateDensity(bitmap, statusBarPx, navBarPx)
         val normalizedHints = sourceHints.map { it.lowercase() }
-        val best = templates.mapNotNull { template ->
-            matchTemplate(bitmap, base, template, density, normalizedHints)
-        }.maxByOrNull { it.confidence } ?: return baseResult
+        val builtInCandidates = templates.mapNotNull { template ->
+            builtInCandidate(bitmap, base, template, density, normalizedHints)
+        }
+        val userCandidate = userCandidate(base, userProfiles, sourceHints, profileTextHints)
 
-        val accepted = best.hasHint || best.confidence >= 0.78f
-        if (!accepted) return baseResult
+        val best = (builtInCandidates + listOfNotNull(userCandidate))
+            .maxByOrNull { it.confidence }
+            ?: return null
 
-        val topTrim = (best.template.topDp * density).toInt().coerceIn(32, base.height() / 4)
-        val bottomTrim = (best.template.bottomDp * density).toInt().coerceIn(32, base.height() / 4)
+        return AppCropProfilePreview(
+            id = best.id,
+            label = best.label,
+            type = best.type,
+            confidence = best.confidence,
+            reason = best.reason,
+            rect = best.rect,
+            method = best.method,
+            actionSummary = best.actionSummary
+        )
+    }
+
+    private fun builtInCandidate(
+        bitmap: Bitmap,
+        base: Rect,
+        template: CropProfileTemplate,
+        density: Float,
+        hints: List<String>
+    ): ProfileCropCandidate? {
+        val match = matchTemplate(bitmap, base, template, density, hints) ?: return null
+        val accepted = match.hasHint || match.confidence >= 0.78f
+        if (!accepted) return null
+
+        val topTrim = (template.topDp * density).toInt().coerceIn(32, base.height() / 4)
+        val bottomTrim = (template.bottomDp * density).toInt().coerceIn(32, base.height() / 4)
         val nextTop = (base.top + topTrim).coerceAtMost(base.bottom - 1)
         val nextBottom = (base.bottom - bottomTrim).coerceAtLeast(nextTop + 1)
+        if (nextBottom - nextTop < bitmap.height * 0.35f) return null
 
-        if (nextBottom - nextTop < bitmap.height * 0.35f) return baseResult
+        val reason = if (match.hasHint) {
+            "source/package hint matched; trimmed ${template.topDp}dp top and ${template.bottomDp}dp bottom"
+        } else {
+            "visual chrome matched at ${(match.confidence * 100).roundToInt()}% confidence"
+        }
+        return ProfileCropCandidate(
+            id = template.id,
+            label = template.label,
+            type = "Built-in",
+            confidence = match.confidence,
+            reason = reason,
+            rect = Rect(base.left, nextTop, base.right, nextBottom),
+            method = "profile:${template.label}",
+            actionSummary = template.automationSummary
+        )
+    }
 
-        return AutoCrop.CropResult(
-            Rect(base.left, nextTop, base.right, nextBottom),
-            "profile:${best.template.label}"
+    private fun userCandidate(
+        base: Rect,
+        userProfiles: List<UserAppCropProfile>,
+        sourceHints: List<String>,
+        profileTextHints: List<String>
+    ): ProfileCropCandidate? {
+        val match = UserAppProfileStore.match(userProfiles, sourceHints, profileTextHints) ?: return null
+        val profile = match.profile
+        val leftTrim = (base.width() * profile.cropLeftFraction).roundToInt()
+        val topTrim = (base.height() * profile.cropTopFraction).roundToInt()
+        val rightTrim = (base.width() * profile.cropRightFraction).roundToInt()
+        val bottomTrim = (base.height() * profile.cropBottomFraction).roundToInt()
+        val nextLeft = (base.left + leftTrim).coerceAtMost(base.right - 1)
+        val nextTop = (base.top + topTrim).coerceAtMost(base.bottom - 1)
+        val nextRight = (base.right - rightTrim).coerceAtLeast(nextLeft + 1)
+        val nextBottom = (base.bottom - bottomTrim).coerceAtLeast(nextTop + 1)
+        if (nextRight - nextLeft < base.width() * 0.25f) return null
+        if (nextBottom - nextTop < base.height() * 0.25f) return null
+
+        val actionSummary = buildString {
+            append("Quick Crop saves to ${profile.albumName}")
+            if (profile.redactSensitiveText) append(" with sensitive-text redaction")
+            val format = profile.normalizedExportFormat()
+            if (format != "default") append(" as ${format.uppercase()}")
+            append(".")
+        }
+        return ProfileCropCandidate(
+            id = profile.id,
+            label = profile.label,
+            type = "User",
+            confidence = match.confidence,
+            reason = "${match.reason}; crop ${profile.cropSummary()}",
+            rect = Rect(nextLeft, nextTop, nextRight, nextBottom),
+            method = "profile:${profile.label}",
+            actionSummary = actionSummary
         )
     }
 

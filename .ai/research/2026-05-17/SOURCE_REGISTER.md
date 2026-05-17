@@ -30,15 +30,17 @@ repository research and roadmap planning pass.
 | L14 | `app/src/main/java/com/sysadmindoc/snapcrop/MainActivity.kt` | Home, permissions, batch operations, recent crops. |
 | L15 | `app/src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt` | Gallery, index-backed smart albums, favorites, PDF export. |
 | L15a | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotIndexStore.kt` | Opt-in local screenshot intelligence index. |
-| L15b | `app/src/main/java/com/sysadmindoc/snapcrop/SettingsActivity.kt` | Index enable/rebuild/purge controls. |
+| L15b | `app/src/main/java/com/sysadmindoc/snapcrop/SettingsActivity.kt` | Index enable/rebuild/purge controls and App rules management UI. |
 | L15c | `app/src/test/java/com/sysadmindoc/snapcrop/ScreenshotIndexClassifierTest.kt` | Source/category classifier coverage. |
 | L16 | `app/src/main/java/com/sysadmindoc/snapcrop/ScreenshotService.kt` | Screenshot monitoring, quick crop, delayed capture, last action. |
 | L17 | `app/src/main/java/com/sysadmindoc/snapcrop/ScrollCaptureService.kt` | Long screenshot capture and stitch implementation. |
 | L17a | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotReviewActivity.kt` | Long screenshot review, retry, and save handoff. |
 | L17b | `app/src/main/java/com/sysadmindoc/snapcrop/LongScreenshotStore.kt` | Long screenshot temporary review files and MediaStore persistence. |
 | L17c | `app/src/test/java/com/sysadmindoc/snapcrop/ScrollStitcherTest.kt` | Stitcher regression coverage for sticky chrome and stuck frames. |
-| L18 | `app/src/main/java/com/sysadmindoc/snapcrop/AppCropProfiles.kt` | Built-in Reddit/X crop profile rules. |
-| L19 | `app/src/main/java/com/sysadmindoc/snapcrop/ConditionalAutoActions.kt` | Conditional Quick Crop automation rules. |
+| L18 | `app/src/main/java/com/sysadmindoc/snapcrop/AppCropProfiles.kt` | Built-in Reddit/X crop profile rules plus user profile matching/previews. |
+| L18a | `app/src/main/java/com/sysadmindoc/snapcrop/UserAppProfiles.kt` | JSON-backed user app profile packs, source/OCR matching, crop/action settings. |
+| L18b | `app/src/test/java/com/sysadmindoc/snapcrop/UserAppProfileStoreTest.kt` | User profile JSON and matching regression coverage. |
+| L19 | `app/src/main/java/com/sysadmindoc/snapcrop/ConditionalAutoActions.kt` | Conditional Quick Crop automation rules, including user rule actions. |
 | L20 | `app/src/main/java/com/sysadmindoc/snapcrop/SensitiveTextDetector.kt` | Sensitive text detection. |
 | L21 | `app/src/main/java/com/sysadmindoc/snapcrop/TextTranslator.kt` | ML Kit translation flow. |
 | L22 | `app/src/main/java/com/sysadmindoc/snapcrop/BackgroundRemover.kt` | Subject segmentation/background remove. |

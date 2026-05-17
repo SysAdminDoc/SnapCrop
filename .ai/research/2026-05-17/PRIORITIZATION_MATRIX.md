@@ -56,3 +56,8 @@ The root `ROADMAP.md` uses this scoring to select:
 12. Optional advanced erase backend.
 13. Dataset-backed evaluation.
 14. Screenshot summaries/local explanation research.
+
+Implementation status as of the 2026-05-17 autonomous continuation: items 1
+through 8 are implemented and verified at least through focused Gradle
+compile/unit-test gates, with full-gate results recorded per batch in
+`CHANGESET_SUMMARY.md`.

@@ -1,9 +1,18 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.SharedPreferences
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +36,7 @@ import com.sysadmindoc.snapcrop.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,6 +59,21 @@ class SettingsActivity : ComponentActivity() {
                     else -> "PNG"
                 }
                 val lossyFormat = useJpeg || useWebp
+                var userAppProfiles by remember { mutableStateOf(UserAppProfileStore.load(prefs)) }
+                var appRuleImportText by remember { mutableStateOf("") }
+                var appRuleTestStatus by remember { mutableStateOf("No test image selected") }
+                val appRuleTestLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.GetContent()
+                ) { uri ->
+                    if (uri != null) {
+                        appRuleTestStatus = "Testing image..."
+                        lifecycleScope.launch {
+                            val message = testAppRuleImage(uri, prefs)
+                            appRuleTestStatus = message
+                            Toast.makeText(this@SettingsActivity, message, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
 
                 Column(
                     modifier = Modifier
@@ -125,6 +150,52 @@ class SettingsActivity : ComponentActivity() {
                             appCropProfiles = it
                             prefs.edit().putBoolean("app_crop_profiles", it).apply()
                         }
+                    )
+
+                    AppRulesPanel(
+                        enabled = appCropProfiles,
+                        builtIns = AppCropProfiles.builtInProfiles(),
+                        profiles = userAppProfiles,
+                        importText = appRuleImportText,
+                        testStatus = appRuleTestStatus,
+                        onSaveProfile = { profile ->
+                            userAppProfiles = UserAppProfileStore.upsert(userAppProfiles, profile)
+                            UserAppProfileStore.save(prefs, userAppProfiles)
+                            Toast.makeText(this@SettingsActivity, "App rule saved", Toast.LENGTH_SHORT).show()
+                        },
+                        onToggleProfile = { profile ->
+                            userAppProfiles = UserAppProfileStore.upsert(
+                                userAppProfiles,
+                                profile.copy(enabled = !profile.enabled)
+                            )
+                            UserAppProfileStore.save(prefs, userAppProfiles)
+                        },
+                        onDeleteProfile = { profile ->
+                            userAppProfiles = userAppProfiles.filterNot { it.id == profile.id }
+                            UserAppProfileStore.save(prefs, userAppProfiles)
+                            Toast.makeText(this@SettingsActivity, "App rule removed", Toast.LENGTH_SHORT).show()
+                        },
+                        onImportTextChange = { appRuleImportText = it },
+                        onCopyProfiles = {
+                            copyAppProfilePack(userAppProfiles)
+                        },
+                        onImportProfiles = {
+                            runCatching {
+                                val incoming = UserAppProfileStore.decode(appRuleImportText)
+                                require(incoming.isNotEmpty()) { "No profiles found" }
+                                userAppProfiles = UserAppProfileStore.merge(userAppProfiles, incoming)
+                                UserAppProfileStore.save(prefs, userAppProfiles)
+                                appRuleImportText = ""
+                                Toast.makeText(this@SettingsActivity, "Imported ${incoming.size} app rules", Toast.LENGTH_SHORT).show()
+                            }.onFailure { error ->
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    "Import failed: ${error.message ?: "invalid JSON"}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        },
+                        onPickTestImage = { appRuleTestLauncher.launch("image/*") }
                     )
 
                     Spacer(Modifier.height(20.dp))
@@ -552,6 +623,46 @@ class SettingsActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun copyAppProfilePack(profiles: List<UserAppCropProfile>) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(
+            ClipData.newPlainText("SnapCrop app rules", UserAppProfileStore.encode(profiles))
+        )
+        Toast.makeText(this, "App profile pack copied", Toast.LENGTH_SHORT).show()
+    }
+
+    private suspend fun testAppRuleImage(uri: Uri, prefs: SharedPreferences): String =
+        withContext(Dispatchers.IO) {
+            val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            } ?: return@withContext "Test image could not be opened"
+            try {
+                val userProfiles = UserAppProfileStore.load(prefs)
+                val sourceHints = CropSourceHints.normalize(
+                    CropSourceHints.fromMedia(contentResolver, uri) + listOf(uri.toString())
+                )
+                val profileTextHints = if (UserAppProfileStore.needsOcr(userProfiles)) {
+                    TextExtractor.extract(bitmap).map { it.text }
+                } else {
+                    emptyList()
+                }
+                val preview = AutoCrop.explainProfileMatch(
+                    bitmap = bitmap,
+                    statusBarPx = SystemBars.statusBarHeight(resources),
+                    navBarPx = SystemBars.navigationBarHeight(resources),
+                    sourceHints = sourceHints,
+                    profileTextHints = profileTextHints,
+                    userProfiles = userProfiles,
+                    appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
+                )
+                preview?.let {
+                    "Matched ${it.label} (${(it.confidence * 100).roundToInt()}%): ${it.reason}"
+                } ?: "No app rule matched this image"
+            } finally {
+                bitmap.recycle()
+            }
+        }
 }
 
 @Composable
@@ -595,3 +706,415 @@ private fun SettingToggle(
         }
     }
 }
+
+@Composable
+private fun AppRulesPanel(
+    enabled: Boolean,
+    builtIns: List<BuiltInAppCropProfileInfo>,
+    profiles: List<UserAppCropProfile>,
+    importText: String,
+    testStatus: String,
+    onSaveProfile: (UserAppCropProfile) -> Unit,
+    onToggleProfile: (UserAppCropProfile) -> Unit,
+    onDeleteProfile: (UserAppCropProfile) -> Unit,
+    onImportTextChange: (String) -> Unit,
+    onCopyProfiles: () -> Unit,
+    onImportProfiles: () -> Unit,
+    onPickTestImage: () -> Unit
+) {
+    var ruleName by remember { mutableStateOf("") }
+    var sourceHints by remember { mutableStateOf("") }
+    var ocrKeywords by remember { mutableStateOf("") }
+    var albumName by remember { mutableStateOf("") }
+    var topCrop by remember { mutableFloatStateOf(0.07f) }
+    var bottomCrop by remember { mutableFloatStateOf(0.07f) }
+    var leftCrop by remember { mutableFloatStateOf(0f) }
+    var rightCrop by remember { mutableFloatStateOf(0f) }
+    var redactSensitiveText by remember { mutableStateOf(false) }
+    var exportFormat by remember { mutableStateOf("default") }
+
+    val sourceTokens = UserAppProfileStore.parseTokenList(sourceHints)
+    val ocrTokens = UserAppProfileStore.parseTokenList(ocrKeywords)
+    val canSave = ruleName.isNotBlank() && (sourceTokens.isNotEmpty() || ocrTokens.isNotEmpty())
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("App rules", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+            Text(
+                if (enabled) {
+                    "Built-in and user-trained rules can crop app chrome, then Quick Crop auto-actions can route matching exports."
+                } else {
+                    "Rules are saved, but App crop profiles is off."
+                },
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+
+            Spacer(Modifier.height(12.dp))
+            Text("Built-in profiles", color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(6.dp))
+            builtIns.forEach { BuiltInRuleRow(it) }
+
+            Spacer(Modifier.height(12.dp))
+            Text("User-trained profiles", color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(6.dp))
+            if (profiles.isEmpty()) {
+                Text(
+                    "No custom app rules yet.",
+                    color = OnSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            } else {
+                profiles.forEach { profile ->
+                    UserRuleRow(
+                        profile = profile,
+                        onToggle = { onToggleProfile(profile) },
+                        onDelete = { onDeleteProfile(profile) }
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Text("Create rule", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ruleName,
+                onValueChange = { ruleName = it },
+                label = { Text("Rule name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = appRuleTextFieldColors(),
+                shape = RoundedCornerShape(8.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = sourceHints,
+                onValueChange = { sourceHints = it },
+                label = { Text("Source app/package hints") },
+                placeholder = { Text("com.example.app, example") },
+                minLines = 1,
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+                colors = appRuleTextFieldColors(),
+                shape = RoundedCornerShape(8.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ocrKeywords,
+                onValueChange = { ocrKeywords = it },
+                label = { Text("OCR keywords") },
+                placeholder = { Text("invoice, checkout, workspace") },
+                minLines = 1,
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+                colors = appRuleTextFieldColors(),
+                shape = RoundedCornerShape(8.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = albumName,
+                onValueChange = { albumName = it },
+                label = { Text("Album destination") },
+                placeholder = { Text(ruleName.ifBlank { "Custom" }) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = appRuleTextFieldColors(),
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Preview crop: ${formatPercent(leftCrop)} left, ${formatPercent(topCrop)} top, ${formatPercent(rightCrop)} right, ${formatPercent(bottomCrop)} bottom",
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 17.sp
+            )
+            CropBandSlider("Top", topCrop) { topCrop = it }
+            CropBandSlider("Bottom", bottomCrop) { bottomCrop = it }
+            CropBandSlider("Left", leftCrop) { leftCrop = it }
+            CropBandSlider("Right", rightCrop) { rightCrop = it }
+
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Redact on Quick Crop", color = OnSurface, fontSize = 13.sp)
+                    Text(
+                        "Requires Quick Crop auto-actions. Matching manual editor crops are never silently redacted.",
+                        color = OnSurfaceVariant,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
+                    )
+                }
+                Switch(
+                    checked = redactSensitiveText,
+                    onCheckedChange = { redactSensitiveText = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.Black,
+                        checkedTrackColor = Primary,
+                        uncheckedThumbColor = OnSurfaceVariant,
+                        uncheckedTrackColor = SurfaceVariant
+                    )
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text("Export format", color = OnSurface, fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExportFormatChip("Default", "default", exportFormat) { exportFormat = it }
+                    ExportFormatChip("PNG", "png", exportFormat) { exportFormat = it }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ExportFormatChip("JPEG", "jpeg", exportFormat) { exportFormat = it }
+                    ExportFormatChip("WebP", "webp", exportFormat) { exportFormat = it }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = {
+                    onSaveProfile(
+                        UserAppProfileStore.create(
+                            label = ruleName,
+                            sourceHints = sourceTokens,
+                            ocrKeywords = ocrTokens,
+                            cropLeftFraction = leftCrop,
+                            cropTopFraction = topCrop,
+                            cropRightFraction = rightCrop,
+                            cropBottomFraction = bottomCrop,
+                            albumName = albumName,
+                            redactSensitiveText = redactSensitiveText,
+                            exportFormat = exportFormat
+                        )
+                    )
+                    ruleName = ""
+                    sourceHints = ""
+                    ocrKeywords = ""
+                    albumName = ""
+                    topCrop = 0.07f
+                    bottomCrop = 0.07f
+                    leftCrop = 0f
+                    rightCrop = 0f
+                    redactSensitiveText = false
+                    exportFormat = "default"
+                },
+                enabled = canSave,
+                colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Save rule")
+            }
+            if (!canSave) {
+                Text(
+                    "A rule needs a name plus at least one source hint or OCR keyword.",
+                    color = OnSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Text("Profile packs", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                "Copy exports a JSON pack. Import merges pasted profiles by id.",
+                color = OnSurfaceVariant,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = importText,
+                onValueChange = onImportTextChange,
+                label = { Text("Paste profile pack JSON") },
+                minLines = 2,
+                maxLines = 5,
+                modifier = Modifier.fillMaxWidth(),
+                colors = appRuleTextFieldColors(),
+                shape = RoundedCornerShape(8.dp)
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onCopyProfiles, shape = RoundedCornerShape(8.dp)) {
+                    Text("Copy pack", color = Primary)
+                }
+                Button(
+                    onClick = onImportProfiles,
+                    enabled = importText.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Import")
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+            Text("Test image", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(testStatus, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onPickTestImage, shape = RoundedCornerShape(8.dp)) {
+                Text("Choose image", color = Primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BuiltInRuleRow(profile: BuiltInAppCropProfileInfo) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(SurfaceContainer, RoundedCornerShape(8.dp))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(profile.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(8.dp))
+            Text("Built-in", color = Primary, fontSize = 11.sp)
+        }
+        Text(
+            "Hints: ${profile.aliases.joinToString(", ")}",
+            color = OnSurfaceVariant,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(profile.cropPreview, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+        Text(profile.confidencePreview, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+        Text(profile.automationSummary, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+    }
+    Spacer(Modifier.height(6.dp))
+}
+
+@Composable
+private fun UserRuleRow(
+    profile: UserAppCropProfile,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(SurfaceContainer, RoundedCornerShape(8.dp))
+            .padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(profile.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    "Crop ${profile.cropSummary()}",
+                    color = OnSurfaceVariant,
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+            Switch(
+                checked = profile.enabled,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = Primary,
+                    uncheckedThumbColor = OnSurfaceVariant,
+                    uncheckedTrackColor = SurfaceVariant
+                )
+            )
+        }
+        Text(
+            "Sources: ${profile.sourceHints.ifEmpty { listOf("none") }.joinToString(", ")}",
+            color = OnSurfaceVariant,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            "OCR: ${profile.ocrKeywords.ifEmpty { listOf("none") }.joinToString(", ")}",
+            color = OnSurfaceVariant,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            "Quick Crop: ${profile.albumName}, ${if (profile.redactSensitiveText) "redact" else "no redaction"}, ${profile.normalizedExportFormat()} export",
+            color = OnSurfaceVariant,
+            fontSize = 11.sp,
+            lineHeight = 15.sp
+        )
+        OutlinedButton(onClick = onDelete, shape = RoundedCornerShape(8.dp)) {
+            Text("Delete", color = Tertiary)
+        }
+    }
+}
+
+@Composable
+private fun CropBandSlider(
+    label: String,
+    value: Float,
+    onValueChange: (Float) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "$label ${formatPercent(value)}",
+            color = OnSurfaceVariant,
+            fontSize = 11.sp,
+            modifier = Modifier.width(76.dp)
+        )
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = 0f..0.35f,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(
+                thumbColor = Primary,
+                activeTrackColor = Primary,
+                inactiveTrackColor = SurfaceContainer
+            )
+        )
+    }
+}
+
+@Composable
+private fun ExportFormatChip(
+    label: String,
+    value: String,
+    selectedValue: String,
+    onSelected: (String) -> Unit
+) {
+    FilterChip(
+        selected = selectedValue == value,
+        onClick = { onSelected(value) },
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = PrimaryContainer,
+            selectedLabelColor = Primary,
+            containerColor = SurfaceVariant,
+            labelColor = OnSurfaceVariant
+        ),
+        shape = RoundedCornerShape(8.dp)
+    )
+}
+
+@Composable
+private fun appRuleTextFieldColors() =
+    OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Primary,
+        unfocusedBorderColor = Outline,
+        focusedTextColor = OnSurface,
+        unfocusedTextColor = OnSurface,
+        cursorColor = Primary
+    )
+
+private fun formatPercent(value: Float): String =
+    "${(value * 100).roundToInt()}%"

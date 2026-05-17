@@ -307,7 +307,7 @@ Acceptance:
 - Search works by text/entity/app-like hints without rescanning every image.
 - Users can bulk-clean old non-favorite screenshots safely.
 
-### 8. [ ] Expand app profiles into a user-visible rules system
+### 8. [x] Expand app profiles into a user-visible rules system
 
 Evidence: L9 currently covers Reddit and X/Twitter only. ShareX in E12 shows
 the value of capture -> action recipes, while SnapCrop already has Quick Crop
@@ -325,6 +325,20 @@ Acceptance:
 
 - A user can create a profile for one app without code changes.
 - Conditional auto-actions explain what they changed and where the image went.
+
+Implemented 2026-05-17:
+
+- Added a JSON-backed user app profile store with source/package hints, OCR
+  keywords, crop bands, album destination, redaction preference, and export
+  format.
+- Exposed built-in Reddit/X profiles and custom rule management in Settings,
+  including crop previews, confidence copy, image testing, and profile-pack
+  copy/import.
+- Wired user profiles into editor/batch auto-crop and Quick Crop. Quick Crop
+  now uses rule-specific album/redaction/export settings and explains the save
+  destination plus redaction/export outcome.
+- Added regression tests for profile-pack round-trip, source/OCR matching, and
+  user crop-band application.
 
 ### 9. [ ] Tablet, foldable, and desktop-mode editor layout
 

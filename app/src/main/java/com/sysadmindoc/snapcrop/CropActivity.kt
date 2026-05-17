@@ -179,6 +179,7 @@ class CropActivity : ComponentActivity() {
                                     statusBarPx = sbPx,
                                     navBarPx = nbPx,
                                     sourceHints = currentCropHints,
+                                    userProfiles = UserAppProfileStore.load(getSharedPreferences("snapcrop", MODE_PRIVATE)),
                                     appProfilesEnabled = appCropProfilesEnabled()
                                 )
                                 cropMethod.value = result.method
@@ -474,6 +475,7 @@ class CropActivity : ComponentActivity() {
                         statusBarPx = statusBarPx,
                         navBarPx = navBarPx,
                         sourceHints = currentCropHints,
+                        userProfiles = UserAppProfileStore.load(getSharedPreferences("snapcrop", MODE_PRIVATE)),
                         appProfilesEnabled = appCropProfilesEnabled()
                     )
                     cropRect.value = result.rect

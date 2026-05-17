@@ -318,17 +318,27 @@ class ScreenshotService : Service() {
         }
     }
 
-    private fun getSaveFormat(prefs: SharedPreferences): SaveFormat {
+    private fun getSaveFormat(prefs: SharedPreferences, overrideFormat: String? = null): SaveFormat {
         val quality = prefs.getInt("jpeg_quality", 95)
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
+        return when (UserAppProfileStore.normalizeExportFormat(overrideFormat.orEmpty())) {
+            "webp" -> {
                 @Suppress("DEPRECATION")
                 val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
                           else Bitmap.CompressFormat.WEBP
                 SaveFormat(fmt, quality, "webp", "image/webp")
             }
-            prefs.getBoolean("use_jpeg", false) -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            else -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+            "jpeg" -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+            "png" -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+            else -> when {
+                prefs.getBoolean("use_webp", false) -> {
+                    @Suppress("DEPRECATION")
+                    val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                              else Bitmap.CompressFormat.WEBP
+                    SaveFormat(fmt, quality, "webp", "image/webp")
+                }
+                prefs.getBoolean("use_jpeg", false) -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+                else -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+            }
         }
     }
 
@@ -343,6 +353,12 @@ class ScreenshotService : Service() {
 
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri))
+                val userProfiles = UserAppProfileStore.load(prefs)
+                val profileTextHints = if (UserAppProfileStore.needsOcr(userProfiles)) {
+                    TextExtractor.extract(bitmap).map { it.text }
+                } else {
+                    emptyList()
+                }
                 val statusBarPx = SystemBars.statusBarHeight(resources)
                 val navBarPx = SystemBars.navigationBarHeight(resources)
                 val cropResult = AutoCrop.detectWithMethod(
@@ -350,9 +366,17 @@ class ScreenshotService : Service() {
                     statusBarPx = statusBarPx,
                     navBarPx = navBarPx,
                     sourceHints = sourceHints,
+                    profileTextHints = profileTextHints,
+                    userProfiles = userProfiles,
                     appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
                 )
-                val actionRule = ConditionalAutoActions.resolve(prefs, cropResult.method, sourceHints)
+                val actionRule = ConditionalAutoActions.resolve(
+                    prefs = prefs,
+                    cropMethod = cropResult.method,
+                    sourceHints = sourceHints,
+                    userProfiles = userProfiles,
+                    profileTextHints = profileTextHints
+                )
                 val cropRect = cropResult.rect
                 val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                         cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
@@ -371,8 +395,8 @@ class ScreenshotService : Service() {
                 )
 
                 var redactionCount = 0
-                if (actionRule != null) {
-                    val currentCropped = cropped ?: return@launch
+                if (actionRule?.redactSensitiveText == true) {
+                    val currentCropped = cropped
                     val actionResult = ConditionalAutoActions.redactSensitiveText(currentCropped)
                     redactionCount = actionResult.redactionCount
                     if (actionResult.bitmap !== currentCropped) {
@@ -381,7 +405,7 @@ class ScreenshotService : Service() {
                     }
                 }
 
-                val (fmt, quality, ext, mime) = getSaveFormat(prefs)
+                val (fmt, quality, ext, mime) = getSaveFormat(prefs, actionRule?.exportFormat)
                 val savePath = actionRule?.let { ConditionalAutoActions.savePath(prefs, it) }
                     ?: (prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
                 val displayPrefix = actionRule?.id ?: "SnapCrop"
@@ -411,8 +435,12 @@ class ScreenshotService : Service() {
 
                         prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()
                         val message = if (actionRule != null) {
-                            if (redactionCount > 0) "Auto-redacted $redactionCount items"
-                            else "Saved to ${actionRule.albumName}"
+                            buildString {
+                                append("${actionRule.label}: saved to ${actionRule.albumName}")
+                                if (redactionCount > 0) append(", redacted $redactionCount")
+                                if (actionRule.redactSensitiveText && redactionCount == 0) append(", no sensitive text found")
+                                if (actionRule.exportFormat != "default") append(", ${actionRule.exportFormat.uppercase()} export")
+                            }
                         } else {
                             "Autocropped & saved"
                         }
