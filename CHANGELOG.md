@@ -63,6 +63,9 @@ All notable changes to SnapCrop will be documented in this file.
   multipart upload, WebDAV/Nextcloud PUT, and Imgur anonymous image upload.
 - Added share-sheet destination shortcuts that remember chosen Android share
   components and surface the most-used targets first.
+- Added centralized ML Kit status/retry guidance, translation model-download
+  progress, cached language-pair readiness, and visible subject-segmentation
+  failure messages for background removal.
 
 ## [v6.19.0] - 2026-05-14
 

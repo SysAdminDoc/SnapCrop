@@ -165,7 +165,9 @@ Implemented features confirmed by live files and history:
 - Settings-gated network export targets for HTTP multipart PDF upload,
   WebDAV/Nextcloud PDF PUT, and Imgur anonymous image upload,
 - chooser-backed share shortcuts that remember selected Android share targets
-  and surface frequent destinations first.
+  and surface frequent destinations first,
+- centralized ML Kit status/retry guidance with translation model-download
+  progress/cache state and visible subject-segmentation fallback messages.
 
 ## Repo Hygiene Findings
 
@@ -174,7 +176,7 @@ Implemented features confirmed by live files and history:
   matching/round-trip, sensitive text patterns, Smart Erase behavior, project
   sidecars, extracted editor model helpers, adaptive editor layout thresholds,
   export rename templates, network export configuration, and share shortcut
-  persistence.
+  persistence, and ML Kit status guidance.
 - `rg` found no `RoundedCornerShape(50...)`, `RoundedCornerShape(999...)`, or
   `CircleShape` matches in source during the UI-rule scan.
 - `git ls-files "*.apk" "*.idsig"` found tracked `.idsig` artifacts even though

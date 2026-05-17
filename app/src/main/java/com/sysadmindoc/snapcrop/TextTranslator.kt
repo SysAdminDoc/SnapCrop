@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.Context
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
@@ -49,10 +50,19 @@ object TextTranslator {
         TranslateLanguage.VIETNAMESE to "Vietnamese"
     )
 
-    suspend fun translate(text: String, target: TranslationTarget = defaultTarget): TextTranslation {
+    suspend fun translate(
+        text: String,
+        target: TranslationTarget = defaultTarget,
+        context: Context? = null,
+        onProgress: (String) -> Unit = {}
+    ): TextTranslation {
         val original = text.trim()
         require(original.isNotEmpty()) { "No text selected" }
 
+        context?.let { appContext ->
+            MlKitStatus.playServicesIssue(appContext)?.let { throw IllegalStateException(it) }
+        }
+        onProgress(MlKitStatus.TRANSLATION_IDENTIFYING)
         val identifiedTag = languageIdentifier.identifyLanguage(original).awaitResult()
         require(identifiedTag != "und") { "Could not identify the source language" }
 
@@ -78,7 +88,12 @@ object TextTranslator {
         val translator = Translation.getClient(options)
         return try {
             val conditions = DownloadConditions.Builder().requireWifi().build()
+            if (context?.let { !MlKitStatusStore.isTranslationModelReady(it, sourceLanguage, target.language) } != false) {
+                onProgress(MlKitStatus.translationDownloadMessage(target.label))
+            }
             translator.downloadModelIfNeeded(conditions).awaitResult()
+            context?.let { MlKitStatusStore.markTranslationModelReady(it, sourceLanguage, target.language) }
+            onProgress(MlKitStatus.TRANSLATION_TRANSLATING)
             val translated = translator.translate(original).awaitResult()
             TextTranslation(
                 originalText = original,
@@ -103,8 +118,8 @@ object TextTranslator {
             raw.contains("source language", ignoreCase = true) -> raw
             raw.contains("not supported", ignoreCase = true) -> raw
             raw.contains("No text", ignoreCase = true) -> raw
-            raw.contains("wifi", ignoreCase = true) -> "Connect to Wi-Fi to download the translation model once."
-            else -> "Translation unavailable. Connect to Wi-Fi and try again."
+            raw.contains("wifi", ignoreCase = true) -> MlKitStatus.userMessage(MlKitFeature.TRANSLATION, error)
+            else -> MlKitStatus.userMessage(MlKitFeature.TRANSLATION, error)
         }
     }
 }

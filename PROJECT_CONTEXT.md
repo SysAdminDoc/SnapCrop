@@ -102,7 +102,9 @@ aligned with `origin/main`.
 - `SensitiveTextDetector`: regex plus ML Kit Entity Extraction for email,
   phone, payment-card candidates, IP, MAC, IBAN, and address-style entities.
 - `TextTranslator`: ML Kit language ID plus on-device translation with Wi-Fi
-  model download.
+  model download, progress messaging, and cached language-pair readiness.
+- `MlKitStatus` and `MlKitStatusStore`: centralized Play Services checks, ML
+  retry guidance, and cached model/status flags for ML-assisted workflows.
 - `AppCropProfiles`, `UserAppProfileStore`, and `ConditionalAutoActions`:
   built-in Reddit/X profile rules plus user-created source/OCR crop profiles
   with Quick Crop album, redaction, and export-format actions.
@@ -177,6 +179,11 @@ and Android system integration.
   Settings, with HTTP multipart PDF upload, WebDAV/Nextcloud PUT, and Imgur
   anonymous image upload. The share sheet records chosen components and surfaces
   the most-used destinations first on later shares.
+- ML Kit failure handling is more explicit: translation reports identification,
+  model download, and translation stages; successful translation model pairs are
+  cached; background removal returns structured success/failure state; and
+  Play Services, Wi-Fi, storage, and retry guidance flows through centralized
+  status messages.
 - Smart albums now use an opt-in local intelligence index for metadata,
   source-hint categories, favorite state, and editor OCR/barcode tokens. Future
   work can add background OCR/model-state progress, but the current design

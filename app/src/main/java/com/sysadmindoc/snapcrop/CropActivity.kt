@@ -205,17 +205,18 @@ class CropActivity : ComponentActivity() {
                                 cropRect.value = Rect(0, 0, newW, newH)
                                 cropMethod.value = ""
                             },
-                            onRemoveBg = {
+                            onRemoveBg = { onDone ->
                                 lifecycleScope.launch {
-                                    val result = BackgroundRemover.remove(bmp)
-                                    if (result !== bmp) {
+                                    val result = BackgroundRemover.removeWithStatus(this@CropActivity, bmp)
+                                    if (result.changed && result.bitmap !== bmp) {
                                         val old = bitmapState.value
                                         if (old != null && old !== originalBitmap) old.recycle()
                                         originalBitmap = null
-                                        bitmapState.value = result
-                                        cropRect.value = android.graphics.Rect(0, 0, result.width, result.height)
+                                        bitmapState.value = result.bitmap
+                                        cropRect.value = android.graphics.Rect(0, 0, result.bitmap.width, result.bitmap.height)
                                         cropMethod.value = ""
                                     }
+                                    onDone(result.statusMessage)
                                 }
                             },
                             onRotate = { rotateBitmap() },

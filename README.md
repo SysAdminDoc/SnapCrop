@@ -90,6 +90,8 @@ layers without mutating the source screenshot.
 **OCR**
 - Tap any text block to copy it or translate it on-device
 - Translate recognized text with ML Kit language detection and downloadable offline translation models
+- Translation shows model-download and retry guidance when Play Services needs
+  Wi-Fi, storage, or an update
 - Scan QR codes and barcodes
 - Double-tap a text block to crop directly to it
 
@@ -116,6 +118,8 @@ layers without mutating the source screenshot.
 - **Collage Maker** — 25 grid layouts, adjustable gaps, multiple aspect ratios
 - **Device Frame Mockup** — Wrap screenshots in Pixel, iPhone, Samsung, or flat device frames
 - **Background Removal** — One-tap ML Kit subject segmentation
+- ML-assisted tools surface Play Services/model retry guidance instead of
+  silently looking like no-ops
 - **Color Palette** — Extract 6 dominant colors with hex codes and percentages
 
 ### Export Options

@@ -51,6 +51,8 @@ repository research and roadmap planning pass.
 | L19 | `app/src/main/java/com/sysadmindoc/snapcrop/ConditionalAutoActions.kt` | Conditional Quick Crop automation rules, including user rule actions. |
 | L20 | `app/src/main/java/com/sysadmindoc/snapcrop/SensitiveTextDetector.kt` | Sensitive text detection. |
 | L21 | `app/src/main/java/com/sysadmindoc/snapcrop/TextTranslator.kt` | ML Kit translation flow. |
+| L21a | `app/src/main/java/com/sysadmindoc/snapcrop/MlKitStatus.kt` | Centralized ML Kit status, retry guidance, and model-readiness cache helpers. |
+| L21b | `app/src/test/java/com/sysadmindoc/snapcrop/MlKitStatusTest.kt` | ML Kit status/retry guidance regression coverage. |
 | L22 | `app/src/main/java/com/sysadmindoc/snapcrop/BackgroundRemover.kt` | Subject segmentation/background remove. |
 | L23 | `app/src/main/java/com/sysadmindoc/snapcrop/SmartEraseEngine.kt` | Local smart erase engine. |
 | L24 | `app/src/main/java/com/sysadmindoc/snapcrop/SmartReframeEngine.kt` | Object/text/face based reframe. |
