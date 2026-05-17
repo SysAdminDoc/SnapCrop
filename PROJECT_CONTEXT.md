@@ -97,6 +97,9 @@ aligned with `origin/main`.
   from the editor OCR flow.
 - `SmartEraseEngine`: local mask-based edge-aware fill. No large ONNX inpainting
   model is bundled.
+- `AdvancedEraseBackendRegistry`: opt-in advanced erase backend gatekeeping.
+  Downloaded model packs are blocked until license, size, latency, battery, and
+  private benchmark criteria pass; Local Smart Erase remains the default.
 - `SmartReframeEngine`: ML Kit object, text, and face bounds unioned into
   content-aware crop repositioning.
 - `SensitiveTextDetector`: regex plus ML Kit Entity Extraction for email,
@@ -184,6 +187,9 @@ and Android system integration.
   cached; background removal returns structured success/failure state; and
   Play Services, Wi-Fi, storage, and retry guidance flows through centralized
   status messages.
+- Advanced erase remains conservative: the repo now has a backend registry,
+  Settings visibility, and `docs/ADVANCED_ERASE_EVALUATION.md`, but no large
+  inpainting model is bundled or activated by default.
 - Smart albums now use an opt-in local intelligence index for metadata,
   source-hint categories, favorite state, and editor OCR/barcode tokens. Future
   work can add background OCR/model-state progress, but the current design

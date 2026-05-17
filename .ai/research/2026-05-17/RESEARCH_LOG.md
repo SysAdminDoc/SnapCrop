@@ -327,6 +327,25 @@ Result:
   first-run/download/no-subject guidance in the editor.
 - Added status-message tests and marked P2.11 complete.
 
+### Pass 16: P2.12 advanced erase backend gate pass
+
+Targets:
+
+- Preserve Local Smart Erase as the default.
+- Avoid bundling an unverified large model.
+- Create a durable activation gate and benchmark plan for any future downloaded
+  inpainting model pack.
+
+Result:
+
+- Added `AdvancedEraseBackendRegistry` with hard activation gates for license,
+  size, latency, battery, and measured quality lift.
+- Added Settings visibility for the experimental backend state without enabling
+  an unqualified model.
+- Added `docs/ADVANCED_ERASE_EVALUATION.md` and unit tests for activation
+  gates.
+- Marked P2.12 complete.
+
 ## Failed Or Thin Searches
 
 - `rtk` was unavailable.

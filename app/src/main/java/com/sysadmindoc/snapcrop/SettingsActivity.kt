@@ -281,6 +281,49 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    Spacer(Modifier.height(20.dp))
+
+                    Text("Smart Erase", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    var allowAdvancedErase by remember {
+                        mutableStateOf(prefs.getBoolean(AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL, false))
+                    }
+                    SettingToggle(
+                        title = "Allow experimental erase model packs",
+                        subtitle = AdvancedEraseBackendRegistry.statusSummary(prefs),
+                        checked = allowAdvancedErase,
+                        onCheckedChange = {
+                            allowAdvancedErase = it
+                            prefs.edit()
+                                .putBoolean(AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL, it)
+                                .putString(AdvancedEraseBackendRegistry.PREF_SELECTED_BACKEND, EraseBackendId.LOCAL_SMART_ERASE.prefValue)
+                                .apply()
+                        }
+                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Backend readiness", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Spacer(Modifier.height(8.dp))
+                            AdvancedEraseBackendRegistry.candidates.forEach { candidate ->
+                                Text(candidate.id.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    "${candidate.runtime} • ${candidate.notes}",
+                                    color = OnSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                                Spacer(Modifier.height(6.dp))
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
                     // Image format selector
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Text("Image Format", color = OnSurface, fontSize = 15.sp)

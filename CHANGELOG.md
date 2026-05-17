@@ -66,6 +66,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Added centralized ML Kit status/retry guidance, translation model-download
   progress, cached language-pair readiness, and visible subject-segmentation
   failure messages for background removal.
+- Added an opt-in advanced erase backend registry, Settings visibility, and
+  evaluation gates so downloaded inpainting model packs cannot activate until
+  license, size, latency, battery, and benchmark criteria pass.
 
 ## [v6.19.0] - 2026-05-14
 

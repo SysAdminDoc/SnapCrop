@@ -335,6 +335,30 @@ Verification for this continuation batch so far:
 - Existing warnings remain for deprecated activity-result callbacks and the
   known CycloneDX configuration-time dependency-resolution message.
 
+## Roadmap Continuation - P2.12 Advanced Erase Backend Gate - 2026-05-17
+
+Implemented P2.12, "Optional advanced erase backend":
+
+- Added `AdvancedEraseBackendRegistry` with Local Smart Erase as the active
+  default and a downloaded model-pack candidate that cannot activate until
+  license, size, latency, battery, and benchmark gates pass.
+- Added Settings visibility for experimental erase model packs while keeping
+  the selected backend forced to Local Smart Erase until a candidate qualifies.
+- Added `docs/ADVANCED_ERASE_EVALUATION.md` with activation gates and a private
+  screenshot mask benchmark plan.
+- Added `AdvancedEraseBackendTest`.
+- Updated `ROADMAP.md`, `PROJECT_CONTEXT.md`, `CHANGELOG.md`, `README.md`, and
+  `SOURCE_REGISTER.md`.
+
+Verification for this continuation batch:
+
+- `.\gradlew.bat :app:testDebugUnitTest`: passed in 54s.
+- `.\gradlew.bat :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:cyclonedxDirectBom`:
+  passed in 2m 3s.
+- `git diff --check`: passed with only existing CRLF conversion warnings.
+- Existing known CycloneDX configuration-time dependency-resolution warning
+  remains.
+
 ## Roadmap Continuation - P1.9 - 2026-05-17
 
 Implemented P1.9, "Tablet, foldable, and desktop-mode editor layout":
