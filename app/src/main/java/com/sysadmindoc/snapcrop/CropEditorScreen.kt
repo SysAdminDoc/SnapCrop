@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -2096,6 +2097,7 @@ fun CropEditorScreen(
                                 val firstDown = awaitFirstDown()
                                 firstDown.consume()
                                 val downPos = firstDown.position
+                                val stylusActive = firstDown.type == PointerType.Stylus || firstDown.type == PointerType.Eraser
 
                                 val cropHandle = if (editMode == EditMode.CROP) findHandle(downPos) else DragHandle.NONE
 
@@ -2111,7 +2113,12 @@ fun CropEditorScreen(
 
                                 while (true) {
                                     val event = awaitPointerEvent()
-                                    val pressed = event.changes.filter { it.pressed }
+                                    val pressed = if (stylusActive) {
+                                        event.changes.filter { it.type == PointerType.Touch }.forEach { it.consume() }
+                                        event.changes.filter { it.pressed && (it.type == PointerType.Stylus || it.type == PointerType.Eraser) }
+                                    } else {
+                                        event.changes.filter { it.pressed }
+                                    }
 
                                     if (pressed.isEmpty()) {
                                         // All fingers up
