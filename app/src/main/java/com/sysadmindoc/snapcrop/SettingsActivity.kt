@@ -903,6 +903,44 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.settings_about_url),
                         color = Primary, fontSize = 12.sp)
+                    Spacer(Modifier.height(12.dp))
+
+                    var evalResult by remember { mutableStateOf<String?>(null) }
+                    var evalRunning by remember { mutableStateOf(false) }
+                    FilledTonalButton(
+                        onClick = {
+                            if (!evalRunning) {
+                                evalRunning = true
+                                lifecycleScope.launch(Dispatchers.Default) {
+                                    val report = EvalHarness.runAll()
+                                    val text = report.summary()
+                                    withContext(Dispatchers.Main) {
+                                        evalResult = text
+                                        evalRunning = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !evalRunning,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = SurfaceVariant,
+                            contentColor = OnSurface
+                        )
+                    ) {
+                        Text(
+                            if (evalRunning) stringResource(R.string.eval_running)
+                            else stringResource(R.string.eval_run),
+                            fontSize = 13.sp
+                        )
+                    }
+                    evalResult?.let { text ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(text, color = OnSurfaceVariant, fontSize = 11.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            lineHeight = 15.sp)
+                    }
+
                     Spacer(Modifier.height(24.dp))
                 }
             }

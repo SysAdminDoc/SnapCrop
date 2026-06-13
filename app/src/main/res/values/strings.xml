@@ -242,6 +242,10 @@
     <string name="settings_about_tagline">Auto-crop, annotate, and redact screenshots instantly.</string>
     <string name="settings_about_url">github.com/SysAdminDoc/SnapCrop</string>
 
+    <!-- Eval harness -->
+    <string name="eval_run">Run evaluation harness</string>
+    <string name="eval_running">Running…</string>
+
     <!-- App rules panel -->
     <string name="rules_title">App rules</string>
     <string name="rules_body_enabled">Built-in and user-trained rules can crop app chrome, then Quick Crop auto-actions can route matching exports.</string>
