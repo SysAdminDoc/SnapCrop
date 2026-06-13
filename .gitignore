@@ -22,6 +22,7 @@ local.properties
 CLAUDE.md
 keystore.properties
 
-# Markdown files local-only (except README)
+# Markdown files local-only (except README and CHANGELOG)
 *.md
 !README.md
+!CHANGELOG.md
