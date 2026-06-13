@@ -30,6 +30,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -370,7 +372,9 @@ class SettingsActivity : ComponentActivity() {
                                     prefs.edit().putInt("jpeg_quality", jpegQuality).apply()
                                 },
                                 valueRange = 50f..100f,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .semantics { contentDescription = "Image quality, ${jpegQuality} percent" },
                                 colors = SliderDefaults.colors(
                                     thumbColor = Primary,
                                     activeTrackColor = Primary,
@@ -412,7 +416,9 @@ class SettingsActivity : ComponentActivity() {
                                     prefs.edit().putInt("target_size_kb", targetSizeKb).apply()
                                 },
                                 valueRange = 50f..5000f,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .semantics { contentDescription = "Target file size, ${targetSizeKb} kilobytes" },
                                 colors = SliderDefaults.colors(
                                     thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant
                                 )
@@ -676,7 +682,10 @@ class SettingsActivity : ComponentActivity() {
                                         borderSize = it.toInt()
                                         prefs.edit().putInt("border_size", borderSize).apply()
                                     },
-                                    valueRange = 0f..100f, modifier = Modifier.weight(1f),
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .semantics { contentDescription = "Export border size, ${borderSize} pixels" },
                                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
                                 )
                             }
@@ -859,7 +868,10 @@ private fun SettingToggle(
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .semantics(mergeDescendants = true) {},
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1022,7 +1034,9 @@ private fun AppRulesPanel(
 
             Spacer(Modifier.height(8.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) {},
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -1188,7 +1202,10 @@ private fun UserRuleRow(
             .background(SurfaceContainer, RoundedCornerShape(8.dp))
             .padding(10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.semantics(mergeDescendants = true) {},
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(profile.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Text(
@@ -1255,7 +1272,9 @@ private fun CropBandSlider(
             value = value,
             onValueChange = onValueChange,
             valueRange = 0f..0.35f,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .semantics { contentDescription = "$label crop percentage, ${formatPercent(value)}" },
             colors = SliderDefaults.colors(
                 thumbColor = Primary,
                 activeTrackColor = Primary,
