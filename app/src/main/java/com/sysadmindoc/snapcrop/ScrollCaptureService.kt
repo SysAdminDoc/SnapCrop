@@ -45,7 +45,7 @@ class ScrollCaptureService : AccessibilityService() {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                 Toast.makeText(
                     context,
-                    "Long screenshot requires Android 11 or newer",
+                    context.getString(R.string.toast_long_requires_11),
                     Toast.LENGTH_LONG
                 ).show()
                 return false
@@ -78,7 +78,7 @@ class ScrollCaptureService : AccessibilityService() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun startLongScreenshot(startDelayMs: Long) {
         if (isCapturing) {
-            Toast.makeText(this, "Long screenshot is already running", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.long_screenshot_already_running), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -86,14 +86,17 @@ class ScrollCaptureService : AccessibilityService() {
             isCapturing = true
             val frames = mutableListOf<Bitmap>()
             val startedAt = android.os.SystemClock.elapsedRealtime()
-            var stopReason = "Reached capture limit"
+            val captureFailedMsg = getString(R.string.long_screenshot_capture_failed)
+            val captureLimitMsg = getString(R.string.scroll_capture_limit)
+            val timeLimitMsg = getString(R.string.long_screenshot_time_limit)
+            var stopReason = captureLimitMsg
 
             try {
                 val startMessage = if (startDelayMs >= 1000L) {
                     val seconds = ((startDelayMs + 999L) / 1000L).toInt()
-                    "Long screenshot starts in ${seconds}s. Open the target screen."
+                    getString(R.string.long_screenshot_starts_in, seconds)
                 } else {
-                    "Long screenshot starts now. Keep the screen still."
+                    getString(R.string.long_screenshot_starts_now)
                 }
                 Toast.makeText(
                     this@ScrollCaptureService,
@@ -109,10 +112,10 @@ class ScrollCaptureService : AccessibilityService() {
                 ) {
                     val frame = captureCleanFrame()
                     if (frame == null) {
-                        stopReason = "Screen capture failed"
+                        stopReason = captureFailedMsg
                         Toast.makeText(
                             this@ScrollCaptureService,
-                            "Screen capture failed",
+                            captureFailedMsg,
                             Toast.LENGTH_SHORT
                         ).show()
                         break
@@ -120,22 +123,22 @@ class ScrollCaptureService : AccessibilityService() {
 
                     if (frames.lastOrNull()?.let { ScrollStitcher.looksSame(it, frame) } == true) {
                         frame.recycle()
-                        stopReason = "Stopped at repeated content"
+                        stopReason = getString(R.string.long_screenshot_stopped_repeat)
                         break
                     }
 
                     frames.add(frame)
 
                     if (frames.size >= MAX_FRAMES) {
-                        stopReason = "Reached $MAX_FRAMES frame safety limit"
+                        stopReason = getString(R.string.long_screenshot_frame_limit, MAX_FRAMES)
                         break
                     }
                     if (android.os.SystemClock.elapsedRealtime() - startedAt >= MAX_CAPTURE_DURATION_MS) {
-                        stopReason = "Stopped after time safety limit"
+                        stopReason = timeLimitMsg
                         break
                     }
                     if (!scrollForward()) {
-                        stopReason = "Reached end of scrollable content"
+                        stopReason = getString(R.string.long_screenshot_end_scroll)
                         break
                     }
 
@@ -143,17 +146,17 @@ class ScrollCaptureService : AccessibilityService() {
                 }
 
                 if (
-                    stopReason == "Reached capture limit" &&
+                    stopReason == captureLimitMsg &&
                     android.os.SystemClock.elapsedRealtime() - startedAt >= MAX_CAPTURE_DURATION_MS
                 ) {
-                    stopReason = "Stopped after time safety limit"
+                    stopReason = timeLimitMsg
                 }
 
                 when {
                     frames.size >= 2 -> reviewLongScreenshot(frames, stopReason)
                     frames.size == 1 -> Toast.makeText(
                         this@ScrollCaptureService,
-                        if (stopReason == "Screen capture failed") stopReason else "No new content after scrolling",
+                        if (stopReason == captureFailedMsg) stopReason else getString(R.string.long_screenshot_no_content),
                         Toast.LENGTH_SHORT
                     ).show()
                     else -> Unit
@@ -260,7 +263,7 @@ class ScrollCaptureService : AccessibilityService() {
                 ScrollStitcher.stitch(frames)
             }
         } catch (_: Exception) {
-            Toast.makeText(this, "Long screenshot stitch failed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.long_screenshot_stitch_failed), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -272,7 +275,7 @@ class ScrollCaptureService : AccessibilityService() {
                 if (openReview(reviewFile.first, reviewFile.second, frames.size, stopReason)) {
                     Toast.makeText(
                         this,
-                        "Review long screenshot before saving",
+                        getString(R.string.long_screenshot_review_body),
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
@@ -281,10 +284,10 @@ class ScrollCaptureService : AccessibilityService() {
                         LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                     }
                     if (fallbackUri != null) {
-                        Toast.makeText(this, "Review unavailable; saved to SnapCrop", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
                         openEditor(fallbackUri)
                     } else {
-                        Toast.makeText(this, "Long screenshot save failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.long_screenshot_save_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
             } else {
@@ -292,10 +295,10 @@ class ScrollCaptureService : AccessibilityService() {
                     LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                 }
                 if (fallbackUri != null) {
-                    Toast.makeText(this, "Review unavailable; saved to SnapCrop", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
                     openEditor(fallbackUri)
                 } else {
-                    Toast.makeText(this, "Long screenshot save failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.long_screenshot_save_failed), Toast.LENGTH_SHORT).show()
                 }
             }
         } finally {
@@ -328,7 +331,7 @@ class ScrollCaptureService : AccessibilityService() {
                 }
             )
         } catch (_: Exception) {
-            Toast.makeText(this, "Saved to your SnapCrop folder", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.long_screenshot_saved_folder), Toast.LENGTH_SHORT).show()
         }
     }
 }
