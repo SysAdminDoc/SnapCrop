@@ -77,6 +77,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -696,7 +698,7 @@ fun CropEditorScreen(
                     value = value,
                     onValueChange = onChange,
                     valueRange = range,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "$label, $valueLabel" },
                     colors = SliderDefaults.colors(
                         thumbColor = color,
                         activeTrackColor = color,
@@ -795,7 +797,9 @@ fun CropEditorScreen(
                             paletteColors.take(5).forEach { pc ->
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier.clickable {
+                                    modifier = Modifier
+                                        .semantics { contentDescription = "Palette color ${pc.hex}, tap to copy" }
+                                        .clickable {
                                         val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
                                         android.widget.Toast.makeText(context, "Copied ${pc.hex}", android.widget.Toast.LENGTH_SHORT).show()
@@ -979,11 +983,12 @@ fun CropEditorScreen(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            drawColors.take(7).forEach { (color, _) ->
+                            drawColors.take(7).forEach { (color, name) ->
                                 Box(
                                     Modifier
                                         .size(if (drawColor == color) 24.dp else 18.dp)
                                         .background(Color(color), RoundedCornerShape(3.dp))
+                                        .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
                                         .clickable { drawColor = color; eyedropperActive = false }
                                 )
                             }
@@ -1372,7 +1377,7 @@ fun CropEditorScreen(
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("Straighten", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(64.dp))
                 Slider(value = rotationAngle, onValueChange = { rotationAngle = it },
-                    valueRange = -45f..45f, modifier = Modifier.weight(1f),
+                    valueRange = -45f..45f, modifier = Modifier.weight(1f).semantics { contentDescription = "Straighten angle, ${String.format("%.1f", rotationAngle)} degrees" },
                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant))
                 Text("${String.format("%.1f", rotationAngle)}°", color = OnSurfaceVariant, fontSize = 11.sp,
                     modifier = Modifier.width(36.dp))
@@ -1527,18 +1532,21 @@ fun CropEditorScreen(
                             tint = if (eyedropperActive) Primary else OnSurfaceVariant,
                             modifier = Modifier.size(16.dp))
                     }
-                    drawColors.forEach { (color, _) ->
+                    drawColors.forEach { (color, name) ->
                         Box(Modifier
                             .size(if (drawColor == color) 24.dp else 18.dp)
                             .background(Color(color), RoundedCornerShape(3.dp))
+                            .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
                             .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
                     }
                     // Recent custom colors
-                    recentColors.forEach { color ->
+                    recentColors.forEachIndexed { index, color ->
+                        val hex = String.format("#%06X", color and 0xFFFFFF)
                         Box(Modifier
                             .size(if (drawColor == color) 24.dp else 18.dp)
                             .background(Color(color), RoundedCornerShape(3.dp))
                             .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                            .semantics { contentDescription = "Recent color ${index + 1}, $hex${if (drawColor == color) ", selected" else ""}" }
                             .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
                     }
                     // Current color preview (tap to open color picker)
@@ -1546,6 +1554,7 @@ fun CropEditorScreen(
                     Box(Modifier.size(24.dp)
                         .background(Color(drawColor), RoundedCornerShape(3.dp))
                         .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp))
+                        .semantics { contentDescription = "Current draw color, tap to open color picker" }
                         .clickable { showColorPicker = true })
                     if (showColorPicker) {
                         var pickerR by remember { mutableFloatStateOf(((drawColor shr 16) and 0xFF) / 255f) }
@@ -1560,13 +1569,19 @@ fun CropEditorScreen(
                                         .background(Color(pickerR, pickerG, pickerB), RoundedCornerShape(8.dp)))
                                     Spacer(Modifier.height(8.dp))
                                     Text("R", color = Color(0xFFFF6666), fontSize = 11.sp)
-                                    Slider(value = pickerR, onValueChange = { pickerR = it }, colors = SliderDefaults.colors(
+                                    Slider(value = pickerR, onValueChange = { pickerR = it },
+                                        modifier = Modifier.semantics { contentDescription = "Red channel, ${(pickerR * 255).toInt()}" },
+                                        colors = SliderDefaults.colors(
                                         thumbColor = Color.Red, activeTrackColor = Color.Red, inactiveTrackColor = SurfaceVariant))
                                     Text("G", color = Color(0xFF66FF66), fontSize = 11.sp)
-                                    Slider(value = pickerG, onValueChange = { pickerG = it }, colors = SliderDefaults.colors(
+                                    Slider(value = pickerG, onValueChange = { pickerG = it },
+                                        modifier = Modifier.semantics { contentDescription = "Green channel, ${(pickerG * 255).toInt()}" },
+                                        colors = SliderDefaults.colors(
                                         thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = SurfaceVariant))
                                     Text("B", color = Color(0xFF6666FF), fontSize = 11.sp)
-                                    Slider(value = pickerB, onValueChange = { pickerB = it }, colors = SliderDefaults.colors(
+                                    Slider(value = pickerB, onValueChange = { pickerB = it },
+                                        modifier = Modifier.semantics { contentDescription = "Blue channel, ${(pickerB * 255).toInt()}" },
+                                        colors = SliderDefaults.colors(
                                         thumbColor = Color.Blue, activeTrackColor = Color.Blue, inactiveTrackColor = SurfaceVariant))
                                     val hex = String.format("#%02X%02X%02X", (pickerR * 255).toInt(), (pickerG * 255).toInt(), (pickerB * 255).toInt())
                                     Text(hex, color = OnSurfaceVariant, fontSize = 12.sp)
@@ -1627,7 +1642,7 @@ fun CropEditorScreen(
                 Text("${drawStrokeWidth.toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp,
                     modifier = Modifier.width(32.dp))
                 Slider(value = drawStrokeWidth, onValueChange = { drawStrokeWidth = it },
-                    valueRange = 2f..20f, modifier = Modifier.weight(1f),
+                    valueRange = 2f..20f, modifier = Modifier.weight(1f).semantics { contentDescription = "Stroke width, ${drawStrokeWidth.toInt()} pixels" },
                     colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
                         inactiveTrackColor = SurfaceVariant))
             }
@@ -1648,7 +1663,9 @@ fun CropEditorScreen(
                 ) {
                     commonEmojis.forEach { emoji ->
                         Surface(
-                            modifier = Modifier.size(36.dp).clickable { selectedEmoji = emoji },
+                            modifier = Modifier.size(36.dp)
+                                .semantics { contentDescription = "Emoji $emoji${if (selectedEmoji == emoji) ", selected" else ""}" }
+                                .clickable { selectedEmoji = emoji },
                             color = if (selectedEmoji == emoji) PrimaryContainer else SurfaceVariant,
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -1689,70 +1706,70 @@ fun CropEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Brightness", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = brightness, onValueChange = { brightness = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Brightness, ${brightness.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${brightness.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Contrast", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = contrast, onValueChange = { contrast = it },
-                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f),
+                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "Contrast, ${String.format("%.1f", contrast)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", contrast)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Saturation", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = saturation, onValueChange = { saturation = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f),
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "Saturation, ${String.format("%.1f", saturation)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", saturation)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Warmth", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = warmth, onValueChange = { warmth = it },
-                        valueRange = -50f..50f, modifier = Modifier.weight(1f),
+                        valueRange = -50f..50f, modifier = Modifier.weight(1f).semantics { contentDescription = "Warmth, ${warmth.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${warmth.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Vignette", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = vignette, onValueChange = { vignette = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "Vignette, ${(vignette * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(vignette * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Sharpen", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = sharpen, onValueChange = { sharpen = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f),
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "Sharpen, ${String.format("%.1f", sharpen)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", sharpen)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Highlights", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = highlights, onValueChange = { highlights = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Highlights, ${highlights.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${highlights.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Shadows", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = shadows, onValueChange = { shadows = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Shadows, ${shadows.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${shadows.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Tilt-Shift", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = tiltShift, onValueChange = { tiltShift = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "Tilt-Shift, ${(tiltShift * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(tiltShift * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Denoise", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = denoise, onValueChange = { denoise = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f),
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "Denoise, ${(denoise * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(denoise * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
@@ -1763,21 +1780,21 @@ fun CropEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Red", color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveR, onValueChange = { curveR = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Red curve, ${curveR.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFFFF6B6B), activeTrackColor = Color(0xFFFF6B6B), inactiveTrackColor = SurfaceVariant))
                     Text("${curveR.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Green", color = Color(0xFF51CF66), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveG, onValueChange = { curveG = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Green curve, ${curveG.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF51CF66), activeTrackColor = Color(0xFF51CF66), inactiveTrackColor = SurfaceVariant))
                     Text("${curveG.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Blue", color = Color(0xFF339AF0), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveB, onValueChange = { curveB = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f),
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "Blue curve, ${curveB.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF339AF0), activeTrackColor = Color(0xFF339AF0), inactiveTrackColor = SurfaceVariant))
                     Text("${curveB.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
