@@ -13,7 +13,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import android.content.ClipData
+import android.graphics.Point
+import android.view.View
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -965,6 +970,7 @@ private fun PhotoViewer(
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
     val context = LocalContext.current
+    val view = LocalView.current
     var showInfo by remember { mutableStateOf(false) }
     var photoInfo by remember { mutableStateOf("") }
     var isFav by remember { mutableStateOf(
@@ -1051,10 +1057,58 @@ private fun PhotoViewer(
                             }
                         }
                     }
-                    .clickable {
-                        if (viewerZoom > 1.05f) {
-                            viewerZoom = 1f; viewerPanX = 0f; viewerPanY = 0f
-                        } else showInfo = !showInfo
+                    .pointerInput(page, viewerZoom) {
+                        detectTapGestures(
+                            onTap = {
+                                if (viewerZoom > 1.05f) {
+                                    viewerZoom = 1f; viewerPanX = 0f; viewerPanY = 0f
+                                } else showInfo = !showInfo
+                            },
+                            onLongPress = {
+                                val photo = photos[page]
+                                val clipData = ClipData.newUri(
+                                    context.contentResolver, "Photo", photo.uri
+                                )
+                                val density = context.resources.displayMetrics.density
+                                val shadowPx = (120 * density).toInt()
+                                val shadowBuilder = object : View.DragShadowBuilder() {
+                                    override fun onProvideShadowMetrics(
+                                        outShadowSize: Point,
+                                        outShadowTouchPoint: Point
+                                    ) {
+                                        outShadowSize.set(shadowPx, shadowPx)
+                                        outShadowTouchPoint.set(shadowPx / 2, shadowPx / 2)
+                                    }
+                                    override fun onDrawShadow(canvas: android.graphics.Canvas) {
+                                        val paint = android.graphics.Paint().apply {
+                                            color = 0xCC89B4FA.toInt()
+                                        }
+                                        val r = 8 * density
+                                        canvas.drawRoundRect(
+                                            0f, 0f,
+                                            shadowPx.toFloat(), shadowPx.toFloat(),
+                                            r, r, paint
+                                        )
+                                        val icon = android.graphics.Paint().apply {
+                                            color = 0xFFFFFFFF.toInt()
+                                            textSize = 14 * density
+                                            textAlign = android.graphics.Paint.Align.CENTER
+                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        }
+                                        canvas.drawText(
+                                            "🖼",
+                                            shadowPx / 2f,
+                                            shadowPx / 2f + 5 * density,
+                                            icon
+                                        )
+                                    }
+                                }
+                                view.startDragAndDrop(
+                                    clipData, shadowBuilder, null,
+                                    View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ
+                                )
+                            }
+                        )
                     },
                 contentScale = ContentScale.Fit
             )

@@ -5,7 +5,9 @@ import android.app.PendingIntent
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.ComponentName
+import android.content.ClipDescription
 import android.content.Intent
+import android.view.DragEvent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Paint
@@ -229,6 +231,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        window.decorView.setOnDragListener { _, event ->
+            when (event.action) {
+                DragEvent.ACTION_DRAG_STARTED ->
+                    event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_INTENT) == true ||
+                    event.clipDescription?.hasMimeType("image/*") == true
+                DragEvent.ACTION_DROP -> {
+                    val uri = event.clipData?.getItemAt(0)?.uri ?: return@setOnDragListener false
+                    requestDragAndDropPermissions(event)
+                    startActivity(Intent(this, CropActivity::class.java).apply {
+                        data = uri
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    })
+                    true
+                }
+                DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION,
+                DragEvent.ACTION_DRAG_EXITED, DragEvent.ACTION_DRAG_ENDED -> true
+                else -> false
+            }
+        }
 
         checkPermissions()
 
