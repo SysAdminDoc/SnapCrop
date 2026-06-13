@@ -47,6 +47,8 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val credPrefs = NetworkExportSettings.encryptedPrefs(this)
+        NetworkExportSettings.migrateCredentials(prefs, credPrefs)
         val (screenW, screenH) = getScreenSize(this)
 
         setContent {
@@ -523,10 +525,10 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getString(NetworkExportSettings.PREF_ENDPOINT, "") ?: "")
                     }
                     var networkAuthorization by remember {
-                        mutableStateOf(prefs.getString(NetworkExportSettings.PREF_AUTHORIZATION, "") ?: "")
+                        mutableStateOf(credPrefs.getString(NetworkExportSettings.PREF_AUTHORIZATION, "") ?: "")
                     }
                     var imgurClientId by remember {
-                        mutableStateOf(prefs.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, "") ?: "")
+                        mutableStateOf(credPrefs.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, "") ?: "")
                     }
                     Text("Network Exports", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
@@ -576,7 +578,7 @@ class SettingsActivity : ComponentActivity() {
                                         value = imgurClientId,
                                         onValueChange = {
                                             imgurClientId = it.trim()
-                                            prefs.edit().putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId).apply()
+                                            credPrefs.edit().putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId).apply()
                                         },
                                         singleLine = true,
                                         label = { Text("Imgur client ID") },
@@ -621,7 +623,7 @@ class SettingsActivity : ComponentActivity() {
                                         value = networkAuthorization,
                                         onValueChange = {
                                             networkAuthorization = it
-                                            prefs.edit().putString(NetworkExportSettings.PREF_AUTHORIZATION, it).apply()
+                                            credPrefs.edit().putString(NetworkExportSettings.PREF_AUTHORIZATION, it).apply()
                                         },
                                         singleLine = true,
                                         label = { Text("Authorization header value") },

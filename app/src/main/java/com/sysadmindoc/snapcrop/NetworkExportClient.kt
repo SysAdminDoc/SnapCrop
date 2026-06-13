@@ -1,6 +1,9 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKeys
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -44,13 +47,40 @@ data class NetworkExportSettings(
         const val PREF_AUTHORIZATION = "network_export_authorization"
         const val PREF_IMGUR_CLIENT_ID = "network_export_imgur_client_id"
 
-        fun fromPrefs(prefs: SharedPreferences): NetworkExportSettings {
+        fun encryptedPrefs(context: Context): SharedPreferences {
+            val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
+            return EncryptedSharedPreferences.create(
+                "snapcrop_credentials",
+                masterKey,
+                context,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
+
+        fun migrateCredentials(plainPrefs: SharedPreferences, encPrefs: SharedPreferences) {
+            val auth = plainPrefs.getString(PREF_AUTHORIZATION, null)
+            val imgur = plainPrefs.getString(PREF_IMGUR_CLIENT_ID, null)
+            if (auth != null || imgur != null) {
+                encPrefs.edit().apply {
+                    auth?.let { putString(PREF_AUTHORIZATION, it) }
+                    imgur?.let { putString(PREF_IMGUR_CLIENT_ID, it) }
+                }.apply()
+                plainPrefs.edit()
+                    .remove(PREF_AUTHORIZATION)
+                    .remove(PREF_IMGUR_CLIENT_ID)
+                    .apply()
+            }
+        }
+
+        fun fromPrefs(prefs: SharedPreferences, encPrefs: SharedPreferences? = null): NetworkExportSettings {
+            val securePrefs = encPrefs ?: prefs
             return NetworkExportSettings(
                 enabled = prefs.getBoolean(PREF_ENABLED, false),
                 target = NetworkExportTarget.fromPref(prefs.getString(PREF_TARGET, NetworkExportTarget.HTTP.prefValue)),
                 endpoint = prefs.getString(PREF_ENDPOINT, "").orEmpty().trim(),
-                authorizationHeader = prefs.getString(PREF_AUTHORIZATION, "").orEmpty().trim(),
-                imgurClientId = prefs.getString(PREF_IMGUR_CLIENT_ID, "").orEmpty().trim()
+                authorizationHeader = securePrefs.getString(PREF_AUTHORIZATION, "").orEmpty().trim(),
+                imgurClientId = securePrefs.getString(PREF_IMGUR_CLIENT_ID, "").orEmpty().trim()
             )
         }
     }

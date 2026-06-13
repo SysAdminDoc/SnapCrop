@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
             SnapCropTheme {
                 var selectedTab by remember { mutableIntStateOf(0) }
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
+                val credPrefs = remember { NetworkExportSettings.encryptedPrefs(this@MainActivity) }
 
                 Scaffold(
                     containerColor = Color.Black,
@@ -413,7 +414,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showReportDialogState.value) {
-                    val networkSettings = NetworkExportSettings.fromPrefs(prefs)
+                    val networkSettings = NetworkExportSettings.fromPrefs(prefs, credPrefs)
                     var reportTitle by remember(reportUris.value) { mutableStateOf("SnapCrop incident report") }
                     var notes by remember(reportUris.value) { mutableStateOf("") }
                     var includeOcr by remember(reportUris.value) { mutableStateOf(false) }
@@ -883,7 +884,10 @@ class MainActivity : ComponentActivity() {
         pdfBytes: ByteArray,
         sourceUris: List<Uri>
     ): NetworkExportResult {
-        val settings = NetworkExportSettings.fromPrefs(getSharedPreferences("snapcrop", MODE_PRIVATE))
+        val settings = NetworkExportSettings.fromPrefs(
+            getSharedPreferences("snapcrop", MODE_PRIVATE),
+            NetworkExportSettings.encryptedPrefs(this)
+        )
         if (!settings.isConfigured) {
             return NetworkExportResult(false, settings.target, 0, "Network export is not configured")
         }

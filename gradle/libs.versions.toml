@@ -18,6 +18,7 @@ mlkitLanguageId = "17.0.6"
 mlkitEntityExtraction = "16.0.0-beta6"
 junit = "4.13.2"
 robolectric = "4.16.1"
+securityCrypto = "1.1.0-alpha06"
 cyclonedx = "3.2.4"
 json = "20251224"
 
@@ -42,6 +43,7 @@ mlkit-subjectsegmentation = { group = "com.google.android.gms", name = "play-ser
 mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
 mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 mlkit-entity-extraction = { group = "com.google.mlkit", name = "entity-extraction", version.ref = "mlkitEntityExtraction" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 json = { group = "org.json", name = "json", version.ref = "json" }

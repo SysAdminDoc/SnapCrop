@@ -104,6 +104,7 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
+    implementation(libs.androidx.security.crypto)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.json)

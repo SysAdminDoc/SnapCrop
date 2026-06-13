@@ -80,6 +80,9 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Network export credentials (HTTP auth headers and Imgur client IDs) now use
+  EncryptedSharedPreferences backed by Android Keystore. Existing plain-text
+  credentials are migrated transparently on first launch after update.
 - Added curved arrow draw tool (17th tool): drag to trace a curve, rendered as
   a quadratic bezier with arrowhead. Control point derived from the midpoint of
   the drag path. SVG sidecar exports as `Q` bezier paths. Persists in project
