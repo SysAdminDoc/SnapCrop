@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.sysadmindoc.snapcrop.ui.theme.*
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -59,19 +60,21 @@ class SettingsActivity : ComponentActivity() {
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
                 var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95).coerceIn(50, 100)) }
                 val outputFormat = when {
-                    useWebp -> "WebP"
-                    useJpeg -> "JPEG"
-                    else -> "PNG"
+                    useWebp -> stringResource(R.string.format_webp)
+                    useJpeg -> stringResource(R.string.format_jpeg)
+                    else -> stringResource(R.string.format_png)
                 }
                 val lossyFormat = useJpeg || useWebp
                 var userAppProfiles by remember { mutableStateOf(UserAppProfileStore.load(prefs)) }
                 var appRuleImportText by remember { mutableStateOf("") }
-                var appRuleTestStatus by remember { mutableStateOf("No test image selected") }
+                val testDefaultStr = stringResource(R.string.rules_test_default)
+                val testTestingStr = stringResource(R.string.rules_test_testing)
+                var appRuleTestStatus by remember { mutableStateOf(testDefaultStr) }
                 val appRuleTestLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.GetContent()
                 ) { uri ->
                     if (uri != null) {
-                        appRuleTestStatus = "Testing image..."
+                        appRuleTestStatus = testTestingStr
                         lifecycleScope.launch {
                             val message = testAppRuleImage(uri, prefs)
                             appRuleTestStatus = message
@@ -94,10 +97,10 @@ class SettingsActivity : ComponentActivity() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = { finish() }) {
-                            Icon(@Suppress("DEPRECATION") Icons.Default.ArrowBack, "Back", tint = OnSurface)
+                            Icon(@Suppress("DEPRECATION") Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
                         }
                         Spacer(Modifier.width(8.dp))
-                        Text("Settings", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = OnSurface)
+                        Text(stringResource(R.string.settings_title), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = OnSurface)
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -108,10 +111,11 @@ class SettingsActivity : ComponentActivity() {
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Export defaults", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_export_defaults), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "$outputFormat output - ${if (deleteOriginal) "Save replaces the source screenshot" else "Save keeps the source screenshot"}",
+                                if (deleteOriginal) stringResource(R.string.settings_export_summary_replace, outputFormat)
+                                else stringResource(R.string.settings_export_summary_keep, outputFormat),
                                 color = OnSurfaceVariant,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
@@ -122,12 +126,12 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     // Save behavior section
-                    Text("Save Behavior", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_save), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
-                        title = "Replace original on Save",
-                        subtitle = "When ON (default), manual Save deletes the screenshot you cropped from. Android may ask you to confirm deletion.",
+                        title = stringResource(R.string.settings_replace_title),
+                        subtitle = stringResource(R.string.settings_replace_subtitle),
                         checked = deleteOriginal,
                         onCheckedChange = {
                             deleteOriginal = it
@@ -137,8 +141,8 @@ class SettingsActivity : ComponentActivity() {
 
                     var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", true)) }
                     SettingToggle(
-                        title = "Editable project sidecars",
-                        subtitle = "Save a .snapcrop.json file next to exports so crops, redactions, and layers can be reopened later. Keeps the source image when enabled.",
+                        title = stringResource(R.string.settings_sidecar_title),
+                        subtitle = stringResource(R.string.settings_sidecar_subtitle),
                         checked = projectSidecars,
                         onCheckedChange = {
                             projectSidecars = it
@@ -148,8 +152,8 @@ class SettingsActivity : ComponentActivity() {
 
                     var appCropProfiles by remember { mutableStateOf(prefs.getBoolean("app_crop_profiles", true)) }
                     SettingToggle(
-                        title = "App crop profiles",
-                        subtitle = "Use built-in visual templates to strip Reddit, X/Twitter, and similar app chrome during auto-crop.",
+                        title = stringResource(R.string.settings_profiles_title),
+                        subtitle = stringResource(R.string.settings_profiles_subtitle),
                         checked = appCropProfiles,
                         onCheckedChange = {
                             appCropProfiles = it
@@ -166,7 +170,7 @@ class SettingsActivity : ComponentActivity() {
                         onSaveProfile = { profile ->
                             userAppProfiles = UserAppProfileStore.upsert(userAppProfiles, profile)
                             UserAppProfileStore.save(prefs, userAppProfiles)
-                            Toast.makeText(this@SettingsActivity, "App rule saved", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@SettingsActivity, getString(R.string.toast_app_rule_saved), Toast.LENGTH_SHORT).show()
                         },
                         onToggleProfile = { profile ->
                             userAppProfiles = UserAppProfileStore.upsert(
@@ -178,7 +182,7 @@ class SettingsActivity : ComponentActivity() {
                         onDeleteProfile = { profile ->
                             userAppProfiles = userAppProfiles.filterNot { it.id == profile.id }
                             UserAppProfileStore.save(prefs, userAppProfiles)
-                            Toast.makeText(this@SettingsActivity, "App rule removed", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@SettingsActivity, getString(R.string.toast_app_rule_removed), Toast.LENGTH_SHORT).show()
                         },
                         onImportTextChange = { appRuleImportText = it },
                         onCopyProfiles = {
@@ -191,11 +195,11 @@ class SettingsActivity : ComponentActivity() {
                                 userAppProfiles = UserAppProfileStore.merge(userAppProfiles, incoming)
                                 UserAppProfileStore.save(prefs, userAppProfiles)
                                 appRuleImportText = ""
-                                Toast.makeText(this@SettingsActivity, "Imported ${incoming.size} app rules", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@SettingsActivity, getString(R.string.toast_imported_rules, incoming.size), Toast.LENGTH_SHORT).show()
                             }.onFailure { error ->
                                 Toast.makeText(
                                     this@SettingsActivity,
-                                    "Import failed: ${error.message ?: "invalid JSON"}",
+                                    getString(R.string.toast_import_failed, error.message ?: "invalid JSON"),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -205,23 +209,24 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
-                    Text("Library Intelligence", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_intelligence), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     var screenshotIndexEnabled by remember {
                         mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false))
                     }
-                    var screenshotIndexStatus by remember {
-                        mutableStateOf("Indexed items: ${ScreenshotIndexStore(this@SettingsActivity).count()}")
-                    }
+                    val indexCountStr = stringResource(R.string.settings_index_count, ScreenshotIndexStore(this@SettingsActivity).count())
+                    val indexEnabledStr = stringResource(R.string.settings_index_enabled)
+                    val indexDisabledStr = stringResource(R.string.settings_index_disabled)
+                    var screenshotIndexStatus by remember { mutableStateOf(indexCountStr) }
                     SettingToggle(
-                        title = "Screenshot intelligence index",
-                        subtitle = "Opt-in local index for screenshot names, source hints, dimensions, favorites, and categories. Stored only on this device.",
+                        title = stringResource(R.string.settings_index_title),
+                        subtitle = stringResource(R.string.settings_index_subtitle),
                         checked = screenshotIndexEnabled,
                         onCheckedChange = {
                             screenshotIndexEnabled = it
                             prefs.edit().putBoolean(ScreenshotIndexStore.PREF_ENABLED, it).apply()
-                            screenshotIndexStatus = if (it) "Index enabled. Rebuild to refresh." else "Index disabled."
+                            screenshotIndexStatus = if (it) indexEnabledStr else indexDisabledStr
                         }
                     )
                     if (screenshotIndexEnabled) {
@@ -231,7 +236,7 @@ class SettingsActivity : ComponentActivity() {
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                Text("Local index controls", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text(stringResource(R.string.settings_index_controls), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                                 Text(
                                     screenshotIndexStatus,
                                     color = OnSurfaceVariant,
@@ -239,10 +244,11 @@ class SettingsActivity : ComponentActivity() {
                                     lineHeight = 17.sp
                                 )
                                 Spacer(Modifier.height(10.dp))
+                                val rebuildingStr = stringResource(R.string.settings_index_rebuilding)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
                                         onClick = {
-                                            screenshotIndexStatus = "Rebuilding index..."
+                                            screenshotIndexStatus = rebuildingStr
                                             lifecycleScope.launch(Dispatchers.IO) {
                                                 val count = ScreenshotIndexStore(this@SettingsActivity)
                                                     .rebuildFromMediaStore(
@@ -252,10 +258,10 @@ class SettingsActivity : ComponentActivity() {
                                                         FavoritesStore.getAllIds(this@SettingsActivity)
                                                     )
                                                 withContext(Dispatchers.Main) {
-                                                    screenshotIndexStatus = "Indexed items: $count"
+                                                    screenshotIndexStatus = getString(R.string.settings_index_count, count)
                                                     android.widget.Toast.makeText(
                                                         this@SettingsActivity,
-                                                        "Screenshot index rebuilt",
+                                                        getString(R.string.toast_index_rebuilt),
                                                         android.widget.Toast.LENGTH_SHORT
                                                     ).show()
                                                 }
@@ -264,21 +270,21 @@ class SettingsActivity : ComponentActivity() {
                                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("Rebuild")
+                                        Text(stringResource(R.string.settings_rebuild))
                                     }
                                     OutlinedButton(
                                         onClick = {
                                             ScreenshotIndexStore(this@SettingsActivity).purge()
-                                            screenshotIndexStatus = "Indexed items: 0"
+                                            screenshotIndexStatus = getString(R.string.settings_index_count, 0)
                                             android.widget.Toast.makeText(
                                                 this@SettingsActivity,
-                                                "Screenshot index purged",
+                                                getString(R.string.toast_index_purged),
                                                 android.widget.Toast.LENGTH_SHORT
                                             ).show()
                                         },
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("Purge", color = Tertiary)
+                                        Text(stringResource(R.string.settings_purge), color = Tertiary)
                                     }
                                 }
                             }
@@ -287,14 +293,14 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
-                    Text("Smart Erase", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_erase), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     var allowAdvancedErase by remember {
                         mutableStateOf(prefs.getBoolean(AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL, false))
                     }
                     SettingToggle(
-                        title = "Allow experimental erase model packs",
+                        title = stringResource(R.string.settings_erase_title),
                         subtitle = AdvancedEraseBackendRegistry.statusSummary(prefs),
                         checked = allowAdvancedErase,
                         onCheckedChange = {
@@ -311,7 +317,7 @@ class SettingsActivity : ComponentActivity() {
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Backend readiness", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_erase_readiness), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                             Spacer(Modifier.height(8.dp))
                             AdvancedEraseBackendRegistry.candidates.forEach { candidate ->
                                 Text(candidate.id.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -330,13 +336,16 @@ class SettingsActivity : ComponentActivity() {
 
                     // Image format selector
                     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Text("Image Format", color = OnSurface, fontSize = 15.sp)
+                        Text(stringResource(R.string.settings_section_format), color = OnSurface, fontSize = 15.sp)
                         Spacer(Modifier.height(2.dp))
-                        Text("PNG is lossless, JPEG/WebP are smaller files", color = OnSurfaceVariant, fontSize = 12.sp)
+                        Text(stringResource(R.string.settings_format_hint), color = OnSurfaceVariant, fontSize = 12.sp)
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf("PNG" to false to false, "JPEG" to true to false, "WebP" to false to true).forEach { (pair, isWebp) ->
-                                val (label, isJpeg) = pair
+                            listOf(
+                                Triple(stringResource(R.string.format_png), false, false),
+                                Triple(stringResource(R.string.format_jpeg), true, false),
+                                Triple(stringResource(R.string.format_webp), false, true)
+                            ).forEach { (label, isJpeg, isWebp) ->
                                 val selected = when {
                                     isWebp -> useWebp
                                     isJpeg -> useJpeg && !useWebp
@@ -365,7 +374,7 @@ class SettingsActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Quality: ${jpegQuality}%", color = OnSurfaceVariant, fontSize = 13.sp,
+                            Text(stringResource(R.string.settings_quality, jpegQuality), color = OnSurfaceVariant, fontSize = 13.sp,
                                 modifier = Modifier.width(80.dp))
                             Slider(
                                 value = jpegQuality.toFloat(),
@@ -376,7 +385,7 @@ class SettingsActivity : ComponentActivity() {
                                 valueRange = 50f..100f,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .semantics { contentDescription = "Image quality, ${jpegQuality} percent" },
+                                    .semantics { contentDescription = getString(R.string.settings_quality_cd, jpegQuality) },
                                 colors = SliderDefaults.colors(
                                     thumbColor = Primary,
                                     activeTrackColor = Primary,
@@ -392,11 +401,11 @@ class SettingsActivity : ComponentActivity() {
                     var targetSizeEnabled by remember { mutableStateOf(prefs.getBoolean("target_size_enabled", false)) }
                     var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500).coerceIn(50, 5000)) }
                     SettingToggle(
-                        title = "Target file size",
+                        title = stringResource(R.string.settings_target_size_title),
                         subtitle = if (lossyFormat)
-                            "Auto-adjust quality to meet a file size budget"
+                            stringResource(R.string.settings_target_size_lossy)
                         else
-                            "Available when JPEG or WebP is selected",
+                            stringResource(R.string.settings_target_size_unavailable),
                         checked = targetSizeEnabled && lossyFormat,
                         enabled = lossyFormat,
                         onCheckedChange = {
@@ -409,7 +418,7 @@ class SettingsActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Target: ${targetSizeKb}KB", color = OnSurfaceVariant, fontSize = 13.sp,
+                            Text(stringResource(R.string.settings_target_kb, targetSizeKb), color = OnSurfaceVariant, fontSize = 13.sp,
                                 modifier = Modifier.width(90.dp))
                             Slider(
                                 value = targetSizeKb.toFloat(),
@@ -420,7 +429,7 @@ class SettingsActivity : ComponentActivity() {
                                 valueRange = 50f..5000f,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .semantics { contentDescription = "Target file size, ${targetSizeKb} kilobytes" },
+                                    .semantics { contentDescription = getString(R.string.settings_target_kb_cd, targetSizeKb) },
                                 colors = SliderDefaults.colors(
                                     thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant
                                 )
@@ -432,8 +441,8 @@ class SettingsActivity : ComponentActivity() {
 
                     var stripExif by remember { mutableStateOf(prefs.getBoolean("strip_exif", false)) }
                     SettingToggle(
-                        title = "Strip metadata on share",
-                        subtitle = "Remove EXIF data (location, device info) when sharing for privacy",
+                        title = stringResource(R.string.settings_strip_title),
+                        subtitle = stringResource(R.string.settings_strip_subtitle),
                         checked = stripExif,
                         onCheckedChange = {
                             stripExif = it
@@ -453,8 +462,8 @@ class SettingsActivity : ComponentActivity() {
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Filename template", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                            Text("Use %timestamp%, %date%, %time%, %counter%",
+                            Text(stringResource(R.string.settings_filename_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_filename_hint),
                                 color = OnSurfaceVariant, fontSize = 11.sp)
                             Spacer(Modifier.height(8.dp))
                             OutlinedTextField(
@@ -481,12 +490,12 @@ class SettingsActivity : ComponentActivity() {
                     // Annotation presets section
                     val stylePresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(prefs)) } }
                     var styleDefault by remember { mutableStateOf(DrawStylePresetStore.defaultName(prefs)) }
-                    Text("Annotation Presets", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_presets), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Save draw tool styles and load them quickly in the editor.", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Text(stringResource(R.string.settings_presets_body), color = OnSurfaceVariant, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
                     if (stylePresets.isEmpty()) {
-                        Text("No presets saved yet. Use the + button in the editor's draw mode to save your current tool style.", color = OnSurfaceVariant, fontSize = 11.sp)
+                        Text(stringResource(R.string.settings_presets_empty), color = OnSurfaceVariant, fontSize = 11.sp)
                     } else {
                         stylePresets.forEachIndexed { idx, preset ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
@@ -500,13 +509,13 @@ class SettingsActivity : ComponentActivity() {
                                 TextButton(onClick = {
                                     styleDefault = if (styleDefault == preset.name) null else preset.name
                                     DrawStylePresetStore.setDefault(prefs, styleDefault)
-                                }) { Text(if (styleDefault == preset.name) "Default" else "Set default", color = if (styleDefault == preset.name) Secondary else OnSurfaceVariant, fontSize = 11.sp) }
+                                }) { Text(if (styleDefault == preset.name) stringResource(R.string.settings_preset_default) else stringResource(R.string.settings_preset_set_default), color = if (styleDefault == preset.name) Secondary else OnSurfaceVariant, fontSize = 11.sp) }
                                 IconButton(onClick = {
                                     stylePresets.removeAt(idx)
                                     DrawStylePresetStore.save(prefs, stylePresets.toList())
                                     if (styleDefault == preset.name) { styleDefault = null; DrawStylePresetStore.setDefault(prefs, null) }
                                 }, modifier = Modifier.size(32.dp)) {
-                                    Icon(Icons.Default.Delete, "Delete ${preset.name}", tint = Tertiary, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Delete, stringResource(R.string.delete) + " ${preset.name}", tint = Tertiary, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -530,11 +539,11 @@ class SettingsActivity : ComponentActivity() {
                     var imgurClientId by remember {
                         mutableStateOf(credPrefs.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, "") ?: "")
                     }
-                    Text("Network Exports", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_network), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
                     SettingToggle(
-                        title = "Enable network export targets",
-                        subtitle = "Off by default. Reports stay local unless you explicitly upload from the report dialog.",
+                        title = stringResource(R.string.settings_network_title),
+                        subtitle = stringResource(R.string.settings_network_subtitle),
                         checked = networkExportsEnabled,
                         onCheckedChange = {
                             networkExportsEnabled = it
@@ -548,7 +557,7 @@ class SettingsActivity : ComponentActivity() {
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                Text("Upload target", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text(stringResource(R.string.settings_upload_target), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                                 Spacer(Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -581,7 +590,7 @@ class SettingsActivity : ComponentActivity() {
                                             credPrefs.edit().putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId).apply()
                                         },
                                         singleLine = true,
-                                        label = { Text("Imgur client ID") },
+                                        label = { Text(stringResource(R.string.settings_imgur_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Primary,
@@ -593,7 +602,7 @@ class SettingsActivity : ComponentActivity() {
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                     Text(
-                                        "Imgur uploads selected images, not PDF reports.",
+                                        stringResource(R.string.settings_imgur_hint),
                                         color = OnSurfaceVariant,
                                         fontSize = 11.sp,
                                         modifier = Modifier.padding(top = 4.dp)
@@ -607,7 +616,7 @@ class SettingsActivity : ComponentActivity() {
                                             prefs.edit().putString(NetworkExportSettings.PREF_ENDPOINT, networkEndpoint).apply()
                                         },
                                         singleLine = true,
-                                        label = { Text(if (networkTarget == NetworkExportTarget.WEBDAV) "WebDAV folder or file URL" else "HTTP upload endpoint") },
+                                        label = { Text(if (networkTarget == NetworkExportTarget.WEBDAV) stringResource(R.string.settings_webdav_label) else stringResource(R.string.settings_http_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Primary,
@@ -626,7 +635,7 @@ class SettingsActivity : ComponentActivity() {
                                             credPrefs.edit().putString(NetworkExportSettings.PREF_AUTHORIZATION, it).apply()
                                         },
                                         singleLine = true,
-                                        label = { Text("Authorization header value") },
+                                        label = { Text(stringResource(R.string.settings_auth_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Primary,
@@ -638,7 +647,7 @@ class SettingsActivity : ComponentActivity() {
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                     Text(
-                                        "Example: Bearer token or Basic credentials. Leave blank for no auth.",
+                                        stringResource(R.string.settings_auth_hint),
                                         color = OnSurfaceVariant,
                                         fontSize = 11.sp,
                                         modifier = Modifier.padding(top = 4.dp)
@@ -651,13 +660,13 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Watermark section
-                    Text("Watermark", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_watermark), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     var watermarkEnabled by remember { mutableStateOf(prefs.getBoolean("watermark_enabled", false)) }
                     SettingToggle(
-                        title = "Add watermark on save",
-                        subtitle = "Stamp diagonal repeating text on saved images",
+                        title = stringResource(R.string.settings_watermark_title),
+                        subtitle = stringResource(R.string.settings_watermark_subtitle),
                         checked = watermarkEnabled,
                         onCheckedChange = { watermarkEnabled = it; prefs.edit().putBoolean("watermark_enabled", it).apply() }
                     )
@@ -672,7 +681,7 @@ class SettingsActivity : ComponentActivity() {
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column(Modifier.padding(16.dp)) {
-                                Text("Watermark text", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text(stringResource(R.string.settings_watermark_text), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                                 Spacer(Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = watermarkText,
@@ -709,11 +718,11 @@ class SettingsActivity : ComponentActivity() {
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Export border", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                            Text("Add padding around saved images", color = OnSurfaceVariant, fontSize = 11.sp)
+                            Text(stringResource(R.string.settings_section_border), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_border_hint), color = OnSurfaceVariant, fontSize = 11.sp)
                             Spacer(Modifier.height(6.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Size: ${borderSize}px", color = OnSurfaceVariant, fontSize = 11.sp,
+                                Text(stringResource(R.string.settings_border_size, borderSize), color = OnSurfaceVariant, fontSize = 11.sp,
                                     modifier = Modifier.width(56.dp))
                                 Slider(
                                     value = borderSize.toFloat(), onValueChange = {
@@ -723,14 +732,14 @@ class SettingsActivity : ComponentActivity() {
                                     valueRange = 0f..100f,
                                     modifier = Modifier
                                         .weight(1f)
-                                        .semantics { contentDescription = "Export border size, ${borderSize} pixels" },
+                                        .semantics { contentDescription = getString(R.string.settings_border_size_cd, borderSize) },
                                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
                                 )
                             }
                             if (borderSize > 0) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Color:", color = OnSurfaceVariant, fontSize = 11.sp)
+                                    Text(stringResource(R.string.settings_border_color), color = OnSurfaceVariant, fontSize = 11.sp)
                                     borderColors.forEachIndexed { i, (color, _) ->
                                         Box(
                                             Modifier.size(24.dp)
@@ -756,8 +765,8 @@ class SettingsActivity : ComponentActivity() {
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text("Save location", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                            Text("Relative path in device storage", color = OnSurfaceVariant, fontSize = 11.sp)
+                            Text(stringResource(R.string.settings_section_location), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_location_hint), color = OnSurfaceVariant, fontSize = 11.sp)
                             Spacer(Modifier.height(8.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf("Pictures/SnapCrop", "DCIM/SnapCrop", "Downloads/SnapCrop").forEach { path ->
@@ -776,12 +785,12 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Service section
-                    Text("Service", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_service), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
-                        title = "Start on boot",
-                        subtitle = "Resume screenshot monitor after device restart",
+                        title = stringResource(R.string.settings_autostart_title),
+                        subtitle = stringResource(R.string.settings_autostart_subtitle),
                         checked = autoStart,
                         onCheckedChange = {
                             autoStart = it
@@ -793,8 +802,8 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean("conditional_auto_actions", false))
                     }
                     SettingToggle(
-                        title = "Quick Crop auto-actions",
-                        subtitle = "When ON, recognized app screenshots can auto-redact sensitive text and save into app-specific albums.",
+                        title = stringResource(R.string.settings_autoactions_title),
+                        subtitle = stringResource(R.string.settings_autoactions_subtitle),
                         checked = conditionalAutoActions,
                         onCheckedChange = {
                             conditionalAutoActions = it
@@ -805,7 +814,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Storage section
-                    Text("Storage", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_storage), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
 
                     Card(
@@ -818,7 +827,7 @@ class SettingsActivity : ComponentActivity() {
                                 withContext(Dispatchers.Main) {
                                     android.widget.Toast.makeText(
                                         this@SettingsActivity,
-                                        "Temporary files cleared",
+                                        getString(R.string.toast_temp_cleared),
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 }
@@ -827,8 +836,8 @@ class SettingsActivity : ComponentActivity() {
                     ) {
                         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text("Clear cache", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                                Text("Remove temporary share/clipboard files", color = OnSurfaceVariant, fontSize = 12.sp)
+                                Text(stringResource(R.string.settings_clear_cache), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Text(stringResource(R.string.settings_clear_cache_subtitle), color = OnSurfaceVariant, fontSize = 12.sp)
                             }
                         }
                     }
@@ -836,14 +845,14 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // About
-                    Text("About", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_section_about), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
-                    Text("SnapCrop v${BuildConfig.VERSION_NAME}", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
-                    Text("Auto-crop, annotate, and redact screenshots instantly.",
+                    Text(stringResource(R.string.settings_about_tagline),
                         color = OnSurfaceVariant, fontSize = 13.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text("github.com/SysAdminDoc/SnapCrop",
+                    Text(stringResource(R.string.settings_about_url),
                         color = Primary, fontSize = 12.sp)
                     Spacer(Modifier.height(24.dp))
                 }
@@ -856,14 +865,14 @@ class SettingsActivity : ComponentActivity() {
         clipboard.setPrimaryClip(
             ClipData.newPlainText("SnapCrop app rules", UserAppProfileStore.encode(profiles))
         )
-        Toast.makeText(this, "App profile pack copied", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.toast_profile_copied), Toast.LENGTH_SHORT).show()
     }
 
     private suspend fun testAppRuleImage(uri: Uri, prefs: SharedPreferences): String =
         withContext(Dispatchers.IO) {
             val bitmap = contentResolver.openInputStream(uri)?.use { stream ->
                 BitmapFactory.decodeStream(stream)
-            } ?: return@withContext "Test image could not be opened"
+            } ?: return@withContext getString(R.string.rules_test_open_failed)
             try {
                 val userProfiles = UserAppProfileStore.load(prefs)
                 val sourceHints = CropSourceHints.normalize(
@@ -884,8 +893,8 @@ class SettingsActivity : ComponentActivity() {
                     appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
                 )
                 preview?.let {
-                    "Matched ${it.label} (${(it.confidence * 100).roundToInt()}%): ${it.reason}"
-                } ?: "No app rule matched this image"
+                    getString(R.string.rules_test_matched, it.label, (it.confidence * 100).roundToInt(), it.reason)
+                } ?: getString(R.string.rules_test_no_match)
             } finally {
                 bitmap.recycle()
             }
@@ -973,12 +982,12 @@ private fun AppRulesPanel(
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text("App rules", color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+            Text(stringResource(R.string.rules_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
             Text(
                 if (enabled) {
-                    "Built-in and user-trained rules can crop app chrome, then Quick Crop auto-actions can route matching exports."
+                    stringResource(R.string.rules_body_enabled)
                 } else {
-                    "Rules are saved, but App crop profiles is off."
+                    stringResource(R.string.rules_body_disabled)
                 },
                 color = OnSurfaceVariant,
                 fontSize = 12.sp,
@@ -986,16 +995,16 @@ private fun AppRulesPanel(
             )
 
             Spacer(Modifier.height(12.dp))
-            Text("Built-in profiles", color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.rules_builtin), color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
             builtIns.forEach { BuiltInRuleRow(it) }
 
             Spacer(Modifier.height(12.dp))
-            Text("User-trained profiles", color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.rules_user_title), color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
             if (profiles.isEmpty()) {
                 Text(
-                    "No custom app rules yet.",
+                    stringResource(R.string.rules_user_empty),
                     color = OnSurfaceVariant,
                     fontSize = 12.sp
                 )
@@ -1011,12 +1020,12 @@ private fun AppRulesPanel(
             }
 
             Spacer(Modifier.height(12.dp))
-            Text("Create rule", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.rules_create), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(
                 value = ruleName,
                 onValueChange = { ruleName = it },
-                label = { Text("Rule name") },
+                label = { Text(stringResource(R.string.rules_name_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 colors = appRuleTextFieldColors(),
@@ -1026,8 +1035,8 @@ private fun AppRulesPanel(
             OutlinedTextField(
                 value = sourceHints,
                 onValueChange = { sourceHints = it },
-                label = { Text("Source app/package hints") },
-                placeholder = { Text("com.example.app, example") },
+                label = { Text(stringResource(R.string.rules_source_label)) },
+                placeholder = { Text(stringResource(R.string.rules_source_placeholder)) },
                 minLines = 1,
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth(),
@@ -1038,8 +1047,8 @@ private fun AppRulesPanel(
             OutlinedTextField(
                 value = ocrKeywords,
                 onValueChange = { ocrKeywords = it },
-                label = { Text("OCR keywords") },
-                placeholder = { Text("invoice, checkout, workspace") },
+                label = { Text(stringResource(R.string.rules_ocr_label)) },
+                placeholder = { Text(stringResource(R.string.rules_ocr_placeholder)) },
                 minLines = 1,
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth(),
@@ -1050,7 +1059,7 @@ private fun AppRulesPanel(
             OutlinedTextField(
                 value = albumName,
                 onValueChange = { albumName = it },
-                label = { Text("Album destination") },
+                label = { Text(stringResource(R.string.rules_album_label)) },
                 placeholder = { Text(ruleName.ifBlank { "Custom" }) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -1060,7 +1069,7 @@ private fun AppRulesPanel(
 
             Spacer(Modifier.height(10.dp))
             Text(
-                "Preview crop: ${formatPercent(leftCrop)} left, ${formatPercent(topCrop)} top, ${formatPercent(rightCrop)} right, ${formatPercent(bottomCrop)} bottom",
+                stringResource(R.string.rules_crop_preview, formatPercent(leftCrop), formatPercent(topCrop), formatPercent(rightCrop), formatPercent(bottomCrop)),
                 color = OnSurfaceVariant,
                 fontSize = 12.sp,
                 lineHeight = 17.sp
@@ -1078,9 +1087,9 @@ private fun AppRulesPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("Redact on Quick Crop", color = OnSurface, fontSize = 13.sp)
+                    Text(stringResource(R.string.rules_redact_title), color = OnSurface, fontSize = 13.sp)
                     Text(
-                        "Requires Quick Crop auto-actions. Matching manual editor crops are never silently redacted.",
+                        stringResource(R.string.rules_redact_subtitle),
                         color = OnSurfaceVariant,
                         fontSize = 11.sp,
                         lineHeight = 15.sp
@@ -1099,16 +1108,16 @@ private fun AppRulesPanel(
             }
 
             Spacer(Modifier.height(8.dp))
-            Text("Export format", color = OnSurface, fontSize = 13.sp)
+            Text(stringResource(R.string.rules_export_format), color = OnSurface, fontSize = 13.sp)
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ExportFormatChip("Default", "default", exportFormat) { exportFormat = it }
-                    ExportFormatChip("PNG", "png", exportFormat) { exportFormat = it }
+                    ExportFormatChip(stringResource(R.string.format_default), "default", exportFormat) { exportFormat = it }
+                    ExportFormatChip(stringResource(R.string.format_png), "png", exportFormat) { exportFormat = it }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ExportFormatChip("JPEG", "jpeg", exportFormat) { exportFormat = it }
-                    ExportFormatChip("WebP", "webp", exportFormat) { exportFormat = it }
+                    ExportFormatChip(stringResource(R.string.format_jpeg), "jpeg", exportFormat) { exportFormat = it }
+                    ExportFormatChip(stringResource(R.string.format_webp), "webp", exportFormat) { exportFormat = it }
                 }
             }
 
@@ -1144,11 +1153,11 @@ private fun AppRulesPanel(
                 colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("Save rule")
+                Text(stringResource(R.string.rules_save))
             }
             if (!canSave) {
                 Text(
-                    "A rule needs a name plus at least one source hint or OCR keyword.",
+                    stringResource(R.string.rules_save_hint),
                     color = OnSurfaceVariant,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
@@ -1157,9 +1166,9 @@ private fun AppRulesPanel(
             }
 
             Spacer(Modifier.height(14.dp))
-            Text("Profile packs", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.rules_packs_title), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(
-                "Copy exports a JSON pack. Import merges pasted profiles by id.",
+                stringResource(R.string.rules_packs_body),
                 color = OnSurfaceVariant,
                 fontSize = 11.sp,
                 lineHeight = 15.sp
@@ -1168,7 +1177,7 @@ private fun AppRulesPanel(
             OutlinedTextField(
                 value = importText,
                 onValueChange = onImportTextChange,
-                label = { Text("Paste profile pack JSON") },
+                label = { Text(stringResource(R.string.rules_packs_paste)) },
                 minLines = 2,
                 maxLines = 5,
                 modifier = Modifier.fillMaxWidth(),
@@ -1178,7 +1187,7 @@ private fun AppRulesPanel(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onCopyProfiles, shape = RoundedCornerShape(8.dp)) {
-                    Text("Copy pack", color = Primary)
+                    Text(stringResource(R.string.rules_copy_pack), color = Primary)
                 }
                 Button(
                     onClick = onImportProfiles,
@@ -1186,16 +1195,16 @@ private fun AppRulesPanel(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("Import")
+                    Text(stringResource(R.string.import_label))
                 }
             }
 
             Spacer(Modifier.height(14.dp))
-            Text("Test image", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.rules_test_title), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Text(testStatus, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
             Spacer(Modifier.height(8.dp))
             OutlinedButton(onClick = onPickTestImage, shape = RoundedCornerShape(8.dp)) {
-                Text("Choose image", color = Primary)
+                Text(stringResource(R.string.rules_test_choose), color = Primary)
             }
         }
     }
@@ -1212,10 +1221,10 @@ private fun BuiltInRuleRow(profile: BuiltInAppCropProfileInfo) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(profile.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.width(8.dp))
-            Text("Built-in", color = Primary, fontSize = 11.sp)
+            Text(stringResource(R.string.rules_builtin_badge), color = Primary, fontSize = 11.sp)
         }
         Text(
-            "Hints: ${profile.aliases.joinToString(", ")}",
+            stringResource(R.string.rules_hints, profile.aliases.joinToString(", ")),
             color = OnSurfaceVariant,
             fontSize = 11.sp,
             maxLines = 1,
@@ -1247,7 +1256,7 @@ private fun UserRuleRow(
             Column(Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(profile.label, color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 Text(
-                    "Crop ${profile.cropSummary()}",
+                    stringResource(R.string.rules_crop, profile.cropSummary()),
                     color = OnSurfaceVariant,
                     fontSize = 11.sp,
                     lineHeight = 15.sp
@@ -1265,27 +1274,32 @@ private fun UserRuleRow(
             )
         }
         Text(
-            "Sources: ${profile.sourceHints.ifEmpty { listOf("none") }.joinToString(", ")}",
+            stringResource(R.string.rules_sources, profile.sourceHints.ifEmpty { listOf(stringResource(R.string.rules_none)) }.joinToString(", ")),
             color = OnSurfaceVariant,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            "OCR: ${profile.ocrKeywords.ifEmpty { listOf("none") }.joinToString(", ")}",
+            stringResource(R.string.rules_ocr, profile.ocrKeywords.ifEmpty { listOf(stringResource(R.string.rules_none)) }.joinToString(", ")),
             color = OnSurfaceVariant,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            "Quick Crop: ${profile.albumName}, ${if (profile.redactSensitiveText) "redact" else "no redaction"}, ${profile.normalizedExportFormat()} export",
+            stringResource(
+                R.string.rules_quick_crop,
+                profile.albumName,
+                if (profile.redactSensitiveText) stringResource(R.string.rules_redact) else stringResource(R.string.rules_no_redaction),
+                profile.normalizedExportFormat()
+            ),
             color = OnSurfaceVariant,
             fontSize = 11.sp,
             lineHeight = 15.sp
         )
         OutlinedButton(onClick = onDelete, shape = RoundedCornerShape(8.dp)) {
-            Text("Delete", color = Tertiary)
+            Text(stringResource(R.string.delete), color = Tertiary)
         }
     }
 }
