@@ -80,6 +80,12 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Migrated from Coil 2.7 to Coil 3.3 for faster image loading and reduced
+  allocations during gallery scrolling. Artifact group changed from
+  `io.coil-kt` to `io.coil-kt.coil3`; all imports updated to `coil3.*`.
+- Verified AVIF (Android 12+) and HEIC (Android 10+) read support works
+  natively via BitmapFactory — no code changes needed since SnapCrop accepts
+  `image/*` MIME types and has no format filtering.
 - Added TalkBack accessibility labels across all screens: semantics on Switch
   toggles, Slider controls, clickable Cards/tiles, color swatches, emoji
   pickers, gallery photo items, collage cells, layer controls, stitch reorder

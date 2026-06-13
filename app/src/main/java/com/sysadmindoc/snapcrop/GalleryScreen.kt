@@ -60,8 +60,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.sysadmindoc.snapcrop.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -694,7 +694,7 @@ private fun AlbumGrid(
                     Box(Modifier.fillMaxSize()) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data(album.coverUri).crossfade(true).size(300).build(),
+                                .data(album.coverUri).crossfade(true).size(300, 300).build(),
                             contentDescription = album.name,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
@@ -749,7 +749,7 @@ private fun AlbumGrid(
                 Box(Modifier.fillMaxSize()) {
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
-                            .data(album.coverUri).crossfade(true).size(300).build(),
+                            .data(album.coverUri).crossfade(true).size(300, 300).build(),
                         contentDescription = album.name,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
@@ -837,7 +837,7 @@ private fun PhotoGrid(
             Box(Modifier.semantics { contentDescription = photoLabel }) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(photo.uri).crossfade(true).size(250).build(),
+                        .data(photo.uri).crossfade(true).size(250, 250).build(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                         .clip(RoundedCornerShape(2.dp))
@@ -895,7 +895,7 @@ private fun PhotoItem(
     Box(Modifier.semantics { contentDescription = photoLabel }) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(photo.uri).crossfade(true).size(250).build(),
+                .data(photo.uri).crossfade(true).size(250, 250).build(),
             contentDescription = null,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .clip(RoundedCornerShape(2.dp))

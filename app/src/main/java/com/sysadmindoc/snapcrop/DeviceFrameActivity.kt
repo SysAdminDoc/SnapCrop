@@ -31,7 +31,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.*
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers

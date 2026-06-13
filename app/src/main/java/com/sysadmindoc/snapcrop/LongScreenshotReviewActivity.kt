@@ -44,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
