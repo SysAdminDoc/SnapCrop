@@ -76,6 +76,10 @@ All notable changes to SnapCrop will be documented in this file.
 - Verified aCropalypse-safe save pipeline: all six save paths (CropActivity,
   StitchActivity, CollageActivity, DeviceFrameActivity, ScreenshotService,
   LongScreenshotStore) use MediaStore insert, never overwrite-in-place.
+- Migrated to targetSdk 36 with `enableOnBackInvokedCallback` for predictive
+  back gesture support and 16KB NDK page alignment for Google Play compliance.
+- Added unsaved-changes confirmation dialog when closing the editor via back
+  gesture or close button with pending edits.
 
 ## [v6.19.0] - 2026-05-14
 

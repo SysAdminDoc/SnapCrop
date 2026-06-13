@@ -16,6 +16,7 @@
     <application
         android:name=".SnapCropApp"
         android:allowBackup="false"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@mipmap/ic_launcher"
         android:label="SnapCrop"
         android:supportsRtl="true"

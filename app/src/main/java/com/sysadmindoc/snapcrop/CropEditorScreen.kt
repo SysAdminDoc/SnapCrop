@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sysadmindoc.snapcrop.ui.theme.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.compose.BackHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -117,6 +118,8 @@ fun CropEditorScreen(
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
     val scope = rememberCoroutineScope()
+
+    var showDiscardDialog by remember { mutableStateOf(false) }
 
     // Base scale/offset (fit image to canvas)
     var baseScale by remember { mutableFloatStateOf(1f) }
@@ -294,6 +297,10 @@ fun CropEditorScreen(
 
     val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
     val redoStack = remember { mutableStateListOf<EditorSnapshot>() }
+
+    val hasUnsavedChanges by remember { derivedStateOf { undoStack.isNotEmpty() } }
+
+    BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     fun pushUndo() {
         undoStack.add(captureSnapshot())
@@ -1074,7 +1081,7 @@ fun CropEditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDiscard, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDiscard() }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Close, "Close", tint = OnSurface, modifier = Modifier.size(20.dp))
                 }
                 IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(40.dp)) {
@@ -3057,6 +3064,23 @@ fun CropEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showTextDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Discard changes?", color = OnSurface) },
+            text = { Text("You have unsaved edits. Discard them?", color = OnSurfaceVariant) },
+            confirmButton = {
+                TextButton(onClick = { showDiscardDialog = false; onDiscard() }) {
+                    Text("Discard", color = Tertiary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardDialog = false }) { Text("Keep editing", color = Primary) }
             },
             containerColor = SurfaceVariant
         )

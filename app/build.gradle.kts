@@ -30,7 +30,7 @@ android {
     defaultConfig {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 67
         versionName = "6.19.0"
     }
