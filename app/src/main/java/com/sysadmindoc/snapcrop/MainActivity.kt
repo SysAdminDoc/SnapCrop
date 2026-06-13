@@ -60,6 +60,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -383,6 +385,9 @@ class MainActivity : ComponentActivity() {
                                             selected = selectedSize == size,
                                             onClick = { selectedSize = size },
                                             label = { Text("$size", fontSize = 12.sp) },
+                                            modifier = Modifier.semantics {
+                                                contentDescription = "${size}px resize target${if (selectedSize == size) ", selected" else ""}"
+                                            },
                                             colors = FilterChipDefaults.filterChipColors(
                                                 selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -1632,7 +1637,10 @@ private fun HomeScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
+                    .padding(20.dp)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = "Screenshot Monitor, ${if (isRunning) "active" else "paused"}"
+                    },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1947,6 +1955,9 @@ private fun HomeActionTile(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = 84.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$title. $subtitle"
+            }
             .clickable(enabled = enabled, onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
         shape = RoundedCornerShape(12.dp)

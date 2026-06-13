@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -238,6 +240,9 @@ private fun StitchScreen(
                 selected = isVertical,
                 onClick = { if (!isVertical) onToggleDirection() },
                 label = { Text("Vertical") },
+                modifier = Modifier.semantics {
+                    contentDescription = "Vertical stitch direction${if (isVertical) ", selected" else ""}"
+                },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                     containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -247,6 +252,9 @@ private fun StitchScreen(
                 selected = !isVertical,
                 onClick = { if (isVertical) onToggleDirection() },
                 label = { Text("Horizontal") },
+                modifier = Modifier.semantics {
+                    contentDescription = "Horizontal stitch direction${if (!isVertical) ", selected" else ""}"
+                },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                     containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -296,7 +304,7 @@ private fun StitchScreen(
                                     onClick = { onMoveUp(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowUpward, "Move up", tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowUpward, "Move image ${index + 1} up", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             if (index < uris.size - 1) {
@@ -304,14 +312,14 @@ private fun StitchScreen(
                                     onClick = { onMoveDown(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowDownward, "Move down", tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowDownward, "Move image ${index + 1} down", tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
+                            ) { Icon(Icons.Default.Close, "Remove image ${index + 1}", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
@@ -334,7 +342,7 @@ private fun StitchScreen(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            ) { Icon(Icons.Default.Close, "Remove", tint = Tertiary, modifier = Modifier.size(18.dp)) }
+                            ) { Icon(Icons.Default.Close, "Remove image ${index + 1}", tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }

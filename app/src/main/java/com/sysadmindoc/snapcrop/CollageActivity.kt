@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -327,6 +329,9 @@ private fun CollageScreen(
                     selected = layout == l,
                     onClick = { onLayoutChange(l) },
                     label = { Text(l.name, fontSize = 12.sp) },
+                    modifier = Modifier.semantics {
+                        contentDescription = "${l.name} layout, ${l.slots} cells${if (layout == l) ", selected" else ""}"
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -341,7 +346,10 @@ private fun CollageScreen(
             Text("Gap: ${spacing}px", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(56.dp))
             Slider(
                 value = spacing.toFloat(), onValueChange = { onSpacingChange(it.toInt()) },
-                valueRange = 0f..20f, modifier = Modifier.weight(1f),
+                valueRange = 0f..20f,
+                modifier = Modifier.weight(1f).semantics {
+                    contentDescription = "Gap spacing, ${spacing} pixels"
+                },
                 colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
             )
         }
@@ -352,10 +360,14 @@ private fun CollageScreen(
             verticalAlignment = Alignment.CenterVertically) {
             Text("Cells:", color = OnSurfaceVariant, fontSize = 11.sp)
             listOf("4:3" to 4f/3f, "1:1" to 1f, "16:9" to 16f/9f, "3:4" to 3f/4f).forEach { (label, ratio) ->
+                val isSelected = kotlin.math.abs(cellAspect - ratio) < 0.01f
                 FilterChip(
-                    selected = kotlin.math.abs(cellAspect - ratio) < 0.01f,
+                    selected = isSelected,
                     onClick = { onCellAspectChange(ratio) },
                     label = { Text(label, fontSize = 11.sp) },
+                    modifier = Modifier.semantics {
+                        contentDescription = "$label cell aspect ratio${if (isSelected) ", selected" else ""}"
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -376,6 +388,9 @@ private fun CollageScreen(
                     Modifier.size(24.dp)
                         .background(Color(color), RoundedCornerShape(4.dp))
                         .then(if (i == bgColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                        .semantics {
+                            contentDescription = "$name background color${if (i == bgColorIdx) ", selected" else ""}"
+                        }
                         .clickable { onBgColorChange(i) }
                 )
             }
@@ -417,6 +432,13 @@ private fun CollageScreen(
                                     Modifier.weight(1f).fillMaxHeight()
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(Color.Black.copy(alpha = 0.3f))
+                                        .semantics {
+                                            contentDescription = if (occupied) {
+                                                "Collage cell ${idx + 1}, image loaded"
+                                            } else {
+                                                "Empty collage cell ${idx + 1}, tap to add image"
+                                            }
+                                        }
                                         .clickable {
                                             // Occupied cell: long-press would remove, single-tap is no-op
                                             // to prevent accidental edits. Empty cell appends new images.
@@ -435,7 +457,7 @@ private fun CollageScreen(
                                             modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
                                                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                                         ) {
-                                            Icon(Icons.Default.Close, "Remove",
+                                            Icon(Icons.Default.Close, "Remove image from cell ${idx + 1}",
                                                 tint = OnSurface, modifier = Modifier.size(16.dp))
                                         }
                                     } else {

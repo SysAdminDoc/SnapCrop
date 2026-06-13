@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -129,11 +131,13 @@ internal fun DrawLayerPanel(
                         }
                         IconButton(
                             onClick = { onToggleVisible(actualIndex) },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(30.dp).semantics {
+                                contentDescription = if (layer.visible) "Hide ${layer.layerTitle()}" else "Show ${layer.layerTitle()}"
+                            }
                         ) {
                             Icon(
                                 if (layer.visible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                if (layer.visible) "Hide layer" else "Show layer",
+                                null,
                                 tint = if (layer.visible) Secondary else OnSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -141,6 +145,9 @@ internal fun DrawLayerPanel(
                         TextButton(
                             onClick = { onMoveLayer(actualIndex, actualIndex + 1) },
                             enabled = actualIndex < drawPaths.lastIndex,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Move ${layer.layerTitle()} up"
+                            },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
                             Text(
@@ -152,6 +159,9 @@ internal fun DrawLayerPanel(
                         TextButton(
                             onClick = { onMoveLayer(actualIndex, actualIndex - 1) },
                             enabled = actualIndex > 0,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Move ${layer.layerTitle()} down"
+                            },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
                             Text(
@@ -162,9 +172,11 @@ internal fun DrawLayerPanel(
                         }
                         IconButton(
                             onClick = { onDeleteLayer(actualIndex) },
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(30.dp).semantics {
+                                contentDescription = "Delete ${layer.layerTitle()}"
+                            }
                         ) {
-                            Icon(Icons.Default.Delete, "Delete layer", tint = Tertiary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }

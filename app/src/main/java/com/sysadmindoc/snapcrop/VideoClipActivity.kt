@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -273,7 +275,9 @@ private fun VideoClipScreen(
                 value = framePosition.coerceIn(0f, durationMs.toFloat().coerceAtLeast(1f)),
                 onValueChange = { framePosition = it },
                 valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).semantics {
+                    contentDescription = "Frame position at ${formatMs(framePosition.toLong())} of ${formatMs(durationMs)}"
+                },
                 colors = SliderDefaults.colors(
                     thumbColor = Primary,
                     activeTrackColor = Primary,
@@ -311,6 +315,9 @@ private fun VideoClipScreen(
                 trimRange = it.start.coerceAtLeast(0f)..it.endInclusive.coerceAtMost(durationMs.toFloat())
             },
             valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
+            modifier = Modifier.semantics {
+                contentDescription = "Trim range from ${formatMs(trimRange.start.toLong())} to ${formatMs(trimRange.endInclusive.toLong())}"
+            },
             colors = SliderDefaults.colors(
                 thumbColor = Primary,
                 activeTrackColor = Primary,

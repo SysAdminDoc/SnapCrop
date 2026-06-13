@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -261,6 +263,9 @@ private fun FrameScreen(
                     selected = frame == f,
                     onClick = { onFrameChange(f) },
                     label = { Text(f.name, fontSize = 12.sp) },
+                    modifier = Modifier.semantics {
+                        contentDescription = "${f.name} device frame${if (frame == f) ", selected" else ""}"
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
