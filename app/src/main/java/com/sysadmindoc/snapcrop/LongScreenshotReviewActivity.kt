@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import coil3.compose.AsyncImage
+import com.sysadmindoc.snapcrop.ui.theme.OnPrimary
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
@@ -247,7 +248,7 @@ private fun LongScreenshotReviewScreen(
                     onClick = onSave,
                     enabled = uri != null && !isSaving,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black)
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary)
                 ) {
                     Icon(Icons.Default.Save, stringResource(R.string.long_screenshot_save_edit), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))

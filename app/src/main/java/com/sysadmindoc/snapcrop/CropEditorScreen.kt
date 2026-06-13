@@ -1599,7 +1599,7 @@ fun CropEditorScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Surface(color = Tertiary, shape = RoundedCornerShape(8.dp)) {
                                     Text("$lastFaceCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                                        fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                        fontSize = 9.sp, color = OnPrimary, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -1638,7 +1638,7 @@ fun CropEditorScreen(
                                 Spacer(Modifier.width(4.dp))
                                 Surface(color = Primary, shape = RoundedCornerShape(8.dp)) {
                                     Text("$lastTextRedactionCount", Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                                        fontSize = 9.sp, color = Color.Black, fontWeight = FontWeight.Bold)
+                                        fontSize = 9.sp, color = OnPrimary, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -3109,7 +3109,7 @@ fun CropEditorScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = Color.Black)
+                Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = OnPrimary)
                 Spacer(Modifier.width(8.dp))
                 // Estimated file size (read prefs once, not every recomposition)
                 val (isJpeg, isWebp) = remember {
@@ -3126,12 +3126,12 @@ fun CropEditorScreen(
                 Spacer(Modifier.width(6.dp))
                 Text(
                     if (replaceOriginalOnSave) stringResource(R.string.crop_save_replace) else stringResource(R.string.crop_save_copy),
-                    color = Color.Black,
+                    color = OnPrimary,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(estLabel, color = Color.Black.copy(alpha = 0.5f), fontSize = 10.sp)
+                Text(estLabel, color = OnPrimary.copy(alpha = 0.5f), fontSize = 10.sp)
             }
         }
     }
@@ -3292,12 +3292,12 @@ fun CropEditorScreen(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         if (translating) {
-                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Black)
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = OnPrimary)
                         } else {
-                            Icon(Icons.Default.Translate, null, modifier = Modifier.size(16.dp), tint = Black)
+                            Icon(Icons.Default.Translate, null, modifier = Modifier.size(16.dp), tint = OnPrimary)
                         }
                         Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.ocr_translate), color = Black)
+                        Text(stringResource(R.string.ocr_translate), color = OnPrimary)
                     }
                 }
             },

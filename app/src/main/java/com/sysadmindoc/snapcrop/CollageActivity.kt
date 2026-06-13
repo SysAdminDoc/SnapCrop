@@ -494,10 +494,10 @@ private fun CollageScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Save, null, Modifier.size(18.dp),
-                        tint = if (canSave) Color.Black else OnSurfaceVariant)
+                        tint = if (canSave) OnPrimary else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
                     Text(if (canSave) stringResource(R.string.collage_save_button) else stringResource(R.string.collage_save_needs_two),
-                        color = if (canSave) Color.Black else OnSurfaceVariant,
+                        color = if (canSave) OnPrimary else OnSurfaceVariant,
                         fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }

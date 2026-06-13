@@ -297,9 +297,9 @@ private fun VideoClipScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Primary),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Icon(Icons.Default.Crop, null, modifier = Modifier.size(16.dp), tint = Color.Black)
+            Icon(Icons.Default.Crop, null, modifier = Modifier.size(16.dp), tint = OnPrimary)
             Spacer(Modifier.width(6.dp))
-            Text(stringResource(R.string.video_grab_edit), color = Color.Black)
+            Text(stringResource(R.string.video_grab_edit), color = OnPrimary)
         }
 
         Spacer(Modifier.height(20.dp))

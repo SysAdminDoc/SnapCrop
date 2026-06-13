@@ -239,7 +239,7 @@ class MainActivity : ComponentActivity() {
                 val credPrefs = remember { NetworkExportSettings.encryptedPrefs(this@MainActivity) }
 
                 Scaffold(
-                    containerColor = Color.Black,
+                    containerColor = Black,
                     bottomBar = {
                         NavigationBar(containerColor = SurfaceVariant) {
                             NavigationBarItem(
@@ -1540,7 +1540,7 @@ private fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Black)
             .systemBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
@@ -1609,7 +1609,7 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.home_permission_grant), color = Color.Black)
+                    Text(stringResource(R.string.home_permission_grant), color = OnPrimary)
                 }
             }
         }
@@ -1635,7 +1635,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text(stringResource(R.string.home_overlay_grant), color = Color.Black) }
+                ) { Text(stringResource(R.string.home_overlay_grant), color = OnPrimary) }
             }
         }
 
@@ -1690,7 +1690,7 @@ private fun HomeScreen(
                     checked = isRunning,
                     onCheckedChange = { onToggleService() },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.Black,
+                        checkedThumbColor = OnPrimary,
                         checkedTrackColor = Primary,
                         uncheckedThumbColor = OnSurfaceVariant,
                         uncheckedTrackColor = SurfaceVariant

@@ -87,7 +87,7 @@ class SettingsActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black)
+                        .background(Black)
                         .systemBarsPadding()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -121,6 +121,54 @@ class SettingsActivity : ComponentActivity() {
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
                             )
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Appearance section
+                    Text(stringResource(R.string.settings_section_appearance), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+
+                    var themePref by remember { mutableStateOf(prefs.getString("theme", "dark") ?: "dark") }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.settings_theme_title), color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf(
+                                    "dark" to R.string.settings_theme_dark,
+                                    "light" to R.string.settings_theme_light,
+                                    "system" to R.string.settings_theme_system
+                                ).forEach { (key, labelRes) ->
+                                    FilterChip(
+                                        selected = themePref == key,
+                                        onClick = {
+                                            themePref = key
+                                            prefs.edit().putString("theme", key).apply()
+                                            isDarkTheme = when (key) {
+                                                "light" -> false
+                                                "system" -> resources.configuration.uiMode and
+                                                    android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                                                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+                                                else -> true
+                                            }
+                                        },
+                                        label = { Text(stringResource(labelRes), fontSize = 13.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = PrimaryContainer,
+                                            selectedLabelColor = Primary,
+                                            containerColor = SurfaceContainer,
+                                            labelColor = OnSurfaceVariant
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -268,7 +316,7 @@ class SettingsActivity : ComponentActivity() {
                                                 }
                                             }
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
                                         Text(stringResource(R.string.settings_rebuild))
@@ -937,7 +985,7 @@ private fun SettingToggle(
                 onCheckedChange = onCheckedChange,
                 enabled = enabled,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
+                    checkedThumbColor = OnPrimary,
                     checkedTrackColor = Primary,
                     uncheckedThumbColor = OnSurfaceVariant,
                     uncheckedTrackColor = SurfaceVariant
@@ -1100,7 +1148,7 @@ private fun AppRulesPanel(
                     checked = redactSensitiveText,
                     onCheckedChange = { redactSensitiveText = it },
                     colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.Black,
+                        checkedThumbColor = OnPrimary,
                         checkedTrackColor = Primary,
                         uncheckedThumbColor = OnSurfaceVariant,
                         uncheckedTrackColor = SurfaceVariant
@@ -1151,7 +1199,7 @@ private fun AppRulesPanel(
                     exportFormat = "default"
                 },
                 enabled = canSave,
-                colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary),
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(stringResource(R.string.rules_save))
@@ -1193,7 +1241,7 @@ private fun AppRulesPanel(
                 Button(
                     onClick = onImportProfiles,
                     enabled = importText.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(stringResource(R.string.import_label))
@@ -1267,7 +1315,7 @@ private fun UserRuleRow(
                 checked = profile.enabled,
                 onCheckedChange = { onToggle() },
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.Black,
+                    checkedThumbColor = OnPrimary,
                     checkedTrackColor = Primary,
                     uncheckedThumbColor = OnSurfaceVariant,
                     uncheckedTrackColor = SurfaceVariant
