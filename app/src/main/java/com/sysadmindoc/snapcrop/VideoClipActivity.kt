@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -94,7 +95,7 @@ class VideoClipActivity : ComponentActivity() {
                 val frame = VideoClipExporter.frameAt(this@VideoClipActivity, uri, timeMs)
                 if (frame == null) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@VideoClipActivity, "Frame capture failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_failed), Toast.LENGTH_SHORT).show()
                     }
                     return@launch
                 }
@@ -118,10 +119,10 @@ class VideoClipActivity : ComponentActivity() {
 
                 withContext(Dispatchers.Main) {
                     if (savedUri != null) {
-                        Toast.makeText(this@VideoClipActivity, "Frame saved", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_saved), Toast.LENGTH_SHORT).show()
                         startActivity(Intent(this@VideoClipActivity, CropActivity::class.java).apply { data = savedUri })
                     } else {
-                        Toast.makeText(this@VideoClipActivity, "Frame save failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_save_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
             } finally {
@@ -135,7 +136,7 @@ class VideoClipActivity : ComponentActivity() {
     private fun trimClip(startMs: Long, endMs: Long) {
         val uri = videoUri ?: return
         if (endMs - startMs < 1000L) {
-            Toast.makeText(this, "Choose at least one second", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.video_min_duration), Toast.LENGTH_SHORT).show()
             return
         }
         if (isWorking.value) return
@@ -146,9 +147,9 @@ class VideoClipActivity : ComponentActivity() {
                 val savedUri = VideoClipExporter.trimToGallery(this@VideoClipActivity, uri, startMs, endMs)
                 withContext(Dispatchers.Main) {
                     if (savedUri != null) {
-                        Toast.makeText(this@VideoClipActivity, "Clip saved to Movies/SnapCrop", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VideoClipActivity, getString(R.string.video_trim_saved), Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(this@VideoClipActivity, "Clip trim failed", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@VideoClipActivity, getString(R.string.video_trim_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
             } finally {
@@ -166,7 +167,7 @@ class VideoClipActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })
         } catch (_: Exception) {
-            Toast.makeText(this, "No video player available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.video_no_player), Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -224,15 +225,15 @@ private fun VideoClipScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.ArrowBack, "Back", tint = OnSurface)
+                Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
             }
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text("Screen Recording", color = OnSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                Text("Trim a clip or grab a frame for editing", color = OnSurfaceVariant, fontSize = 12.sp)
+                Text(stringResource(R.string.video_screen_recording), color = OnSurface, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.video_empty_subtitle), color = OnSurfaceVariant, fontSize = 12.sp)
             }
             IconButton(onClick = onOpenExternally) {
-                Icon(Icons.Default.PlayCircle, "Play video", tint = OnSurfaceVariant)
+                Icon(Icons.Default.PlayCircle, stringResource(R.string.video_play), tint = OnSurfaceVariant)
             }
         }
 
@@ -256,19 +257,19 @@ private fun VideoClipScreen(
                 if (image != null) {
                     Image(
                         bitmap = image,
-                        contentDescription = "Selected video frame",
+                        contentDescription = stringResource(R.string.video_frame_cd),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
                 } else {
-                    Text("Move the scrubber to preview a frame", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.video_scrubber_hint), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
-        Text("Frame", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(stringResource(R.string.video_frame_label), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(formatMs(framePosition.toLong()), color = OnSurfaceVariant, fontSize = 12.sp, modifier = Modifier.width(56.dp))
             Slider(
@@ -298,12 +299,12 @@ private fun VideoClipScreen(
         ) {
             Icon(Icons.Default.Crop, null, modifier = Modifier.size(16.dp), tint = Color.Black)
             Spacer(Modifier.width(6.dp))
-            Text("Grab frame and edit", color = Color.Black)
+            Text(stringResource(R.string.video_grab_edit), color = Color.Black)
         }
 
         Spacer(Modifier.height(20.dp))
 
-        Text("Trim clip", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(stringResource(R.string.video_trim_clip), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Text(
             "${formatMs(trimRange.start.toLong())} - ${formatMs(trimRange.endInclusive.toLong())}",
             color = OnSurfaceVariant,
@@ -336,12 +337,12 @@ private fun VideoClipScreen(
         ) {
             Icon(Icons.Default.ContentCut, null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Save trimmed clip")
+            Text(stringResource(R.string.video_save_trim))
         }
 
         Spacer(Modifier.height(16.dp))
         Text(
-            "Frames save to your SnapCrop image folder. Trimmed clips save to Movies/SnapCrop.",
+            stringResource(R.string.video_footer),
             color = OnSurfaceVariant,
             fontSize = 12.sp,
             lineHeight = 17.sp

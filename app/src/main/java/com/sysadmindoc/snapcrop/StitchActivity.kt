@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -98,7 +99,7 @@ class StitchActivity : ComponentActivity() {
                 if (bitmaps.size < 2) {
                     bitmaps.forEach { it.recycle() }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@StitchActivity, "Need at least 2 images", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@StitchActivity, getString(R.string.stitch_one_title), Toast.LENGTH_SHORT).show()
                         isSaving.value = false
                     }
                     return@launch
@@ -111,7 +112,7 @@ class StitchActivity : ComponentActivity() {
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@StitchActivity, "Stitch failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@StitchActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
                     isSaving.value = false
                 }
             }
@@ -179,7 +180,7 @@ class StitchActivity : ComponentActivity() {
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             isSaving.value = false
             return
         }
@@ -190,11 +191,11 @@ class StitchActivity : ComponentActivity() {
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
             runOnUiThread {
-                Toast.makeText(this, "Stitched image saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.stitch_saved), Toast.LENGTH_SHORT).show()
                 finish()
             }
         } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
@@ -223,11 +224,11 @@ private fun StitchScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, "Close", tint = OnSurface)
+                Icon(Icons.Default.Close, stringResource(R.string.close), tint = OnSurface)
             }
-            Text("Stitch Images", fontSize = 20.sp, fontWeight = FontWeight.Bold,
+            Text(stringResource(R.string.stitch_title), fontSize = 20.sp, fontWeight = FontWeight.Bold,
                 color = OnSurface, modifier = Modifier.weight(1f))
-            Text("${uris.size} images", color = OnSurfaceVariant, fontSize = 13.sp,
+            Text(stringResource(R.string.stitch_count, uris.size), color = OnSurfaceVariant, fontSize = 13.sp,
                 modifier = Modifier.padding(end = 8.dp))
         }
 
@@ -239,7 +240,7 @@ private fun StitchScreen(
             FilterChip(
                 selected = isVertical,
                 onClick = { if (!isVertical) onToggleDirection() },
-                label = { Text("Vertical") },
+                label = { Text(stringResource(R.string.stitch_vertical)) },
                 modifier = Modifier.semantics {
                     contentDescription = "Vertical stitch direction${if (isVertical) ", selected" else ""}"
                 },
@@ -251,7 +252,7 @@ private fun StitchScreen(
             FilterChip(
                 selected = !isVertical,
                 onClick = { if (isVertical) onToggleDirection() },
-                label = { Text("Horizontal") },
+                label = { Text(stringResource(R.string.stitch_horizontal)) },
                 modifier = Modifier.semantics {
                     contentDescription = "Horizontal stitch direction${if (!isVertical) ", selected" else ""}"
                 },
@@ -269,7 +270,7 @@ private fun StitchScreen(
             ) {
                 Icon(Icons.Default.Add, null, Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Add", fontSize = 13.sp)
+                Text(stringResource(R.string.stitch_add), fontSize = 13.sp)
             }
         }
 
@@ -281,8 +282,8 @@ private fun StitchScreen(
                         Icon(Icons.Default.Add, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("Add images to stitch", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("Choose at least two images, then reorder them before saving.",
+                    Text(stringResource(R.string.stitch_empty_title), color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.stitch_empty_subtitle),
                         color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                 }
             }
@@ -304,7 +305,7 @@ private fun StitchScreen(
                                     onClick = { onMoveUp(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowUpward, "Move image ${index + 1} up", tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.stitch_move_up_cd, index + 1), tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             if (index < uris.size - 1) {
@@ -312,14 +313,14 @@ private fun StitchScreen(
                                     onClick = { onMoveDown(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowDownward, "Move image ${index + 1} down", tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.stitch_move_down_cd, index + 1), tint = OnSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            ) { Icon(Icons.Default.Close, "Remove image ${index + 1}", tint = Tertiary, modifier = Modifier.size(18.dp)) }
+                            ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
@@ -342,7 +343,7 @@ private fun StitchScreen(
                                 onClick = { onRemoveImage(index) },
                                 modifier = Modifier.size(28.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            ) { Icon(Icons.Default.Close, "Remove image ${index + 1}", tint = Tertiary, modifier = Modifier.size(18.dp)) }
+                            ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
                     }
                 }
@@ -363,11 +364,12 @@ private fun StitchScreen(
                             if (isVertical) { maxW = maxOf(maxW, w); totalH += h } else { totalW += w; maxH = maxOf(maxH, h) }
                         }
                     }
-                    if (isVertical) "${maxW}x${totalH}" else "${totalW}x${maxH}"
-                } catch (_: Exception) { "" }
+                    if (isVertical) Pair(maxW, totalH) else Pair(totalW, maxH)
+                } catch (_: Exception) { null }
             }
-            if (dims.isNotEmpty()) {
-                Text("Output: $dims px", Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            if (dims != null && dims.first > 0 && dims.second > 0) {
+                Text(stringResource(R.string.stitch_dimensions, dims.first, dims.second),
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     color = OnSurfaceVariant, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
@@ -378,7 +380,7 @@ private fun StitchScreen(
                 Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("Rendering stitch...", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.stitch_rendering), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             } else {
                 val canSave = uris.size >= 2
@@ -396,7 +398,7 @@ private fun StitchScreen(
                     Icon(Icons.Default.Save, null, Modifier.size(18.dp),
                         tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (canSave) "Stitch & Save" else "Select at least 2 images",
+                    Text(if (canSave) stringResource(R.string.stitch_save_button) else stringResource(R.string.stitch_one_title),
                         color = if (canSave) Color.Black else OnSurfaceVariant,
                         fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }

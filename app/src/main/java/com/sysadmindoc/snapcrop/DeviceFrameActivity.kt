@@ -30,6 +30,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.sysadmindoc.snapcrop.ui.theme.*
@@ -102,7 +103,7 @@ class DeviceFrameActivity : ComponentActivity() {
                 val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 if (src == null) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@DeviceFrameActivity, "Failed to load", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@DeviceFrameActivity, getString(R.string.device_frame_load_failed), Toast.LENGTH_SHORT).show()
                         isSaving.value = false
                     }
                     return@launch
@@ -171,7 +172,7 @@ class DeviceFrameActivity : ComponentActivity() {
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@DeviceFrameActivity, "Failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@DeviceFrameActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
                     isSaving.value = false
                 }
             }
@@ -209,11 +210,11 @@ class DeviceFrameActivity : ComponentActivity() {
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) { runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }; isSaving.value = false; return }
+        if (uri == null) { runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }; isSaving.value = false; return }
         try {
             val stream = contentResolver.openOutputStream(uri)
             if (stream == null) {
-                runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+                runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
                 try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
                 isSaving.value = false
                 return
@@ -222,11 +223,11 @@ class DeviceFrameActivity : ComponentActivity() {
             values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
             runOnUiThread {
-                Toast.makeText(this, "Mockup saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.device_frame_saved), Toast.LENGTH_SHORT).show()
                 finish()
             }
         } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
@@ -248,8 +249,8 @@ private fun FrameScreen(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close", tint = OnSurface) }
-            Text("Device Mockup", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
+            IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.close), tint = OnSurface) }
+            Text(stringResource(R.string.device_frame_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
                 modifier = Modifier.weight(1f))
         }
 
@@ -297,12 +298,12 @@ private fun FrameScreen(
                         Icon(Icons.Default.PhotoLibrary, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("Pick a screenshot", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("Preview it in a device frame before exporting.",
+                    Text(stringResource(R.string.device_frame_empty_title), color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.device_frame_empty_subtitle),
                         color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(onClick = onPickImage, shape = RoundedCornerShape(12.dp)) {
-                        Text("Choose image", color = OnSurface)
+                        Text(stringResource(R.string.device_frame_choose), color = OnSurface)
                     }
                 }
             }
@@ -313,7 +314,7 @@ private fun FrameScreen(
                 Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("Rendering mockup...", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.device_frame_rendering), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             } else {
                 val canSave = imageUri != null
@@ -330,7 +331,7 @@ private fun FrameScreen(
                     Icon(Icons.Default.Save, null, Modifier.size(18.dp),
                         tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (canSave) "Save Mockup" else "Choose an image",
+                    Text(if (canSave) stringResource(R.string.device_frame_save_button) else stringResource(R.string.device_frame_choose),
                         color = if (canSave) Color.Black else OnSurfaceVariant,
                         fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }

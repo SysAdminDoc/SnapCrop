@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
@@ -123,7 +124,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                 if (savedUri == null) {
                     Toast.makeText(
                         this@LongScreenshotReviewActivity,
-                        "Long screenshot save failed",
+                        getString(R.string.long_screenshot_save_failed),
                         Toast.LENGTH_SHORT
                     ).show()
                     return@withContext
@@ -131,7 +132,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
                 Toast.makeText(
                     this@LongScreenshotReviewActivity,
-                    "Long screenshot saved",
+                    getString(R.string.long_screenshot_saved),
                     Toast.LENGTH_SHORT
                 ).show()
                 LongScreenshotStore.deleteReviewFile(reviewPath)
@@ -154,7 +155,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
         if (!started) {
             Toast.makeText(
                 this,
-                "Enable SnapCrop Long screenshot in Accessibility",
+                getString(R.string.toast_enable_accessibility),
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -179,10 +180,10 @@ private fun LongScreenshotReviewScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Review long screenshot", color = OnSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.long_screenshot_review_title), color = OnSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         listOfNotNull(
-                            "$frameCount frames",
+                            stringResource(R.string.long_screenshot_frame_count, frameCount),
                             stopReason.ifBlank { null }
                         ).joinToString(" - "),
                         color = OnSurfaceVariant,
@@ -190,7 +191,7 @@ private fun LongScreenshotReviewScreen(
                     )
                 }
                 IconButton(onClick = onDiscard, enabled = !isSaving) {
-                    Icon(Icons.Default.Close, "Discard", tint = OnSurface)
+                    Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), tint = OnSurface)
                 }
             }
 
@@ -208,11 +209,11 @@ private fun LongScreenshotReviewScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (uri == null) {
-                    Text("Preview unavailable", color = OnSurfaceVariant)
+                    Text(stringResource(R.string.long_screenshot_preview_unavailable), color = OnSurfaceVariant)
                 } else {
                     AsyncImage(
                         model = uri,
-                        contentDescription = "Long screenshot preview",
+                        contentDescription = stringResource(R.string.long_screenshot_preview_cd),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
@@ -229,18 +230,18 @@ private fun LongScreenshotReviewScreen(
                     enabled = !isSaving,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Secondary)
                 ) {
-                    Icon(Icons.Default.Refresh, "Retry", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Refresh, stringResource(R.string.long_screenshot_retry), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Retry")
+                    Text(stringResource(R.string.long_screenshot_retry))
                 }
                 OutlinedButton(
                     onClick = onDiscard,
                     enabled = !isSaving,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary)
                 ) {
-                    Icon(Icons.Default.Close, "Discard", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Discard")
+                    Text(stringResource(R.string.long_screenshot_discard))
                 }
                 Button(
                     onClick = onSave,
@@ -248,9 +249,9 @@ private fun LongScreenshotReviewScreen(
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = Color.Black)
                 ) {
-                    Icon(Icons.Default.Save, "Save and edit", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Save, stringResource(R.string.long_screenshot_save_edit), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Save & Edit")
+                    Text(stringResource(R.string.long_screenshot_save_edit))
                 }
             }
         }

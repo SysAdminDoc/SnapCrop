@@ -107,8 +107,8 @@ class ScreenshotService : Service() {
 
     private fun buildServiceNotification(): Notification {
         val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_ID)
-            .setContentTitle("SnapCrop")
-            .setContentText("Monitoring for screenshots")
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.notif_monitoring_body))
             .setSmallIcon(R.drawable.ic_crop)
             .setOngoing(true)
             .setSilent(true)
@@ -284,14 +284,14 @@ class ScreenshotService : Service() {
             val action = prefs.getString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP)
                 ?: LAST_ACTION_QUICK_CROP
             if (action != LAST_ACTION_QUICK_CROP) {
-                handler.post { Toast.makeText(this@ScreenshotService, "No last action available", Toast.LENGTH_SHORT).show() }
+                handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_no_last_action), Toast.LENGTH_SHORT).show() }
                 if (stopWhenDone) stopSelf()
                 return@launch
             }
 
             val found = findMostRecentScreenshot()
             if (found == null) {
-                handler.post { Toast.makeText(this@ScreenshotService, "No recent screenshot found", Toast.LENGTH_SHORT).show() }
+                handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_no_recent_screenshot), Toast.LENGTH_SHORT).show() }
                 if (stopWhenDone) stopSelf()
                 return@launch
             }
@@ -314,7 +314,7 @@ class ScreenshotService : Service() {
         } catch (_: Exception) {
             // On Android 12+ without SYSTEM_ALERT_WINDOW, background activity launch may fail.
             // The notification actions serve as the fallback.
-            handler.post { Toast.makeText(this, "Screenshot detected — tap notification to edit", Toast.LENGTH_SHORT).show() }
+            handler.post { Toast.makeText(this, getString(R.string.toast_screenshot_detected), Toast.LENGTH_SHORT).show() }
         }
     }
 
@@ -382,7 +382,7 @@ class ScreenshotService : Service() {
                         cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
                 if (isFullImage && actionRule == null) {
-                    handler.post { Toast.makeText(this@ScreenshotService, "No borders detected", Toast.LENGTH_SHORT).show() }
+                    handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_no_borders), Toast.LENGTH_SHORT).show() }
                     return@launch
                 }
 
@@ -436,13 +436,13 @@ class ScreenshotService : Service() {
                         prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()
                         val message = if (actionRule != null) {
                             buildString {
-                                append("${actionRule.label}: saved to ${actionRule.albumName}")
+                                append(getString(R.string.notif_quick_auto_rule, actionRule.label, actionRule.albumName))
                                 if (redactionCount > 0) append(", redacted $redactionCount")
                                 if (actionRule.redactSensitiveText && redactionCount == 0) append(", no sensitive text found")
                                 if (actionRule.exportFormat != "default") append(", ${actionRule.exportFormat.uppercase()} export")
                             }
                         } else {
-                            "Autocropped & saved"
+                            getString(R.string.toast_autocropped_saved)
                         }
                         handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show() }
                     } catch (e: IOException) {
@@ -450,7 +450,7 @@ class ScreenshotService : Service() {
                     }
                 }
             } catch (_: Exception) {
-                handler.post { Toast.makeText(this@ScreenshotService, "Quick save failed", Toast.LENGTH_SHORT).show() }
+                handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_quick_save_failed), Toast.LENGTH_SHORT).show() }
             } finally {
                 cropped?.recycle()
                 bitmap?.recycle()
@@ -489,15 +489,15 @@ class ScreenshotService : Service() {
         } catch (_: Exception) { null }
 
         val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
-            .setContentTitle("Screenshot detected")
-            .setContentText("Tap to edit")
+            .setContentTitle(getString(R.string.notif_detected_title))
+            .setContentText(getString(R.string.notif_detected_body))
             .setSmallIcon(R.drawable.ic_crop)
             .setContentIntent(editIntent)
             .setAutoCancel(true)
             .setDeleteIntent(dismissIntent)
-            .addAction(0, "Edit", editIntent)
-            .addAction(0, "Share", shareIntent)
-            .addAction(0, "Quick Crop", quickSaveIntent)
+            .addAction(0, getString(R.string.notif_action_edit), editIntent)
+            .addAction(0, getString(R.string.notif_action_share), shareIntent)
+            .addAction(0, getString(R.string.notif_action_quick_crop), quickSaveIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setTimeoutAfter(30_000)
 
@@ -534,8 +534,8 @@ class ScreenshotService : Service() {
             override fun run() {
                 if (remaining <= 0) return
                 val builder = NotificationCompat.Builder(this@ScreenshotService, SnapCropApp.CHANNEL_DETECTED)
-                    .setContentTitle("Screenshot in ${remaining}s")
-                    .setContentText("Take your screenshot now…")
+                    .setContentTitle(getString(R.string.notif_countdown_title, remaining))
+                    .setContentText(getString(R.string.notif_countdown_body))
                     .setSmallIcon(R.drawable.ic_crop)
                     .setOngoing(true)
                     .setSilent(true)
@@ -567,7 +567,7 @@ class ScreenshotService : Service() {
         }
         if (attemptsLeft <= 0) {
             delayedCaptureActive = false
-            Toast.makeText(this, "No new screenshot detected", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_no_screenshot), Toast.LENGTH_SHORT).show()
             return
         }
         handler.postDelayed({ findDelayedCaptureScreenshot(attemptsLeft - 1) }, 500)

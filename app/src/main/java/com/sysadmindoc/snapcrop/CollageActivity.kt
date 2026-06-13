@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -174,7 +175,7 @@ class CollageActivity : ComponentActivity() {
                 }
                 if (bitmaps.isEmpty()) {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@CollageActivity, "No images loaded", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
                         isSaving.value = false
                     }
                     return@launch
@@ -211,7 +212,7 @@ class CollageActivity : ComponentActivity() {
                 result.recycle()
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CollageActivity, "Collage failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
                     isSaving.value = false
                 }
             }
@@ -261,7 +262,7 @@ class CollageActivity : ComponentActivity() {
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             isSaving.value = false
             return
         }
@@ -271,11 +272,11 @@ class CollageActivity : ComponentActivity() {
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
             runOnUiThread {
-                Toast.makeText(this, "Collage saved", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.collage_saved), Toast.LENGTH_SHORT).show()
                 finish()
             }
         } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             isSaving.value = false
         }
@@ -306,8 +307,8 @@ private fun CollageScreen(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close", tint = OnSurface) }
-            Text("Collage", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
+            IconButton(onClick = onClose) { Icon(Icons.Default.Close, stringResource(R.string.close), tint = OnSurface) }
+            Text(stringResource(R.string.collage_title), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
                 modifier = Modifier.weight(1f))
             Text("${uris.size}/${layout.slots}", color = OnSurfaceVariant, fontSize = 13.sp,
                 modifier = Modifier.padding(end = 4.dp))
@@ -315,7 +316,7 @@ private fun CollageScreen(
                 onClick = onPickImages,
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
             ) {
-                Text(if (uris.isEmpty()) "Pick" else "Replace", color = Primary, fontSize = 12.sp)
+                Text(if (uris.isEmpty()) stringResource(R.string.collage_add_images) else stringResource(R.string.collage_replace), color = Primary, fontSize = 12.sp)
             }
         }
 
@@ -343,7 +344,7 @@ private fun CollageScreen(
         // Spacing slider
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Text("Gap: ${spacing}px", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(56.dp))
+            Text(stringResource(R.string.collage_gap_px, spacing), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(56.dp))
             Slider(
                 value = spacing.toFloat(), onValueChange = { onSpacingChange(it.toInt()) },
                 valueRange = 0f..20f,
@@ -358,7 +359,7 @@ private fun CollageScreen(
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Text("Cells:", color = OnSurfaceVariant, fontSize = 11.sp)
+            Text(stringResource(R.string.collage_cells), color = OnSurfaceVariant, fontSize = 11.sp)
             listOf("4:3" to 4f/3f, "1:1" to 1f, "16:9" to 16f/9f, "3:4" to 3f/4f).forEach { (label, ratio) ->
                 val isSelected = kotlin.math.abs(cellAspect - ratio) < 0.01f
                 FilterChip(
@@ -382,7 +383,7 @@ private fun CollageScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("BG:", color = OnSurfaceVariant, fontSize = 11.sp)
+            Text(stringResource(R.string.collage_bg_label), color = OnSurfaceVariant, fontSize = 11.sp)
             collageBgColors.forEachIndexed { i, (color, name) ->
                 Box(
                     Modifier.size(24.dp)
@@ -404,8 +405,8 @@ private fun CollageScreen(
                         Icon(Icons.Default.Add, null, Modifier.padding(14.dp).size(28.dp), tint = Primary)
                     }
                     Spacer(Modifier.height(12.dp))
-                    Text("Start a collage", color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text("Pick several images, then tune the layout, gap, aspect ratio, and background.",
+                    Text(stringResource(R.string.collage_empty_title), color = OnSurface, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.collage_empty_subtitle),
                         color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                 }
             } else {
@@ -477,7 +478,7 @@ private fun CollageScreen(
                 Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), color = Primary, strokeWidth = 2.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text("Rendering collage...", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.collage_rendering), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             } else {
                 val canSave = uris.size >= 2
@@ -495,7 +496,7 @@ private fun CollageScreen(
                     Icon(Icons.Default.Save, null, Modifier.size(18.dp),
                         tint = if (canSave) Color.Black else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (canSave) "Save Collage" else "Select at least 2 images",
+                    Text(if (canSave) stringResource(R.string.collage_save_button) else stringResource(R.string.collage_save_needs_two),
                         color = if (canSave) Color.Black else OnSurfaceVariant,
                         fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
