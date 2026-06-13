@@ -473,6 +473,10 @@
     <string name="ocr_translation_failed">Translation failed</string>
     <string name="ocr_target_language">Target language</string>
     <string name="ocr_copy">Copy</string>
+    <string name="ocr_entity_call">Call %1$s</string>
+    <string name="ocr_entity_email">Email %1$s</string>
+    <string name="ocr_entity_open_url">Open link</string>
+    <string name="ocr_entity_actions">Detected actions</string>
 
     <!-- Editor - adjust mode -->
     <string name="adjust_brightness">Brightness</string>

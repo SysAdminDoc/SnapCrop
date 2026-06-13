@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
@@ -41,10 +43,13 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
@@ -94,6 +99,39 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+private enum class OcrEntityType { PHONE, EMAIL, URL }
+
+private data class OcrEntity(val type: OcrEntityType, val value: String, val display: String)
+
+private fun extractEntities(text: String): List<OcrEntity> {
+    val entities = mutableListOf<OcrEntity>()
+    val emailRegex = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
+    val phoneRegex = Regex("(?<!\\d)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\d)")
+    val urlRegex = Regex("https?://[^\\s)\"'>]+|www\\.[^\\s)\"'>]+")
+    val seen = mutableSetOf<String>()
+    for (match in emailRegex.findAll(text)) {
+        val v = match.value
+        if (seen.add(v.lowercase())) {
+            entities += OcrEntity(OcrEntityType.EMAIL, v, v)
+        }
+    }
+    for (match in phoneRegex.findAll(text)) {
+        val raw = match.value.trim()
+        val digits = raw.filter { it.isDigit() || it == '+' }
+        if (digits.length >= 7 && seen.add(digits)) {
+            entities += OcrEntity(OcrEntityType.PHONE, digits, raw)
+        }
+    }
+    for (match in urlRegex.findAll(text)) {
+        val v = match.value
+        if (seen.add(v.lowercase())) {
+            val url = if (v.startsWith("www.")) "https://$v" else v
+            entities += OcrEntity(OcrEntityType.URL, url, v)
+        }
+    }
+    return entities
+}
 
 @Composable
 fun CropEditorScreen(
@@ -3119,6 +3157,48 @@ fun CropEditorScreen(
                             .padding(10.dp)
                             .verticalScroll(rememberScrollState())
                     )
+
+                    val entities = remember(ocrText) { extractEntities(ocrText) }
+                    if (entities.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(stringResource(R.string.ocr_entity_actions), color = OnSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                entities.forEach { entity ->
+                                    val chipLabel = when (entity.type) {
+                                        OcrEntityType.PHONE -> stringResource(R.string.ocr_entity_call, entity.display)
+                                        OcrEntityType.EMAIL -> stringResource(R.string.ocr_entity_email, entity.display)
+                                        OcrEntityType.URL -> stringResource(R.string.ocr_entity_open_url)
+                                    }
+                                    val chipIcon = when (entity.type) {
+                                        OcrEntityType.PHONE -> Icons.Default.Call
+                                        OcrEntityType.EMAIL -> Icons.Default.Email
+                                        OcrEntityType.URL -> Icons.AutoMirrored.Filled.OpenInNew
+                                    }
+                                    AssistChip(
+                                        onClick = {
+                                            val intent = when (entity.type) {
+                                                OcrEntityType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${entity.value}"))
+                                                OcrEntityType.EMAIL -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${entity.value}"))
+                                                OcrEntityType.URL -> Intent(Intent.ACTION_VIEW, Uri.parse(entity.value))
+                                            }
+                                            context.startActivity(intent)
+                                        },
+                                        label = { Text(chipLabel, fontSize = 11.sp, maxLines = 1) },
+                                        leadingIcon = { Icon(chipIcon, null, modifier = Modifier.size(16.dp)) },
+                                        colors = AssistChipDefaults.assistChipColors(
+                                            containerColor = SurfaceElevated,
+                                            labelColor = Primary,
+                                            leadingIconContentColor = Primary
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(stringResource(R.string.ocr_target_language), color = OnSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Medium)
