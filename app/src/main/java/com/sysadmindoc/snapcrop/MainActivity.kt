@@ -383,12 +383,14 @@ class MainActivity : ComponentActivity() {
                                 Spacer(Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     sizes.forEach { size ->
+                                        val selectedCd = stringResource(R.string.resize_target_selected_cd, size)
+                                        val unselectedCd = stringResource(R.string.resize_target_cd, size)
                                         FilterChip(
                                             selected = selectedSize == size,
                                             onClick = { selectedSize = size },
                                             label = { Text("$size", fontSize = 12.sp) },
                                             modifier = Modifier.semantics {
-                                                contentDescription = if (selectedSize == size) stringResource(R.string.resize_target_selected_cd, size) else stringResource(R.string.resize_target_cd, size)
+                                                contentDescription = if (selectedSize == size) selectedCd else unselectedCd
                                             },
                                             colors = FilterChipDefaults.filterChipColors(
                                                 selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
@@ -1638,6 +1640,8 @@ private fun HomeScreen(
         }
 
         // Service toggle
+        val monitorStatusLabel = if (isRunning) stringResource(R.string.home_monitor_status_active) else stringResource(R.string.home_monitor_status_paused)
+        val monitorCd = stringResource(R.string.home_monitor_cd, monitorStatusLabel)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -1650,7 +1654,7 @@ private fun HomeScreen(
                     .fillMaxWidth()
                     .padding(20.dp)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = stringResource(R.string.home_monitor_cd, if (isRunning) stringResource(R.string.home_monitor_status_active) else stringResource(R.string.home_monitor_status_paused))
+                        contentDescription = monitorCd
                     },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically

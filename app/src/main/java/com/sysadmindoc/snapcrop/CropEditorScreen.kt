@@ -240,7 +240,6 @@ fun CropEditorScreen(
     // Pre-allocate Paint for vignette to avoid allocation in DrawScope
     val vigPaint = remember { android.graphics.Paint() }
 
-    val context = LocalContext.current
     fun haptic() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -811,11 +810,12 @@ fun CropEditorScreen(
                     }
                     if (showPalette && paletteColors.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val paletteCd = stringResource(R.string.palette_tap_copy)
                             paletteColors.take(5).forEach { pc ->
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
-                                        .semantics { contentDescription = stringResource(R.string.palette_tap_copy) }
+                                        .semantics { contentDescription = paletteCd }
                                         .clickable {
                                         val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                         cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
@@ -1421,11 +1421,12 @@ fun CropEditorScreen(
 
         // Straighten angle slider (crop mode only, when angle != 0 or user taps)
         if (!isWideLayout && editMode == EditMode.CROP) {
+            val straightenLabel = stringResource(R.string.crop_straighten)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.crop_straighten), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(64.dp))
+                Text(straightenLabel, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(64.dp))
                 Slider(value = rotationAngle, onValueChange = { rotationAngle = it },
-                    valueRange = -45f..45f, modifier = Modifier.weight(1f).semantics { contentDescription = stringResource(R.string.crop_straighten) + ", ${String.format("%.1f", rotationAngle)} degrees" },
+                    valueRange = -45f..45f, modifier = Modifier.weight(1f).semantics { contentDescription = straightenLabel + ", ${String.format("%.1f", rotationAngle)} degrees" },
                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant))
                 Text(stringResource(R.string.crop_straighten_angle, rotationAngle), color = OnSurfaceVariant, fontSize = 11.sp,
                     modifier = Modifier.width(36.dp))
@@ -1625,6 +1626,9 @@ fun CropEditorScreen(
                         .semantics { contentDescription = "Current draw color, tap to open color picker" }
                         .clickable { showColorPicker = true })
                     if (showColorPicker) {
+                        val redLabel = stringResource(R.string.draw_red)
+                        val greenLabel = stringResource(R.string.draw_green)
+                        val blueLabel = stringResource(R.string.draw_blue)
                         var pickerR by remember { mutableFloatStateOf(((drawColor shr 16) and 0xFF) / 255f) }
                         var pickerG by remember { mutableFloatStateOf(((drawColor shr 8) and 0xFF) / 255f) }
                         var pickerB by remember { mutableFloatStateOf((drawColor and 0xFF) / 255f) }
@@ -1638,17 +1642,17 @@ fun CropEditorScreen(
                                     Spacer(Modifier.height(8.dp))
                                     Text(stringResource(R.string.draw_red), color = Color(0xFFFF6666), fontSize = 11.sp)
                                     Slider(value = pickerR, onValueChange = { pickerR = it },
-                                        modifier = Modifier.semantics { contentDescription = "${stringResource(R.string.draw_red)}, ${(pickerR * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$redLabel, ${(pickerR * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Red, activeTrackColor = Color.Red, inactiveTrackColor = SurfaceVariant))
                                     Text(stringResource(R.string.draw_green), color = Color(0xFF66FF66), fontSize = 11.sp)
                                     Slider(value = pickerG, onValueChange = { pickerG = it },
-                                        modifier = Modifier.semantics { contentDescription = "${stringResource(R.string.draw_green)}, ${(pickerG * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$greenLabel, ${(pickerG * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = SurfaceVariant))
                                     Text(stringResource(R.string.draw_blue), color = Color(0xFF6666FF), fontSize = 11.sp)
                                     Slider(value = pickerB, onValueChange = { pickerB = it },
-                                        modifier = Modifier.semantics { contentDescription = "${stringResource(R.string.draw_blue)}, ${(pickerB * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$blueLabel, ${(pickerB * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Blue, activeTrackColor = Color.Blue, inactiveTrackColor = SurfaceVariant))
                                     val hex = String.format("%02X%02X%02X", (pickerR * 255).toInt(), (pickerG * 255).toInt(), (pickerB * 255).toInt())
@@ -1705,12 +1709,13 @@ fun CropEditorScreen(
                 }
             }
             // Stroke width slider
+            val widthLabel = stringResource(R.string.draw_width_label)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text("${drawStrokeWidth.toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp,
                     modifier = Modifier.width(32.dp))
                 Slider(value = drawStrokeWidth, onValueChange = { drawStrokeWidth = it },
-                    valueRange = 2f..20f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.draw_width_label)}, ${drawStrokeWidth.toInt()} pixels" },
+                    valueRange = 2f..20f, modifier = Modifier.weight(1f).semantics { contentDescription = "$widthLabel, ${drawStrokeWidth.toInt()} pixels" },
                     colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
                         inactiveTrackColor = SurfaceVariant))
             }
@@ -1770,74 +1775,87 @@ fun CropEditorScreen(
                     )
                 }
             }
+            val brightnessLabel = stringResource(R.string.adjust_brightness)
+            val contrastLabel = stringResource(R.string.adjust_contrast)
+            val saturationLabel = stringResource(R.string.adjust_saturation)
+            val warmthLabel = stringResource(R.string.adjust_warmth)
+            val vignetteLabel = stringResource(R.string.adjust_vignette)
+            val sharpenLabel = stringResource(R.string.adjust_sharpen)
+            val highlightsLabel = stringResource(R.string.adjust_highlights)
+            val shadowsLabel = stringResource(R.string.adjust_shadows)
+            val tiltShiftLabel = stringResource(R.string.adjust_tilt_shift)
+            val denoiseLabel = stringResource(R.string.adjust_denoise)
+            val curveRLabel = stringResource(R.string.adjust_curve_r)
+            val curveGLabel = stringResource(R.string.adjust_curve_g)
+            val curveBLabel = stringResource(R.string.adjust_curve_b)
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_brightness), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Text(brightnessLabel, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = brightness, onValueChange = { brightness = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_brightness)}, ${brightness.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$brightnessLabel, ${brightness.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${brightness.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_contrast), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = contrast, onValueChange = { contrast = it },
-                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_contrast)}, ${String.format("%.1f", contrast)}x" },
+                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$contrastLabel, ${String.format("%.1f", contrast)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", contrast)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_saturation), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = saturation, onValueChange = { saturation = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_saturation)}, ${String.format("%.1f", saturation)}x" },
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$saturationLabel, ${String.format("%.1f", saturation)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", saturation)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_warmth), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = warmth, onValueChange = { warmth = it },
-                        valueRange = -50f..50f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_warmth)}, ${warmth.toInt()}" },
+                        valueRange = -50f..50f, modifier = Modifier.weight(1f).semantics { contentDescription = "$warmthLabel, ${warmth.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${warmth.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_vignette), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = vignette, onValueChange = { vignette = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_vignette)}, ${(vignette * 100).toInt()} percent" },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$vignetteLabel, ${(vignette * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(vignette * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_sharpen), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = sharpen, onValueChange = { sharpen = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_sharpen)}, ${String.format("%.1f", sharpen)}x" },
+                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$sharpenLabel, ${String.format("%.1f", sharpen)}x" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${String.format("%.1f", sharpen)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_highlights), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = highlights, onValueChange = { highlights = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_highlights)}, ${highlights.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$highlightsLabel, ${highlights.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${highlights.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_shadows), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = shadows, onValueChange = { shadows = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_shadows)}, ${shadows.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$shadowsLabel, ${shadows.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${shadows.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_tilt_shift), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = tiltShift, onValueChange = { tiltShift = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_tilt_shift)}, ${(tiltShift * 100).toInt()} percent" },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$tiltShiftLabel, ${(tiltShift * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(tiltShift * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_denoise), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = denoise, onValueChange = { denoise = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_denoise)}, ${(denoise * 100).toInt()} percent" },
+                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$denoiseLabel, ${(denoise * 100).toInt()} percent" },
                         colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
                     Text("${(denoise * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
@@ -1848,21 +1866,21 @@ fun CropEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_curve_r), color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveR, onValueChange = { curveR = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_curve_r)}, ${curveR.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveRLabel, ${curveR.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFFFF6B6B), activeTrackColor = Color(0xFFFF6B6B), inactiveTrackColor = SurfaceVariant))
                     Text("${curveR.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_curve_g), color = Color(0xFF51CF66), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveG, onValueChange = { curveG = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_curve_g)}, ${curveG.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveGLabel, ${curveG.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF51CF66), activeTrackColor = Color(0xFF51CF66), inactiveTrackColor = SurfaceVariant))
                     Text("${curveG.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_curve_b), color = Color(0xFF339AF0), fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveB, onValueChange = { curveB = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "${stringResource(R.string.adjust_curve_b)}, ${curveB.toInt()}" },
+                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveBLabel, ${curveB.toInt()}" },
                         colors = SliderDefaults.colors(thumbColor = Color(0xFF339AF0), activeTrackColor = Color(0xFF339AF0), inactiveTrackColor = SurfaceVariant))
                     Text("${curveB.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }

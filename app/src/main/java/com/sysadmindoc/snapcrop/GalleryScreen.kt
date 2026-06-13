@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.sysadmindoc.snapcrop.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -639,9 +640,10 @@ private fun AlbumGrid(
             // "All Photos" card first
             item {
                 val allPhotosLabel = stringResource(R.string.gallery_all_photos)
+                val allPhotosCd = stringResource(R.string.gallery_album_cd, allPhotosLabel, totalMediaCount)
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .semantics { contentDescription = stringResource(R.string.gallery_album_cd, allPhotosLabel, totalMediaCount) }
+                        .semantics { contentDescription = allPhotosCd }
                         .clickable { onAllPhotos() },
                     colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
                     shape = RoundedCornerShape(12.dp)
@@ -661,9 +663,10 @@ private fun AlbumGrid(
             if (favCount > 0) {
                 item {
                     val favoritesLabel = stringResource(R.string.gallery_favorites)
+                    val favoritesCd = stringResource(R.string.gallery_album_cd, favoritesLabel, favCount)
                     Card(
                         modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                            .semantics { contentDescription = stringResource(R.string.gallery_album_cd, favoritesLabel, favCount) }
+                            .semantics { contentDescription = favoritesCd }
                             .clickable { onFavorites() },
                         colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
                         shape = RoundedCornerShape(12.dp)
@@ -692,9 +695,10 @@ private fun AlbumGrid(
                 )
             }
             items(smartAlbums) { album ->
+                val smartAlbumCd = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle)
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .semantics { contentDescription = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle) }
+                        .semantics { contentDescription = smartAlbumCd }
                         .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp)
@@ -747,9 +751,10 @@ private fun AlbumGrid(
         }
 
         items(albums) { album ->
+            val albumCd = stringResource(R.string.gallery_album_cd, album.name, album.count)
             Card(
                 modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                    .semantics { contentDescription = stringResource(R.string.gallery_album_cd, album.name, album.count) }
+                    .semantics { contentDescription = albumCd }
                     .clickable { onAlbumClick(album) },
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                 shape = RoundedCornerShape(12.dp)

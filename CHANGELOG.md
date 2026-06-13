@@ -6,6 +6,10 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Internationalized all user-facing strings: extracted ~660 string resources to
+  `values/strings.xml` and wired `stringResource()` / `getString()` across all
+  17+ Activity, Screen, Service, and helper files. A translator can now add
+  `values-es/strings.xml` (or any locale) and see a fully localized UI.
 - Added CI lanes for lint, unit tests, debug assemble, release assemble,
   dependency review, and release SBOM artifacts.
 - Added a starter JVM/Robolectric unit-test surface for auto-crop, app profile
