@@ -6,6 +6,8 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
@@ -1092,6 +1095,15 @@ private fun PhotoViewer(
             }
             IconButton(onClick = { onShare(photos[pagerState.currentPage]) }) {
                 Icon(Icons.Default.Share, stringResource(R.string.gallery_share), tint = Color.White)
+            }
+            IconButton(onClick = {
+                if (Settings.canDrawOverlays(context)) {
+                    FloatingScreenshotService.pin(context, photos[pagerState.currentPage].uri)
+                } else {
+                    Toast.makeText(context, context.getString(R.string.gallery_pin_no_permission), Toast.LENGTH_LONG).show()
+                }
+            }) {
+                Icon(Icons.Default.PushPin, stringResource(R.string.gallery_pin), tint = Color.White)
             }
             IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
                 Icon(Icons.Default.Crop, stringResource(R.string.gallery_edit), tint = Primary)
