@@ -80,6 +80,12 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Added TalkBack accessibility labels across all screens: semantics on Switch
+  toggles, Slider controls, clickable Cards/tiles, color swatches, emoji
+  pickers, gallery photo items, collage cells, layer controls, stitch reorder
+  buttons, and video trim sliders. Covers CropEditorScreen, MainActivity,
+  GalleryScreen, SettingsActivity, StitchActivity, CollageActivity,
+  DeviceFrameActivity, VideoClipActivity, and EditorLayers.
 
 ## [v6.19.0] - 2026-05-14
 
