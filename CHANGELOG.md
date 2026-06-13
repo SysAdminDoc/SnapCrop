@@ -80,6 +80,9 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Unlocked CropActivity landscape orientation. The editor now supports rotation
+  on tablets, foldables, and desktop mode. Edit state is preserved across
+  configuration changes via `configChanges` handling.
 - Network export credentials (HTTP auth headers and Imgur client IDs) now use
   EncryptedSharedPreferences backed by Android Keystore. Existing plain-text
   credentials are migrated transparently on first launch after update.
