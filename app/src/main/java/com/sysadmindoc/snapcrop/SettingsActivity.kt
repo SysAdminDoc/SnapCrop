@@ -476,6 +476,42 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
+                    // Annotation presets section
+                    val stylePresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(prefs)) } }
+                    var styleDefault by remember { mutableStateOf(DrawStylePresetStore.defaultName(prefs)) }
+                    Text("Annotation Presets", color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Save draw tool styles and load them quickly in the editor.", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    if (stylePresets.isEmpty()) {
+                        Text("No presets saved yet. Use the + button in the editor's draw mode to save your current tool style.", color = OnSurfaceVariant, fontSize = 11.sp)
+                    } else {
+                        stylePresets.forEachIndexed { idx, preset ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
+                                contentDescription = "${preset.name} preset: ${preset.tool.label}, ${preset.strokeWidth.toInt()} pixels${if (preset.dashed) ", dashed" else ""}${if (styleDefault == preset.name) ", default" else ""}"
+                            }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.size(16.dp).background(androidx.compose.ui.graphics.Color(preset.color), RoundedCornerShape(3.dp)))
+                                Column(Modifier.weight(1f)) {
+                                    Text(preset.name, color = OnSurface, fontSize = 13.sp, fontWeight = if (styleDefault == preset.name) FontWeight.Bold else FontWeight.Normal)
+                                    Text("${preset.tool.label}, ${preset.strokeWidth.toInt()}px${if (preset.dashed) ", dashed" else ""}", color = OnSurfaceVariant, fontSize = 11.sp)
+                                }
+                                TextButton(onClick = {
+                                    styleDefault = if (styleDefault == preset.name) null else preset.name
+                                    DrawStylePresetStore.setDefault(prefs, styleDefault)
+                                }) { Text(if (styleDefault == preset.name) "Default" else "Set default", color = if (styleDefault == preset.name) Secondary else OnSurfaceVariant, fontSize = 11.sp) }
+                                IconButton(onClick = {
+                                    stylePresets.removeAt(idx)
+                                    DrawStylePresetStore.save(prefs, stylePresets.toList())
+                                    if (styleDefault == preset.name) { styleDefault = null; DrawStylePresetStore.setDefault(prefs, null) }
+                                }, modifier = Modifier.size(32.dp)) {
+                                    Icon(Icons.Default.Delete, "Delete ${preset.name}", tint = Tertiary, modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(20.dp))
+
                     // Network export section
                     var networkExportsEnabled by remember {
                         mutableStateOf(prefs.getBoolean(NetworkExportSettings.PREF_ENABLED, false))

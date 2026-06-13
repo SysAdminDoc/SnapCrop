@@ -1,7 +1,10 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.SharedPreferences
 import android.graphics.PointF
 import android.graphics.Rect
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.roundToInt
 
 data class DrawPath(
@@ -44,6 +47,57 @@ internal val drawColors = listOf(
     0xFFFFFFFF.toInt() to "White",
     0xFF000000.toInt() to "Black"
 )
+
+internal data class DrawStylePreset(
+    val name: String,
+    val color: Int,
+    val strokeWidth: Float,
+    val dashed: Boolean,
+    val tool: DrawTool = DrawTool.PEN
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("name", name)
+        put("color", color)
+        put("strokeWidth", strokeWidth.toDouble())
+        put("dashed", dashed)
+        put("tool", tool.name)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): DrawStylePreset = DrawStylePreset(
+            name = obj.optString("name", ""),
+            color = obj.optInt("color", 0xFFFF0000.toInt()),
+            strokeWidth = obj.optDouble("strokeWidth", 6.0).toFloat(),
+            dashed = obj.optBoolean("dashed", false),
+            tool = try { DrawTool.valueOf(obj.optString("tool", "PEN")) } catch (_: Exception) { DrawTool.PEN }
+        )
+    }
+}
+
+internal object DrawStylePresetStore {
+    private const val KEY = "draw_style_presets"
+    private const val KEY_DEFAULT = "draw_style_default"
+
+    fun load(prefs: SharedPreferences): List<DrawStylePreset> {
+        val json = prefs.getString(KEY, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { DrawStylePreset.fromJson(arr.getJSONObject(it)) }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun save(prefs: SharedPreferences, presets: List<DrawStylePreset>) {
+        val arr = JSONArray().apply { presets.forEach { put(it.toJson()) } }
+        prefs.edit().putString(KEY, arr.toString()).apply()
+    }
+
+    fun defaultName(prefs: SharedPreferences): String? = prefs.getString(KEY_DEFAULT, null)
+
+    fun setDefault(prefs: SharedPreferences, name: String?) {
+        if (name == null) prefs.edit().remove(KEY_DEFAULT).apply()
+        else prefs.edit().putString(KEY_DEFAULT, name).apply()
+    }
+}
 
 internal fun smoothPath(points: List<PointF>): List<PointF> {
     if (points.size < 4) return points

@@ -80,6 +80,9 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Added annotation style presets: save current draw tool, color, stroke width,
+  and dash style as named presets. Quick-select row in draw mode applies presets
+  instantly. Settings page manages presets with default selection and deletion.
 - Migrated from Coil 2.7 to Coil 3.3 for faster image loading and reduced
   allocations during gallery scrolling. Artifact group changed from
   `io.coil-kt` to `io.coil-kt.coil3`; all imports updated to `coil3.*`.

@@ -169,6 +169,22 @@ fun CropEditorScreen(
     var calloutCounter by remember { mutableIntStateOf(1) }
     var eyedropperActive by remember { mutableStateOf(false) }
     var showLayerPanel by remember { mutableStateOf(false) }
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val drawPrefs = remember { context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE) }
+    val drawPresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(drawPrefs)) } }
+    val defaultPresetName = remember { DrawStylePresetStore.defaultName(drawPrefs) }
+
+    LaunchedEffect(Unit) {
+        val def = defaultPresetName?.let { n -> drawPresets.firstOrNull { it.name == n } }
+        if (def != null) {
+            drawColor = def.color
+            drawStrokeWidth = def.strokeWidth
+            dashedStroke = def.dashed
+            drawTool = def.tool
+        }
+    }
+
     var bgRemoving by remember { mutableStateOf(false) }
     var bgRemovalStatus by remember { mutableStateOf<String?>(null) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
@@ -930,6 +946,25 @@ fun CropEditorScreen(
                 }
 
                 if (editMode == EditMode.DRAW || drawPaths.isNotEmpty()) {
+                    if (drawPresets.isNotEmpty()) {
+                        PanelSection("Presets") {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                drawPresets.forEach { preset ->
+                                    FilterChip(selected = false,
+                                        onClick = { drawColor = preset.color; drawStrokeWidth = preset.strokeWidth; dashedStroke = preset.dashed; drawTool = preset.tool; editMode = EditMode.DRAW },
+                                        label = { Text(preset.name, fontSize = 9.sp) },
+                                        leadingIcon = { Box(Modifier.size(8.dp).background(Color(preset.color), RoundedCornerShape(2.dp))) },
+                                        colors = FilterChipDefaults.filterChipColors(containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                                        shape = RoundedCornerShape(8.dp))
+                                }
+                                FilterChip(selected = false,
+                                    onClick = { showSavePresetDialog = true },
+                                    label = { Text("+", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(containerColor = SurfaceVariant, labelColor = Secondary),
+                                    shape = RoundedCornerShape(8.dp))
+                            }
+                        }
+                    }
                     PanelSection("Draw") {
                         DrawTool.entries.chunked(3).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1487,6 +1522,26 @@ fun CropEditorScreen(
                         }
                     }
                 }
+            }
+        }
+
+        if (!isWideLayout && editMode == EditMode.DRAW && drawPresets.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                drawPresets.forEach { preset ->
+                    FilterChip(selected = false,
+                        onClick = { drawColor = preset.color; drawStrokeWidth = preset.strokeWidth; dashedStroke = preset.dashed; drawTool = preset.tool },
+                        label = { Text(preset.name, fontSize = 10.sp) },
+                        leadingIcon = { Box(Modifier.size(10.dp).background(Color(preset.color), RoundedCornerShape(2.dp))) },
+                        colors = FilterChipDefaults.filterChipColors(containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(8.dp))
+                }
+                FilterChip(selected = false,
+                    onClick = { showSavePresetDialog = true },
+                    label = { Text("+", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                    colors = FilterChipDefaults.filterChipColors(containerColor = SurfaceVariant, labelColor = Secondary),
+                    shape = RoundedCornerShape(8.dp))
             }
         }
 
@@ -3081,6 +3136,47 @@ fun CropEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showTextDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
+    if (showSavePresetDialog) {
+        var presetName by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showSavePresetDialog = false },
+            title = { Text("Save Style Preset", color = OnSurface) },
+            text = {
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.size(20.dp).background(Color(drawColor), RoundedCornerShape(4.dp)))
+                        Text("${drawTool.label}, ${drawStrokeWidth.toInt()}px${if (dashedStroke) ", dashed" else ""}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = presetName,
+                        onValueChange = { presetName = it.take(20) },
+                        placeholder = { Text("Preset name") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Primary, unfocusedBorderColor = Outline,
+                            focusedTextColor = OnSurface, unfocusedTextColor = OnSurface)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (presetName.isNotBlank()) {
+                        val preset = DrawStylePreset(presetName.trim(), drawColor, drawStrokeWidth, dashedStroke, drawTool)
+                        drawPresets.removeAll { it.name == preset.name }
+                        drawPresets.add(preset)
+                        DrawStylePresetStore.save(drawPrefs, drawPresets.toList())
+                        showSavePresetDialog = false
+                    }
+                }) { Text("Save", color = Primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSavePresetDialog = false }) { Text("Cancel", color = OnSurfaceVariant) }
             },
             containerColor = SurfaceVariant
         )
