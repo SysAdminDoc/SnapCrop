@@ -2102,18 +2102,24 @@ fun CropEditorScreen(
                                                             (1.5f - velocity * 0.8f).coerceIn(0.6f, 1.5f) // slow=thick, fast=thin
                                                         } else 1f
                                                         val baseWidth = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; DrawTool.HEAL -> drawStrokeWidth * 4; else -> drawStrokeWidth }
+                                                        val curvedCtrl = if (drawTool == DrawTool.CURVED_ARROW && currentDrawPoints.size >= 3) {
+                                                            val mid = currentDrawPoints[currentDrawPoints.size / 2]
+                                                            PointF(mid.x, mid.y)
+                                                        } else null
                                                         addDrawLayer(DrawPath(
                                                             points = when {
                                                                 shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                                drawTool == DrawTool.CURVED_ARROW -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
                                                                 drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER || drawTool == DrawTool.HEAL -> smoothPath(currentDrawPoints)
                                                                 else -> currentDrawPoints.toList()
                                                             },
                                                             color = drawColor,
                                                             strokeWidth = baseWidth * velFactor,
-                                                            isArrow = drawTool == DrawTool.ARROW,
+                                                            isArrow = drawTool == DrawTool.ARROW || drawTool == DrawTool.CURVED_ARROW,
                                                             shapeType = shape,
                                                             filled = shapeFilled && (shape == "rect" || shape == "circle"),
-                                                            dashed = dashedStroke
+                                                            dashed = dashedStroke,
+                                                            controlPoint = curvedCtrl
                                                         ))
                                                         haptic()
                                                     }
@@ -2684,8 +2690,18 @@ fun CropEditorScreen(
                             return
                         }
                         if (pts.size < 2) return
-                        if (dp.dashed) {
-                            // Dashed lines via nativeCanvas
+                        if (dp.controlPoint != null && pts.size >= 2) {
+                            val cp = dp.controlPoint
+                            val bezierPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color; strokeWidth = sw; style = android.graphics.Paint.Style.STROKE
+                                strokeCap = android.graphics.Paint.Cap.ROUND
+                                if (dp.dashed) pathEffect = android.graphics.DashPathEffect(floatArrayOf(sw * 3, sw * 2), 0f)
+                            }
+                            val bezierPath = android.graphics.Path()
+                            bezierPath.moveTo(ox + pts[0].x * scale, oy + pts[0].y * scale)
+                            bezierPath.quadTo(ox + cp.x * scale, oy + cp.y * scale, ox + pts.last().x * scale, oy + pts.last().y * scale)
+                            drawContext.canvas.nativeCanvas.drawPath(bezierPath, bezierPaint)
+                        } else if (dp.dashed) {
                             val dashPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                                 this.color = dp.color; strokeWidth = sw; style = android.graphics.Paint.Style.STROKE
                                 strokeCap = android.graphics.Paint.Cap.ROUND
@@ -2703,7 +2719,13 @@ fun CropEditorScreen(
                             }
                         }
                         if (dp.isArrow && pts.size >= 2) {
-                            val last = pts.last(); val prev = pts[pts.size - 2]
+                            val arrowEnd = pts.last()
+                            val arrowPrev = if (dp.controlPoint != null) {
+                                val cp = dp.controlPoint; val t = 0.95f
+                                PointF((1-t)*(1-t)*pts[0].x + 2*(1-t)*t*cp.x + t*t*arrowEnd.x,
+                                       (1-t)*(1-t)*pts[0].y + 2*(1-t)*t*cp.y + t*t*arrowEnd.y)
+                            } else pts[pts.size - 2]
+                            val last = arrowEnd; val prev = arrowPrev
                             val dx = last.x - prev.x; val dy = last.y - prev.y
                             val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                             if (len > 0) {

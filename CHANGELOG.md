@@ -80,6 +80,10 @@ All notable changes to SnapCrop will be documented in this file.
   back gesture support and 16KB NDK page alignment for Google Play compliance.
 - Added unsaved-changes confirmation dialog when closing the editor via back
   gesture or close button with pending edits.
+- Added curved arrow draw tool (17th tool): drag to trace a curve, rendered as
+  a quadratic bezier with arrowhead. Control point derived from the midpoint of
+  the drag path. SVG sidecar exports as `Q` bezier paths. Persists in project
+  sidecars via the new `controlPoint` field.
 - Added annotation style presets: save current draw tool, color, stroke width,
   and dash style as named presets. Quick-select row in draw mode applies presets
   instantly. Settings page manages presets with default selection and deletion.

@@ -166,6 +166,7 @@ object SnapCropProjectSidecar {
         .put("points", JSONArray().apply {
             points.forEach { put(it.toJson()) }
         })
+        .apply { controlPoint?.let { put("controlPoint", it.toJson()) } }
 
     private fun JSONObject.toDrawPath(): DrawPath = DrawPath(
         points = optJSONArray("points").toPointList(),
@@ -176,7 +177,8 @@ object SnapCropProjectSidecar {
         text = optNullableString("text"),
         filled = optBoolean("filled", false),
         dashed = optBoolean("dashed", false),
-        visible = optBoolean("visible", true)
+        visible = optBoolean("visible", true),
+        controlPoint = optJSONObject("controlPoint")?.let { PointF(it.optDouble("x").toFloat(), it.optDouble("y").toFloat()) }
     )
 
     private fun FloatArray.toAdjustmentsJson(): JSONObject {

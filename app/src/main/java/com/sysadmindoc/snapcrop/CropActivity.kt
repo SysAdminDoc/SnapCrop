@@ -790,18 +790,25 @@ class CropActivity : ComponentActivity() {
                 continue
             }
 
-            // Freehand path
+            // Freehand or bezier path
             val path = Path()
-            path.moveTo(dp.points[0].x, dp.points[0].y)
-            for (i in 1 until dp.points.size) {
-                path.lineTo(dp.points[i].x, dp.points[i].y)
+            if (dp.controlPoint != null && dp.points.size >= 2) {
+                path.moveTo(dp.points[0].x, dp.points[0].y)
+                path.quadTo(dp.controlPoint.x, dp.controlPoint.y, dp.points.last().x, dp.points.last().y)
+            } else {
+                path.moveTo(dp.points[0].x, dp.points[0].y)
+                for (i in 1 until dp.points.size) path.lineTo(dp.points[i].x, dp.points[i].y)
             }
             canvas.drawPath(path, paint)
 
             // Arrow head
             if (dp.isArrow && dp.points.size >= 2) {
                 val last = dp.points.last()
-                val prev = dp.points[dp.points.size - 2]
+                val prev = if (dp.controlPoint != null) {
+                    val cp = dp.controlPoint; val t = 0.95f
+                    PointF((1-t)*(1-t)*dp.points[0].x + 2*(1-t)*t*cp.x + t*t*last.x,
+                           (1-t)*(1-t)*dp.points[0].y + 2*(1-t)*t*cp.y + t*t*last.y)
+                } else dp.points[dp.points.size - 2]
                 val dx = last.x - prev.x; val dy = last.y - prev.y
                 val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                 if (len > 0) {
@@ -1413,9 +1420,19 @@ class CropActivity : ComponentActivity() {
                     elements.append("""  <path id="$id" d="${pathData(dp.points)}" $stroke/>""").append('\n')
                 }
                 else -> if (dp.points.size >= 2) {
-                    elements.append("""  <path id="$id" d="${pathData(dp.points)}" $stroke/>""").append('\n')
+                    if (dp.controlPoint != null) {
+                        val cp = dp.controlPoint
+                        elements.append("""  <path id="$id" d="M ${sx(dp.points[0].x).svgNum()} ${sy(dp.points[0].y).svgNum()} Q ${sx(cp.x).svgNum()} ${sy(cp.y).svgNum()} ${sx(dp.points.last().x).svgNum()} ${sy(dp.points.last().y).svgNum()}" $stroke/>""").append('\n')
+                    } else {
+                        elements.append("""  <path id="$id" d="${pathData(dp.points)}" $stroke/>""").append('\n')
+                    }
                     if (dp.isArrow && dp.points.size >= 2) {
-                        val last = dp.points.last(); val prev = dp.points[dp.points.size - 2]
+                        val last = dp.points.last()
+                        val prev = if (dp.controlPoint != null) {
+                            val cp = dp.controlPoint; val t = 0.95f
+                            PointF((1-t)*(1-t)*dp.points[0].x + 2*(1-t)*t*cp.x + t*t*last.x,
+                                   (1-t)*(1-t)*dp.points[0].y + 2*(1-t)*t*cp.y + t*t*last.y)
+                        } else dp.points[dp.points.size - 2]
                         val dx = last.x - prev.x; val dy = last.y - prev.y
                         val len = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
                         if (len > 0f) {
