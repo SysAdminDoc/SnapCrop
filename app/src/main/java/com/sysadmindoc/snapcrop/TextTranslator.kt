@@ -62,7 +62,7 @@ object TextTranslator {
         context?.let { appContext ->
             MlKitStatus.playServicesIssue(appContext)?.let { throw IllegalStateException(it) }
         }
-        onProgress(MlKitStatus.TRANSLATION_IDENTIFYING)
+        onProgress(context?.getString(MlKitStatus.TRANSLATION_IDENTIFYING) ?: "Identifying source language on device…")
         val identifiedTag = languageIdentifier.identifyLanguage(original).awaitResult()
         require(identifiedTag != "und") { "Could not identify the source language" }
 
@@ -89,11 +89,11 @@ object TextTranslator {
         return try {
             val conditions = DownloadConditions.Builder().requireWifi().build()
             if (context?.let { !MlKitStatusStore.isTranslationModelReady(it, sourceLanguage, target.language) } != false) {
-                onProgress(MlKitStatus.translationDownloadMessage(target.label))
+                onProgress(context?.let { MlKitStatus.translationDownloadMessage(it, target.label) } ?: "Downloading the ${target.label} translation model…")
             }
             translator.downloadModelIfNeeded(conditions).awaitResult()
             context?.let { MlKitStatusStore.markTranslationModelReady(it, sourceLanguage, target.language) }
-            onProgress(MlKitStatus.TRANSLATION_TRANSLATING)
+            onProgress(context?.getString(MlKitStatus.TRANSLATION_TRANSLATING) ?: "Translating on device…")
             val translated = translator.translate(original).awaitResult()
             TextTranslation(
                 originalText = original,
@@ -112,14 +112,14 @@ object TextTranslator {
     fun labelFor(language: String): String =
         languageLabels[language] ?: language.uppercase()
 
-    fun userMessage(error: Throwable): String {
+    fun userMessage(context: Context, error: Throwable): String {
         val raw = error.message?.trim().orEmpty()
         return when {
             raw.contains("source language", ignoreCase = true) -> raw
             raw.contains("not supported", ignoreCase = true) -> raw
             raw.contains("No text", ignoreCase = true) -> raw
-            raw.contains("wifi", ignoreCase = true) -> MlKitStatus.userMessage(MlKitFeature.TRANSLATION, error)
-            else -> MlKitStatus.userMessage(MlKitFeature.TRANSLATION, error)
+            raw.contains("wifi", ignoreCase = true) -> MlKitStatus.userMessage(context, MlKitFeature.TRANSLATION, error)
+            else -> MlKitStatus.userMessage(context, MlKitFeature.TRANSLATION, error)
         }
     }
 }

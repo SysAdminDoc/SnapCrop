@@ -59,7 +59,11 @@ object BackgroundRemover {
                 }
                 .addOnFailureListener { error ->
                     if (cont.isActive) {
-                        val message = MlKitStatus.userMessage(MlKitFeature.SUBJECT_SEGMENTATION, error)
+                        val message = if (context != null) {
+                            MlKitStatus.userMessage(context, MlKitFeature.SUBJECT_SEGMENTATION, error)
+                        } else {
+                            error.message?.trim().orEmpty().ifBlank { "Background removal unavailable." }
+                        }
                         context?.let { MlKitStatusStore.markSubjectSegmentationError(it, message) }
                         cont.resume(BackgroundRemovalResult(bitmap, changed = false, statusMessage = message))
                     }

@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,23 +39,24 @@ import com.sysadmindoc.snapcrop.ui.theme.Secondary
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
 
-private fun DrawPath.layerTitle(): String = when {
-    shapeType == "text" && !text.isNullOrBlank() -> "Text: ${text.take(22)}${if (text.length > 22) "..." else ""}"
-    shapeType == "emoji" && !text.isNullOrBlank() -> "Emoji $text"
-    shapeType == "callout" && !text.isNullOrBlank() -> "Callout $text"
-    shapeType == "rect" -> "Rectangle"
-    shapeType == "circle" -> "Circle"
-    shapeType == "line" -> "Line"
-    shapeType == "highlight" -> "Highlight"
-    shapeType == "spotlight" -> "Spotlight"
-    shapeType == "magnifier" -> "Magnifier"
-    shapeType == "neon" -> "Neon stroke"
-    shapeType == "blur" -> "Blur brush"
-    shapeType == "eraser" -> "Eraser"
-    shapeType == "fill" -> "Flood fill"
-    shapeType == "smart_erase" || shapeType == "heal" -> "Smart erase"
-    isArrow -> "Arrow"
-    else -> "Pen stroke"
+@Composable
+private fun layerTitle(layer: DrawPath): String = when {
+    layer.shapeType == "text" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_text)}: ${layer.text.take(22)}${if (layer.text.length > 22) "..." else ""}"
+    layer.shapeType == "emoji" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_emoji)} ${layer.text}"
+    layer.shapeType == "callout" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_callout)} ${layer.text}"
+    layer.shapeType == "rect" -> stringResource(R.string.tool_rect)
+    layer.shapeType == "circle" -> stringResource(R.string.tool_circle)
+    layer.shapeType == "line" -> stringResource(R.string.tool_line)
+    layer.shapeType == "highlight" -> stringResource(R.string.tool_highlight)
+    layer.shapeType == "spotlight" -> stringResource(R.string.tool_spotlight)
+    layer.shapeType == "magnifier" -> stringResource(R.string.tool_magnifier)
+    layer.shapeType == "neon" -> stringResource(R.string.tool_neon)
+    layer.shapeType == "blur" -> stringResource(R.string.tool_blur)
+    layer.shapeType == "eraser" -> stringResource(R.string.tool_eraser)
+    layer.shapeType == "fill" -> stringResource(R.string.tool_fill)
+    layer.shapeType == "smart_erase" || layer.shapeType == "heal" -> stringResource(R.string.tool_smart_erase)
+    layer.isArrow -> stringResource(R.string.tool_arrow)
+    else -> stringResource(R.string.tool_pen)
 }
 
 private fun DrawPath.layerSubtitle(indexFromBottom: Int): String {
@@ -79,7 +81,7 @@ internal fun DrawLayerPanel(
         Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Layers", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.draw_layers), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     Text("Top layers render last", color = OnSurfaceVariant, fontSize = 10.sp)
                 }
                 Text("${drawPaths.size}", color = Secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -95,6 +97,7 @@ internal fun DrawLayerPanel(
             } else {
                 drawPaths.asReversed().forEachIndexed { visualIndex, layer ->
                     val actualIndex = drawPaths.lastIndex - visualIndex
+                    val title = layerTitle(layer)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -114,7 +117,7 @@ internal fun DrawLayerPanel(
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                layer.layerTitle(),
+                                title,
                                 color = if (layer.visible) OnSurface else OnSurfaceVariant,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
@@ -132,7 +135,7 @@ internal fun DrawLayerPanel(
                         IconButton(
                             onClick = { onToggleVisible(actualIndex) },
                             modifier = Modifier.size(30.dp).semantics {
-                                contentDescription = if (layer.visible) "Hide ${layer.layerTitle()}" else "Show ${layer.layerTitle()}"
+                                contentDescription = if (layer.visible) "Hide $title" else "Show $title"
                             }
                         ) {
                             Icon(
@@ -146,7 +149,7 @@ internal fun DrawLayerPanel(
                             onClick = { onMoveLayer(actualIndex, actualIndex + 1) },
                             enabled = actualIndex < drawPaths.lastIndex,
                             modifier = Modifier.semantics {
-                                contentDescription = "Move ${layer.layerTitle()} up"
+                                contentDescription = "Move $title up"
                             },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
@@ -160,7 +163,7 @@ internal fun DrawLayerPanel(
                             onClick = { onMoveLayer(actualIndex, actualIndex - 1) },
                             enabled = actualIndex > 0,
                             modifier = Modifier.semantics {
-                                contentDescription = "Move ${layer.layerTitle()} down"
+                                contentDescription = "Move $title down"
                             },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
@@ -173,7 +176,7 @@ internal fun DrawLayerPanel(
                         IconButton(
                             onClick = { onDeleteLayer(actualIndex) },
                             modifier = Modifier.size(30.dp).semantics {
-                                contentDescription = "Delete ${layer.layerTitle()}"
+                                contentDescription = "Delete $title"
                             }
                         ) {
                             Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))

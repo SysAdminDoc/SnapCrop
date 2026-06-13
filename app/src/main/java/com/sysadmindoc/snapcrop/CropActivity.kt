@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
@@ -254,7 +255,7 @@ class CropActivity : ComponentActivity() {
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Text(
-                                        "Project source unavailable",
+                                        stringResource(R.string.crop_project_unavailable),
                                         color = OnSurface,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Medium
@@ -268,7 +269,7 @@ class CropActivity : ComponentActivity() {
                                     )
                                     Spacer(Modifier.height(16.dp))
                                     TextButton(onClick = { finish() }) {
-                                        Text("Close", color = Primary)
+                                        Text(stringResource(R.string.close), color = Primary)
                                     }
                                 }
                             }
@@ -294,16 +295,16 @@ class CropActivity : ComponentActivity() {
                                     )
                                     Spacer(Modifier.height(12.dp))
                                     Text(
-                                        "Saving export",
+                                        stringResource(R.string.crop_saving_title),
                                         color = OnSurface,
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
                                         if (effectiveDeleteOriginalOnSave())
-                                            "Replacing the source after the crop is written"
+                                            stringResource(R.string.crop_saving_replace)
                                         else
-                                            "Writing a separate copy to your save location",
+                                            stringResource(R.string.crop_saving_copy),
                                         color = OnSurfaceVariant,
                                         fontSize = 12.sp
                                     )
@@ -323,10 +324,10 @@ class CropActivity : ComponentActivity() {
                 if (showDeleteConfirm.value) {
                     AlertDialog(
                         onDismissRequest = { showDeleteConfirm.value = false },
-                        title = { Text("Delete original screenshot?", color = OnSurface) },
+                        title = { Text(stringResource(R.string.crop_delete_title), color = OnSurface) },
                         text = {
                             Text(
-                                "This removes the source image from your library. Saved copies and shared exports stay where they are.",
+                                stringResource(R.string.crop_delete_body),
                                 color = OnSurfaceVariant,
                                 fontSize = 13.sp
                             )
@@ -338,19 +339,19 @@ class CropActivity : ComponentActivity() {
                                     val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                                     deleteOriginalFile()
                                     if (!needsDialog) {
-                                        Toast.makeText(this@CropActivity, "Deleted", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(this@CropActivity, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
                                         finish()
                                     }
                                     // If needsDialog, onActivityResult handles toast + finish
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
                             ) {
-                                Text("Delete")
+                                Text(stringResource(R.string.delete))
                             }
                         },
                         dismissButton = {
                             TextButton(onClick = { showDeleteConfirm.value = false }) {
-                                Text("Cancel", color = OnSurfaceVariant)
+                                Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
                             }
                         },
                         containerColor = SurfaceVariant,
@@ -417,14 +418,14 @@ class CropActivity : ComponentActivity() {
             val project = SnapCropProjectSidecar.decode(json)
             val source = project.sourceUri?.let { Uri.parse(it) }
             if (source == null) {
-                showProjectError("This project sidecar does not include a source image URI.")
+                showProjectError(getString(R.string.crop_sidecar_no_uri))
                 return
             }
             sourceUri = source
             intentSourceHints = listOf("snapcrop_project")
             loadBitmap(source, project)
         } catch (e: Exception) {
-            showProjectError("SnapCrop could not open this project sidecar: ${e.message ?: "unknown error"}")
+            showProjectError(getString(R.string.crop_sidecar_open_failed, e.message ?: "unknown error"))
         }
     }
 
@@ -484,20 +485,20 @@ class CropActivity : ComponentActivity() {
                 }
             } ?: run {
                 if (project != null) {
-                    showProjectError("The original image referenced by this project is missing or inaccessible: ${project.sourceUri}")
+                    showProjectError(getString(R.string.crop_source_missing, project.sourceUri ?: ""))
                 } else {
                     runOnUiThread {
-                        Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, getString(R.string.toast_failed_load_image), Toast.LENGTH_SHORT).show()
                         finish()
                     }
                 }
             }
         } catch (e: Exception) {
             if (project != null) {
-                showProjectError("The original image referenced by this project is missing or inaccessible: ${project.sourceUri}")
+                showProjectError(getString(R.string.crop_source_missing, project.sourceUri ?: ""))
             } else {
                 runOnUiThread {
-                    Toast.makeText(this, "Failed to load image", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.toast_failed_load_image), Toast.LENGTH_SHORT).show()
                     finish()
                 }
             }
@@ -1541,7 +1542,7 @@ class CropActivity : ComponentActivity() {
                 )
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CropActivity, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 cropped?.let { if (!it.isRecycled) it.recycle() }
@@ -1563,11 +1564,11 @@ class CropActivity : ComponentActivity() {
                     val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
                     val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
                     cm.setPrimaryClip(clip)
-                    Toast.makeText(this@CropActivity, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CropActivity, "Copy failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_copy_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 if (!cropped.isRecycled) cropped.recycle()
@@ -1598,7 +1599,7 @@ class CropActivity : ComponentActivity() {
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CropActivity, "Share failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 if (!cropped.isRecycled) cropped.recycle()
@@ -1766,7 +1767,7 @@ class CropActivity : ComponentActivity() {
         }
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) { runOnUiThread { Toast.makeText(this, "Failed to save", Toast.LENGTH_SHORT).show() }; return }
+        if (uri == null) { runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }; return }
 
         try {
             if (useTargetSize) {
@@ -1779,7 +1780,7 @@ class CropActivity : ComponentActivity() {
                 contentResolver.update(uri, values, null, null)
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
                 val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
-                val msg = "Saved (${sizeKb}KB, q=$usedQuality)" +
+                val msg = getString(R.string.crop_saved_size, "${sizeKb}KB", usedQuality) +
                     (if (svgSaved) " + SVG" else "") +
                     (if (projectSaved) " + Project" else "")
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
@@ -1792,7 +1793,7 @@ class CropActivity : ComponentActivity() {
                 contentResolver.update(uri, values, null, null)
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
                 val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
-                val msg = (if (deleteOriginal) "Saved to $savePath" else "Copy saved to $savePath") +
+                val msg = (if (deleteOriginal) getString(R.string.crop_saved_path, savePath) else getString(R.string.crop_copy_saved_path, savePath)) +
                     (if (svgSaved) " + SVG" else "") +
                     (if (projectSaved) " + Project" else "")
                 runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
@@ -1800,7 +1801,7 @@ class CropActivity : ComponentActivity() {
             }
             runOnUiThread { finish() }
         } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, "Save failed", Toast.LENGTH_SHORT).show() }
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
         }
     }
@@ -1826,7 +1827,7 @@ class CropActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 99) {
             if (resultCode == RESULT_OK) {
-                Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
             }
             finish()
         }

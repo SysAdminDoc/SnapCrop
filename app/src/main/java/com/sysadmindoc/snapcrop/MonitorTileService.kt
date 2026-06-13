@@ -32,8 +32,8 @@ class MonitorTileService : TileService() {
         val tile = qsTile ?: return
         val running = ScreenshotService.isRunning
         tile.state = if (running) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "SnapCrop"
-        tile.subtitle = if (running) "Monitoring" else "Off"
+        tile.label = getString(R.string.tile_monitor_label)
+        tile.subtitle = if (running) getString(R.string.tile_monitor_on) else getString(R.string.tile_monitor_off)
         tile.updateTile()
     }
 }

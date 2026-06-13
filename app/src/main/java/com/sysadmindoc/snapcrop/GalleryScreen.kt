@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -117,7 +118,7 @@ internal fun looksLikeScreenshot(width: Int, height: Int, name: String, screenW:
     return kotlin.math.abs(maxImg - maxScr) <= tol && kotlin.math.abs(minImg - minScr) <= tol
 }
 
-private enum class SortMode(val label: String) { DATE("Date"), NAME("Name"), SIZE("Size") }
+private enum class SortMode { DATE, NAME, SIZE }
 
 private const val ALL_PHOTOS_PATH = "__ALL__"
 private const val FAVORITES_PATH = "__FAVS__"
@@ -382,34 +383,34 @@ fun GalleryScreen(
             if (selectionMode) {
                 // Selection mode bar
                 IconButton(onClick = { selectedIds.clear() }) {
-                    Icon(Icons.Default.Close, "Cancel", tint = OnSurface)
+                    Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = OnSurface)
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("${selectedIds.size} selected", color = OnSurface, fontSize = 16.sp,
+                    Text(stringResource(R.string.gallery_selected_count, selectedIds.size), color = OnSurface, fontSize = 16.sp,
                         fontWeight = FontWeight.Medium)
-                    Text("Share, report, rename, resize, or delete", color = OnSurfaceVariant, fontSize = 11.sp)
+                    Text(stringResource(R.string.gallery_selected_actions), color = OnSurfaceVariant, fontSize = 11.sp)
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                     IconButton(onClick = {
                         selectedIds.clear()
                         selectedIds.addAll(viewerPhotos.map { it.id })
-                    }) { Icon(Icons.Default.SelectAll, "Select all", tint = OnSurface) }
+                    }) { Icon(Icons.Default.SelectAll, stringResource(R.string.gallery_select_all), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds }.map { it.uri }
                         onShareUris(uris)
-                    }) { Icon(Icons.Default.Share, "Share", tint = OnSurface) }
+                    }) { Icon(Icons.Default.Share, stringResource(R.string.gallery_share), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
-                    }) { Icon(Icons.Default.PictureAsPdf, "Export PDF", tint = OnSurface) }
+                    }) { Icon(Icons.Default.PictureAsPdf, stringResource(R.string.gallery_export_pdf), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onBatchRename(uris); selectedIds.clear() }
-                    }) { Icon(Icons.Default.SortByAlpha, "Rename selected", tint = OnSurface) }
+                    }) { Icon(Icons.Default.SortByAlpha, stringResource(R.string.gallery_rename), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }
-                    }) { Icon(Icons.Default.PhotoSizeSelectLarge, "Resize", tint = OnSurface) }
+                    }) { Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.resize), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds }.map { it.uri }
                         val deletedIds = selectedIds.toSet()
@@ -426,7 +427,7 @@ fun GalleryScreen(
                                 smartAlbums = refreshedSmart
                             }
                         }
-                    }) { Icon(Icons.Default.Delete, "Delete selected", tint = Tertiary) }
+                    }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Tertiary) }
                 }
             } else {
                 IconButton(onClick = {
@@ -434,13 +435,13 @@ fun GalleryScreen(
                     else onBack()
                 }) {
                     @Suppress("DEPRECATION")
-                    Icon(Icons.Default.ArrowBack, "Back", tint = OnSurface)
+                    Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
                 }
                 Text(
                     text = when (selectedAlbum) {
-                        ALL_PHOTOS_PATH -> "All Photos"
-                        FAVORITES_PATH -> "Favorites"
-                        null -> "Gallery"
+                        ALL_PHOTOS_PATH -> stringResource(R.string.gallery_all_photos)
+                        FAVORITES_PATH -> stringResource(R.string.gallery_favorites)
+                        null -> stringResource(R.string.gallery_title)
                         else -> smartAlbumRuleFor(selectedAlbum!!)?.title
                             ?: selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
@@ -450,7 +451,7 @@ fun GalleryScreen(
                     overflow = TextOverflow.Ellipsis
                 )
                 if (selectedAlbum == null) {
-                    Text("${albums.sumOf { it.count }} photos", color = OnSurfaceVariant,
+                    Text(stringResource(R.string.gallery_photo_count, albums.sumOf { it.count }), color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
                 } else {
                     // Photo count
@@ -469,14 +470,19 @@ fun GalleryScreen(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                         ) {
                             Icon(Icons.Default.PhoneAndroid,
-                                "Select $screenshotCount non-favorite screenshots", tint = Tertiary,
+                                null, tint = Tertiary,
                                 modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("$screenshotCount cleanup", color = Tertiary, fontSize = 11.sp,
+                            Text(stringResource(R.string.gallery_cleanup, screenshotCount), color = Tertiary, fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium)
                         }
                     }
                     // Sort button when viewing photos
+                    val sortLabel = when (sortMode) {
+                        SortMode.DATE -> stringResource(R.string.gallery_sort_date)
+                        SortMode.NAME -> stringResource(R.string.gallery_sort_name)
+                        SortMode.SIZE -> stringResource(R.string.gallery_sort_size)
+                    }
                     IconButton(onClick = {
                         sortMode = when (sortMode) {
                             SortMode.DATE -> SortMode.NAME
@@ -484,7 +490,7 @@ fun GalleryScreen(
                             SortMode.SIZE -> SortMode.DATE
                         }
                     }) {
-                        Icon(Icons.Default.SortByAlpha, "Sort: ${sortMode.label}", tint = OnSurfaceVariant)
+                        Icon(Icons.Default.SortByAlpha, stringResource(R.string.gallery_sort, sortLabel), tint = OnSurfaceVariant)
                     }
                 }
             }
@@ -497,8 +503,8 @@ fun GalleryScreen(
                 onValueChange = { searchQuery = it },
                 placeholder = {
                     Text(
-                        if (selectedAlbum == null) "Search albums and smart groups..."
-                        else "Search names, source hints, and indexed categories...",
+                        if (selectedAlbum == null) stringResource(R.string.gallery_search_albums)
+                        else stringResource(R.string.gallery_search_photos),
                         color = OnSurfaceVariant,
                         fontSize = 14.sp
                     )
@@ -528,7 +534,7 @@ fun GalleryScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Primary)
                     Spacer(Modifier.height(12.dp))
-                    Text("Loading your media library", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.gallery_loading), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             }
         } else if (selectedAlbum == null) {
@@ -539,9 +545,9 @@ fun GalleryScreen(
                 onAllPhotos = { searchQuery = ""; selectedAlbum = ALL_PHOTOS_PATH },
                 onFavorites = { searchQuery = ""; selectedAlbum = FAVORITES_PATH },
                 favCount = favIds.size,
-                emptyTitle = if (searchQuery.isBlank()) "No albums found" else "No matching albums or smart groups",
-                emptySubtitle = if (searchQuery.isBlank()) "Grant media access or add photos to see them here."
-                    else "Try a different album name.")
+                emptyTitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_title) else stringResource(R.string.gallery_search_empty_title),
+                emptySubtitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_subtitle)
+                    else stringResource(R.string.gallery_search_empty_subtitle))
         } else {
             PhotoGrid(
                 photos = viewerPhotos,
@@ -632,9 +638,10 @@ private fun AlbumGrid(
         if (showLibraryCards) {
             // "All Photos" card first
             item {
+                val allPhotosLabel = stringResource(R.string.gallery_all_photos)
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .semantics { contentDescription = "All Photos, $totalMediaCount items" }
+                        .semantics { contentDescription = stringResource(R.string.gallery_album_cd, allPhotosLabel, totalMediaCount) }
                         .clickable { onAllPhotos() },
                     colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
                     shape = RoundedCornerShape(12.dp)
@@ -643,7 +650,7 @@ private fun AlbumGrid(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Photo, null, Modifier.size(40.dp), tint = Primary)
                             Spacer(Modifier.height(8.dp))
-                            Text("All Photos", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                            Text(allPhotosLabel, color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                             Text("$totalMediaCount", color = OnSurfaceVariant, fontSize = 12.sp)
                         }
                     }
@@ -653,9 +660,10 @@ private fun AlbumGrid(
             // Favorites card
             if (favCount > 0) {
                 item {
+                    val favoritesLabel = stringResource(R.string.gallery_favorites)
                     Card(
                         modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                            .semantics { contentDescription = "Favorites, $favCount items" }
+                            .semantics { contentDescription = stringResource(R.string.gallery_album_cd, favoritesLabel, favCount) }
                             .clickable { onFavorites() },
                         colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
                         shape = RoundedCornerShape(12.dp)
@@ -664,7 +672,7 @@ private fun AlbumGrid(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.Favorite, null, Modifier.size(40.dp), tint = Tertiary)
                                 Spacer(Modifier.height(8.dp))
-                                Text("Favorites", color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(favoritesLabel, color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 Text("$favCount", color = OnSurfaceVariant, fontSize = 12.sp)
                             }
                         }
@@ -676,7 +684,7 @@ private fun AlbumGrid(
         if (smartAlbums.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    "Smart albums",
+                    stringResource(R.string.gallery_smart_albums),
                     color = OnSurfaceVariant,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -686,7 +694,7 @@ private fun AlbumGrid(
             items(smartAlbums) { album ->
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .semantics { contentDescription = "${album.name} smart album, ${album.count} items. ${album.subtitle}" }
+                        .semantics { contentDescription = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle) }
                         .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp)
@@ -707,7 +715,7 @@ private fun AlbumGrid(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PhoneAndroid, null, tint = Tertiary, modifier = Modifier.size(13.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Auto", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                Text(stringResource(R.string.gallery_auto_badge), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
@@ -717,7 +725,7 @@ private fun AlbumGrid(
                                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(album.subtitle, color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)
-                                Text("${album.count} matched", color = Tertiary, fontSize = 11.sp,
+                                Text(stringResource(R.string.gallery_matched_count, album.count), color = Tertiary, fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium)
                             }
                         }
@@ -729,7 +737,7 @@ private fun AlbumGrid(
         if (albums.isNotEmpty() && smartAlbums.isNotEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
-                    "Albums",
+                    stringResource(R.string.gallery_albums),
                     color = OnSurfaceVariant,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium,
@@ -741,7 +749,7 @@ private fun AlbumGrid(
         items(albums) { album ->
             Card(
                 modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                    .semantics { contentDescription = "${album.name} album, ${album.count} items" }
+                    .semantics { contentDescription = stringResource(R.string.gallery_album_cd, album.name, album.count) }
                     .clickable { onAlbumClick(album) },
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                 shape = RoundedCornerShape(12.dp)
@@ -783,8 +791,8 @@ private fun PhotoGrid(
     if (photos.isEmpty()) {
         GalleryEmptyState(
             icon = Icons.Default.Photo,
-            title = "No media here",
-            subtitle = "This album is empty or its items are no longer available."
+            title = stringResource(R.string.gallery_no_media_title),
+            subtitle = stringResource(R.string.gallery_no_media_subtitle)
         )
         return
     }
@@ -828,8 +836,9 @@ private fun PhotoGrid(
         items(photos.size) { index ->
             val photo = photos[index]
             val isSelected = photo.id in selectedIds
+            val mediaItemLabel = stringResource(R.string.gallery_media_item)
             val photoLabel = buildString {
-                append(photo.name.ifBlank { "Media item" })
+                append(photo.name.ifBlank { mediaItemLabel })
                 if (photo.isVideo) append(", video")
                 if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
                 if (isSelected) append(", selected")
@@ -886,8 +895,9 @@ private fun PhotoItem(
     photo: Photo, index: Int, isSelected: Boolean, selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit, onPhotoLongClick: (Photo) -> Unit
 ) {
+    val mediaItemLabel = stringResource(R.string.gallery_media_item)
     val photoLabel = buildString {
-        append(photo.name.ifBlank { "Media item" })
+        append(photo.name.ifBlank { mediaItemLabel })
         if (photo.isVideo) append(", video")
         if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
         if (isSelected) append(", selected")
@@ -1051,13 +1061,13 @@ private fun PhotoViewer(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, "Close", tint = Color.White)
+                Icon(Icons.Default.Close, stringResource(R.string.close), tint = Color.White)
             }
             Text("${pagerState.currentPage + 1} / ${photos.size}",
                 color = Color.White, fontSize = 14.sp)
             Row {
                 IconButton(onClick = { showInfo = !showInfo }) {
-                    Icon(Icons.Default.Info, "Info", tint = if (showInfo) Primary else Color.White)
+                    Icon(Icons.Default.Info, stringResource(R.string.gallery_info), tint = if (showInfo) Primary else Color.White)
                 }
             }
         }
@@ -1073,19 +1083,19 @@ private fun PhotoViewer(
                 isFav = onToggleFavorite(photos[pagerState.currentPage])
             }) {
                 Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    "Favorite", tint = if (isFav) Tertiary else Color.White)
+                    stringResource(R.string.gallery_favorite), tint = if (isFav) Tertiary else Color.White)
             }
             IconButton(onClick = { onShare(photos[pagerState.currentPage]) }) {
-                Icon(Icons.Default.Share, "Share", tint = Color.White)
+                Icon(Icons.Default.Share, stringResource(R.string.gallery_share), tint = Color.White)
             }
             IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
-                Icon(Icons.Default.Crop, "Edit", tint = Primary)
+                Icon(Icons.Default.Crop, stringResource(R.string.gallery_edit), tint = Primary)
             }
             IconButton(onClick = {
                 val photo = photos[pagerState.currentPage]
                 onDelete(photo)
             }) {
-                Icon(Icons.Default.Delete, "Delete", tint = Tertiary)
+                Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Tertiary)
             }
         }
 

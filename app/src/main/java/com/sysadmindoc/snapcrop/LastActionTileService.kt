@@ -27,11 +27,11 @@ class LastActionTileService : TileService() {
         val action = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getString(ScreenshotService.PREF_LAST_ACTION, ScreenshotService.LAST_ACTION_QUICK_CROP)
         tile.state = Tile.STATE_ACTIVE
-        tile.label = "Last action"
+        tile.label = getString(R.string.tile_last_action_label)
         tile.subtitle = if (action == ScreenshotService.LAST_ACTION_QUICK_CROP) {
-            "Quick Crop"
+            getString(R.string.tile_last_action_quick)
         } else {
-            "Ready"
+            getString(R.string.tile_last_action_ready)
         }
         tile.updateTile()
     }

@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.content.Context
+import androidx.annotation.StringRes
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 
@@ -15,36 +16,35 @@ enum class MlKitFeature(val label: String) {
 }
 
 object MlKitStatus {
-    const val TRANSLATION_IDENTIFYING = "Identifying source language on device..."
-    const val TRANSLATION_TRANSLATING = "Translating on device..."
-    const val SUBJECT_SEGMENTATION_STARTING =
-        "Preparing subject segmentation on device. First run may download a Play Services model over Wi-Fi."
+    @StringRes val TRANSLATION_IDENTIFYING: Int = R.string.mlkit_identifying
+    @StringRes val TRANSLATION_TRANSLATING: Int = R.string.mlkit_translating
+    @StringRes val SUBJECT_SEGMENTATION_STARTING: Int = R.string.mlkit_segmentation_prep
 
-    fun translationDownloadMessage(targetLabel: String): String =
-        "Downloading the $targetLabel translation model over Wi-Fi. Keep the app open and retry if Play Services asks for storage."
+    fun translationDownloadMessage(context: Context, targetLabel: String): String =
+        context.getString(R.string.mlkit_translation_download, targetLabel)
 
     fun playServicesIssue(context: Context): String? {
         val availability = GoogleApiAvailability.getInstance()
         val code = availability.isGooglePlayServicesAvailable(context)
         if (code == ConnectionResult.SUCCESS) return null
         val label = availability.getErrorString(code)
-        return "Google Play services needs attention ($label). Update Play services, free storage if prompted, then retry."
+        return context.getString(R.string.mlkit_play_attention, label)
     }
 
-    fun userMessage(feature: MlKitFeature, error: Throwable): String {
+    fun userMessage(context: Context, feature: MlKitFeature, error: Throwable): String {
         val raw = error.message?.trim().orEmpty()
         val lower = raw.lowercase()
         return when {
             raw.isBlank() ->
                 "${feature.label.replaceFirstChar { it.uppercase() }} unavailable. Retry after updating Google Play services."
             "wifi" in lower || "network" in lower ->
-                "Connect to Wi-Fi so Google Play services can download the ${feature.label} model, then retry."
+                context.getString(R.string.mlkit_retry_wifi, feature.label)
             "storage" in lower || "space" in lower ->
-                "Free device storage so Google Play services can prepare ${feature.label}, then retry."
+                context.getString(R.string.mlkit_retry_storage, feature.label)
             "play services" in lower || "google play" in lower || "service" in lower ->
-                "Update Google Play services and retry ${feature.label}."
+                context.getString(R.string.mlkit_retry_update, feature.label)
             "model" in lower || "download" in lower ->
-                "The ${feature.label} model is not ready yet. Connect to Wi-Fi, keep SnapCrop open, and retry."
+                context.getString(R.string.mlkit_retry_generic, feature.label)
             "source language" in lower || "not supported" in lower || "no text" in lower || "could not identify" in lower ->
                 raw
             else ->

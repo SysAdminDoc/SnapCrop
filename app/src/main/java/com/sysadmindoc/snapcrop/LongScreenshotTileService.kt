@@ -20,7 +20,7 @@ class LongScreenshotTileService : TileService() {
         super.onClick()
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Toast.makeText(this, "Long screenshot requires Android 11 or newer", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.toast_long_requires_11), Toast.LENGTH_LONG).show()
             return
         }
 
@@ -29,7 +29,7 @@ class LongScreenshotTileService : TileService() {
             return
         }
 
-        Toast.makeText(this, "Enable SnapCrop Long screenshot in Accessibility", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, getString(R.string.toast_enable_accessibility), Toast.LENGTH_LONG).show()
         val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -57,8 +57,8 @@ class LongScreenshotTileService : TileService() {
     private fun updateTile() {
         val tile = qsTile ?: return
         tile.state = if (ScrollCaptureService.isReady()) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
-        tile.label = "Long screenshot"
-        tile.subtitle = if (ScrollCaptureService.isReady()) "Ready" else "Enable"
+        tile.label = getString(R.string.tile_long_label)
+        tile.subtitle = if (ScrollCaptureService.isReady()) getString(R.string.tile_long_ready) else getString(R.string.tile_long_enable)
         tile.updateTile()
     }
 }
