@@ -188,7 +188,8 @@ internal data class EditorSnapshot(
     val draws: List<DrawPath>,
     val cR: Float = 0f,
     val cG: Float = 0f,
-    val cB: Float = 0f
+    val cB: Float = 0f,
+    val perspectiveQuad: List<PointF>? = null
 )
 
 internal enum class ImageFilter(val label: String) {

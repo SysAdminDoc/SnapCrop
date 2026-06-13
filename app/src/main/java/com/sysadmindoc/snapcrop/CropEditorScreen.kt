@@ -237,6 +237,13 @@ fun CropEditorScreen(
     var gridMode by remember { mutableIntStateOf(0) } // 0=thirds, 1=golden, 2=none
     var rotationAngle by remember { mutableFloatStateOf(initialAdjustments.adjustValue(8, 0f)) } // -45 to 45 degrees for straightening
 
+    // Perspective crop mode
+    var perspectiveMode by remember { mutableStateOf(false) }
+    var quadTL by remember { mutableStateOf(PointF(initialCropRect.left.toFloat(), initialCropRect.top.toFloat())) }
+    var quadTR by remember { mutableStateOf(PointF(initialCropRect.right.toFloat(), initialCropRect.top.toFloat())) }
+    var quadBR by remember { mutableStateOf(PointF(initialCropRect.right.toFloat(), initialCropRect.bottom.toFloat())) }
+    var quadBL by remember { mutableStateOf(PointF(initialCropRect.left.toFloat(), initialCropRect.bottom.toFloat())) }
+
     // Pre-allocate Paint for vignette to avoid allocation in DrawScope
     val vigPaint = remember { android.graphics.Paint() }
 
@@ -300,7 +307,8 @@ fun CropEditorScreen(
         selectedFilter,
         pixelateRects.toList(),
         drawPaths.toList(),
-        curveR, curveG, curveB
+        curveR, curveG, curveB,
+        if (perspectiveMode) listOf(PointF(quadTL.x, quadTL.y), PointF(quadTR.x, quadTR.y), PointF(quadBR.x, quadBR.y), PointF(quadBL.x, quadBL.y)) else null
     )
 
     fun restoreSnapshot(s: EditorSnapshot) {
@@ -311,6 +319,13 @@ fun CropEditorScreen(
         pixelateRects.clear(); pixelateRects.addAll(s.pixRects)
         drawPaths.clear(); drawPaths.addAll(s.draws)
         curveR = s.cR; curveG = s.cG; curveB = s.cB
+        if (s.perspectiveQuad != null && s.perspectiveQuad.size == 4) {
+            perspectiveMode = true
+            quadTL = s.perspectiveQuad[0]; quadTR = s.perspectiveQuad[1]
+            quadBR = s.perspectiveQuad[2]; quadBL = s.perspectiveQuad[3]
+        } else {
+            perspectiveMode = false
+        }
     }
 
     val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
@@ -392,7 +407,22 @@ fun CropEditorScreen(
     fun bitmapToScreenX(bx: Int) = offsetX + bx * scaleX
     fun bitmapToScreenY(by: Int) = offsetY + by * scaleY
 
+    fun bitmapToScreenXf(bx: Float) = offsetX + bx * scaleX
+    fun bitmapToScreenYf(by: Float) = offsetY + by * scaleY
+
     fun findHandle(pos: Offset): DragHandle {
+        if (perspectiveMode) {
+            val corners = listOf(
+                DragHandle.TOP_LEFT to Offset(bitmapToScreenXf(quadTL.x), bitmapToScreenYf(quadTL.y)),
+                DragHandle.TOP_RIGHT to Offset(bitmapToScreenXf(quadTR.x), bitmapToScreenYf(quadTR.y)),
+                DragHandle.BOTTOM_RIGHT to Offset(bitmapToScreenXf(quadBR.x), bitmapToScreenYf(quadBR.y)),
+                DragHandle.BOTTOM_LEFT to Offset(bitmapToScreenXf(quadBL.x), bitmapToScreenYf(quadBL.y)),
+            )
+            for ((handle, corner) in corners) {
+                if ((pos - corner).getDistance() < hitRadius) return handle
+            }
+            return DragHandle.NONE
+        }
         val corners = listOf(
             DragHandle.TOP_LEFT to Offset(bitmapToScreenX(cropLeft), bitmapToScreenY(cropTop)),
             DragHandle.TOP_RIGHT to Offset(bitmapToScreenX(cropRight), bitmapToScreenY(cropTop)),
@@ -412,6 +442,30 @@ fun CropEditorScreen(
         if (pos.y in st..sb && kotlin.math.abs(pos.x - sr) < hitRadius) return DragHandle.RIGHT
         if (pos.x in sl..sr && pos.y in st..sb) return DragHandle.CENTER
         return DragHandle.NONE
+    }
+
+    fun dragPerspectiveCorner(handle: DragHandle, dx: Float, dy: Float) {
+        val bitmapDx = dx / scaleX
+        val bitmapDy = dy / scaleY
+        when (handle) {
+            DragHandle.TOP_LEFT -> quadTL = PointF(
+                (quadTL.x + bitmapDx).coerceIn(0f, bitmap.width.toFloat()),
+                (quadTL.y + bitmapDy).coerceIn(0f, bitmap.height.toFloat())
+            )
+            DragHandle.TOP_RIGHT -> quadTR = PointF(
+                (quadTR.x + bitmapDx).coerceIn(0f, bitmap.width.toFloat()),
+                (quadTR.y + bitmapDy).coerceIn(0f, bitmap.height.toFloat())
+            )
+            DragHandle.BOTTOM_RIGHT -> quadBR = PointF(
+                (quadBR.x + bitmapDx).coerceIn(0f, bitmap.width.toFloat()),
+                (quadBR.y + bitmapDy).coerceIn(0f, bitmap.height.toFloat())
+            )
+            DragHandle.BOTTOM_LEFT -> quadBL = PointF(
+                (quadBL.x + bitmapDx).coerceIn(0f, bitmap.width.toFloat()),
+                (quadBL.y + bitmapDy).coerceIn(0f, bitmap.height.toFloat())
+            )
+            else -> {}
+        }
     }
 
     fun applyAspectRatio(ratio: AspectRatio) {
@@ -543,7 +597,11 @@ fun CropEditorScreen(
             brightness, contrast, saturation, shapeCrop, warmth, vignette,
             selectedFilter.ordinal.toFloat(), sharpen, rotationAngle,
             highlights, shadows, tiltShift, denoise, gradientBg.toFloat(),
-            curveR, curveG, curveB
+            curveR, curveG, curveB,
+            if (perspectiveMode) quadTL.x else 0f, if (perspectiveMode) quadTL.y else 0f,
+            if (perspectiveMode) quadTR.x else 0f, if (perspectiveMode) quadTR.y else 0f,
+            if (perspectiveMode) quadBR.x else 0f, if (perspectiveMode) quadBR.y else 0f,
+            if (perspectiveMode) quadBL.x else 0f, if (perspectiveMode) quadBL.y else 0f
         )
     }
 
@@ -1385,6 +1443,29 @@ fun CropEditorScreen(
                 ),
                 shape = RoundedCornerShape(8.dp)
             )
+            // Perspective crop toggle
+            FilterChip(
+                selected = perspectiveMode,
+                onClick = {
+                    pushUndo()
+                    perspectiveMode = !perspectiveMode
+                    if (perspectiveMode) {
+                        selectedRatio = AspectRatio.FREE
+                        quadTL = PointF(cropLeft.toFloat(), cropTop.toFloat())
+                        quadTR = PointF(cropRight.toFloat(), cropTop.toFloat())
+                        quadBR = PointF(cropRight.toFloat(), cropBottom.toFloat())
+                        quadBL = PointF(cropLeft.toFloat(), cropBottom.toFloat())
+                    }
+                },
+                label = { Text(stringResource(R.string.crop_perspective), fontSize = 12.sp) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Secondary.copy(alpha = 0.25f),
+                    selectedLabelColor = Secondary,
+                    containerColor = SurfaceVariant,
+                    labelColor = OnSurfaceVariant
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
         }
 
         // Gradient background picker (shows when shape crop is selected)
@@ -2221,6 +2302,10 @@ fun CropEditorScreen(
                                         }
 
                                         when {
+                                            cropHandle != DragHandle.NONE && perspectiveMode -> {
+                                                val precisionScale = if (System.currentTimeMillis() - dragStartTime > 800) 0.25f else 1f
+                                                dragPerspectiveCorner(cropHandle, dragDelta.x * precisionScale, dragDelta.y * precisionScale)
+                                            }
                                             cropHandle != DragHandle.NONE -> {
                                                 // Precision mode: after 800ms of dragging, slow down by 4x for fine-tuning
                                                 val precisionScale = if (System.currentTimeMillis() - dragStartTime > 800) 0.25f else 1f
@@ -2338,6 +2423,52 @@ fun CropEditorScreen(
                     val sl = ox + cropLeft * scale; val st = oy + cropTop * scale
                     val sr = ox + cropRight * scale; val sb = oy + cropBottom * scale
 
+                    if (perspectiveMode) {
+                        // Perspective quad: dim outside, draw quad outline + corner handles
+                        val pTL = Offset(ox + quadTL.x * scale, oy + quadTL.y * scale)
+                        val pTR = Offset(ox + quadTR.x * scale, oy + quadTR.y * scale)
+                        val pBR = Offset(ox + quadBR.x * scale, oy + quadBR.y * scale)
+                        val pBL = Offset(ox + quadBL.x * scale, oy + quadBL.y * scale)
+
+                        // Semi-transparent overlay over entire image
+                        drawRect(DimOverlay, Offset(ox, oy), Size(drawW, drawH))
+
+                        // Cut out the quad region by drawing it brighter
+                        val quadPath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(pTL.x, pTL.y)
+                            lineTo(pTR.x, pTR.y)
+                            lineTo(pBR.x, pBR.y)
+                            lineTo(pBL.x, pBL.y)
+                            close()
+                        }
+                        drawPath(quadPath, Color.Black.copy(alpha = 0.5f), blendMode = androidx.compose.ui.graphics.BlendMode.DstOut)
+
+                        // Quad outline
+                        drawLine(CropBorder, pTL, pTR, 2.dp.toPx())
+                        drawLine(CropBorder, pTR, pBR, 2.dp.toPx())
+                        drawLine(CropBorder, pBR, pBL, 2.dp.toPx())
+                        drawLine(CropBorder, pBL, pTL, 2.dp.toPx())
+
+                        // Grid lines inside quad (interpolated thirds)
+                        if (gridMode < 2) {
+                            val gridColor = CropBorder.copy(alpha = 0.3f)
+                            for (i in 1..2) {
+                                val t = i / 3f
+                                val lineStart = Offset(pTL.x + (pBL.x - pTL.x) * t, pTL.y + (pBL.y - pTL.y) * t)
+                                val lineEnd = Offset(pTR.x + (pBR.x - pTR.x) * t, pTR.y + (pBR.y - pTR.y) * t)
+                                drawLine(gridColor, lineStart, lineEnd, 1f)
+                                val colStart = Offset(pTL.x + (pTR.x - pTL.x) * t, pTL.y + (pTR.y - pTL.y) * t)
+                                val colEnd = Offset(pBL.x + (pBR.x - pBL.x) * t, pBL.y + (pBR.y - pBL.y) * t)
+                                drawLine(gridColor, colStart, colEnd, 1f)
+                            }
+                        }
+
+                        // Corner handles
+                        drawCircle(CropHandle, handleRadius, pTL)
+                        drawCircle(CropHandle, handleRadius, pTR)
+                        drawCircle(CropHandle, handleRadius, pBR)
+                        drawCircle(CropHandle, handleRadius, pBL)
+                    } else {
                     // Dim overlay
                     drawRect(DimOverlay, Offset(ox, oy), Size(drawW, st - oy))
                     drawRect(DimOverlay, Offset(ox, sb), Size(drawW, oy + drawH - sb))
@@ -2475,6 +2606,7 @@ fun CropEditorScreen(
                         }
                         drawPath(shapePath, CropBorder.copy(alpha = 0.5f), style = Stroke(2.dp.toPx()))
                     }
+                    } // end else (non-perspective)
 
                     // Pixelate region indicators (mosaic pattern)
                     val pixColor = Tertiary.copy(alpha = 0.35f)

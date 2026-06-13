@@ -1145,7 +1145,7 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
         // Apply free rotation first (before adjustments/crop)
         val rotAngle = if (adj.size > 8) adj[8] else 0f
         val rotated = if (rotAngle != 0f) {
@@ -1159,6 +1159,28 @@ class CropActivity : ComponentActivity() {
         if (pixelated !== adjusted && adjusted !== rotated && adjusted !== bitmap) adjusted.recycle()
         val drawn = applyDraw(pixelated, drawPaths)
         if (drawn !== pixelated && pixelated !== bitmap) pixelated.recycle()
+
+        // Perspective warp: adj[17..24] = quad TL.x, TL.y, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y
+        val hasPerspective = adj.size >= 25 && (adj[17] != 0f || adj[18] != 0f || adj[19] != 0f || adj[20] != 0f ||
+                adj[21] != 0f || adj[22] != 0f || adj[23] != 0f || adj[24] != 0f)
+        if (hasPerspective) {
+            val srcQuad = floatArrayOf(adj[17], adj[18], adj[19], adj[20], adj[21], adj[22], adj[23], adj[24])
+            val topW = kotlin.math.sqrt(((srcQuad[2] - srcQuad[0]) * (srcQuad[2] - srcQuad[0]) + (srcQuad[3] - srcQuad[1]) * (srcQuad[3] - srcQuad[1])).toDouble())
+            val botW = kotlin.math.sqrt(((srcQuad[4] - srcQuad[6]) * (srcQuad[4] - srcQuad[6]) + (srcQuad[5] - srcQuad[7]) * (srcQuad[5] - srcQuad[7])).toDouble())
+            val leftH = kotlin.math.sqrt(((srcQuad[6] - srcQuad[0]) * (srcQuad[6] - srcQuad[0]) + (srcQuad[7] - srcQuad[1]) * (srcQuad[7] - srcQuad[1])).toDouble())
+            val rightH = kotlin.math.sqrt(((srcQuad[4] - srcQuad[2]) * (srcQuad[4] - srcQuad[2]) + (srcQuad[5] - srcQuad[3]) * (srcQuad[5] - srcQuad[3])).toDouble())
+            val outW = maxOf(topW, botW).toInt().coerceAtLeast(1)
+            val outH = maxOf(leftH, rightH).toInt().coerceAtLeast(1)
+            val dstQuad = floatArrayOf(0f, 0f, outW.toFloat(), 0f, outW.toFloat(), outH.toFloat(), 0f, outH.toFloat())
+            val warpMatrix = Matrix()
+            warpMatrix.setPolyToPoly(srcQuad, 0, dstQuad, 0, 4)
+            val warped = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+            val warpCanvas = Canvas(warped)
+            warpCanvas.drawBitmap(drawn, warpMatrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+            if (drawn !== bitmap) drawn.recycle()
+            return warped
+        }
+
         val cl = rect.left.coerceIn(0, drawn.width - 1)
         val ct = rect.top.coerceIn(0, drawn.height - 1)
         val cw = rect.width().coerceAtMost(drawn.width - cl).coerceAtLeast(1)

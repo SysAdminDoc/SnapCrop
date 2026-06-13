@@ -368,6 +368,9 @@
     <string name="crop_preview">Preview</string>
     <string name="crop_straighten">Straighten</string>
     <string name="crop_straighten_angle">%1$.1f°</string>
+    <string name="crop_perspective">Perspective</string>
+    <string name="crop_perspective_cd">Perspective crop: drag corners to correct distortion</string>
+    <string name="crop_perspective_reset">Reset corners</string>
     <string name="crop_precise_input_title">Crop dimensions</string>
     <string name="crop_x_label">X</string>
     <string name="crop_y_label">Y</string>

@@ -10,6 +10,12 @@ All notable changes to SnapCrop will be documented in this file.
   `values/strings.xml` and wired `stringResource()` / `getString()` across all
   17+ Activity, Screen, Service, and helper files. A translator can now add
   `values-es/strings.xml` (or any locale) and see a fully localized UI.
+- Added perspective/quad crop with warp transform. A Perspective chip in crop
+  mode toggles 4 independent corner handles. Dragging any corner reshapes the
+  selection quad without affecting the others. On export, `Matrix.setPolyToPoly`
+  warps the quadrilateral to a rectangle. Output dimensions are derived from the
+  longest opposing edges. Grid lines interpolate across the quad. Useful for
+  photographed screens, whiteboards, tilted documents, and perspective correction.
 - Added CI lanes for lint, unit tests, debug assemble, release assemble,
   dependency review, and release SBOM artifacts.
 - Added a starter JVM/Robolectric unit-test surface for auto-crop, app profile
