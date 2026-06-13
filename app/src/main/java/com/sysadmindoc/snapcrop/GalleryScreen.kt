@@ -52,6 +52,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -630,7 +633,9 @@ private fun AlbumGrid(
             // "All Photos" card first
             item {
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAllPhotos() },
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        .semantics { contentDescription = "All Photos, $totalMediaCount items" }
+                        .clickable { onAllPhotos() },
                     colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -649,7 +654,9 @@ private fun AlbumGrid(
             if (favCount > 0) {
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onFavorites() },
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .semantics { contentDescription = "Favorites, $favCount items" }
+                            .clickable { onFavorites() },
                         colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -678,7 +685,9 @@ private fun AlbumGrid(
             }
             items(smartAlbums) { album ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAlbumClick(album) },
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        .semantics { contentDescription = "${album.name} smart album, ${album.count} items. ${album.subtitle}" }
+                        .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -731,7 +740,9 @@ private fun AlbumGrid(
 
         items(albums) { album ->
             Card(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f).clickable { onAlbumClick(album) },
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                    .semantics { contentDescription = "${album.name} album, ${album.count} items" }
+                    .clickable { onAlbumClick(album) },
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                 shape = RoundedCornerShape(12.dp)
             ) {
@@ -817,11 +828,17 @@ private fun PhotoGrid(
         items(photos.size) { index ->
             val photo = photos[index]
             val isSelected = photo.id in selectedIds
-            Box {
+            val photoLabel = buildString {
+                append(photo.name.ifBlank { "Media item" })
+                if (photo.isVideo) append(", video")
+                if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
+                if (isSelected) append(", selected")
+            }
+            Box(Modifier.semantics { contentDescription = photoLabel }) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(photo.uri).crossfade(true).size(250).build(),
-                    contentDescription = photo.name.ifBlank { "Media item" },
+                    contentDescription = null,
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                         .clip(RoundedCornerShape(2.dp))
                         .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
@@ -869,11 +886,17 @@ private fun PhotoItem(
     photo: Photo, index: Int, isSelected: Boolean, selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit, onPhotoLongClick: (Photo) -> Unit
 ) {
-    Box {
+    val photoLabel = buildString {
+        append(photo.name.ifBlank { "Media item" })
+        if (photo.isVideo) append(", video")
+        if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
+        if (isSelected) append(", selected")
+    }
+    Box(Modifier.semantics { contentDescription = photoLabel }) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(photo.uri).crossfade(true).size(250).build(),
-            contentDescription = photo.name.ifBlank { "Media item" },
+            contentDescription = null,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .clip(RoundedCornerShape(2.dp))
                 .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
