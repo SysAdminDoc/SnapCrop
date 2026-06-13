@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.res.stringResource
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
 import java.io.ByteArrayOutputStream
@@ -161,7 +162,7 @@ class MainActivity : ComponentActivity() {
             for (uri in uris) {
                 if (batchCancelled.value) break
                 withContext(Dispatchers.Main) {
-                    batchProgress.value = "Cropping ${done + 1}/$total..."
+                    batchProgress.value = getString(R.string.batch_cropping, done + 1, total)
                     batchProgressFraction.floatValue = done.toFloat() / total
                 }
                 try {
@@ -215,9 +216,9 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
                 val msg = buildString {
-                    append("Cropped ${done - failed}/$total")
-                    if (failed > 0) append(" ($failed failed)")
-                    if (cancelled) append(" (stopped)")
+                    append(getString(R.string.batch_cropped, done - failed, total))
+                    if (failed > 0) append(getString(R.string.batch_failed_count, failed))
+                    if (cancelled) append(getString(R.string.batch_stopped))
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 loadRecentCrops()
@@ -244,8 +245,8 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                icon = { Icon(Icons.Default.Home, "Home") },
-                                label = { Text("Home") },
+                                icon = { Icon(Icons.Default.Home, stringResource(R.string.nav_home)) },
+                                label = { Text(stringResource(R.string.nav_home)) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Primary,
                                     selectedTextColor = Primary,
@@ -257,8 +258,8 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                icon = { Icon(Icons.Default.Photo, "Gallery") },
-                                label = { Text("Gallery") },
+                                icon = { Icon(Icons.Default.Photo, stringResource(R.string.nav_gallery)) },
+                                label = { Text(stringResource(R.string.nav_gallery)) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Primary,
                                     selectedTextColor = Primary,
@@ -293,7 +294,7 @@ class MainActivity : ComponentActivity() {
                                         putExtra(ScreenshotService.EXTRA_DELAY_SECONDS, seconds)
                                     }
                                     startService(intent)
-                                    Toast.makeText(this@MainActivity, "Capturing in ${seconds}s...", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(this@MainActivity, getString(R.string.toast_capturing_in, seconds), Toast.LENGTH_SHORT).show()
                                 },
                                 batchProgress = batchProgress.value,
                                 batchFraction = batchProgressFraction.floatValue,
@@ -336,10 +337,10 @@ class MainActivity : ComponentActivity() {
                 if (showAccessibilityDisclosure.value) {
                     AlertDialog(
                         onDismissRequest = { showAccessibilityDisclosure.value = false },
-                        title = { Text("Enable long screenshot access?", color = OnSurface) },
+                        title = { Text(stringResource(R.string.accessibility_dialog_title), color = OnSurface) },
                         text = {
                             Text(
-                                "Long Screenshot uses Android Accessibility only after you start the action. It captures the visible screen, reads window structure enough to scroll, and performs scroll gestures to stitch frames. Frames stay on this device and are saved to your SnapCrop folder; SnapCrop does not upload or share Accessibility data. You can skip this and still use manual crop, stitch, gallery, and editor tools.",
+                                stringResource(R.string.accessibility_dialog_body),
                                 color = OnSurfaceVariant,
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
@@ -353,7 +354,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
                             ) {
-                                Text("Open settings")
+                                Text(stringResource(R.string.accessibility_open_settings))
                             }
                         },
                         dismissButton = {
@@ -361,7 +362,7 @@ class MainActivity : ComponentActivity() {
                                 onClick = { showAccessibilityDisclosure.value = false },
                                 colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
                             ) {
-                                Text("Not now")
+                                Text(stringResource(R.string.accessibility_not_now))
                             }
                         },
                         containerColor = Surface,
@@ -375,10 +376,10 @@ class MainActivity : ComponentActivity() {
                     val sizes = listOf(480, 720, 1080, 1440, 2160)
                     AlertDialog(
                         onDismissRequest = { showResizeDialogState.value = false },
-                        title = { Text("Batch Resize", color = OnSurface) },
+                        title = { Text(stringResource(R.string.resize_dialog_title), color = OnSurface) },
                         text = {
                             Column {
-                                Text("Max dimension (px):", color = OnSurfaceVariant, fontSize = 13.sp)
+                                Text(stringResource(R.string.resize_max_dimension), color = OnSurfaceVariant, fontSize = 13.sp)
                                 Spacer(Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     sizes.forEach { size ->
@@ -387,7 +388,7 @@ class MainActivity : ComponentActivity() {
                                             onClick = { selectedSize = size },
                                             label = { Text("$size", fontSize = 12.sp) },
                                             modifier = Modifier.semantics {
-                                                contentDescription = "${size}px resize target${if (selectedSize == size) ", selected" else ""}"
+                                                contentDescription = if (selectedSize == size) stringResource(R.string.resize_target_selected_cd, size) else stringResource(R.string.resize_target_cd, size)
                                             },
                                             colors = FilterChipDefaults.filterChipColors(
                                                 selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
@@ -397,17 +398,17 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                                 Spacer(Modifier.height(8.dp))
-                                Text("${resizeUris.value.size} images will be resized", color = OnSurfaceVariant, fontSize = 12.sp)
+                                Text(stringResource(R.string.resize_count, resizeUris.value.size), color = OnSurfaceVariant, fontSize = 12.sp)
                             }
                         },
                         confirmButton = {
                             TextButton(onClick = {
                                 showResizeDialogState.value = false
                                 batchResize(resizeUris.value, selectedSize)
-                            }) { Text("Resize", color = Primary) }
+                            }) { Text(stringResource(R.string.resize), color = Primary) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showResizeDialogState.value = false }) { Text("Cancel", color = OnSurfaceVariant) }
+                            TextButton(onClick = { showResizeDialogState.value = false }) { Text(stringResource(R.string.cancel), color = OnSurfaceVariant) }
                         },
                         containerColor = SurfaceVariant
                     )
@@ -415,13 +416,14 @@ class MainActivity : ComponentActivity() {
 
                 if (showReportDialogState.value) {
                     val networkSettings = NetworkExportSettings.fromPrefs(prefs, credPrefs)
-                    var reportTitle by remember(reportUris.value) { mutableStateOf("SnapCrop incident report") }
+                    val reportDefaultTitle = stringResource(R.string.report_default_title)
+                    var reportTitle by remember(reportUris.value) { mutableStateOf(reportDefaultTitle) }
                     var notes by remember(reportUris.value) { mutableStateOf("") }
                     var includeOcr by remember(reportUris.value) { mutableStateOf(false) }
                     var uploadAfterSave by remember(reportUris.value, networkSettings) { mutableStateOf(false) }
                     AlertDialog(
                         onDismissRequest = { showReportDialogState.value = false },
-                        title = { Text("Create PDF report", color = OnSurface) },
+                        title = { Text(stringResource(R.string.report_dialog_title), color = OnSurface) },
                         text = {
                             Column(
                                 Modifier
@@ -430,7 +432,7 @@ class MainActivity : ComponentActivity() {
                                     .verticalScroll(rememberScrollState())
                             ) {
                                 Text(
-                                    "${reportUris.value.size} images will be bundled with metadata.",
+                                    stringResource(R.string.report_count, reportUris.value.size),
                                     color = OnSurfaceVariant,
                                     fontSize = 12.sp
                                 )
@@ -438,7 +440,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedTextField(
                                     value = reportTitle,
                                     onValueChange = { reportTitle = it },
-                                    label = { Text("Title") },
+                                    label = { Text(stringResource(R.string.report_title_label)) },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -453,7 +455,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedTextField(
                                     value = notes,
                                     onValueChange = { notes = it },
-                                    label = { Text("Notes") },
+                                    label = { Text(stringResource(R.string.report_notes_label)) },
                                     minLines = 3,
                                     maxLines = 5,
                                     modifier = Modifier.fillMaxWidth(),
@@ -476,7 +478,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     )
                                     Text(
-                                        "Append OCR text when available",
+                                        stringResource(R.string.report_include_ocr),
                                         color = OnSurfaceVariant,
                                         fontSize = 13.sp
                                     )
@@ -496,13 +498,13 @@ class MainActivity : ComponentActivity() {
                                         )
                                         Column {
                                             Text(
-                                                "Upload after saving",
+                                                stringResource(R.string.report_upload_after),
                                                 color = if (networkSettings.isConfigured) OnSurfaceVariant else Outline,
                                                 fontSize = 13.sp
                                             )
                                             Text(
                                                 if (networkSettings.isConfigured) networkSettings.destinationLabel
-                                                else "Configure the network target in Settings",
+                                                else stringResource(R.string.report_configure_target),
                                                 color = OnSurfaceVariant,
                                                 fontSize = 11.sp,
                                                 lineHeight = 15.sp
@@ -511,7 +513,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 } else {
                                     Text(
-                                        "Network upload is off in Settings",
+                                        stringResource(R.string.report_network_off),
                                         color = OnSurfaceVariant,
                                         fontSize = 11.sp
                                     )
@@ -525,13 +527,13 @@ class MainActivity : ComponentActivity() {
                                     exportPdfReport(reportUris.value, reportTitle, notes, includeOcr, uploadAfterSave)
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
-                            ) { Text("Create") }
+                            ) { Text(stringResource(R.string.create)) }
                         },
                         dismissButton = {
                             TextButton(
                                 onClick = { showReportDialogState.value = false },
                                 colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
-                            ) { Text("Cancel") }
+                            ) { Text(stringResource(R.string.cancel)) }
                         },
                         containerColor = SurfaceVariant,
                         shape = RoundedCornerShape(12.dp)
@@ -547,7 +549,7 @@ class MainActivity : ComponentActivity() {
                     }
                     AlertDialog(
                         onDismissRequest = { showRenameDialogState.value = false },
-                        title = { Text("Batch rename", color = OnSurface) },
+                        title = { Text(stringResource(R.string.rename_dialog_title), color = OnSurface) },
                         text = {
                             Column(
                                 Modifier
@@ -556,7 +558,7 @@ class MainActivity : ComponentActivity() {
                                     .verticalScroll(rememberScrollState())
                             ) {
                                 Text(
-                                    "${renameUris.value.size} images will be renamed in place.",
+                                    stringResource(R.string.rename_count, renameUris.value.size),
                                     color = OnSurfaceVariant,
                                     fontSize = 12.sp
                                 )
@@ -564,7 +566,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedTextField(
                                     value = template,
                                     onValueChange = { template = it },
-                                    label = { Text("Template") },
+                                    label = { Text(stringResource(R.string.rename_template_label)) },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -576,7 +578,7 @@ class MainActivity : ComponentActivity() {
                                     )
                                 )
                                 Text(
-                                    "Tokens: %app%, %date%, %time%, %timestamp%, %counter%, %profile%",
+                                    stringResource(R.string.rename_tokens),
                                     color = OnSurfaceVariant,
                                     fontSize = 11.sp,
                                     lineHeight = 15.sp,
@@ -586,7 +588,7 @@ class MainActivity : ComponentActivity() {
                                 OutlinedTextField(
                                     value = profileName,
                                     onValueChange = { profileName = it },
-                                    label = { Text("Profile name") },
+                                    label = { Text(stringResource(R.string.rename_profile_label)) },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     colors = OutlinedTextFieldDefaults.colors(
@@ -610,13 +612,13 @@ class MainActivity : ComponentActivity() {
                                     batchRename(renameUris.value, template, profileName)
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
-                            ) { Text("Rename") }
+                            ) { Text(stringResource(R.string.rename)) }
                         },
                         dismissButton = {
                             TextButton(
                                 onClick = { showRenameDialogState.value = false },
                                 colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
-                            ) { Text("Cancel") }
+                            ) { Text(stringResource(R.string.cancel)) }
                         },
                         containerColor = SurfaceVariant,
                         shape = RoundedCornerShape(12.dp)
@@ -691,7 +693,7 @@ class MainActivity : ComponentActivity() {
             for (uri in uris) {
                 if (batchCancelled.value) break
                 withContext(Dispatchers.Main) {
-                    batchProgress.value = "Resizing ${done + 1}/${uris.size}..."
+                    batchProgress.value = getString(R.string.batch_resizing, done + 1, uris.size)
                     batchProgressFraction.floatValue = done.toFloat() / uris.size
                 }
                 try {
@@ -732,9 +734,9 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
                 val msg = buildString {
-                    append("Resized ${done - failed}/${uris.size} to ${maxDim}px")
-                    if (failed > 0) append(" ($failed failed)")
-                    if (cancelled) append(" (stopped)")
+                    append(getString(R.string.batch_resized, done - failed, uris.size, maxDim))
+                    if (failed > 0) append(getString(R.string.batch_failed_count, failed))
+                    if (cancelled) append(getString(R.string.batch_stopped))
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 galleryRefreshKey.intValue++
@@ -753,7 +755,7 @@ class MainActivity : ComponentActivity() {
             uris.forEachIndexed { index, uri ->
                 if (batchCancelled.value) return@forEachIndexed
                 withContext(Dispatchers.Main) {
-                    batchProgress.value = "Renaming ${index + 1}/${uris.size}..."
+                    batchProgress.value = getString(R.string.batch_renaming, index + 1, uris.size)
                     batchProgressFraction.floatValue = index.toFloat() / uris.size
                 }
                 val metadata = loadExportItemMetadata(uri)
@@ -773,9 +775,9 @@ class MainActivity : ComponentActivity() {
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
                 val msg = buildString {
-                    append("Renamed $renamed/${uris.size}")
-                    if (failed > 0) append(" ($failed need write access or failed)")
-                    if (batchCancelled.value) append(" (stopped)")
+                    append(getString(R.string.batch_renamed, renamed, uris.size))
+                    if (failed > 0) append(getString(R.string.batch_rename_failed_count, failed))
+                    if (batchCancelled.value) append(getString(R.string.batch_stopped))
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                 galleryRefreshKey.intValue++
@@ -808,7 +810,7 @@ class MainActivity : ComponentActivity() {
                 pageNumber = drawReportCoverPage(
                     doc = doc,
                     pageNumber = pageNumber,
-                    title = title.ifBlank { "SnapCrop incident report" },
+                    title = title.ifBlank { getString(R.string.report_default_title) },
                     notes = notes,
                     itemCount = uris.size,
                     createdAt = createdAt,
@@ -817,7 +819,7 @@ class MainActivity : ComponentActivity() {
                 uris.forEachIndexed { index, uri ->
                     if (batchCancelled.value) return@forEachIndexed
                     withContext(Dispatchers.Main) {
-                        batchProgress.value = "Building report ${index + 1}/${uris.size}..."
+                        batchProgress.value = getString(R.string.batch_building_report, index + 1, uris.size)
                         batchProgressFraction.floatValue = index.toFloat() / uris.size
                     }
                     val metadata = loadExportItemMetadata(uri, mediaIdFromUri(uri)?.let { indexEntries[it] })
@@ -841,7 +843,7 @@ class MainActivity : ComponentActivity() {
                 if (imagePages == 0) {
                     withContext(Dispatchers.Main) {
                         batchProgress.value = ""
-                        Toast.makeText(this@MainActivity, "No images to export", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, getString(R.string.report_no_images), Toast.LENGTH_SHORT).show()
                     }
                     return@launch
                 }
@@ -864,14 +866,14 @@ class MainActivity : ComponentActivity() {
                     val uploadSuffix = uploadResult?.let { "\n${it.message}" }.orEmpty()
                     Toast.makeText(
                         this@MainActivity,
-                        if (saved) "PDF report saved to Documents/SnapCrop$uploadSuffix" else "PDF report failed",
+                        if (saved) getString(R.string.report_saved) + uploadSuffix else getString(R.string.report_failed),
                         if (uploadResult != null) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
                     ).show()
                 }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
                     batchProgress.value = ""
-                    Toast.makeText(this@MainActivity, "PDF report failed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.report_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 doc.close()
@@ -1004,9 +1006,14 @@ class MainActivity : ComponentActivity() {
         var y = 110f
         y = drawWrappedText(canvas, title, PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, titlePaint(), 48f)
         y += 34f
+        val summaryLines = listOf(
+            getString(R.string.pdf_created, formatTimestamp(createdAt)),
+            getString(R.string.pdf_image_count, itemCount),
+            getString(if (includeOcr) R.string.pdf_ocr_enabled else R.string.pdf_ocr_off)
+        ).joinToString("\n")
         y = drawWrappedText(
             canvas,
-            "Created ${formatTimestamp(createdAt)}\n$itemCount screenshot images\nOCR appendix: ${if (includeOcr) "enabled" else "off"}",
+            summaryLines,
             PAGE_MARGIN,
             y,
             PDF_WIDTH - PAGE_MARGIN * 2,
@@ -1015,7 +1022,7 @@ class MainActivity : ComponentActivity() {
         )
         if (notes.isNotBlank()) {
             y += 42f
-            y = drawWrappedText(canvas, "Notes", PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 30f)
+            y = drawWrappedText(canvas, getString(R.string.pdf_notes), PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 30f)
             y += 10f
             drawWrappedText(canvas, notes, PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, bodyPaint(), 26f, maxLines = 18)
         }
@@ -1038,7 +1045,7 @@ class MainActivity : ComponentActivity() {
         var y = 72f
         y = drawWrappedText(
             canvas,
-            "Image $itemNumber of $totalItems",
+            getString(R.string.pdf_image_of, itemNumber, totalItems),
             PAGE_MARGIN,
             y,
             PDF_WIDTH - PAGE_MARGIN * 2,
@@ -1047,13 +1054,12 @@ class MainActivity : ComponentActivity() {
         )
         val metaText = buildString {
             append(metadata.displayName)
-            if (metadata.sourceHint.isNotBlank()) append("\nSource: ").append(metadata.sourceHint)
-            if (metadata.relativePath.isNotBlank()) append("\nAlbum: ").append(metadata.relativePath)
-            append("\nDimensions: ").append(metadata.width.takeIf { it > 0 } ?: bitmap.width)
-                .append(" x ").append(metadata.height.takeIf { it > 0 } ?: bitmap.height)
-            if (metadata.sizeBytes > 0) append("\nSize: ").append(formatSize(metadata.sizeBytes))
-            if (metadata.dateAddedSeconds > 0) append("\nDate added: ").append(formatTimestamp(metadata.dateAddedSeconds * 1000))
-            if (metadata.categories.isNotEmpty()) append("\nTags: ").append(metadata.categories.joinToString(", "))
+            if (metadata.sourceHint.isNotBlank()) append("\n").append(getString(R.string.pdf_source, metadata.sourceHint))
+            if (metadata.relativePath.isNotBlank()) append("\n").append(getString(R.string.pdf_album, metadata.relativePath))
+            append("\n").append(getString(R.string.pdf_dimensions, metadata.width.takeIf { it > 0 } ?: bitmap.width, metadata.height.takeIf { it > 0 } ?: bitmap.height))
+            if (metadata.sizeBytes > 0) append("\n").append(getString(R.string.pdf_size, formatSize(metadata.sizeBytes)))
+            if (metadata.dateAddedSeconds > 0) append("\n").append(getString(R.string.pdf_date_added, formatTimestamp(metadata.dateAddedSeconds * 1000)))
+            if (metadata.categories.isNotEmpty()) append("\n").append(getString(R.string.pdf_tags, metadata.categories.joinToString(", ")))
         }
         y = drawWrappedText(canvas, metaText, PAGE_MARGIN, y + 8f, PDF_WIDTH - PAGE_MARGIN * 2, smallPaint(), 22f, maxLines = 7)
         val imageTop = y + 24f
@@ -1088,7 +1094,8 @@ class MainActivity : ComponentActivity() {
         var canvas = page.canvas
         canvas.drawColor(android.graphics.Color.WHITE)
         var y = 76f
-        y = drawWrappedText(canvas, "OCR appendix", PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 34f)
+        val ocrAppendixLabel = getString(R.string.pdf_ocr_appendix)
+        y = drawWrappedText(canvas, ocrAppendixLabel, PAGE_MARGIN, y, PDF_WIDTH - PAGE_MARGIN * 2, sectionPaint(), 34f)
         val textPaint = smallPaint()
         val maxWidth = PDF_WIDTH - PAGE_MARGIN * 2
         val bottom = PDF_HEIGHT - 120f
@@ -1101,7 +1108,7 @@ class MainActivity : ComponentActivity() {
             canvas = page.canvas
             canvas.drawColor(android.graphics.Color.WHITE)
             y = 76f
-            y = drawWrappedText(canvas, "OCR appendix", PAGE_MARGIN, y, maxWidth, sectionPaint(), 34f)
+            y = drawWrappedText(canvas, ocrAppendixLabel, PAGE_MARGIN, y, maxWidth, sectionPaint(), 34f)
         }
 
         entries.forEach { (metadata, text) ->
@@ -1193,8 +1200,8 @@ class MainActivity : ComponentActivity() {
 
     private fun drawPdfFooter(canvas: android.graphics.Canvas, pageNumber: Int) {
         val paint = smallPaint().apply { color = android.graphics.Color.rgb(92, 103, 115) }
-        canvas.drawText("SnapCrop local report", PAGE_MARGIN, PDF_HEIGHT - 54f, paint)
-        canvas.drawText("Page $pageNumber", PDF_WIDTH - PAGE_MARGIN - 96f, PDF_HEIGHT - 54f, paint)
+        canvas.drawText(getString(R.string.pdf_footer), PAGE_MARGIN, PDF_HEIGHT - 54f, paint)
+        canvas.drawText(getString(R.string.pdf_page, pageNumber), PDF_WIDTH - PAGE_MARGIN - 96f, PDF_HEIGHT - 54f, paint)
     }
 
     private fun titlePaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1354,7 +1361,7 @@ class MainActivity : ComponentActivity() {
                 @Suppress("DEPRECATION")
                 startIntentSenderForResult(pendingIntent.intentSender, 42, null, 0, 0, 0)
             } catch (e: Exception) {
-                Toast.makeText(this, "Delete failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.toast_delete_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
             }
         } else {
             // Android 10: direct delete (may throw RecoverableSecurityException)
@@ -1362,7 +1369,7 @@ class MainActivity : ComponentActivity() {
             for (uri in uris) {
                 try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
             }
-            Toast.makeText(this, "Deleted $count photos", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_deleted_count, count), Toast.LENGTH_SHORT).show()
             galleryRefreshKey.intValue++
             loadRecentCrops()
         }
@@ -1375,7 +1382,7 @@ class MainActivity : ComponentActivity() {
             galleryRefreshKey.intValue++
             loadRecentCrops()
             if (resultCode == RESULT_OK) {
-                Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -1410,7 +1417,7 @@ class MainActivity : ComponentActivity() {
 
     private fun requestLongScreenshot() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Toast.makeText(this, "Long screenshot requires Android 11 or newer", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, getString(R.string.toast_long_requires_11), Toast.LENGTH_LONG).show()
             return
         }
 
@@ -1425,7 +1432,7 @@ class MainActivity : ComponentActivity() {
     private fun openAccessibilitySettings() {
         Toast.makeText(
             this,
-            "Enable SnapCrop Long screenshot, then add its Quick Settings tile.",
+            getString(R.string.toast_enable_accessibility),
             Toast.LENGTH_LONG
         ).show()
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -1551,16 +1558,16 @@ private fun HomeScreen(
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("SnapCrop", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
+                Text(stringResource(R.string.app_name), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
                 Text(
-                    "Clean, redact, and export screenshots - v${BuildConfig.VERSION_NAME}",
+                    stringResource(R.string.home_subtitle, BuildConfig.VERSION_NAME),
                     fontSize = 13.sp,
                     color = OnSurfaceVariant,
                     lineHeight = 18.sp
                 )
             }
             IconButton(onClick = onOpenSettings) {
-                Icon(Icons.Default.Settings, "Settings", tint = OnSurfaceVariant)
+                Icon(Icons.Default.Settings, stringResource(R.string.home_settings), tint = OnSurfaceVariant)
             }
         }
 
@@ -1582,9 +1589,9 @@ private fun HomeScreen(
                     Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Media permissions required", color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.home_permission_title), color = OnSurface, fontWeight = FontWeight.Medium)
                         Text(
-                            "Allow photos/videos so SnapCrop can find screenshots. Notifications keep monitoring visible and provide edit/share actions.",
+                            stringResource(R.string.home_permission_body),
                             color = OnSurfaceVariant,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
@@ -1600,7 +1607,7 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Grant media access", color = Color.Black)
+                    Text(stringResource(R.string.home_permission_grant), color = Color.Black)
                 }
             }
         }
@@ -1616,8 +1623,8 @@ private fun HomeScreen(
                     Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Instant editor launch", color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text("Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.",
+                        Text(stringResource(R.string.home_overlay_title), color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.home_overlay_body),
                             color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
                     }
                 }
@@ -1626,7 +1633,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Grant display access", color = Color.Black) }
+                ) { Text(stringResource(R.string.home_overlay_grant), color = Color.Black) }
             }
         }
 
@@ -1643,20 +1650,20 @@ private fun HomeScreen(
                     .fillMaxWidth()
                     .padding(20.dp)
                     .semantics(mergeDescendants = true) {
-                        contentDescription = "Screenshot Monitor, ${if (isRunning) "active" else "paused"}"
+                        contentDescription = stringResource(R.string.home_monitor_cd, if (isRunning) stringResource(R.string.home_monitor_status_active) else stringResource(R.string.home_monitor_status_paused))
                     },
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
                     Text(
-                        "Screenshot Monitor",
+                        stringResource(R.string.home_monitor_title),
                         color = OnSurface,
                         fontWeight = FontWeight.Medium,
                         fontSize = 16.sp
                     )
                     Text(
-                        if (isRunning) "Active - new screenshots open in the editor" else "Paused - turn on to catch screenshots automatically",
+                        if (isRunning) stringResource(R.string.home_monitor_active) else stringResource(R.string.home_monitor_paused),
                         color = OnSurfaceVariant,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
@@ -1667,7 +1674,7 @@ private fun HomeScreen(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        if (isRunning) "Active" else "Paused",
+                        stringResource(if (isRunning) R.string.home_monitor_status_active else R.string.home_monitor_status_paused),
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         color = if (isRunning) Secondary else OnSurfaceVariant,
                         fontSize = 11.sp,
@@ -1690,7 +1697,7 @@ private fun HomeScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        Text("Workflows", color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        Text(stringResource(R.string.home_workflows), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
 
         // Batch progress bar
@@ -1719,7 +1726,7 @@ private fun HomeScreen(
                             shape = RoundedCornerShape(8.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                        ) { Text("Cancel batch", fontSize = 12.sp) }
+                        ) { Text(stringResource(R.string.home_cancel_batch), fontSize = 12.sp) }
                     }
                 }
             }
@@ -1728,8 +1735,8 @@ private fun HomeScreen(
         var showDelayPicker by remember { mutableStateOf(false) }
         HomeActionTile(
             icon = Icons.Default.PhotoLibrary,
-            title = "Crop one image",
-            subtitle = "Open the editor with auto-crop, redaction, OCR, and export tools.",
+            title = stringResource(R.string.home_crop_one_title),
+            subtitle = stringResource(R.string.home_crop_one_subtitle),
             onClick = onPickImage
         )
 
@@ -1738,16 +1745,16 @@ private fun HomeScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
                 icon = Icons.Default.BurstMode,
-                title = "Batch autocrop",
-                subtitle = "Clean several screenshots at once.",
+                title = stringResource(R.string.home_batch_title),
+                subtitle = stringResource(R.string.home_batch_subtitle),
                 enabled = batchProgress.isEmpty(),
                 modifier = Modifier.weight(1f),
                 onClick = onBatchCrop
             )
             HomeActionTile(
                 icon = Icons.Default.Timer,
-                title = "Delayed capture",
-                subtitle = "Start a timed screenshot.",
+                title = stringResource(R.string.home_delay_title),
+                subtitle = stringResource(R.string.home_delay_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = { showDelayPicker = !showDelayPicker }
             )
@@ -1760,8 +1767,8 @@ private fun HomeScreen(
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(Modifier.padding(12.dp)) {
-                    Text("Choose delay", color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("SnapCrop waits, then opens the next screenshot it detects.",
+                    Text(stringResource(R.string.home_delay_choose), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(stringResource(R.string.home_delay_body),
                         color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1770,7 +1777,7 @@ private fun HomeScreen(
                                 onClick = { onDelayedCapture(sec); showDelayPicker = false },
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
-                            ) { Text("${sec}s", color = Primary, fontSize = 13.sp) }
+                            ) { Text(stringResource(R.string.home_delay_seconds, sec), color = Primary, fontSize = 13.sp) }
                         }
                     }
                 }
@@ -1781,11 +1788,11 @@ private fun HomeScreen(
 
         HomeActionTile(
             icon = Icons.Default.ScreenshotMonitor,
-            title = "Long screenshot",
+            title = stringResource(R.string.home_long_title),
             subtitle = if (longScreenshotReady) {
-                "Scroll, stitch, save, and open the result automatically."
+                stringResource(R.string.home_long_subtitle_ready)
             } else {
-                "Enable Accessibility once, then capture from Quick Settings."
+                stringResource(R.string.home_long_subtitle_setup)
             },
             onClick = onLongScreenshot
         )
@@ -1796,15 +1803,15 @@ private fun HomeScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
                 icon = Icons.Default.MergeType,
-                title = "Stitch",
-                subtitle = "Join images vertically or horizontally.",
+                title = stringResource(R.string.home_stitch_title),
+                subtitle = stringResource(R.string.home_stitch_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = onStitch
             )
             HomeActionTile(
                 icon = Icons.Default.GridView,
-                title = "Collage",
-                subtitle = "Build a clean multi-image layout.",
+                title = stringResource(R.string.home_collage_title),
+                subtitle = stringResource(R.string.home_collage_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = onCollage
             )
@@ -1815,15 +1822,15 @@ private fun HomeScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
                 icon = Icons.Default.PhoneAndroid,
-                title = "Device mockup",
-                subtitle = "Wrap a screenshot in a polished phone frame.",
+                title = stringResource(R.string.home_mockup_title),
+                subtitle = stringResource(R.string.home_mockup_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = onDeviceFrame
             )
             HomeActionTile(
                 icon = Icons.Default.PlayCircle,
-                title = "Video frame",
-                subtitle = "Trim recordings or grab a frame to edit.",
+                title = stringResource(R.string.home_video_title),
+                subtitle = stringResource(R.string.home_video_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = onVideoClip
             )
@@ -1833,7 +1840,7 @@ private fun HomeScreen(
         if (cropCount > 0) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "$cropCount screenshots cropped",
+                stringResource(R.string.home_crop_count, cropCount),
                 color = OnSurfaceVariant,
                 fontSize = 13.sp
             )
@@ -1843,7 +1850,7 @@ private fun HomeScreen(
         if (recentCrops.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
             Text(
-                "Recent",
+                stringResource(R.string.home_recent),
                 color = OnSurface,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium
@@ -1865,7 +1872,7 @@ private fun HomeScreen(
         Spacer(Modifier.height(32.dp))
 
         Text(
-            "Screenshots are detected automatically when the monitor is active. Exports follow your format and location settings.",
+            stringResource(R.string.home_footer),
             color = OnSurfaceVariant,
             fontSize = 12.sp,
             lineHeight = 18.sp
@@ -1878,10 +1885,10 @@ private fun HomeScreen(
     if (pendingDelete != null) {
         AlertDialog(
             onDismissRequest = { cropPendingDelete = null },
-            title = { Text("Delete recent crop?", color = OnSurface) },
+            title = { Text(stringResource(R.string.home_delete_crop_title), color = OnSurface) },
             text = {
                 Text(
-                    "This removes the exported crop from your media library. The source screenshot is not touched.",
+                    stringResource(R.string.home_delete_crop_body),
                     color = OnSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -1895,12 +1902,12 @@ private fun HomeScreen(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
                 ) {
-                    Text("Delete crop")
+                    Text(stringResource(R.string.home_delete_crop_confirm))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { cropPendingDelete = null }) {
-                    Text("Cancel", color = OnSurfaceVariant)
+                    Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
                 }
             },
             containerColor = SurfaceVariant,
@@ -1923,7 +1930,7 @@ private fun RecentCropTile(
     ) {
         Image(
             bitmap = crop.thumbBitmap,
-            contentDescription = "Open recent crop",
+            contentDescription = stringResource(R.string.home_open_crop_cd),
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
@@ -1937,7 +1944,7 @@ private fun RecentCropTile(
         ) {
             Icon(
                 Icons.Default.Delete,
-                contentDescription = "Delete recent crop",
+                contentDescription = stringResource(R.string.home_delete_crop_cd),
                 tint = Tertiary,
                 modifier = Modifier.size(18.dp)
             )
