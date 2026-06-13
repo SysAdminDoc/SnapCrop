@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
+import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -51,6 +53,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +76,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.sysadmindoc.snapcrop.ui.theme.*
+import android.content.ClipboardManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -971,8 +975,12 @@ private fun PhotoViewer(
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
     val context = LocalContext.current
     val view = LocalView.current
+    val scope = rememberCoroutineScope()
     var showInfo by remember { mutableStateOf(false) }
     var photoInfo by remember { mutableStateOf("") }
+    var summaryText by remember { mutableStateOf<String?>(null) }
+    var summaryLoading by remember { mutableStateOf(false) }
+    var showSummary by remember { mutableStateOf(false) }
     var isFav by remember { mutableStateOf(
         FavoritesStore.isFavorite(context, photos.getOrNull(initialIndex)?.id ?: 0)
     ) }
@@ -1159,6 +1167,24 @@ private fun PhotoViewer(
             }) {
                 Icon(Icons.Default.PushPin, stringResource(R.string.gallery_pin), tint = Color.White)
             }
+            IconButton(onClick = {
+                if (!summaryLoading) {
+                    summaryLoading = true
+                    scope.launch {
+                        val photo = photos[pagerState.currentPage]
+                        val result = ScreenshotSummarizer.summarize(context, photo.uri)
+                        summaryText = result.description
+                        summaryLoading = false
+                        showSummary = true
+                    }
+                }
+            }) {
+                Icon(
+                    Icons.Default.Accessibility,
+                    stringResource(R.string.gallery_describe),
+                    tint = if (summaryLoading) OnSurfaceVariant else Color.White
+                )
+            }
             IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
                 Icon(Icons.Default.Crop, stringResource(R.string.gallery_edit), tint = Primary)
             }
@@ -1180,6 +1206,41 @@ private fun PhotoViewer(
             ) {
                 Text(photoInfo, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
             }
+        }
+
+        if (showSummary && summaryText != null) {
+            AlertDialog(
+                onDismissRequest = { showSummary = false },
+                confirmButton = {
+                    Row {
+                        TextButton(onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                android.content.ClipData.newPlainText("Summary", summaryText)
+                            )
+                            Toast.makeText(context, context.getString(R.string.gallery_summary_copied), Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(stringResource(R.string.gallery_summary_copy))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { showSummary = false }) {
+                            Text(stringResource(R.string.close))
+                        }
+                    }
+                },
+                title = { Text(stringResource(R.string.gallery_describe), color = OnSurface) },
+                text = {
+                    Text(
+                        summaryText ?: "",
+                        color = OnSurfaceVariant,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp
+                    )
+                },
+                containerColor = SurfaceContainer
+            )
         }
     }
 }

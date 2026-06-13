@@ -314,6 +314,9 @@
     <string name="gallery_share">Share</string>
     <string name="gallery_pin">Pin overlay</string>
     <string name="gallery_pin_no_permission">Allow display over other apps in Settings to pin screenshots</string>
+    <string name="gallery_describe">Describe</string>
+    <string name="gallery_summary_copied">Summary copied</string>
+    <string name="gallery_summary_copy">Copy</string>
     <string name="gallery_export_pdf">Export PDF</string>
     <string name="gallery_rename">Rename selected</string>
     <string name="gallery_photo_count">%1$d photos</string>
