@@ -17,8 +17,42 @@ data class DrawPath(
     val filled: Boolean = false,
     val dashed: Boolean = false,
     val visible: Boolean = true,
-    val controlPoint: PointF? = null
-)
+    val controlPoint: PointF? = null,
+    // Post-commit layer transform (move/resize/rotate), pivoted on the layer centroid.
+    // Identity (offset 0, scale 1, rotation 0) means no transform is applied.
+    val transOffsetX: Float = 0f,
+    val transOffsetY: Float = 0f,
+    val transScale: Float = 1f,
+    val transRotation: Float = 0f
+) {
+    val hasTransform: Boolean
+        get() = transOffsetX != 0f || transOffsetY != 0f || transScale != 1f || transRotation != 0f
+
+    /** Centroid of the layer's points, used as the transform pivot. */
+    fun centroid(): PointF {
+        if (points.isEmpty()) return PointF(0f, 0f)
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        for (p in points) {
+            if (p.x < minX) minX = p.x
+            if (p.y < minY) minY = p.y
+            if (p.x > maxX) maxX = p.x
+            if (p.y > maxY) maxY = p.y
+        }
+        return PointF((minX + maxX) / 2f, (minY + maxY) / 2f)
+    }
+
+    /** Android matrix for this layer's transform, or null when identity. */
+    fun transformMatrix(): android.graphics.Matrix? {
+        if (!hasTransform) return null
+        val c = centroid()
+        return android.graphics.Matrix().apply {
+            postScale(transScale, transScale, c.x, c.y)
+            postRotate(transRotation, c.x, c.y)
+            postTranslate(transOffsetX, transOffsetY)
+        }
+    }
+}
 
 internal enum class DragHandle {
     NONE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,

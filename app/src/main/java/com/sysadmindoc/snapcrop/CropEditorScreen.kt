@@ -207,6 +207,8 @@ fun CropEditorScreen(
     var shapeFilled by remember { mutableStateOf(false) }
     var dashedStroke by remember { mutableStateOf(false) }
     var calloutCounter by remember { mutableIntStateOf(1) }
+    // Index of the committed layer currently in transform mode (move/resize/rotate), or -1.
+    var selectedLayerIndex by remember { mutableIntStateOf(-1) }
     var eyedropperActive by remember { mutableStateOf(false) }
     var showLayerPanel by remember { mutableStateOf(false) }
     var showSavePresetDialog by remember { mutableStateOf(false) }
@@ -1155,7 +1157,25 @@ fun CropEditorScreen(
                             drawPaths = drawPaths,
                             onMoveLayer = { from, to -> moveDrawLayer(from, to) },
                             onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
-                            onDeleteLayer = { index -> deleteDrawLayer(index) }
+                            onDeleteLayer = { index -> deleteDrawLayer(index) },
+                            selectedIndex = selectedLayerIndex,
+                            onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
+                            onTransformLayer = { index, dx, dy, sMul, dRot ->
+                                val step = maxOf(bitmap.width, bitmap.height) * 0.02f
+                                updateDrawLayer(index) {
+                                    it.copy(
+                                        transOffsetX = it.transOffsetX + dx * step,
+                                        transOffsetY = it.transOffsetY + dy * step,
+                                        transScale = (it.transScale * sMul).coerceIn(0.2f, 5f),
+                                        transRotation = it.transRotation + dRot
+                                    )
+                                }
+                            },
+                            onResetTransform = { index ->
+                                updateDrawLayer(index) {
+                                    it.copy(transOffsetX = 0f, transOffsetY = 0f, transScale = 1f, transRotation = 0f)
+                                }
+                            }
                         )
                     }
                 }
@@ -1844,7 +1864,25 @@ fun CropEditorScreen(
                     drawPaths = drawPaths,
                     onMoveLayer = { from, to -> moveDrawLayer(from, to) },
                     onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
-                    onDeleteLayer = { index -> deleteDrawLayer(index) }
+                    onDeleteLayer = { index -> deleteDrawLayer(index) },
+                    selectedIndex = selectedLayerIndex,
+                    onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
+                    onTransformLayer = { index, dx, dy, sMul, dRot ->
+                        val step = maxOf(bitmap.width, bitmap.height) * 0.02f
+                        updateDrawLayer(index) {
+                            it.copy(
+                                transOffsetX = it.transOffsetX + dx * step,
+                                transOffsetY = it.transOffsetY + dy * step,
+                                transScale = (it.transScale * sMul).coerceIn(0.2f, 5f),
+                                transRotation = it.transRotation + dRot
+                            )
+                        }
+                    },
+                    onResetTransform = { index ->
+                        updateDrawLayer(index) {
+                            it.copy(transOffsetX = 0f, transOffsetY = 0f, transScale = 1f, transRotation = 0f)
+                        }
+                    }
                 )
             }
             // Emoji picker row
@@ -2983,7 +3021,24 @@ fun CropEditorScreen(
 
                     for (dp in drawPaths) {
                         if (!dp.visible) continue
-                        drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
+                        // Apply the layer's image-space transform, conjugated into screen space so the
+                        // preview matches the export. Identity transforms skip the matrix entirely.
+                        val layerM = dp.transformMatrix()
+                        if (layerM != null) {
+                            val imgToScreen = android.graphics.Matrix().apply { setScale(scale, scale); postTranslate(ox, oy) }
+                            val inv = android.graphics.Matrix()
+                            if (imgToScreen.invert(inv)) {
+                                val screenM = android.graphics.Matrix(imgToScreen).apply { preConcat(layerM); preConcat(inv) }
+                                drawContext.canvas.nativeCanvas.save()
+                                drawContext.canvas.nativeCanvas.concat(screenM)
+                                drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
+                                drawContext.canvas.nativeCanvas.restore()
+                            } else {
+                                drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
+                            }
+                        } else {
+                            drawShapeOnCanvas(dp, dp.points, Color(dp.color), dp.strokeWidth * scale)
+                        }
                     }
 
                     // Current draw stroke

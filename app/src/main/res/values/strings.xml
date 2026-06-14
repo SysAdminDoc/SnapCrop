@@ -413,6 +413,7 @@
     <string name="tool_neon">Neon</string>
     <string name="tool_blur">Blur</string>
     <string name="tool_line">Line</string>
+    <string name="tool_measure">Ruler</string>
     <string name="tool_eraser">Eraser</string>
     <string name="tool_fill">Fill</string>
     <string name="tool_smart_erase">Smart Erase</string>

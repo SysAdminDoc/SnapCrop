@@ -77,6 +77,57 @@ class SnapCropProjectSidecarTest {
     }
 
     @Test
+    fun encodeDecodePreservesLayerTransform() {
+        val project = SnapCropProject(
+            sourceUri = "content://media/external/images/media/7",
+            sourceSha256 = "deadbeef",
+            sourceWidth = 1080,
+            sourceHeight = 1920,
+            cropRect = Rect(0, 0, 1080, 1920),
+            adjustments = floatArrayOf(0f, 1f, 1f),
+            pixelateRects = emptyList(),
+            drawLayers = listOf(
+                DrawPath(
+                    points = listOf(PointF(10f, 10f), PointF(40f, 40f)),
+                    color = 0xFF00FF00.toInt(),
+                    strokeWidth = 5f,
+                    shapeType = "rect",
+                    transOffsetX = 12.5f,
+                    transOffsetY = -8.25f,
+                    transScale = 1.75f,
+                    transRotation = 30f
+                )
+            ),
+            exportFormat = "png",
+            exportMimeType = "image/png",
+            exportQuality = 100,
+            exportSavePath = "Pictures/SnapCrop",
+            deleteOriginal = false
+        )
+
+        val decoded = SnapCropProjectSidecar.decode(SnapCropProjectSidecar.encode(project))
+        val layer = decoded.drawLayers.single()
+
+        assertTrue(layer.hasTransform)
+        assertEquals(12.5f, layer.transOffsetX, 0.0001f)
+        assertEquals(-8.25f, layer.transOffsetY, 0.0001f)
+        assertEquals(1.75f, layer.transScale, 0.0001f)
+        assertEquals(30f, layer.transRotation, 0.0001f)
+    }
+
+    @Test
+    fun untransformedLayerHasIdentityDefaults() {
+        val layer = DrawPath(
+            points = listOf(PointF(1f, 1f)),
+            color = 0xFFFFFFFF.toInt(),
+            strokeWidth = 4f
+        )
+        assertFalse(layer.hasTransform)
+        assertEquals(1f, layer.transScale, 0.0001f)
+        assertEquals(0f, layer.transRotation, 0.0001f)
+    }
+
+    @Test
     fun projectDetectionAcceptsCustomAndJsonTypes() {
         assertTrue(SnapCropProjectSidecar.looksLikeProject(SnapCropProjectSidecar.MIME_TYPE, null))
         assertTrue(SnapCropProjectSidecar.looksLikeProject("application/json", "edit.snapcrop.json"))

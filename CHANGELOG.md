@@ -6,6 +6,14 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Added annotation layer transforms (move, resize, rotate). Committed draw
+  layers were previously static; now tapping a layer in the Layers panel enters
+  transform mode with move (nudge in four directions), resize (grow/shrink), and
+  rotate (±15°) controls plus Reset. Transforms are pivoted on the layer
+  centroid and applied consistently on the editor canvas, the raster export, and
+  the SVG sidecar, and persist in `.snapcrop.json` projects. Layers with no
+  transform render exactly as before (identity guard), so existing annotations
+  are unchanged.
 - Migrated the screenshot intelligence index from raw SQLite to Room. The store
   now uses `@Entity`/`@Dao`/`@Database` with compile-time-verified queries and
   exposes a reactive `Flow`; the gallery observes it so smart-album membership

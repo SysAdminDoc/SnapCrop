@@ -167,6 +167,14 @@ object SnapCropProjectSidecar {
             points.forEach { put(it.toJson()) }
         })
         .apply { controlPoint?.let { put("controlPoint", it.toJson()) } }
+        .apply {
+            if (hasTransform) {
+                put("transOffsetX", transOffsetX.toDouble())
+                put("transOffsetY", transOffsetY.toDouble())
+                put("transScale", transScale.toDouble())
+                put("transRotation", transRotation.toDouble())
+            }
+        }
 
     private fun JSONObject.toDrawPath(): DrawPath = DrawPath(
         points = optJSONArray("points").toPointList(),
@@ -178,7 +186,11 @@ object SnapCropProjectSidecar {
         filled = optBoolean("filled", false),
         dashed = optBoolean("dashed", false),
         visible = optBoolean("visible", true),
-        controlPoint = optJSONObject("controlPoint")?.let { PointF(it.optDouble("x").toFloat(), it.optDouble("y").toFloat()) }
+        controlPoint = optJSONObject("controlPoint")?.let { PointF(it.optDouble("x").toFloat(), it.optDouble("y").toFloat()) },
+        transOffsetX = optDouble("transOffsetX", 0.0).toFloat(),
+        transOffsetY = optDouble("transOffsetY", 0.0).toFloat(),
+        transScale = optDouble("transScale", 1.0).toFloat(),
+        transRotation = optDouble("transRotation", 0.0).toFloat()
     )
 
     private fun FloatArray.toAdjustmentsJson(): JSONObject {

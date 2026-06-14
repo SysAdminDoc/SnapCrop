@@ -563,6 +563,13 @@ class CropActivity : ComponentActivity() {
         }
         for (dp in visiblePaths) {
             if (dp.points.isEmpty()) continue
+            // Apply the per-layer move/resize/rotate transform (pivoted on centroid). Pixel-based
+            // tools (fill/smart erase) operate on the bitmap directly and are unaffected by the matrix.
+            val layerMatrix = dp.transformMatrix()
+            val layerSaveCount = if (layerMatrix != null) {
+                val sc = canvas.save(); canvas.concat(layerMatrix); sc
+            } else -1
+            try {
             paint.color = dp.color
             paint.strokeWidth = dp.strokeWidth
             paint.alpha = 255
@@ -857,6 +864,9 @@ class CropActivity : ComponentActivity() {
                     arrowPath.lineTo(last.x - ux * hl - uy * hw, last.y - uy * hl + ux * hw)
                     canvas.drawPath(arrowPath, paint)
                 }
+            }
+            } finally {
+                if (layerSaveCount != -1) canvas.restoreToCount(layerSaveCount)
             }
         }
         return result
@@ -1421,6 +1431,17 @@ class CropActivity : ComponentActivity() {
             if (!dp.visible || dp.points.isEmpty()) return@forEachIndexed
             val id = "layer-${index + 1}"
             val stroke = strokeAttrs(dp)
+            // Wrap transformed layers in a <g> so move/resize/rotate matches the raster export.
+            if (dp.hasTransform) {
+                val c = dp.centroid()
+                val pcx = sx(c.x); val pcy = sy(c.y)
+                elements.append(
+                    "  <g transform=\"translate(${dp.transOffsetX.svgNum()} ${dp.transOffsetY.svgNum()}) " +
+                        "rotate(${dp.transRotation.svgNum()} ${pcx.svgNum()} ${pcy.svgNum()}) " +
+                        "translate(${pcx.svgNum()} ${pcy.svgNum()}) scale(${dp.transScale.svgNum()}) " +
+                        "translate(${(-pcx).svgNum()} ${(-pcy).svgNum()})\">"
+                ).append('\n')
+            }
             when (dp.shapeType) {
                 "rect" -> if (dp.points.size >= 2) {
                     val p1 = dp.points.first(); val p2 = dp.points.last()
@@ -1520,6 +1541,7 @@ class CropActivity : ComponentActivity() {
                     }
                 }
             }
+            if (dp.hasTransform) elements.append("  </g>").append('\n')
         }
 
         if (elements.isEmpty()) return null

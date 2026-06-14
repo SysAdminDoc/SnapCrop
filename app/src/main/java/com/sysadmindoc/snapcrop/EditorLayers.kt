@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ private fun layerTitle(layer: DrawPath): String = when {
     layer.shapeType == "rect" -> stringResource(R.string.tool_rect)
     layer.shapeType == "circle" -> stringResource(R.string.tool_circle)
     layer.shapeType == "line" -> stringResource(R.string.tool_line)
+    layer.shapeType == "measure" -> stringResource(R.string.tool_measure)
     layer.shapeType == "highlight" -> stringResource(R.string.tool_highlight)
     layer.shapeType == "spotlight" -> stringResource(R.string.tool_spotlight)
     layer.shapeType == "magnifier" -> stringResource(R.string.tool_magnifier)
@@ -57,6 +59,17 @@ private fun layerTitle(layer: DrawPath): String = when {
     layer.shapeType == "smart_erase" || layer.shapeType == "heal" -> stringResource(R.string.tool_smart_erase)
     layer.isArrow -> stringResource(R.string.tool_arrow)
     else -> stringResource(R.string.tool_pen)
+}
+
+@Composable
+private fun LayerXfBtn(label: String, description: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        modifier = Modifier.semantics { contentDescription = description }
+    ) {
+        Text(label, color = Secondary, fontSize = 13.sp)
+    }
 }
 
 private fun DrawPath.layerSubtitle(indexFromBottom: Int): String {
@@ -71,7 +84,11 @@ internal fun DrawLayerPanel(
     drawPaths: List<DrawPath>,
     onMoveLayer: (fromIndex: Int, toIndex: Int) -> Unit,
     onToggleVisible: (index: Int) -> Unit,
-    onDeleteLayer: (index: Int) -> Unit
+    onDeleteLayer: (index: Int) -> Unit,
+    selectedIndex: Int = -1,
+    onSelectLayer: (index: Int) -> Unit = {},
+    onTransformLayer: (index: Int, dx: Float, dy: Float, scaleMul: Float, dRotation: Float) -> Unit = { _, _, _, _, _ -> },
+    onResetTransform: (index: Int) -> Unit = {}
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -98,12 +115,17 @@ internal fun DrawLayerPanel(
                 drawPaths.asReversed().forEachIndexed { visualIndex, layer ->
                     val actualIndex = drawPaths.lastIndex - visualIndex
                     val title = layerTitle(layer)
+                    val isSelected = actualIndex == selectedIndex
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { onSelectLayer(actualIndex) }
                             .background(
-                                if (layer.visible) Color.Black.copy(alpha = 0.18f)
-                                else Color.Black.copy(alpha = 0.08f),
+                                when {
+                                    isSelected -> Secondary.copy(alpha = 0.22f)
+                                    layer.visible -> Color.Black.copy(alpha = 0.18f)
+                                    else -> Color.Black.copy(alpha = 0.08f)
+                                },
                                 RoundedCornerShape(8.dp)
                             )
                             .padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
@@ -180,6 +202,31 @@ internal fun DrawLayerPanel(
                             }
                         ) {
                             Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    if (isSelected) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                "Transform — move, resize, rotate",
+                                color = Secondary,
+                                fontSize = 10.sp
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                LayerXfBtn("↺", "Rotate left") { onTransformLayer(actualIndex, 0f, 0f, 1f, -15f) }
+                                LayerXfBtn("↻", "Rotate right") { onTransformLayer(actualIndex, 0f, 0f, 1f, 15f) }
+                                LayerXfBtn("−", "Shrink") { onTransformLayer(actualIndex, 0f, 0f, 0.85f, 0f) }
+                                LayerXfBtn("+", "Grow") { onTransformLayer(actualIndex, 0f, 0f, 1.18f, 0f) }
+                                LayerXfBtn("Reset", "Reset transform") { onResetTransform(actualIndex) }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                LayerXfBtn("←", "Move left") { onTransformLayer(actualIndex, -1f, 0f, 1f, 0f) }
+                                LayerXfBtn("→", "Move right") { onTransformLayer(actualIndex, 1f, 0f, 1f, 0f) }
+                                LayerXfBtn("↑", "Move up") { onTransformLayer(actualIndex, 0f, -1f, 1f, 0f) }
+                                LayerXfBtn("↓", "Move down") { onTransformLayer(actualIndex, 0f, 1f, 1f, 0f) }
+                            }
                         }
                     }
                 }
