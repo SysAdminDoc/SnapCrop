@@ -4,6 +4,33 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Deep audit — correctness, theming, and accessibility hardening (v6.26.0).**
+
+- Fixed a fullscreen-viewer crash: the bottom-bar actions (favorite, share, pin,
+  describe, edit, delete) indexed `photos[currentPage]` directly, which threw
+  IndexOutOfBounds when the list shrank after a delete. All accesses are now
+  null-safe.
+- Hardened the magnifier/loupe export: it drew the result bitmap onto its own
+  backing canvas (undefined behavior → blank/corrupt loupe). It now reads from a
+  snapshot copy.
+- Made the editor adapt to light theme: the OCR/Adjust mode accents, the Palette
+  button, the curve/color RGB channel indicators, and the layer-row backgrounds
+  were hardcoded dark-theme colors that rendered low-contrast or wrong in light
+  mode. They now use semantic, theme-aware tokens (OcrAccent, AdjustAccent,
+  ChannelRed/Green/Blue, OnSurface tints).
+- Share and Copy now apply the configured export border and watermark (previously
+  only Save did), and wrap bitmap creation in try/catch so an OOM surfaces a
+  toast instead of crashing. Fixed a preview-bitmap leak in the redaction dialog.
+- Made the project sidecar tolerant of a missing `crop` object instead of
+  throwing on decode.
+- Internationalized and made accessible the editor Layers panel: replaced
+  hardcoded English with string resources, bumped icon touch targets to 36dp,
+  and wired proper content descriptions.
+- Committed draw strokes now integrate with the global undo stack (consistent
+  with pixelate and tap-placed tools), and the layer-transform selection resets
+  on delete/reorder so controls can't target the wrong layer.
+- Removed a per-pixel `List<Pair>` allocation from the flood-fill BFS hot loop.
+
 **Verification and release hardening.**
 
 - Added a step-capture workflow. A new Step capture Quick Settings tile starts a

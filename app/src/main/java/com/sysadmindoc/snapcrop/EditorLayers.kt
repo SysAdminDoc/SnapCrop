@@ -72,11 +72,13 @@ private fun LayerXfBtn(label: String, description: String, onClick: () -> Unit) 
     }
 }
 
+@Composable
 private fun DrawPath.layerSubtitle(indexFromBottom: Int): String {
-    val order = "Layer ${indexFromBottom + 1}"
-    val shape = if (points.size == 1) "1 point" else "${points.size} points"
-    val state = if (visible) "Visible" else "Hidden"
-    return "$order - $state - $shape"
+    val shape = if (points.size == 1) stringResource(R.string.layer_points_one)
+    else stringResource(R.string.layer_points_other, points.size)
+    val state = if (visible) stringResource(R.string.layer_state_visible)
+    else stringResource(R.string.layer_state_hidden)
+    return stringResource(R.string.layer_subtitle, indexFromBottom + 1, state, shape)
 }
 
 @Composable
@@ -99,14 +101,14 @@ internal fun DrawLayerPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.draw_layers), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("Top layers render last", color = OnSurfaceVariant, fontSize = 10.sp)
+                    Text(stringResource(R.string.draw_layers_subtitle), color = OnSurfaceVariant, fontSize = 10.sp)
                 }
                 Text("${drawPaths.size}", color = Secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
 
             if (drawPaths.isEmpty()) {
                 Text(
-                    "Draw, place text, or add a callout to create a layer.",
+                    stringResource(R.string.draw_layers_empty),
                     color = OnSurfaceVariant,
                     fontSize = 11.sp,
                     modifier = Modifier.padding(vertical = 4.dp)
@@ -116,6 +118,12 @@ internal fun DrawLayerPanel(
                     val actualIndex = drawPaths.lastIndex - visualIndex
                     val title = layerTitle(layer)
                     val isSelected = actualIndex == selectedIndex
+                    // Resolve a11y descriptions outside the non-composable semantics lambdas.
+                    val visibilityCd = if (layer.visible) stringResource(R.string.layer_hide_cd, title)
+                    else stringResource(R.string.layer_show_cd, title)
+                    val moveUpCd = stringResource(R.string.layer_move_up_cd, title)
+                    val moveDownCd = stringResource(R.string.layer_move_down_cd, title)
+                    val deleteCd = stringResource(R.string.layer_delete_cd, title)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -123,8 +131,8 @@ internal fun DrawLayerPanel(
                             .background(
                                 when {
                                     isSelected -> Secondary.copy(alpha = 0.22f)
-                                    layer.visible -> Color.Black.copy(alpha = 0.18f)
-                                    else -> Color.Black.copy(alpha = 0.08f)
+                                    layer.visible -> OnSurface.copy(alpha = 0.10f)
+                                    else -> OnSurface.copy(alpha = 0.05f)
                                 },
                                 RoundedCornerShape(8.dp)
                             )
@@ -156,8 +164,8 @@ internal fun DrawLayerPanel(
                         }
                         IconButton(
                             onClick = { onToggleVisible(actualIndex) },
-                            modifier = Modifier.size(30.dp).semantics {
-                                contentDescription = if (layer.visible) "Hide $title" else "Show $title"
+                            modifier = Modifier.size(36.dp).semantics {
+                                contentDescription = visibilityCd
                             }
                         ) {
                             Icon(
@@ -171,12 +179,12 @@ internal fun DrawLayerPanel(
                             onClick = { onMoveLayer(actualIndex, actualIndex + 1) },
                             enabled = actualIndex < drawPaths.lastIndex,
                             modifier = Modifier.semantics {
-                                contentDescription = "Move $title up"
+                                contentDescription = moveUpCd
                             },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
                             Text(
-                                "Up",
+                                stringResource(R.string.layer_move_up),
                                 color = if (actualIndex < drawPaths.lastIndex) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
                                 fontSize = 10.sp
                             )
@@ -185,20 +193,20 @@ internal fun DrawLayerPanel(
                             onClick = { onMoveLayer(actualIndex, actualIndex - 1) },
                             enabled = actualIndex > 0,
                             modifier = Modifier.semantics {
-                                contentDescription = "Move $title down"
+                                contentDescription = moveDownCd
                             },
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
                             Text(
-                                "Down",
+                                stringResource(R.string.layer_move_down),
                                 color = if (actualIndex > 0) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
                                 fontSize = 10.sp
                             )
                         }
                         IconButton(
                             onClick = { onDeleteLayer(actualIndex) },
-                            modifier = Modifier.size(30.dp).semantics {
-                                contentDescription = "Delete $title"
+                            modifier = Modifier.size(36.dp).semantics {
+                                contentDescription = deleteCd
                             }
                         ) {
                             Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))
@@ -210,22 +218,22 @@ internal fun DrawLayerPanel(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
-                                "Transform — move, resize, rotate",
+                                stringResource(R.string.layer_transform_hint),
                                 color = Secondary,
                                 fontSize = 10.sp
                             )
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                LayerXfBtn("↺", "Rotate left") { onTransformLayer(actualIndex, 0f, 0f, 1f, -15f) }
-                                LayerXfBtn("↻", "Rotate right") { onTransformLayer(actualIndex, 0f, 0f, 1f, 15f) }
-                                LayerXfBtn("−", "Shrink") { onTransformLayer(actualIndex, 0f, 0f, 0.85f, 0f) }
-                                LayerXfBtn("+", "Grow") { onTransformLayer(actualIndex, 0f, 0f, 1.18f, 0f) }
-                                LayerXfBtn("Reset", "Reset transform") { onResetTransform(actualIndex) }
+                                LayerXfBtn("↺", stringResource(R.string.layer_rotate_left)) { onTransformLayer(actualIndex, 0f, 0f, 1f, -15f) }
+                                LayerXfBtn("↻", stringResource(R.string.layer_rotate_right)) { onTransformLayer(actualIndex, 0f, 0f, 1f, 15f) }
+                                LayerXfBtn("−", stringResource(R.string.layer_shrink)) { onTransformLayer(actualIndex, 0f, 0f, 0.85f, 0f) }
+                                LayerXfBtn("+", stringResource(R.string.layer_grow)) { onTransformLayer(actualIndex, 0f, 0f, 1.18f, 0f) }
+                                LayerXfBtn(stringResource(R.string.layer_reset), stringResource(R.string.layer_reset_cd)) { onResetTransform(actualIndex) }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                LayerXfBtn("←", "Move left") { onTransformLayer(actualIndex, -1f, 0f, 1f, 0f) }
-                                LayerXfBtn("→", "Move right") { onTransformLayer(actualIndex, 1f, 0f, 1f, 0f) }
-                                LayerXfBtn("↑", "Move up") { onTransformLayer(actualIndex, 0f, -1f, 1f, 0f) }
-                                LayerXfBtn("↓", "Move down") { onTransformLayer(actualIndex, 0f, 1f, 1f, 0f) }
+                                LayerXfBtn("←", stringResource(R.string.layer_move_left)) { onTransformLayer(actualIndex, -1f, 0f, 1f, 0f) }
+                                LayerXfBtn("→", stringResource(R.string.layer_move_right)) { onTransformLayer(actualIndex, 1f, 0f, 1f, 0f) }
+                                LayerXfBtn("↑", stringResource(R.string.layer_move_up_dir)) { onTransformLayer(actualIndex, 0f, -1f, 1f, 0f) }
+                                LayerXfBtn("↓", stringResource(R.string.layer_move_down_dir)) { onTransformLayer(actualIndex, 0f, 1f, 1f, 0f) }
                             }
                         }
                     }

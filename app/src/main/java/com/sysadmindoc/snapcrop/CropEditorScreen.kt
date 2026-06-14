@@ -619,8 +619,8 @@ fun CropEditorScreen(
         Triple(stringResource(R.string.mode_crop), EditMode.CROP, Primary),
         Triple(stringResource(R.string.mode_pixelate), EditMode.PIXELATE, Tertiary),
         Triple(stringResource(R.string.mode_draw), EditMode.DRAW, Secondary),
-        Triple(stringResource(R.string.mode_ocr), EditMode.OCR, Color(0xFFCBA6F7)),
-        Triple(stringResource(R.string.mode_adjust), EditMode.ADJUST, Color(0xFFFAB387))
+        Triple(stringResource(R.string.mode_ocr), EditMode.OCR, OcrAccent),
+        Triple(stringResource(R.string.mode_adjust), EditMode.ADJUST, AdjustAccent)
     )
 
     fun exportAdjustments(): FloatArray {
@@ -899,10 +899,10 @@ fun CropEditorScreen(
                                 }
                                 showPalette = !showPalette
                             },
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = AdjustAccent.copy(alpha = 0.2f)),
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) { Text(stringResource(R.string.adjust_palette), fontSize = 11.sp, color = Color(0xFFFAB387)) }
+                        ) { Text(stringResource(R.string.adjust_palette), fontSize = 11.sp, color = AdjustAccent) }
                     }
                     bgRemovalStatus?.let { status ->
                         Text(status, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
@@ -1155,9 +1155,9 @@ fun CropEditorScreen(
                         }
                         DrawLayerPanel(
                             drawPaths = drawPaths,
-                            onMoveLayer = { from, to -> moveDrawLayer(from, to) },
+                            onMoveLayer = { from, to -> moveDrawLayer(from, to); selectedLayerIndex = -1 },
                             onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
-                            onDeleteLayer = { index -> deleteDrawLayer(index) },
+                            onDeleteLayer = { index -> deleteDrawLayer(index); selectedLayerIndex = -1 },
                             selectedIndex = selectedLayerIndex,
                             onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
                             onTransformLayer = { index, dx, dy, sMul, dRot ->
@@ -1181,7 +1181,7 @@ fun CropEditorScreen(
                 }
 
                 if (editMode == EditMode.ADJUST) {
-                    val adjustColor = Color(0xFFFAB387)
+                    val adjustColor = AdjustAccent
                     PanelSection(stringResource(R.string.mode_adjust)) {
                         ImageFilter.entries.chunked(2).forEach { row ->
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1211,9 +1211,9 @@ fun CropEditorScreen(
                         PanelSlider(stringResource(R.string.adjust_shadows), shadows, -100f..100f, adjustColor, "${shadows.toInt()}") { shadows = it }
                         PanelSlider(stringResource(R.string.adjust_tilt_shift), tiltShift, 0f..1f, adjustColor, "${(tiltShift * 100).toInt()}%") { tiltShift = it }
                         PanelSlider(stringResource(R.string.adjust_denoise), denoise, 0f..1f, adjustColor, "${(denoise * 100).toInt()}%") { denoise = it }
-                        PanelSlider(stringResource(R.string.adjust_curve_r), curveR, -100f..100f, Color(0xFFFF6B6B), "${curveR.toInt()}") { curveR = it }
-                        PanelSlider(stringResource(R.string.adjust_curve_g), curveG, -100f..100f, Color(0xFF51CF66), "${curveG.toInt()}") { curveG = it }
-                        PanelSlider(stringResource(R.string.adjust_curve_b), curveB, -100f..100f, Color(0xFF339AF0), "${curveB.toInt()}") { curveB = it }
+                        PanelSlider(stringResource(R.string.adjust_curve_r), curveR, -100f..100f, ChannelRed, "${curveR.toInt()}") { curveR = it }
+                        PanelSlider(stringResource(R.string.adjust_curve_g), curveG, -100f..100f, ChannelGreen, "${curveG.toInt()}") { curveG = it }
+                        PanelSlider(stringResource(R.string.adjust_curve_b), curveB, -100f..100f, ChannelBlue, "${curveB.toInt()}") { curveB = it }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             TextButton(onClick = {
                                 brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f
@@ -1370,9 +1370,9 @@ fun CropEditorScreen(
                         if (ocrBlocks.isNotEmpty()) append(" | ${ocrBlocks.size} text")
                         if (scannedCodes.isNotEmpty()) append(" | ${scannedCodes.size} code")
                     }
-                    Triple(Color(0xFFCBA6F7).copy(alpha = 0.15f), Color(0xFFCBA6F7), info)
+                    Triple(OcrAccent.copy(alpha = 0.15f), OcrAccent, info)
                 }
-                EditMode.ADJUST -> Triple(Color(0xFFFAB387).copy(alpha = 0.15f), Color(0xFFFAB387), "$adjustLabel — brightness, contrast, saturation")
+                EditMode.ADJUST -> Triple(AdjustAccent.copy(alpha = 0.15f), AdjustAccent, "$adjustLabel — brightness, contrast, saturation")
                 else -> Triple(Color.Transparent, Color.Transparent, "")
             }
             Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 12.dp, vertical = 4.dp),
@@ -1780,17 +1780,17 @@ fun CropEditorScreen(
                                     Box(Modifier.fillMaxWidth().height(40.dp)
                                         .background(Color(pickerR, pickerG, pickerB), RoundedCornerShape(8.dp)))
                                     Spacer(Modifier.height(8.dp))
-                                    Text(stringResource(R.string.draw_red), color = Color(0xFFFF6666), fontSize = 11.sp)
+                                    Text(stringResource(R.string.draw_red), color = ChannelRed, fontSize = 11.sp)
                                     Slider(value = pickerR, onValueChange = { pickerR = it },
                                         modifier = Modifier.semantics { contentDescription = "$redLabel, ${(pickerR * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Red, activeTrackColor = Color.Red, inactiveTrackColor = SurfaceVariant))
-                                    Text(stringResource(R.string.draw_green), color = Color(0xFF66FF66), fontSize = 11.sp)
+                                    Text(stringResource(R.string.draw_green), color = ChannelGreen, fontSize = 11.sp)
                                     Slider(value = pickerG, onValueChange = { pickerG = it },
                                         modifier = Modifier.semantics { contentDescription = "$greenLabel, ${(pickerG * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = SurfaceVariant))
-                                    Text(stringResource(R.string.draw_blue), color = Color(0xFF6666FF), fontSize = 11.sp)
+                                    Text(stringResource(R.string.draw_blue), color = ChannelBlue, fontSize = 11.sp)
                                     Slider(value = pickerB, onValueChange = { pickerB = it },
                                         modifier = Modifier.semantics { contentDescription = "$blueLabel, ${(pickerB * 255).toInt()}" },
                                         colors = SliderDefaults.colors(
@@ -1862,9 +1862,9 @@ fun CropEditorScreen(
             if (showLayerPanel) {
                 DrawLayerPanel(
                     drawPaths = drawPaths,
-                    onMoveLayer = { from, to -> moveDrawLayer(from, to) },
+                    onMoveLayer = { from, to -> moveDrawLayer(from, to); selectedLayerIndex = -1 },
                     onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
-                    onDeleteLayer = { index -> deleteDrawLayer(index) },
+                    onDeleteLayer = { index -> deleteDrawLayer(index); selectedLayerIndex = -1 },
                     selectedIndex = selectedLayerIndex,
                     onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
                     onTransformLayer = { index, dx, dy, sMul, dRot ->
@@ -1911,7 +1911,7 @@ fun CropEditorScreen(
 
         // Adjust mode sliders
         if (!isWideLayout && editMode == EditMode.ADJUST) {
-            val adjustColor = Color(0xFFFAB387)
+            val adjustColor = AdjustAccent
             // Filter presets
             Row(
                 modifier = Modifier
@@ -2018,28 +2018,28 @@ fun CropEditorScreen(
                     Text("${(denoise * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 // Curves (per-channel RGB)
-                val curvesColor = Color(0xFFCBA6F7) // Lavender
+                val curvesColor = OcrAccent // Lavender
                 Text("Curves", color = curvesColor, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_r), color = Color(0xFFFF6B6B), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Text(stringResource(R.string.adjust_curve_r), color = ChannelRed, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveR, onValueChange = { curveR = it },
                         valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveRLabel, ${curveR.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFFFF6B6B), activeTrackColor = Color(0xFFFF6B6B), inactiveTrackColor = SurfaceVariant))
+                        colors = SliderDefaults.colors(thumbColor = ChannelRed, activeTrackColor = ChannelRed, inactiveTrackColor = SurfaceVariant))
                     Text("${curveR.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_g), color = Color(0xFF51CF66), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Text(stringResource(R.string.adjust_curve_g), color = ChannelGreen, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveG, onValueChange = { curveG = it },
                         valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveGLabel, ${curveG.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFF51CF66), activeTrackColor = Color(0xFF51CF66), inactiveTrackColor = SurfaceVariant))
+                        colors = SliderDefaults.colors(thumbColor = ChannelGreen, activeTrackColor = ChannelGreen, inactiveTrackColor = SurfaceVariant))
                     Text("${curveG.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_b), color = Color(0xFF339AF0), fontSize = 11.sp, modifier = Modifier.width(72.dp))
+                    Text(stringResource(R.string.adjust_curve_b), color = ChannelBlue, fontSize = 11.sp, modifier = Modifier.width(72.dp))
                     Slider(value = curveB, onValueChange = { curveB = it },
                         valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveBLabel, ${curveB.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = Color(0xFF339AF0), activeTrackColor = Color(0xFF339AF0), inactiveTrackColor = SurfaceVariant))
+                        colors = SliderDefaults.colors(thumbColor = ChannelBlue, activeTrackColor = ChannelBlue, inactiveTrackColor = SurfaceVariant))
                     Text("${curveB.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
                 }
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
@@ -2301,6 +2301,9 @@ fun CropEditorScreen(
                                                             val mid = currentDrawPoints[currentDrawPoints.size / 2]
                                                             PointF(mid.x, mid.y)
                                                         } else null
+                                                        // Capture state so committed strokes integrate with the global undo
+                                                        // stack, consistent with pixelate and the tap-placed draw tools.
+                                                        pushUndo()
                                                         addDrawLayer(DrawPath(
                                                             points = when {
                                                                 shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" || shape == "measure" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
@@ -3065,7 +3068,7 @@ fun CropEditorScreen(
 
                     // OCR text block + barcode overlays
                     if (editMode == EditMode.OCR) {
-                        val ocrColor = Color(0xFFCBA6F7)
+                        val ocrColor = OcrAccent
                         for (block in ocrBlocks) {
                             val bl = ox + block.bounds.left * scale
                             val bt = oy + block.bounds.top * scale
@@ -3144,10 +3147,10 @@ fun CropEditorScreen(
                             }
                             showPalette = !showPalette
                         },
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFFAB387).copy(alpha = 0.2f)),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = AdjustAccent.copy(alpha = 0.2f)),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                    ) { Text(stringResource(R.string.adjust_palette), fontSize = 13.sp, color = Color(0xFFFAB387)) }
+                    ) { Text(stringResource(R.string.adjust_palette), fontSize = 13.sp, color = AdjustAccent) }
                 }
                 bgRemovalStatus?.let { status ->
                     Text(
