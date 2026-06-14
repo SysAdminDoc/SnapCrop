@@ -6,6 +6,15 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Added a step-capture workflow. A new Step capture Quick Settings tile starts a
+  session backed by `StepCaptureService` (a dedicated AccessibilityService); each
+  tap captures the current screen and records where you tapped. Tapping the tile
+  again assembles the frames into a single numbered guide image — each step gets
+  a numbered badge at the tap location — saved to the SnapCrop folder and opened
+  in the editor for further annotation. Privacy: nothing is captured unless a
+  session is explicitly started, the service description states this, and the
+  tile routes to Accessibility settings when not yet enabled. (Capture-on-tap is
+  device-runtime behavior; verified by build, pending on-device validation.)
 - Added annotation layer transforms (move, resize, rotate). Committed draw
   layers were previously static; now tapping a layer in the Layers panel enters
   transform mode with move (nudge in four directions), resize (grow/shrink), and

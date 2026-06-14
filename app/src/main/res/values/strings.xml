@@ -3,6 +3,18 @@
     <string name="app_name">SnapCrop</string>
     <string name="scroll_capture_service_label">SnapCrop Long screenshot</string>
     <string name="scroll_capture_service_description">Captures the visible screen, scrolls forward, and stitches the frames into one long screenshot when you start the Long screenshot action.</string>
+    <string name="step_capture_service_label">SnapCrop Step capture</string>
+    <string name="step_capture_service_description">While a step-capture session is active, captures the screen each time you tap and marks where you tapped, then assembles a numbered guide. Nothing is captured unless you start a session from the Step capture tile.</string>
+    <string name="step_capture_started">Step capture started — tap through your steps, then tap the tile again to finish.</string>
+    <string name="step_capture_step">Captured step %1$d</string>
+    <string name="step_capture_building">Building guide from %1$d steps…</string>
+    <string name="step_capture_saved">Step guide saved — opening editor.</string>
+    <string name="step_capture_none">No steps captured.</string>
+    <string name="step_capture_failed">Could not build the step guide.</string>
+    <string name="tile_step_label">Step capture</string>
+    <string name="tile_step_ready">Tap to start</string>
+    <string name="tile_step_capturing">Capturing — tap to finish</string>
+    <string name="tile_step_enable">Enable accessibility</string>
 
     <!-- Navigation -->
     <string name="nav_home">Home</string>
