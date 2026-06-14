@@ -6,6 +6,12 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Added a Measurement/Ruler draw tool. A new "Ruler" tool in Draw mode lets you
+  drag a line whose length is reported in source-image pixels, rendered with
+  perpendicular end ticks and a labeled distance badge. The measurement renders
+  identically on canvas, on PNG/JPEG/WebP export, and in the SVG annotation
+  sidecar, and persists in `.snapcrop.json` projects via the generic shapeType
+  field. Targets designers/developers who need pixel dimensions from screenshots.
 - Added auto-redact on share. Tapping Share now scans the cropped image for
   sensitive text (emails, phone numbers, IPs, MAC addresses, payment cards via
   Luhn, and ML Kit entities) using the existing `SensitiveTextDetector`. When

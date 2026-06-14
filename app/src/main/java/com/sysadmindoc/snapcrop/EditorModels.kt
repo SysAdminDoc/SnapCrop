@@ -28,7 +28,7 @@ internal enum class DragHandle {
 internal enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
 
 internal enum class DrawTool(val label: String) {
-    PEN("Pen"), ARROW("Arrow"), CURVED_ARROW("Curve"), LINE("Line"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
+    PEN("Pen"), ARROW("Arrow"), CURVED_ARROW("Curve"), LINE("Line"), MEASURE("Ruler"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
     HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji"),
     NEON("Neon"), BLUR("Blur"), ERASER("Erase"), FILL("Fill"), HEAL("Smart")
 }

@@ -24,6 +24,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.MediaStore
+import kotlin.math.roundToInt
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -572,6 +573,37 @@ class CropActivity : ComponentActivity() {
                 val p1 = dp.points.first(); val p2 = dp.points.last()
                 paint.pathEffect = if (dp.dashed) android.graphics.DashPathEffect(floatArrayOf(dp.strokeWidth * 3, dp.strokeWidth * 2), 0f) else null
                 canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
+                continue
+            }
+
+            // Measurement/ruler — line with end ticks and a pixel-distance label
+            if (dp.shapeType == "measure" && dp.points.size >= 2) {
+                val p1 = dp.points.first(); val p2 = dp.points.last()
+                paint.pathEffect = null
+                val dist = kotlin.math.hypot((p2.x - p1.x).toDouble(), (p2.y - p1.y).toDouble())
+                val angle = kotlin.math.atan2((p2.y - p1.y).toDouble(), (p2.x - p1.x).toDouble())
+                val tick = dp.strokeWidth * 2.5f
+                val nx = (-kotlin.math.sin(angle)).toFloat() * tick
+                val ny = (kotlin.math.cos(angle)).toFloat() * tick
+                canvas.drawLine(p1.x, p1.y, p2.x, p2.y, paint)
+                canvas.drawLine(p1.x - nx, p1.y - ny, p1.x + nx, p1.y + ny, paint)
+                canvas.drawLine(p2.x - nx, p2.y - ny, p2.x + nx, p2.y + ny, paint)
+                val label = "${dist.roundToInt()} px"
+                val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = dp.color
+                    textSize = (dp.strokeWidth * 5f).coerceAtLeast(20f)
+                    textAlign = Paint.Align.CENTER
+                }
+                val mx = (p1.x + p2.x) / 2f; val my = (p1.y + p2.y) / 2f - tick - dp.strokeWidth
+                val bounds = Rect()
+                labelPaint.getTextBounds(label, 0, label.length, bounds)
+                val pad = labelPaint.textSize * 0.3f
+                val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC000000.toInt(); style = Paint.Style.FILL }
+                canvas.drawRoundRect(
+                    mx - bounds.width() / 2f - pad, my + bounds.top - pad,
+                    mx + bounds.width() / 2f + pad, my + bounds.bottom + pad,
+                    pad.coerceAtMost(8f), pad.coerceAtMost(8f), bgPaint)
+                canvas.drawText(label, mx, my, labelPaint)
                 continue
             }
 
@@ -1409,6 +1441,19 @@ class CropActivity : ComponentActivity() {
                 "line" -> if (dp.points.size >= 2) {
                     val p1 = dp.points.first(); val p2 = dp.points.last()
                     elements.append("""  <line id="$id" x1="${sx(p1.x).svgNum()}" y1="${sy(p1.y).svgNum()}" x2="${sx(p2.x).svgNum()}" y2="${sy(p2.y).svgNum()}" $stroke/>""").append('\n')
+                }
+                "measure" -> if (dp.points.size >= 2) {
+                    val p1 = dp.points.first(); val p2 = dp.points.last()
+                    val dist = kotlin.math.hypot((p2.x - p1.x).toDouble(), (p2.y - p1.y).toDouble())
+                    val angle = kotlin.math.atan2((p2.y - p1.y).toDouble(), (p2.x - p1.x).toDouble())
+                    val tick = dp.strokeWidth * 2.5f
+                    val nx = (-kotlin.math.sin(angle)).toFloat() * tick
+                    val ny = (kotlin.math.cos(angle)).toFloat() * tick
+                    elements.append("""  <line id="$id" x1="${sx(p1.x).svgNum()}" y1="${sy(p1.y).svgNum()}" x2="${sx(p2.x).svgNum()}" y2="${sy(p2.y).svgNum()}" $stroke/>""").append('\n')
+                    elements.append("""  <line id="$id-t1" x1="${sx(p1.x - nx).svgNum()}" y1="${sy(p1.y - ny).svgNum()}" x2="${sx(p1.x + nx).svgNum()}" y2="${sy(p1.y + ny).svgNum()}" $stroke/>""").append('\n')
+                    elements.append("""  <line id="$id-t2" x1="${sx(p2.x - nx).svgNum()}" y1="${sy(p2.y - ny).svgNum()}" x2="${sx(p2.x + nx).svgNum()}" y2="${sy(p2.y + ny).svgNum()}" $stroke/>""").append('\n')
+                    val mx = sx((p1.x + p2.x) / 2f); val my = sy((p1.y + p2.y) / 2f) - tick - dp.strokeWidth
+                    elements.append("""  <text id="$id-label" x="${mx.svgNum()}" y="${my.svgNum()}" fill="${colorHex(dp.color)}" font-size="${(dp.strokeWidth * 5f).svgNum()}" font-family="sans-serif" text-anchor="middle">${xml("${dist.roundToInt()} px")}</text>""").append('\n')
                 }
                 "text" -> if (!dp.text.isNullOrBlank()) {
                     val p = dp.points.first()

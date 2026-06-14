@@ -2250,7 +2250,7 @@ fun CropEditorScreen(
                                                         val shape = when (drawTool) {
                                                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
                                                             DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
-                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; DrawTool.HEAL -> "smart_erase"; else -> null
+                                                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.MEASURE -> "measure"; DrawTool.ERASER -> "eraser"; DrawTool.HEAL -> "smart_erase"; else -> null
                                                         }
                                                         // Velocity-based stroke modulation for freehand tools
                                                         val velFactor = if (drawTool == DrawTool.PEN || drawTool == DrawTool.NEON) {
@@ -2265,7 +2265,7 @@ fun CropEditorScreen(
                                                         } else null
                                                         addDrawLayer(DrawPath(
                                                             points = when {
-                                                                shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
+                                                                shape == "rect" || shape == "circle" || shape == "spotlight" || shape == "line" || shape == "measure" -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
                                                                 drawTool == DrawTool.CURVED_ARROW -> listOf(currentDrawPoints.first(), currentDrawPoints.last())
                                                                 drawTool == DrawTool.PEN || drawTool == DrawTool.HIGHLIGHT || drawTool == DrawTool.NEON || drawTool == DrawTool.BLUR || drawTool == DrawTool.ERASER || drawTool == DrawTool.HEAL -> smoothPath(currentDrawPoints)
                                                                 else -> currentDrawPoints.toList()
@@ -2803,6 +2803,41 @@ fun CropEditorScreen(
                             return
                         }
 
+                        // Measurement/ruler — line with end ticks and a pixel-distance label
+                        if (shape == "measure" && pts.size >= 2) {
+                            val p1 = pts.first(); val p2 = pts.last()
+                            val sx1 = ox + p1.x * scale; val sy1 = oy + p1.y * scale
+                            val sx2 = ox + p2.x * scale; val sy2 = oy + p2.y * scale
+                            // Distance is reported in source-image pixels (pts are image coords).
+                            val distPx = kotlin.math.hypot((p2.x - p1.x).toDouble(), (p2.y - p1.y).toDouble())
+                            val angle = kotlin.math.atan2((sy2 - sy1).toDouble(), (sx2 - sx1).toDouble())
+                            val tick = sw * 2.5f
+                            val nx = (-kotlin.math.sin(angle)).toFloat() * tick
+                            val ny = (kotlin.math.cos(angle)).toFloat() * tick
+                            drawLine(color, Offset(sx1, sy1), Offset(sx2, sy2), strokeWidth = sw)
+                            drawLine(color, Offset(sx1 - nx, sy1 - ny), Offset(sx1 + nx, sy1 + ny), strokeWidth = sw)
+                            drawLine(color, Offset(sx2 - nx, sy2 - ny), Offset(sx2 + nx, sy2 + ny), strokeWidth = sw)
+                            val label = "${distPx.roundToInt()} px"
+                            val labelPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = dp.color
+                                textSize = (sw * 5f).coerceAtLeast(11.sp.toPx())
+                                textAlign = android.graphics.Paint.Align.CENTER
+                            }
+                            val mx = (sx1 + sx2) / 2f; val my = (sy1 + sy2) / 2f - tick - sw
+                            val bounds = android.graphics.Rect()
+                            labelPaint.getTextBounds(label, 0, label.length, bounds)
+                            val pad = labelPaint.textSize * 0.3f
+                            val bgPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                this.color = 0xCC000000.toInt(); style = android.graphics.Paint.Style.FILL
+                            }
+                            drawContext.canvas.nativeCanvas.drawRoundRect(
+                                mx - bounds.width() / 2f - pad, my + bounds.top - pad,
+                                mx + bounds.width() / 2f + pad, my + bounds.bottom + pad,
+                                min(pad, 8.dp.toPx()), min(pad, 8.dp.toPx()), bgPaint)
+                            drawContext.canvas.nativeCanvas.drawText(label, mx, my, labelPaint)
+                            return
+                        }
+
                         // Eraser — semi-transparent checkerboard-style indicator
                         if (shape == "eraser" && pts.size >= 2) {
                             val eraserPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -2956,7 +2991,7 @@ fun CropEditorScreen(
                         val curShape = when (drawTool) {
                             DrawTool.RECT -> "rect"; DrawTool.CIRCLE -> "circle"
                             DrawTool.HIGHLIGHT -> "highlight"; DrawTool.SPOTLIGHT -> "spotlight"
-                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.ERASER -> "eraser"; DrawTool.HEAL -> "smart_erase"; else -> null
+                            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.LINE -> "line"; DrawTool.MEASURE -> "measure"; DrawTool.ERASER -> "eraser"; DrawTool.HEAL -> "smart_erase"; else -> null
                         }
                         val curSw = when (drawTool) { DrawTool.HIGHLIGHT -> drawStrokeWidth * 3; DrawTool.BLUR -> drawStrokeWidth * 4; DrawTool.ERASER -> drawStrokeWidth * 3; DrawTool.HEAL -> drawStrokeWidth * 4; else -> drawStrokeWidth }
                         val curPts = if (curShape == "rect" || curShape == "circle") listOf(currentDrawPoints.first(), currentDrawPoints.last()) else currentDrawPoints
