@@ -86,6 +86,12 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
                 }
+                val backupExportLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument("application/json")
+                ) { uri -> if (uri != null) exportSettings(uri, prefs) }
+                val backupImportLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri -> if (uri != null) importSettings(uri, prefs) }
 
                 Column(
                     modifier = Modifier
@@ -925,6 +931,22 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    // Settings backup / restore — survive reinstall (allowBackup=false).
+                    Text(stringResource(R.string.settings_backup_hint), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp,
+                        modifier = Modifier.padding(top = 8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                        FilledTonalButton(
+                            onClick = { backupExportLauncher.launch("snapcrop-settings.json") },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant, contentColor = OnSurface)
+                        ) { Text(stringResource(R.string.settings_backup_export), fontSize = 13.sp) }
+                        FilledTonalButton(
+                            onClick = { backupImportLauncher.launch(arrayOf("application/json")) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant, contentColor = OnSurface)
+                        ) { Text(stringResource(R.string.settings_backup_import), fontSize = 13.sp) }
+                    }
+
                     Spacer(Modifier.height(20.dp))
 
                     // About
@@ -1086,6 +1108,32 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(24.dp))
                 }
             }
+        }
+    }
+
+    private fun exportSettings(uri: Uri, prefs: SharedPreferences) {
+        try {
+            contentResolver.openOutputStream(uri)?.use { it.write(SettingsBackup.export(prefs).toString(2).toByteArray()) }
+                ?: throw IllegalStateException("no stream")
+            Toast.makeText(this, getString(R.string.settings_backup_done), Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.settings_backup_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun importSettings(uri: Uri, prefs: SharedPreferences) {
+        try {
+            val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: throw IllegalStateException("no stream")
+            val count = SettingsBackup.import(prefs, org.json.JSONObject(text))
+            if (count < 0) {
+                Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, getString(R.string.settings_backup_restored), Toast.LENGTH_LONG).show()
+                recreate()
+            }
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
         }
     }
 
