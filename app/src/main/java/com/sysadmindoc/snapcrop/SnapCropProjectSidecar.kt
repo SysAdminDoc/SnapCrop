@@ -114,7 +114,7 @@ object SnapCropProjectSidecar {
             sourceSha256 = source.optNullableString("sha256"),
             sourceWidth = source.optInt("width", 0),
             sourceHeight = source.optInt("height", 0),
-            cropRect = root.getJSONObject("crop").toRect(),
+            cropRect = root.optJSONObject("crop")?.toRect() ?: Rect(0, 0, 0, 0),
             adjustments = adjustments,
             pixelateRects = root.optJSONArray("pixelateRects").toRectList(),
             drawLayers = root.optJSONArray("drawLayers").toDrawPathList(),

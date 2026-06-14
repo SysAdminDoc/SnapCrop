@@ -1160,28 +1160,29 @@ private fun PhotoViewer(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             IconButton(onClick = {
-                isFav = onToggleFavorite(photos[pagerState.currentPage])
+                photos.getOrNull(pagerState.currentPage)?.let { isFav = onToggleFavorite(it) }
             }) {
                 Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     stringResource(R.string.gallery_favorite), tint = if (isFav) Tertiary else Color.White)
             }
-            IconButton(onClick = { onShare(photos[pagerState.currentPage]) }) {
+            IconButton(onClick = { photos.getOrNull(pagerState.currentPage)?.let { onShare(it) } }) {
                 Icon(Icons.Default.Share, stringResource(R.string.gallery_share), tint = Color.White)
             }
             IconButton(onClick = {
-                if (Settings.canDrawOverlays(context)) {
-                    FloatingScreenshotService.pin(context, photos[pagerState.currentPage].uri)
-                } else {
-                    Toast.makeText(context, context.getString(R.string.gallery_pin_no_permission), Toast.LENGTH_LONG).show()
+                val photo = photos.getOrNull(pagerState.currentPage)
+                when {
+                    photo == null -> {}
+                    Settings.canDrawOverlays(context) -> FloatingScreenshotService.pin(context, photo.uri)
+                    else -> Toast.makeText(context, context.getString(R.string.gallery_pin_no_permission), Toast.LENGTH_LONG).show()
                 }
             }) {
                 Icon(Icons.Default.PushPin, stringResource(R.string.gallery_pin), tint = Color.White)
             }
             IconButton(onClick = {
-                if (!summaryLoading) {
+                val photo = photos.getOrNull(pagerState.currentPage)
+                if (!summaryLoading && photo != null) {
                     summaryLoading = true
                     scope.launch {
-                        val photo = photos[pagerState.currentPage]
                         val result = ScreenshotSummarizer.summarize(context, photo.uri)
                         summaryText = result.description
                         summaryLoading = false
@@ -1195,12 +1196,11 @@ private fun PhotoViewer(
                     tint = if (summaryLoading) OnSurfaceVariant else Color.White
                 )
             }
-            IconButton(onClick = { onEdit(photos[pagerState.currentPage]) }) {
+            IconButton(onClick = { photos.getOrNull(pagerState.currentPage)?.let { onEdit(it) } }) {
                 Icon(Icons.Default.Crop, stringResource(R.string.gallery_edit), tint = Primary)
             }
             IconButton(onClick = {
-                val photo = photos[pagerState.currentPage]
-                onDelete(photo)
+                photos.getOrNull(pagerState.currentPage)?.let { onDelete(it) }
             }) {
                 Icon(Icons.Default.Delete, stringResource(R.string.delete), tint = Tertiary)
             }
