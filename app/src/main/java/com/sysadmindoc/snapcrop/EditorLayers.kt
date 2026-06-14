@@ -213,10 +213,20 @@ internal fun DrawLayerPanel(
                         }
                     }
                     if (isSelected) {
+                        // Pixel-based tools edit the bitmap directly and ignore the layer matrix,
+                        // so transform controls would mislead — show a note for those instead.
+                        val transformable = layer.shapeType !in listOf("fill", "blur", "smart_erase", "heal")
                         Column(
                             Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
+                            if (!transformable) {
+                                Text(
+                                    stringResource(R.string.layer_transform_unavailable),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 10.sp
+                                )
+                            } else {
                             Text(
                                 stringResource(R.string.layer_transform_hint),
                                 color = Secondary,
@@ -234,6 +244,7 @@ internal fun DrawLayerPanel(
                                 LayerXfBtn("→", stringResource(R.string.layer_move_right)) { onTransformLayer(actualIndex, 1f, 0f, 1f, 0f) }
                                 LayerXfBtn("↑", stringResource(R.string.layer_move_up_dir)) { onTransformLayer(actualIndex, 0f, -1f, 1f, 0f) }
                                 LayerXfBtn("↓", stringResource(R.string.layer_move_down_dir)) { onTransformLayer(actualIndex, 0f, 1f, 1f, 0f) }
+                            }
                             }
                         }
                     }

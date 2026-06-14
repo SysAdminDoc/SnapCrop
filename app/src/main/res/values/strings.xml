@@ -90,7 +90,7 @@
     <string name="import_label">Import</string>
 
     <!-- Resize dialog -->
-    <string name="resize_dialog_title">Batch Resize</string>
+    <string name="resize_dialog_title">Batch resize</string>
     <string name="resize_max_dimension">Max dimension (px):</string>
     <string name="resize_count">%1$d images will be resized</string>
     <string name="resize_target_cd">%1$dpx resize target</string>
@@ -182,14 +182,14 @@
     <string name="settings_theme_dark">Dark</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_system">System</string>
-    <string name="settings_section_save">Save Behavior</string>
+    <string name="settings_section_save">Save behavior</string>
     <string name="settings_replace_title">Replace original on Save</string>
     <string name="settings_replace_subtitle">When ON (default), manual Save deletes the screenshot you cropped from. Android may ask you to confirm deletion.</string>
     <string name="settings_sidecar_title">Editable project sidecars</string>
     <string name="settings_sidecar_subtitle">Save a .snapcrop.json file next to exports so crops, redactions, and layers can be reopened later. Keeps the source image when enabled.</string>
     <string name="settings_profiles_title">App crop profiles</string>
     <string name="settings_profiles_subtitle">Use built-in visual templates to strip Reddit, X/Twitter, and similar app chrome during auto-crop.</string>
-    <string name="settings_section_intelligence">Library Intelligence</string>
+    <string name="settings_section_intelligence">Library intelligence</string>
     <string name="settings_index_title">Screenshot intelligence index</string>
     <string name="settings_index_subtitle">Opt-in local index for screenshot names, source hints, dimensions, favorites, and categories. Stored only on this device.</string>
     <string name="settings_index_enabled">Index enabled. Rebuild to refresh.</string>
@@ -199,10 +199,10 @@
     <string name="settings_index_rebuilding">Rebuilding index…</string>
     <string name="settings_rebuild">Rebuild</string>
     <string name="settings_purge">Purge</string>
-    <string name="settings_section_erase">Smart Erase</string>
+    <string name="settings_section_erase">Smart erase</string>
     <string name="settings_erase_title">Allow experimental erase model packs</string>
     <string name="settings_erase_readiness">Backend readiness</string>
-    <string name="settings_section_format">Image Format</string>
+    <string name="settings_section_format">Image format</string>
     <string name="settings_format_hint">PNG is lossless, JPEG/WebP are smaller files</string>
     <string name="settings_quality">Quality: %1$d%%</string>
     <string name="settings_quality_cd">Image quality, %1$d percent</string>
@@ -215,12 +215,12 @@
     <string name="settings_strip_subtitle">Remove EXIF data (location, device info) when sharing for privacy</string>
     <string name="settings_filename_title">Filename template</string>
     <string name="settings_filename_hint">Use %%timestamp%%, %%date%%, %%time%%, %%counter%%</string>
-    <string name="settings_section_presets">Annotation Presets</string>
+    <string name="settings_section_presets">Annotation presets</string>
     <string name="settings_presets_body">Save draw tool styles and load them quickly in the editor.</string>
     <string name="settings_presets_empty">No presets saved yet. Use the + button in the editor\'s draw mode to save your current tool style.</string>
     <string name="settings_preset_default">Default</string>
     <string name="settings_preset_set_default">Set default</string>
-    <string name="settings_section_network">Network Exports</string>
+    <string name="settings_section_network">Network exports</string>
     <string name="settings_network_title">Enable network export targets</string>
     <string name="settings_network_subtitle">Off by default. Reports stay local unless you explicitly upload from the report dialog.</string>
     <string name="settings_upload_target">Upload target</string>
@@ -468,6 +468,7 @@
     <string name="draw_layers_empty">Draw, place text, or add a callout to create a layer.</string>
     <string name="draw_layer_number">Layer %1$d</string>
     <string name="layer_transform_hint">Transform — move, resize, rotate</string>
+    <string name="layer_transform_unavailable">Transform isn\'t available for fill, blur, or smart-erase layers.</string>
     <string name="layer_move_up">Up</string>
     <string name="layer_move_down">Down</string>
     <string name="layer_subtitle">Layer %1$d · %2$s · %3$s</string>

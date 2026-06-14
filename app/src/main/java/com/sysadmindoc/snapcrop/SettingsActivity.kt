@@ -323,13 +323,18 @@ class SettingsActivity : ComponentActivity() {
                                     }
                                     OutlinedButton(
                                         onClick = {
-                                            ScreenshotIndexStore(this@SettingsActivity).purge()
-                                            screenshotIndexStatus = getString(R.string.settings_index_count, 0)
-                                            android.widget.Toast.makeText(
-                                                this@SettingsActivity,
-                                                getString(R.string.toast_index_purged),
-                                                android.widget.Toast.LENGTH_SHORT
-                                            ).show()
+                                            // Run the DELETE off the main thread to avoid a UI hitch on a large index.
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                ScreenshotIndexStore(this@SettingsActivity).purge()
+                                                withContext(Dispatchers.Main) {
+                                                    screenshotIndexStatus = getString(R.string.settings_index_count, 0)
+                                                    android.widget.Toast.makeText(
+                                                        this@SettingsActivity,
+                                                        getString(R.string.toast_index_purged),
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
                                         },
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
