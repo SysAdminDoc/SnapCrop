@@ -738,15 +738,18 @@ class CropActivity : ComponentActivity() {
                 }
                 canvas.drawCircle(loupeCx, loupeCy, loupeRadius + 4f, borderPaint)
 
-                // Clip and draw zoomed content
+                // Clip and draw zoomed content. Read from a snapshot — drawing `result` onto its
+                // own backing canvas is undefined and yields a blank/corrupt loupe.
+                val snapshot = result.copy(Bitmap.Config.ARGB_8888, false)
                 canvas.save()
                 val clipPath = Path()
                 clipPath.addCircle(loupeCx, loupeCy, loupeRadius, Path.Direction.CW)
                 canvas.clipPath(clipPath)
                 canvas.translate(loupeCx - p.x * zoomFactor, loupeCy - p.y * zoomFactor)
                 canvas.scale(zoomFactor, zoomFactor)
-                canvas.drawBitmap(result, 0f, 0f, null)
+                canvas.drawBitmap(snapshot, 0f, 0f, null)
                 canvas.restore()
+                snapshot.recycle()
 
                 // Ring border
                 val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -896,14 +899,11 @@ class CropActivity : ComponentActivity() {
             pixels[idx] = fillColor
             filled++
             val cx = idx % w; val cy = idx / w
-            for ((nx, ny) in listOf(cx - 1 to cy, cx + 1 to cy, cx to cy - 1, cx to cy + 1)) {
-                if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue
-                val ni = ny * w + nx
-                if (!visited[ni] && colorClose(pixels[ni], targetColor)) {
-                    visited[ni] = true
-                    queue.add(ni)
-                }
-            }
+            // Explicit 4-neighbour checks — avoid allocating a List<Pair> per pixel in the hot loop.
+            if (cx > 0) { val ni = idx - 1; if (!visited[ni] && colorClose(pixels[ni], targetColor)) { visited[ni] = true; queue.add(ni) } }
+            if (cx < w - 1) { val ni = idx + 1; if (!visited[ni] && colorClose(pixels[ni], targetColor)) { visited[ni] = true; queue.add(ni) } }
+            if (cy > 0) { val ni = idx - w; if (!visited[ni] && colorClose(pixels[ni], targetColor)) { visited[ni] = true; queue.add(ni) } }
+            if (cy < h - 1) { val ni = idx + w; if (!visited[ni] && colorClose(pixels[ni], targetColor)) { visited[ni] = true; queue.add(ni) } }
         }
         bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
     }
@@ -1645,11 +1645,12 @@ class CropActivity : ComponentActivity() {
 
     private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
-            val clipDir = File(cacheDir, "clipboard")
-            clipDir.mkdirs()
-            val file = File(clipDir, "clip.png")
+            var cropped: Bitmap? = null
             try {
+                cropped = applyExportDecorations(createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj))
+                val clipDir = File(cacheDir, "clipboard")
+                clipDir.mkdirs()
+                val file = File(clipDir, "clip.png")
                 file.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 withContext(Dispatchers.Main) {
                     val clipUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", file)
@@ -1663,14 +1664,21 @@ class CropActivity : ComponentActivity() {
                     Toast.makeText(this@CropActivity, getString(R.string.toast_copy_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
-                if (!cropped.isRecycled) cropped.recycle()
+                cropped?.let { if (!it.isRecycled) it.recycle() }
             }
         }
     }
 
     private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val cropped = try {
+                createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
             val scanEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 .getBoolean("redact_on_share", true)
             if (!scanEnabled) {
@@ -1722,6 +1730,9 @@ class CropActivity : ComponentActivity() {
                         if (!cropped.isRecycled) cropped.recycle()
                         if (!redacted.isRecycled) redacted.recycle()
                     }
+                    .setOnDismissListener {
+                        if (!preview.isRecycled) preview.recycle()
+                    }
                     .show()
             }
         }
@@ -1731,6 +1742,7 @@ class CropActivity : ComponentActivity() {
      *  Recycles [shareBitmap] when done. */
     private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
+            val out = applyExportDecorations(shareBitmap)
             val (format, quality) = getSaveFormat()
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
             val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
@@ -1740,7 +1752,7 @@ class CropActivity : ComponentActivity() {
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
             val shareFile = File(shareDir, "snapcrop_share.$ext")
             try {
-                shareFile.outputStream().use { shareBitmap.compress(shareFmt, shareQual, it) }
+                shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
                 val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
                 withContext(Dispatchers.Main) {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -1754,7 +1766,7 @@ class CropActivity : ComponentActivity() {
                     Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
-                if (!shareBitmap.isRecycled) shareBitmap.recycle()
+                if (!out.isRecycled) out.recycle()
             }
         }
     }
@@ -1770,6 +1782,18 @@ class CropActivity : ComponentActivity() {
             (src.height * scale).toInt().coerceAtLeast(1),
             true
         )
+    }
+
+    /** Applies the configured export border + watermark, recycling intermediates. No-op if neither
+     *  is enabled (returns the input). Used by share/copy so they match the saved file. */
+    private fun applyExportDecorations(input: Bitmap): Bitmap {
+        var out = input
+        val bordered = applyBorder(out)
+        if (bordered !== out) out.recycle()
+        out = bordered
+        val watermarked = applyWatermark(out)
+        if (watermarked !== out) out.recycle()
+        return watermarked
     }
 
     private fun applyBorder(bitmap: Bitmap): Bitmap {
