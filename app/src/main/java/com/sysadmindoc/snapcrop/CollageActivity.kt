@@ -170,17 +170,6 @@ class CollageActivity : ComponentActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val bitmaps = imageUris.mapNotNull { uri ->
-                    contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-                }
-                if (bitmaps.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
-                        isSaving.value = false
-                    }
-                    return@launch
-                }
-
                 // Target: 1080px wide collage
                 val cellW = ((1080 - gap * (layout.cols + 1)) / layout.cols).coerceAtLeast(1)
                 val cellH = (cellW / cellAspect.floatValue).toInt().coerceAtLeast(1)
@@ -192,21 +181,31 @@ class CollageActivity : ComponentActivity() {
                 // Background
                 canvas.drawColor(collageBgColors[bgColorIdx.intValue.coerceIn(0, collageBgColors.size - 1)].first)
 
+                // Decode only the cells we actually use, downsampled to roughly the cell size, one at
+                // a time — full-resolution sources are never all held in memory at once.
+                var drawn = 0
                 for (i in 0 until layout.slots) {
-                    if (i >= bitmaps.size) break
+                    val uri = imageUris.getOrNull(i) ?: break
+                    val src = decodeSampled(uri, maxOf(cellW, cellH)) ?: continue
                     val col = i % layout.cols
                     val row = i / layout.cols
                     val x = gap + col * (cellW + gap)
                     val y = gap + row * (cellH + gap)
-
-                    // Center-crop the bitmap into the cell
-                    val src = bitmaps[i]
                     val scaled = centerCropBitmap(src, cellW, cellH)
                     canvas.drawBitmap(scaled, x.toFloat(), y.toFloat(), null)
                     if (scaled !== src) scaled.recycle()
+                    src.recycle()
+                    drawn++
                 }
 
-                bitmaps.forEach { it.recycle() }
+                if (drawn == 0) {
+                    result.recycle()
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
+                        isSaving.value = false
+                    }
+                    return@launch
+                }
 
                 saveToGallery(result)
                 result.recycle()
@@ -217,6 +216,18 @@ class CollageActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        while (longest > 0 && longest / sample > targetEdge * 2) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    } catch (_: Exception) {
+        null
     }
 
     private fun centerCropBitmap(src: Bitmap, targetW: Int, targetH: Int): Bitmap {

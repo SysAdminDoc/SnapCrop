@@ -91,22 +91,14 @@ class StitchActivity : ComponentActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val bitmaps = urisSnapshot.mapNotNull { uri ->
-                    contentResolver.openInputStream(uri)?.use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    }
-                }
-                if (bitmaps.size < 2) {
-                    bitmaps.forEach { it.recycle() }
+                val result = stitchFromUris(urisSnapshot, isVertical.value)
+                if (result == null) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@StitchActivity, getString(R.string.stitch_one_title), Toast.LENGTH_SHORT).show()
                         isSaving.value = false
                     }
                     return@launch
                 }
-
-                val result = if (isVertical.value) stitchVertical(bitmaps) else stitchHorizontal(bitmaps)
-                bitmaps.forEach { it.recycle() }
 
                 saveToGallery(result)
                 result.recycle()
@@ -119,38 +111,68 @@ class StitchActivity : ComponentActivity() {
         }
     }
 
-    private fun stitchVertical(bitmaps: List<Bitmap>): Bitmap {
-        val maxW = bitmaps.maxOf { it.width }
-        val totalH = bitmaps.sumOf { (it.height.toFloat() * maxW / it.width).toInt() }
-        val result = Bitmap.createBitmap(maxW, totalH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        var y = 0f
-        for (bmp in bitmaps) {
-            val scale = maxW.toFloat() / bmp.width
-            val scaledH = (bmp.height * scale).toInt()
-            val scaled = Bitmap.createScaledBitmap(bmp, maxW, scaledH, true)
-            canvas.drawBitmap(scaled, 0f, y, null)
-            if (scaled !== bmp) scaled.recycle()
-            y += scaledH
+    /**
+     * Streams the stitch from source URIs: reads bounds first, then decodes/scales/draws one
+     * source at a time so peak memory stays at the result plus a single frame, instead of holding
+     * every full-resolution image at once (which OOMed on large multi-image stitches).
+     */
+    private fun stitchFromUris(uris: List<Uri>, vertical: Boolean): Bitmap? {
+        val cap = 2048 // bound the normalized edge to keep memory sane on very large sources
+        val dims = uris.mapNotNull { uri ->
+            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            try { contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) } } catch (_: Exception) {}
+            if (o.outWidth > 0 && o.outHeight > 0) uri to (o.outWidth to o.outHeight) else null
         }
-        return result
+        if (dims.size < 2) return null
+
+        return if (vertical) {
+            val maxW = minOf(dims.maxOf { it.second.first }, cap)
+            val totalH = dims.sumOf { (it.second.second.toFloat() * maxW / it.second.first).toInt().coerceAtLeast(1) }
+            val result = Bitmap.createBitmap(maxW, totalH, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(result)
+            var y = 0f
+            for ((uri, d) in dims) {
+                val targetH = (d.second.toFloat() * maxW / d.first).toInt().coerceAtLeast(1)
+                drawScaledFrame(canvas, uri, maxW, targetH, 0f, y)
+                y += targetH
+            }
+            result
+        } else {
+            val maxH = minOf(dims.maxOf { it.second.second }, cap)
+            val totalW = dims.sumOf { (it.second.first.toFloat() * maxH / it.second.second).toInt().coerceAtLeast(1) }
+            val result = Bitmap.createBitmap(totalW, maxH, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(result)
+            var x = 0f
+            for ((uri, d) in dims) {
+                val targetW = (d.first.toFloat() * maxH / d.second).toInt().coerceAtLeast(1)
+                drawScaledFrame(canvas, uri, targetW, maxH, x, 0f)
+                x += targetW
+            }
+            result
+        }
     }
 
-    private fun stitchHorizontal(bitmaps: List<Bitmap>): Bitmap {
-        val maxH = bitmaps.maxOf { it.height }
-        val totalW = bitmaps.sumOf { (it.width.toFloat() * maxH / it.height).toInt() }
-        val result = Bitmap.createBitmap(totalW, maxH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        var x = 0f
-        for (bmp in bitmaps) {
-            val scale = maxH.toFloat() / bmp.height
-            val scaledW = (bmp.width * scale).toInt()
-            val scaled = Bitmap.createScaledBitmap(bmp, scaledW, maxH, true)
-            canvas.drawBitmap(scaled, x, 0f, null)
-            if (scaled !== bmp) scaled.recycle()
-            x += scaledW
+    private fun drawScaledFrame(canvas: Canvas, uri: Uri, targetW: Int, targetH: Int, x: Float, y: Float) {
+        val src = decodeSampled(uri, maxOf(targetW, targetH)) ?: return
+        try {
+            val scaled = Bitmap.createScaledBitmap(src, targetW, targetH, true)
+            canvas.drawBitmap(scaled, x, y, null)
+            if (scaled !== src) scaled.recycle()
+        } finally {
+            src.recycle()
         }
-        return result
+    }
+
+    private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        while (longest > 0 && longest / sample > targetEdge * 2) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    } catch (_: Exception) {
+        null
     }
 
     private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {
