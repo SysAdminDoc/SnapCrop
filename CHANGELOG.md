@@ -4,6 +4,8 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+## [6.26.0] - 2026-06-14
+
 **Deep audit — correctness, theming, and accessibility hardening (v6.26.0).**
 
 - Fixed a fullscreen-viewer crash: the bottom-bar actions (favorite, share, pin,
