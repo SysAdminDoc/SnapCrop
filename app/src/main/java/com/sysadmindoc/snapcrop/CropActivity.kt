@@ -24,6 +24,8 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.MediaStore
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -1602,6 +1604,66 @@ class CropActivity : ComponentActivity() {
     private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             val cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+            val scanEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                .getBoolean("redact_on_share", true)
+            if (!scanEnabled) {
+                dispatchShare(cropped, adj)
+                return@launch
+            }
+
+            val detection = try {
+                SensitiveTextDetector.detect(cropped)
+            } catch (_: Exception) {
+                SensitiveTextResult(emptyList(), 0, 0)
+            }
+            if (detection.rects.isEmpty()) {
+                dispatchShare(cropped, adj)
+                return@launch
+            }
+
+            // Build a redacted copy and a downscaled preview off the main thread.
+            val redacted = ImageRedactor.pixelate(cropped, detection.rects)
+            val preview = scaledPreview(redacted, 720)
+            withContext(Dispatchers.Main) {
+                val previewView = ImageView(this@CropActivity).apply {
+                    setImageBitmap(preview)
+                    adjustViewBounds = true
+                    val pad = (16 * resources.displayMetrics.density).toInt()
+                    setPadding(pad, pad, pad, pad)
+                }
+                val container = LinearLayout(this@CropActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(previewView)
+                }
+                android.app.AlertDialog.Builder(this@CropActivity)
+                    .setTitle(getString(R.string.redact_share_dialog_title))
+                    .setMessage(getString(R.string.redact_share_dialog_message, detection.rects.size))
+                    .setView(container)
+                    .setPositiveButton(getString(R.string.redact_share_action_redacted)) { _, _ ->
+                        if (!cropped.isRecycled) cropped.recycle()
+                        dispatchShare(redacted, adj)
+                    }
+                    .setNeutralButton(getString(R.string.redact_share_action_original)) { _, _ ->
+                        if (!redacted.isRecycled) redacted.recycle()
+                        dispatchShare(cropped, adj)
+                    }
+                    .setNegativeButton(getString(R.string.cancel)) { _, _ ->
+                        if (!cropped.isRecycled) cropped.recycle()
+                        if (!redacted.isRecycled) redacted.recycle()
+                    }
+                    .setOnCancelListener {
+                        if (!cropped.isRecycled) cropped.recycle()
+                        if (!redacted.isRecycled) redacted.recycle()
+                    }
+                    .show()
+            }
+        }
+    }
+
+    /** Compresses [shareBitmap] per the current format/shape settings and fires the share chooser.
+     *  Recycles [shareBitmap] when done. */
+    private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray) {
+        lifecycleScope.launch(Dispatchers.IO) {
             val (format, quality) = getSaveFormat()
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
             val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
@@ -1611,7 +1673,7 @@ class CropActivity : ComponentActivity() {
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
             val shareFile = File(shareDir, "snapcrop_share.$ext")
             try {
-                shareFile.outputStream().use { cropped.compress(shareFmt, shareQual, it) }
+                shareFile.outputStream().use { shareBitmap.compress(shareFmt, shareQual, it) }
                 val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
                 withContext(Dispatchers.Main) {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -1625,9 +1687,22 @@ class CropActivity : ComponentActivity() {
                     Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
-                if (!cropped.isRecycled) cropped.recycle()
+                if (!shareBitmap.isRecycled) shareBitmap.recycle()
             }
         }
+    }
+
+    /** Returns a downscaled copy of [src] no larger than [maxDim] on its longest edge. */
+    private fun scaledPreview(src: Bitmap, maxDim: Int): Bitmap {
+        val longest = maxOf(src.width, src.height)
+        if (longest <= maxDim) return src.copy(Bitmap.Config.ARGB_8888, false)
+        val scale = maxDim.toFloat() / longest
+        return Bitmap.createScaledBitmap(
+            src,
+            (src.width * scale).toInt().coerceAtLeast(1),
+            (src.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
     }
 
     private fun applyBorder(bitmap: Bitmap): Bitmap {

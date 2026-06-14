@@ -860,6 +860,19 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var redactOnShare by remember {
+                        mutableStateOf(prefs.getBoolean("redact_on_share", true))
+                    }
+                    SettingToggle(
+                        title = stringResource(R.string.settings_redact_share_title),
+                        subtitle = stringResource(R.string.settings_redact_share_subtitle),
+                        checked = redactOnShare,
+                        onCheckedChange = {
+                            redactOnShare = it
+                            prefs.edit().putBoolean("redact_on_share", it).apply()
+                        }
+                    )
+
                     Spacer(Modifier.height(20.dp))
 
                     // Storage section

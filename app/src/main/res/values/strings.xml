@@ -234,6 +234,13 @@
     <string name="settings_autostart_subtitle">Resume screenshot monitor after device restart</string>
     <string name="settings_autoactions_title">Quick Crop auto-actions</string>
     <string name="settings_autoactions_subtitle">When ON, recognized app screenshots can auto-redact sensitive text and save into app-specific albums.</string>
+    <string name="settings_redact_share_title">Scan before sharing</string>
+    <string name="settings_redact_share_subtitle">When ON, sharing scans for sensitive text (emails, phone numbers, cards) and offers to pixelate it before the share sheet opens.</string>
+    <string name="redact_share_dialog_title">Sensitive info detected</string>
+    <string name="redact_share_dialog_message">SnapCrop found %d area(s) that may contain sensitive info. Share with these areas pixelated?</string>
+    <string name="redact_share_action_redacted">Share redacted</string>
+    <string name="redact_share_action_original">Share original</string>
+    <string name="redact_share_scanning">Scanning for sensitive info…</string>
     <string name="settings_section_storage">Storage</string>
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>

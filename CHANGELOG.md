@@ -6,10 +6,53 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Added auto-redact on share. Tapping Share now scans the cropped image for
+  sensitive text (emails, phone numbers, IPs, MAC addresses, payment cards via
+  Luhn, and ML Kit entities) using the existing `SensitiveTextDetector`. When
+  matches are found, a dialog previews the redacted image and offers "Share
+  redacted" (pixelates the detected areas before the share intent), "Share
+  original", or cancel. A new Settings → "Scan before sharing" toggle (default
+  ON) controls the scan; turning it off restores instant sharing.
 - Internationalized all user-facing strings: extracted ~660 string resources to
   `values/strings.xml` and wired `stringResource()` / `getString()` across all
   17+ Activity, Screen, Service, and helper files. A translator can now add
   `values-es/strings.xml` (or any locale) and see a fully localized UI.
+- Added screenshot explanation and accessibility summaries. New Describe button
+  in gallery fullscreen viewer runs on-device OCR, entity extraction, barcode
+  scanning, and color analysis to generate a structured natural-language summary.
+  Summary includes word count, text preview, detected entities (emails, phones,
+  URLs), barcodes, and dominant colors. Results shown in a dialog with copy
+  support for use as alt-text or accessibility descriptions. All processing is
+  local with no remote AI dependency.
+- Added dataset-backed evaluation harness. Settings → About section has a
+  "Run evaluation harness" button that executes synthetic fixture suites for
+  AutoCrop border detection (white/black/dark-mode/system-bars/edge-cases),
+  SensitiveTextPatterns regex matching, Luhn card validation, and AppCropProfiles
+  hint-based matching. Results show per-suite pass/fail counts with IoU metrics
+  for crop accuracy. All fixtures are programmatically generated with no external
+  dataset dependencies.
+- Added cross-app drag-and-drop for multi-window mode. Long-press an image in the
+  fullscreen gallery viewer to start a drag that other apps can accept in
+  split-screen. Dragging an image from Files or another app onto SnapCrop opens
+  the editor. Drop target uses requestDragAndDropPermissions for cross-process
+  URI access; drag source sets DRAG_FLAG_GLOBAL | DRAG_FLAG_GLOBAL_URI_READ.
+- Added floating screenshot overlay. A new Pin button in the gallery fullscreen
+  viewer launches a draggable overlay on top of other apps via WindowManager.
+  Requires SYSTEM_ALERT_WINDOW permission (already declared). Tap to dismiss,
+  drag to reposition. Close button in top-right corner.
+- Added stylus palm rejection in the editor. When the primary pointer is a
+  stylus or eraser, touch-type events are filtered and consumed so palm
+  contact does not interfere with drawing or crop gestures.
+- Added light theme option with Catppuccin Latte-inspired palette. Settings
+  toggle offers Dark, Light, and System (follows Android dark mode). All
+  surfaces, text colors, primary accents, and button content colors adapt.
+  Editor/gallery canvases remain dark regardless of theme. OnPrimary semantic
+  color ensures text on primary buttons has correct contrast in both modes.
+- Added entity action chips to the OCR text dialog. When recognized text contains
+  phone numbers, email addresses, or URLs, tappable chips appear above the
+  translation controls. Phone chips open the dialer, email chips open a compose
+  intent, and URL chips open the browser. Entity extraction uses local regex
+  matching with no network dependency.
 - Added perspective/quad crop with warp transform. A Perspective chip in crop
   mode toggles 4 independent corner handles. Dragging any corner reshapes the
   selection quad without affecting the others. On export, `Matrix.setPolyToPoly`
