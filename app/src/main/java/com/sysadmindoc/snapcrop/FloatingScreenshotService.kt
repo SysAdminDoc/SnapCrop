@@ -20,6 +20,7 @@ class FloatingScreenshotService : Service() {
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
+    private var overlayBitmap: android.graphics.Bitmap? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -34,21 +35,20 @@ class FloatingScreenshotService : Service() {
         }
 
         val uri = Uri.parse(uriStr)
-        val bitmap = try {
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-        } catch (_: Exception) {
-            null
-        }
+        val displayMetrics = resources.displayMetrics
+        val maxDim = (displayMetrics.widthPixels * 0.4f).roundToInt().coerceAtLeast(1)
+        // The overlay renders at ~40% screen width, so decode downsampled to that target
+        // instead of holding a full-resolution screenshot bitmap in memory.
+        val bitmap = decodeSampled(uri, maxDim)
 
         if (bitmap == null) {
             stopSelf()
             return START_NOT_STICKY
         }
+        overlayBitmap = bitmap
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        val displayMetrics = resources.displayMetrics
-        val maxDim = (displayMetrics.widthPixels * 0.4f).roundToInt()
         val scale = maxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
         val imgW = (bitmap.width * scale).roundToInt()
         val imgH = (bitmap.height * scale).roundToInt()
@@ -129,10 +129,28 @@ class FloatingScreenshotService : Service() {
             }
         }
 
-        windowManager?.addView(container, params)
-        overlayView = container
+        try {
+            windowManager?.addView(container, params)
+            overlayView = container
+        } catch (_: Exception) {
+            // Overlay permission revoked or window token rejected — fail cleanly.
+            removeOverlay()
+            stopSelf()
+        }
 
         return START_NOT_STICKY
+    }
+
+    private fun decodeSampled(uri: Uri, targetDim: Int): android.graphics.Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        while (longest > 0 && longest / sample > targetDim * 2) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+    } catch (_: Exception) {
+        null
     }
 
     private fun removeOverlay() {
@@ -140,6 +158,8 @@ class FloatingScreenshotService : Service() {
             try { windowManager?.removeView(it) } catch (_: Exception) {}
         }
         overlayView = null
+        overlayBitmap?.let { if (!it.isRecycled) it.recycle() }
+        overlayBitmap = null
     }
 
     override fun onDestroy() {

@@ -20,6 +20,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="SnapCrop"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/Theme.SnapCrop">
 
         <activity

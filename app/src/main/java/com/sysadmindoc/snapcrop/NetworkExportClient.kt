@@ -94,6 +94,13 @@ data class NetworkExportResult(
 )
 
 object NetworkExportClient {
+    /** Never transmit credentials over a non-TLS connection. */
+    private fun rejectInsecureAuth(target: NetworkExportTarget, endpoint: String, authorizationHeader: String): NetworkExportResult? {
+        return if (authorizationHeader.isNotBlank() && !endpoint.startsWith("https://")) {
+            NetworkExportResult(false, target, 0, "Refusing to send credentials over an insecure connection — use an https:// endpoint.")
+        } else null
+    }
+
     fun uploadReportPdf(
         settings: NetworkExportSettings,
         fileName: String,
@@ -164,6 +171,7 @@ object NetworkExportClient {
         mimeType: String,
         bytes: ByteArray
     ): NetworkExportResult {
+        rejectInsecureAuth(target, endpoint, authorizationHeader)?.let { return it }
         val boundary = "SnapCropBoundary${System.currentTimeMillis()}"
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -199,6 +207,7 @@ object NetworkExportClient {
         mimeType: String,
         bytes: ByteArray
     ): NetworkExportResult {
+        rejectInsecureAuth(settings.target, endpoint, settings.authorizationHeader)?.let { return it }
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "PUT"
             connectTimeout = 15_000

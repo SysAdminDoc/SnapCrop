@@ -45,6 +45,9 @@ class ScreenshotService : Service() {
     private var lastProcessedId = -1L
     private var lastProcessedTime = 0L
     private val handler = Handler(Looper.getMainLooper())
+    // Lifecycle-bound scope so quick-save / last-action work is cancelled when the service stops,
+    // rather than leaking a fresh CoroutineScope per invocation that runs after onDestroy.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var foregroundStarted = false
     private var delayedCaptureBaseline: Long = 0L
     private var delayedCaptureActive = false
@@ -279,7 +282,7 @@ class ScreenshotService : Service() {
     }
 
     private fun runLastAction(stopWhenDone: Boolean) {
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
             val action = prefs.getString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP)
                 ?: LAST_ACTION_QUICK_CROP
@@ -343,7 +346,7 @@ class ScreenshotService : Service() {
     }
 
     private fun quickSave(uri: Uri, stopWhenDone: Boolean = false) {
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             var bitmap: Bitmap? = null
             var cropped: Bitmap? = null
             try {
@@ -612,6 +615,7 @@ class ScreenshotService : Service() {
         isRunning = false
         delayedCaptureActive = false
         foregroundStarted = false
+        serviceScope.cancel()
         handler.removeCallbacksAndMessages(null)
         observer?.let { contentResolver.unregisterContentObserver(it) }
         observer = null

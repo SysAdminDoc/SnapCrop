@@ -90,6 +90,7 @@ class StepCaptureService : AccessibilityService() {
         val bounds = Rect()
         event.source?.let { node ->
             try { node.getBoundsInScreen(bounds) } catch (_: Exception) {}
+            @Suppress("DEPRECATION") try { node.recycle() } catch (_: Exception) {}
         }
         val clickX = if (bounds.width() > 0) bounds.centerX() else -1
         val clickY = if (bounds.height() > 0) bounds.centerY() else -1
@@ -158,6 +159,9 @@ class StepCaptureService : AccessibilityService() {
                 delay(POST_CLICK_DELAY_MS)
                 if (!capturing) return@launch
                 val frame = captureScreen() ?: return@launch
+                // The session may have been stopped while the screenshot was in flight; drop the
+                // late frame so it isn't orphaned past the cleared list.
+                if (!capturing) { frame.recycle(); return@launch }
                 frames.add(StepFrame(frame, clickX, clickY))
                 Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_step, frames.size), Toast.LENGTH_SHORT).show()
             } finally {
