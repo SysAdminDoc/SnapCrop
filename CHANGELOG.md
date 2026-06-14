@@ -30,6 +30,24 @@ All notable changes to SnapCrop will be documented in this file.
   with pixelate and tap-placed tools), and the layer-transform selection resets
   on delete/reorder so controls can't target the wrong layer.
 - Removed a per-pixel `List<Pair>` allocation from the flood-fill BFS hot loop.
+- ScreenshotService now runs quick-save / last-action work on a lifecycle-bound
+  coroutine scope that is cancelled in onDestroy, instead of leaking a fresh
+  scope per call that kept touching the service after it stopped.
+- Step capture no longer orphans a screenshot captured after the session was
+  stopped, and recycles the accessibility node it inspects.
+- The floating pin overlay decodes the screenshot downsampled to its display
+  size (instead of full resolution), recycles it on teardown, and fails cleanly
+  if overlay permission is missing instead of crashing the service.
+- Network export refuses to send credentials over a non-HTTPS endpoint with a
+  clear message, and `usesCleartextTraffic="false"` is now explicit.
+- Stitch and Collage stream sources one at a time (bounds pre-pass + per-image
+  downsampling) instead of decoding every full-resolution image at once, fixing
+  out-of-memory crashes on large multi-image jobs. Collage also only decodes the
+  cells it uses and reports failure instead of producing a degenerate output.
+- The gallery no longer writes the photo grid from two effects at once (a race
+  that could show the wrong album); a single effect owns photo loading.
+- Batch crop/resize delete the pending MediaStore row on any write failure
+  instead of leaving an invisible orphaned entry.
 
 **Verification and release hardening.**
 

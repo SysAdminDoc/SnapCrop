@@ -302,20 +302,10 @@ fun GalleryScreen(
         albums = refreshedCollections.first
         smartAlbums = refreshedCollections.second
         indexEntries = refreshedCollections.third
-        val currentIndex = refreshedCollections.third
         indexEnabled = prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
-        // Also refresh current album photos if viewing one
-        selectedAlbum?.let { path ->
-            withContext(Dispatchers.IO) {
-                photos = when {
-                    path == ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, currentIndex)
-                    path == FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, currentIndex)
-                    path.startsWith(SMART_ALBUM_PREFIX) -> loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH, currentIndex)
-                    else -> loadPhotos(context.contentResolver, path, screenW, screenH, currentIndex)
-                }
-            }
-        }
-        isLoading = false
+        // Photos for the open album are loaded by the single effect below (keyed on refreshKey),
+        // so they are never written from two effects at once.
+        if (selectedAlbum == null) isLoading = false
     }
 
     // Reactively follow the Room-backed index: rebuilds, OCR token capture, and purges all emit
@@ -327,7 +317,7 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(selectedAlbum, indexEntries) {
+    LaunchedEffect(selectedAlbum, indexEntries, refreshKey, favIds) {
         selectedAlbum?.let { path ->
             isLoading = true
             selectedIds.clear()

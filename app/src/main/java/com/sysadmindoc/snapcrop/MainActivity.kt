@@ -72,6 +72,7 @@ import androidx.compose.ui.res.stringResource
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -198,14 +199,19 @@ class MainActivity : ComponentActivity() {
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
-                            val os = contentResolver.openOutputStream(savedUri)
-                            if (os != null) {
-                                os.use { out -> toSave.compress(fmt, qual, out) }
+                            var ok = false
+                            try {
+                                contentResolver.openOutputStream(savedUri)?.use { out -> toSave.compress(fmt, qual, out) }
+                                    ?: throw IOException("Output stream unavailable")
                                 values.clear()
                                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                                 contentResolver.update(savedUri, values, null, null)
-                            } else {
-                                contentResolver.delete(savedUri, null, null)
+                                ok = true
+                            } catch (_: Exception) {
+                            }
+                            if (!ok) {
+                                try { contentResolver.delete(savedUri, null, null) } catch (_: Exception) {}
+                                failed++
                             }
                         }
                         if (toSave !== bitmap) toSave.recycle()
@@ -739,14 +745,19 @@ class MainActivity : ComponentActivity() {
                         }
                         val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                         if (savedUri != null) {
-                            val os = contentResolver.openOutputStream(savedUri)
-                            if (os != null) {
-                                os.use { out -> resized.compress(fmt, qual, out) }
+                            var ok = false
+                            try {
+                                contentResolver.openOutputStream(savedUri)?.use { out -> resized.compress(fmt, qual, out) }
+                                    ?: throw IOException("Output stream unavailable")
                                 values.clear()
                                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                                 contentResolver.update(savedUri, values, null, null)
-                            } else {
-                                contentResolver.delete(savedUri, null, null)
+                                ok = true
+                            } catch (_: Exception) {
+                            }
+                            if (!ok) {
+                                try { contentResolver.delete(savedUri, null, null) } catch (_: Exception) {}
+                                failed++
                             }
                         }
                         resized.recycle()
