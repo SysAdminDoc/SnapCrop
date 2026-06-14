@@ -63,6 +63,17 @@ jobs:
     needs:
       - verify
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'release'
+    permissions:
+      contents: write   # required to attach the signed APK to the GitHub Release
+
+    # Configure these repository secrets to produce a release-key-signed APK that can update an
+    # existing install. Without them the build falls back to debug signing (artifact only, never
+    # attached to a Release). SNAPCROP_KEYSTORE_BASE64 = `base64 -w0 snapcrop-release.jks`.
+    env:
+      SNAPCROP_KEYSTORE_BASE64: ${{ secrets.SNAPCROP_KEYSTORE_BASE64 }}
+      SNAPCROP_KEYSTORE_PASSWORD: ${{ secrets.SNAPCROP_KEYSTORE_PASSWORD }}
+      SNAPCROP_KEY_ALIAS: ${{ secrets.SNAPCROP_KEY_ALIAS }}
+      SNAPCROP_KEY_PASSWORD: ${{ secrets.SNAPCROP_KEY_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v4
@@ -76,10 +87,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Decode release keystore
+        if: ${{ env.SNAPCROP_KEYSTORE_BASE64 != '' }}
+        run: echo "$SNAPCROP_KEYSTORE_BASE64" | base64 -d > snapcrop-release.jks
+
       - name: Build release APK and SBOM
         run: ./gradlew :app:assembleRelease :app:cyclonedxDirectBom
 
-      - name: Upload APK
+      - name: Verify APK signature
+        if: ${{ env.SNAPCROP_KEYSTORE_BASE64 != '' }}
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          APKSIGNER=$(ls "$ANDROID_SDK_ROOT"/build-tools/*/apksigner | sort -V | tail -1)
+          "$APKSIGNER" verify --print-certs "$APK"
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: SnapCrop-release
@@ -90,3 +112,17 @@ jobs:
         with:
           name: SnapCrop-cyclonedx-sbom
           path: app/build/reports/cyclonedx-direct/bom.*
+
+      - name: Attach signed APK to the GitHub Release
+        if: ${{ github.event_name == 'release' && env.SNAPCROP_KEYSTORE_BASE64 != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" "SnapCrop-${TAG}.apk"
+          gh release upload "$TAG" "SnapCrop-${TAG}.apk" --clobber
+
+      - name: Clean up keystore
+        if: ${{ always() }}
+        run: rm -f snapcrop-release.jks
