@@ -156,6 +156,7 @@ fun CropEditorScreen(
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
+    registerStateProvider: ((() -> EditorDraft)?) -> Unit = {},
     replaceOriginalOnSave: Boolean
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
@@ -647,6 +648,14 @@ fun CropEditorScreen(
     }
 
     fun currentCropRect() = Rect(cropLeft, cropTop, cropRight, cropBottom)
+
+    // Let the host pull the live editor state to checkpoint a draft across process death.
+    DisposableEffect(Unit) {
+        registerStateProvider {
+            EditorDraft(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), exportAdjustments())
+        }
+        onDispose { registerStateProvider(null) }
+    }
 
     fun resetCrop() {
         pushUndo()

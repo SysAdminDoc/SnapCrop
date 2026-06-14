@@ -59,6 +59,15 @@ internal enum class DragHandle {
     TOP, BOTTOM, LEFT, RIGHT, CENTER
 }
 
+/** Snapshot of the editor's restorable state, pulled by the host activity to checkpoint a draft
+ *  across process death. */
+data class EditorDraft(
+    val crop: Rect,
+    val pix: List<Rect>,
+    val draws: List<DrawPath>,
+    val adj: FloatArray
+)
+
 internal enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
 
 internal enum class DrawTool(val label: String) {

@@ -6,6 +6,16 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Trust, distribution, and resilience (v6.27.0).**
 
+- Added settings/preset backup & restore: export all preferences, presets, and
+  app-crop profiles to a JSON file and restore them after a reinstall (the app
+  keeps `allowBackup=false`). Network credentials are excluded.
+- The editor now checkpoints an in-progress edit (source, crop, redactions, draw
+  layers, adjustments) so a low-memory process death restores your work instead
+  of losing it.
+- Declared `READ_MEDIA_VISUAL_USER_SELECTED` and detect the Android 14+ "Select
+  photos" partial-access state: the home card now explains the screenshot monitor
+  needs full media access instead of silently doing nothing.
+
 - Added local crash diagnostics: an `UncaughtExceptionHandler` writes a stacktrace
   plus app/OS/device info to the app-private directory (last 5 retained), viewable,
   shareable, and clearable from Settings → About. Nothing is sent anywhere unless

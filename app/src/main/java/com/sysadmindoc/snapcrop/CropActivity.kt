@@ -86,6 +86,7 @@ class CropActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SHOW_FLASH = "show_flash"
+        private const val KEY_HAS_DRAFT = "has_editor_draft"
     }
 
     private var originalBitmap: Bitmap? = null
@@ -96,6 +97,8 @@ class CropActivity : ComponentActivity() {
     private val isSaving = mutableStateOf(false)
     private val showFlash = mutableStateOf(false)
     private var sourceUri: Uri? = null
+    private var draftStateProvider: (() -> EditorDraft)? = null
+    private val draftFile get() = File(filesDir, "editor_draft.json")
     private var intentSourceHints: List<String> = emptyList()
     private var currentCropHints: List<String> = emptyList()
     private val initialPixelateRects = mutableStateOf<List<Rect>>(emptyList())
@@ -149,7 +152,16 @@ class CropActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureScreen()
-        handleIntent(intent)
+        // Restore an in-progress edit checkpointed before a process death; otherwise open the intent.
+        val draft = if (savedInstanceState?.getBoolean(KEY_HAS_DRAFT) == true) {
+            runCatching { draftFile.takeIf { it.exists() }?.readText() }.getOrNull()
+        } else null
+        if (draft != null) {
+            runCatching { draftFile.delete() }
+            loadProjectFromJson(draft)
+        } else {
+            handleIntent(intent)
+        }
 
         setContent {
             SnapCropTheme {
@@ -171,6 +183,7 @@ class CropActivity : ComponentActivity() {
                             initialPixelateRects = initialPixelateRects.value,
                             initialDrawPaths = initialDrawPaths.value,
                             initialAdjustments = initialAdjustments.value,
+                            registerStateProvider = { provider -> draftStateProvider = provider },
                             onSave = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
                             onSaveCopy = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = false) },
                             onShare = { rect, pix, draw, adj -> shareCropped(bmp, rect, pix, draw, adj) },
@@ -420,6 +433,14 @@ class CropActivity : ComponentActivity() {
             val json = contentResolver.openInputStream(uri)?.use { stream ->
                 stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             } ?: throw IOException("Failed to open project sidecar")
+            loadProjectFromJson(json)
+        } catch (e: Exception) {
+            showProjectError(getString(R.string.crop_sidecar_open_failed, e.message ?: "unknown error"))
+        }
+    }
+
+    private fun loadProjectFromJson(json: String) {
+        try {
             val project = SnapCropProjectSidecar.decode(json)
             val source = project.sourceUri?.let { Uri.parse(it) }
             if (source == null) {
@@ -431,6 +452,29 @@ class CropActivity : ComponentActivity() {
             loadBitmap(source, project)
         } catch (e: Exception) {
             showProjectError(getString(R.string.crop_sidecar_open_failed, e.message ?: "unknown error"))
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // Checkpoint the in-progress edit as a project draft so a low-memory kill doesn't lose work.
+        val provider = draftStateProvider ?: return
+        if (sourceUri == null || bitmapState.value == null) return
+        try {
+            val d = provider()
+            val json = buildProjectSidecarJson(
+                rect = d.crop,
+                pixRects = d.pix,
+                drawPaths = d.draws,
+                adj = d.adj,
+                deleteOriginal = effectiveDeleteOriginalOnSave(),
+                exportFormat = getExportFormat(forcePng = false),
+                savePath = getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop",
+                computeHash = false
+            )
+            draftFile.writeText(json)
+            outState.putBoolean(KEY_HAS_DRAFT, true)
+        } catch (_: Exception) {
         }
     }
 
@@ -1562,13 +1606,14 @@ class CropActivity : ComponentActivity() {
         adj: FloatArray,
         deleteOriginal: Boolean,
         exportFormat: CropExportFormat,
-        savePath: String
+        savePath: String,
+        computeHash: Boolean = true
     ): String {
         val source = sourceUri
         val bitmap = bitmapState.value
         val project = SnapCropProject(
             sourceUri = source?.toString(),
-            sourceSha256 = source?.let { sha256OfUri(it) },
+            sourceSha256 = if (computeHash) source?.let { sha256OfUri(it) } else null,
             sourceWidth = bitmap?.width ?: 0,
             sourceHeight = bitmap?.height ?: 0,
             cropRect = Rect(rect),
