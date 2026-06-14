@@ -2,12 +2,22 @@ package com.sysadmindoc.snapcrop
 
 import android.content.ContentResolver
 import android.content.ContentUris
-import android.content.ContentValues
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
-import android.database.sqlite.SQLiteOpenHelper
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 data class ScreenshotIndexEntry(
     val mediaId: Long,
@@ -111,41 +121,67 @@ internal object ScreenshotIndexClassifier {
     )
 }
 
-class ScreenshotIndexStore(context: Context) : SQLiteOpenHelper(
-    context.applicationContext,
-    DB_NAME,
-    null,
-    DB_VERSION
-) {
-    override fun onCreate(db: SQLiteDatabase) {
-        db.execSQL(
-            """
-            CREATE TABLE screenshot_index (
-                media_id INTEGER PRIMARY KEY,
-                uri TEXT NOT NULL,
-                name TEXT NOT NULL,
-                album_path TEXT NOT NULL,
-                width INTEGER NOT NULL,
-                height INTEGER NOT NULL,
-                date_added INTEGER NOT NULL,
-                size INTEGER NOT NULL,
-                is_video INTEGER NOT NULL,
-                is_screenshot INTEGER NOT NULL,
-                is_favorite INTEGER NOT NULL,
-                categories TEXT NOT NULL,
-                search_text TEXT NOT NULL,
-                indexed_at INTEGER NOT NULL
-            )
-            """.trimIndent()
-        )
-        db.execSQL("CREATE INDEX idx_screenshot_index_search ON screenshot_index(search_text)")
-        db.execSQL("CREATE INDEX idx_screenshot_index_categories ON screenshot_index(categories)")
-    }
+@Entity(tableName = "screenshot_index")
+internal data class ScreenshotIndexRow(
+    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
+    @ColumnInfo(name = "uri") val uri: String,
+    @ColumnInfo(name = "name") val name: String,
+    @ColumnInfo(name = "album_path") val albumPath: String,
+    @ColumnInfo(name = "width") val width: Int,
+    @ColumnInfo(name = "height") val height: Int,
+    @ColumnInfo(name = "date_added") val dateAdded: Long,
+    @ColumnInfo(name = "size") val size: Long,
+    @ColumnInfo(name = "is_video") val isVideo: Boolean,
+    @ColumnInfo(name = "is_screenshot") val isScreenshot: Boolean,
+    @ColumnInfo(name = "is_favorite") val isFavorite: Boolean,
+    @ColumnInfo(name = "categories") val categories: String,
+    @ColumnInfo(name = "search_text") val searchText: String,
+    @ColumnInfo(name = "indexed_at") val indexedAt: Long
+)
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS screenshot_index")
-        onCreate(db)
+@Dao
+internal interface ScreenshotIndexDao {
+    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
+    fun getAll(): List<ScreenshotIndexRow>
+
+    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
+    fun observeAll(): Flow<List<ScreenshotIndexRow>>
+
+    @Query("SELECT * FROM screenshot_index WHERE media_id = :id LIMIT 1")
+    fun getById(id: Long): ScreenshotIndexRow?
+
+    @Query("SELECT COUNT(*) FROM screenshot_index")
+    fun count(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsert(row: ScreenshotIndexRow)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun upsertAll(rows: List<ScreenshotIndexRow>)
+
+    @Query("DELETE FROM screenshot_index")
+    fun deleteAll()
+
+    @Transaction
+    fun replaceAll(rows: List<ScreenshotIndexRow>) {
+        deleteAll()
+        upsertAll(rows)
     }
+}
+
+@Database(entities = [ScreenshotIndexRow::class], version = 1, exportSchema = false)
+internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
+    abstract fun dao(): ScreenshotIndexDao
+}
+
+/**
+ * Opt-in local screenshot intelligence index. Migrated from a raw [android.database.sqlite.SQLiteOpenHelper]
+ * to Room: queries are compile-time verified, the gallery can observe a reactive [Flow], and schema
+ * changes go through Room's migration tooling. The index is a derived cache of MediaStore, so a schema
+ * mismatch falls back to a destructive rebuild rather than blocking the user.
+ */
+class ScreenshotIndexStore(context: Context) {
+    private val dao = database(context.applicationContext).dao()
 
     fun rebuildFromMediaStore(
         resolver: ContentResolver,
@@ -157,50 +193,19 @@ class ScreenshotIndexStore(context: Context) : SQLiteOpenHelper(
             addAll(queryImages(resolver, screenW, screenH, favoriteIds))
             addAll(queryVideos(resolver, favoriteIds))
         }
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            db.delete(TABLE, null, null)
-            entries.forEach { entry -> db.insertWithOnConflict(TABLE, null, entry.toValues(), SQLiteDatabase.CONFLICT_REPLACE) }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
+        dao.replaceAll(entries.map { it.toRow() })
         return entries.size
     }
 
-    fun loadEntryMap(): Map<Long, ScreenshotIndexEntry> {
-        val db = readableDatabase
-        val entries = mutableMapOf<Long, ScreenshotIndexEntry>()
-        db.query(TABLE, null, null, null, null, null, "date_added DESC").use { cursor ->
-            while (cursor.moveToNext()) {
-                val entry = ScreenshotIndexEntry(
-                    mediaId = cursor.getLong(cursor.getColumnIndexOrThrow("media_id")),
-                    uri = Uri.parse(cursor.getString(cursor.getColumnIndexOrThrow("uri"))),
-                    name = cursor.getString(cursor.getColumnIndexOrThrow("name")),
-                    albumPath = cursor.getString(cursor.getColumnIndexOrThrow("album_path")),
-                    width = cursor.getInt(cursor.getColumnIndexOrThrow("width")),
-                    height = cursor.getInt(cursor.getColumnIndexOrThrow("height")),
-                    dateAdded = cursor.getLong(cursor.getColumnIndexOrThrow("date_added")),
-                    size = cursor.getLong(cursor.getColumnIndexOrThrow("size")),
-                    isVideo = cursor.getInt(cursor.getColumnIndexOrThrow("is_video")) == 1,
-                    isScreenshot = cursor.getInt(cursor.getColumnIndexOrThrow("is_screenshot")) == 1,
-                    isFavorite = cursor.getInt(cursor.getColumnIndexOrThrow("is_favorite")) == 1,
-                    categories = cursor.getString(cursor.getColumnIndexOrThrow("categories"))
-                        .split(',')
-                        .filter { it.isNotBlank() }
-                        .toSet(),
-                    searchText = cursor.getString(cursor.getColumnIndexOrThrow("search_text")),
-                    indexedAt = cursor.getLong(cursor.getColumnIndexOrThrow("indexed_at"))
-                )
-                entries[entry.mediaId] = entry
-            }
-        }
-        return entries
-    }
+    fun loadEntryMap(): Map<Long, ScreenshotIndexEntry> =
+        dao.getAll().associate { it.mediaId to it.toEntry() }
+
+    /** Emits the full index whenever it changes (rebuild, OCR token capture, purge). */
+    fun observeEntries(): Flow<Map<Long, ScreenshotIndexEntry>> =
+        dao.observeAll().map { rows -> rows.associate { it.mediaId to it.toEntry() } }
 
     fun purge() {
-        writableDatabase.delete(TABLE, null, null)
+        dao.deleteAll()
     }
 
     fun updateRecognizedText(uri: Uri, text: String, codes: List<String>) {
@@ -209,26 +214,22 @@ class ScreenshotIndexStore(context: Context) : SQLiteOpenHelper(
         } catch (_: Exception) {
             return
         }
-        val existing = loadEntryMap()[mediaId] ?: return
+        val existing = dao.getById(mediaId)?.toEntry() ?: return
         val recognizedText = (listOf(text) + codes).joinToString(" ").trim()
         if (recognizedText.isBlank()) return
 
         val categories = existing.categories.toMutableSet()
         if (codes.isNotEmpty()) categories.add("codes")
         if (SensitiveTextPatterns.containsSensitivePattern(recognizedText)) categories.add("sensitive")
-        val values = ContentValues().apply {
-            put("categories", categories.joinToString(","))
-            put("search_text", "${existing.searchText} $recognizedText ${categories.joinToString(" ")}".lowercase())
-            put("indexed_at", System.currentTimeMillis())
-        }
-        writableDatabase.update(TABLE, values, "media_id = ?", arrayOf(mediaId.toString()))
+        val updated = existing.copy(
+            categories = categories,
+            searchText = "${existing.searchText} $recognizedText ${categories.joinToString(" ")}".lowercase(),
+            indexedAt = System.currentTimeMillis()
+        )
+        dao.upsert(updated.toRow())
     }
 
-    fun count(): Int {
-        readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use { cursor ->
-            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
-        }
-    }
+    fun count(): Int = dao.count()
 
     private fun queryImages(
         resolver: ContentResolver,
@@ -335,27 +336,63 @@ class ScreenshotIndexStore(context: Context) : SQLiteOpenHelper(
         return entries
     }
 
-    private fun ScreenshotIndexEntry.toValues(): ContentValues = ContentValues().apply {
-        put("media_id", mediaId)
-        put("uri", uri.toString())
-        put("name", name)
-        put("album_path", albumPath)
-        put("width", width)
-        put("height", height)
-        put("date_added", dateAdded)
-        put("size", size)
-        put("is_video", if (isVideo) 1 else 0)
-        put("is_screenshot", if (isScreenshot) 1 else 0)
-        put("is_favorite", if (isFavorite) 1 else 0)
-        put("categories", categories.joinToString(","))
-        put("search_text", searchText)
-        put("indexed_at", indexedAt)
-    }
+    private fun ScreenshotIndexEntry.toRow(): ScreenshotIndexRow = ScreenshotIndexRow(
+        mediaId = mediaId,
+        uri = uri.toString(),
+        name = name,
+        albumPath = albumPath,
+        width = width,
+        height = height,
+        dateAdded = dateAdded,
+        size = size,
+        isVideo = isVideo,
+        isScreenshot = isScreenshot,
+        isFavorite = isFavorite,
+        categories = categories.joinToString(","),
+        searchText = searchText,
+        indexedAt = indexedAt
+    )
+
+    private fun ScreenshotIndexRow.toEntry(): ScreenshotIndexEntry = ScreenshotIndexEntry(
+        mediaId = mediaId,
+        uri = Uri.parse(uri),
+        name = name,
+        albumPath = albumPath,
+        width = width,
+        height = height,
+        dateAdded = dateAdded,
+        size = size,
+        isVideo = isVideo,
+        isScreenshot = isScreenshot,
+        isFavorite = isFavorite,
+        categories = categories.split(',').filter { it.isNotBlank() }.toSet(),
+        searchText = searchText,
+        indexedAt = indexedAt
+    )
 
     companion object {
         const val PREF_ENABLED = "screenshot_index_enabled"
-        private const val DB_NAME = "screenshot_index.db"
-        private const val DB_VERSION = 1
-        private const val TABLE = "screenshot_index"
+        private const val DB_NAME = "screenshot_index_room.db"
+        private const val LEGACY_DB_NAME = "screenshot_index.db"
+
+        @Volatile
+        private var INSTANCE: ScreenshotIndexDatabase? = null
+
+        private fun database(context: Context): ScreenshotIndexDatabase =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, DB_NAME)
+                    // count()/purge() run on the main thread from Settings; the index is a small
+                    // derived cache so main-thread access is acceptable and avoids API churn.
+                    .allowMainThreadQueries()
+                    // The index can always be rebuilt from MediaStore, so prefer a clean rebuild
+                    // over a blocking migration when the schema changes.
+                    .fallbackToDestructiveMigration(true)
+                    .build()
+                    .also {
+                        INSTANCE = it
+                        // Remove the obsolete raw-SQLite database file from pre-Room versions.
+                        runCatching { context.deleteDatabase(LEGACY_DB_NAME) }
+                    }
+            }
     }
 }

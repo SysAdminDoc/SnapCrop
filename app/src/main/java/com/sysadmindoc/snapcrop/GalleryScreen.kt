@@ -78,6 +78,7 @@ import coil3.request.crossfade
 import com.sysadmindoc.snapcrop.ui.theme.*
 import android.content.ClipboardManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -315,6 +316,15 @@ fun GalleryScreen(
             }
         }
         isLoading = false
+    }
+
+    // Reactively follow the Room-backed index: rebuilds, OCR token capture, and purges all emit
+    // here, refreshing smart-album membership and search without a manual reload.
+    LaunchedEffect(indexEnabled) {
+        if (!indexEnabled) return@LaunchedEffect
+        ScreenshotIndexStore(context).observeEntries().collect { latest ->
+            indexEntries = latest
+        }
     }
 
     LaunchedEffect(selectedAlbum, indexEntries) {

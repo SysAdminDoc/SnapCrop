@@ -6,6 +6,16 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Verification and release hardening.**
 
+- Migrated the screenshot intelligence index from raw SQLite to Room. The store
+  now uses `@Entity`/`@Dao`/`@Database` with compile-time-verified queries and
+  exposes a reactive `Flow`; the gallery observes it so smart-album membership
+  and indexed search update live when screenshots are indexed, OCR tokens are
+  captured, or the index is rebuilt/purged — no manual refresh. The public store
+  API (`rebuildFromMediaStore`, `loadEntryMap`, `updateRecognizedText`, `count`,
+  `purge`) is unchanged, so all call sites are source-compatible. The index is a
+  rebuildable cache, so a schema change falls back to a clean destructive rebuild
+  and the obsolete pre-Room database file is deleted on first launch. Adds the
+  KSP Gradle plugin and AndroidX Room (runtime/ktx/compiler) dependencies.
 - Added a Measurement/Ruler draw tool. A new "Ruler" tool in Draw mode lets you
   drag a line whose length is reported in source-image pixels, rendered with
   perpendicular end ticks and a labeled distance badge. The measurement renders

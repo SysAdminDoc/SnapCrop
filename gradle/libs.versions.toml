@@ -21,6 +21,8 @@ robolectric = "4.16.1"
 securityCrypto = "1.1.0-alpha06"
 cyclonedx = "3.2.4"
 json = "20251224"
+ksp = "2.3.9"
+room = "2.8.4"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -47,8 +49,12 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 json = { group = "org.json", name = "json", version.ref = "json" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 cyclonedx-bom = { id = "org.cyclonedx.bom", version.ref = "cyclonedx" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

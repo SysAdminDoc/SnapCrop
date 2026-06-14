@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.cyclonedx.bom)
+    alias(libs.plugins.ksp)
 }
 
 // Load signing credentials from gitignored keystore.properties (local builds)
@@ -31,8 +32,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 70
-        versionName = "6.22.0"
+        versionCode = 71
+        versionName = "6.23.0"
     }
 
     signingConfigs {
@@ -105,6 +106,9 @@ dependencies {
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.json)
