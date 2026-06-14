@@ -26,6 +26,8 @@
     <string name="home_permission_title">Media permissions required</string>
     <string name="home_permission_body">Allow photos/videos so SnapCrop can find screenshots. Notifications keep monitoring visible and provide edit/share actions.</string>
     <string name="home_permission_grant">Grant media access</string>
+    <string name="home_permission_partial_title">Limited photo access</string>
+    <string name="home_permission_partial_body">You granted access to only selected photos. The screenshot monitor needs full media access to detect new screenshots automatically. Tap below and choose "Allow all".</string>
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>

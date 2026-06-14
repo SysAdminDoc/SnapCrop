@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
+    private val hasPartialMedia = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
@@ -329,6 +330,7 @@ class MainActivity : ComponentActivity() {
                             0 -> HomeScreen(
                                 isRunning = serviceRunning.value,
                                 hasPermissions = hasPermissions.value,
+                                partialMedia = hasPartialMedia.value,
                                 recentCrops = recentCrops.value,
                                 cropCount = cropCount.value,
                                 onToggleService = { toggleService() },
@@ -712,6 +714,12 @@ class MainActivity : ComponentActivity() {
         hasPermissions.value = needed.all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
+        // Android 14+ "Select photos" grants VISUAL_USER_SELECTED without full image read — the
+        // screenshot monitor can't see new screenshots in that state, so flag it for a clear warning.
+        hasPartialMedia.value = !hasPermissions.value &&
+            Build.VERSION.SDK_INT >= 34 &&
+            ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestPermissions() {
@@ -1571,6 +1579,7 @@ class MainActivity : ComponentActivity() {
 private fun HomeScreen(
     isRunning: Boolean,
     hasPermissions: Boolean,
+    partialMedia: Boolean = false,
     recentCrops: List<RecentCrop>,
     cropCount: Int,
     onToggleService: () -> Unit,
@@ -1649,9 +1658,12 @@ private fun HomeScreen(
                     Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.home_permission_title), color = OnSurface, fontWeight = FontWeight.Medium)
                         Text(
-                            stringResource(R.string.home_permission_body),
+                            stringResource(if (partialMedia) R.string.home_permission_partial_title else R.string.home_permission_title),
+                            color = OnSurface, fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            stringResource(if (partialMedia) R.string.home_permission_partial_body else R.string.home_permission_body),
                             color = OnSurfaceVariant,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
