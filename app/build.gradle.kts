@@ -84,6 +84,14 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    lint {
+        // The Compose BOM 2026.05 lint elevated these opinionated checks to error severity. They
+        // flag context.getString()/resources reads inside event handlers (toasts, one-shot status),
+        // which are runtime-correct. Keep them visible as warnings instead of breaking the build.
+        warning += "LocalContextGetResourceValueCall"
+        warning += "LocalContextResourcesRead"
+    }
 }
 
 kotlin {
