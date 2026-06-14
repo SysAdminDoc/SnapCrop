@@ -148,6 +148,7 @@ class CropActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureScreen()
         handleIntent(intent)
 
         setContent {
@@ -1782,6 +1783,17 @@ class CropActivity : ComponentActivity() {
             (src.height * scale).toInt().coerceAtLeast(1),
             true
         )
+    }
+
+    /** When the user opts in, marks the editor window secure so the un-redacted image can't be
+     *  captured by other screenshot tools and doesn't leak into the Recents thumbnail. */
+    private fun applySecureScreen() {
+        val secure = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("secure_editor", false)
+        if (!secure) return
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try { setRecentsScreenshotEnabled(false) } catch (_: Exception) {}
+        }
     }
 
     /** Applies the configured export border + watermark, recycling intermediates. No-op if neither

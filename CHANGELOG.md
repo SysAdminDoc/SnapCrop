@@ -4,6 +4,28 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Trust, distribution, and resilience (v6.27.0).**
+
+- Added local crash diagnostics: an `UncaughtExceptionHandler` writes a stacktrace
+  plus app/OS/device info to the app-private directory (last 5 retained), viewable,
+  shareable, and clearable from Settings → About. Nothing is sent anywhere unless
+  the user shares it. Closes the missing crash-log file for an off-Play, sideloaded app.
+- Added an opt-in in-app update check: a "Check for updates" button (and an
+  auto-check-on-launch toggle) does a single anonymous query to the GitHub Releases
+  API and offers the download link when a newer version exists. No account, no
+  tracking — sideload builds otherwise have no update path.
+- Added an opt-in "Protect the editor screen" setting that marks the editor window
+  `FLAG_SECURE` (and hides it from Recents on Android 13+), so other apps can't
+  screenshot/screen-record the un-redacted image.
+- Hardened the network-credential store: `EncryptedSharedPreferences` (deprecated)
+  now self-heals on a corrupted keyset (wipe + recreate) instead of crashing on launch.
+- Enabled per-app language support (`generateLocaleConfig`); SnapCrop will appear under
+  system per-app language settings as soon as a translation is added.
+- CI now signs the release APK with the release key (from repository secrets) and
+  attaches it to the published GitHub Release, instead of producing a debug-signed
+  artifact that can't update an existing install. (Requires the `SNAPCROP_KEYSTORE_*`
+  secrets to be configured; without them it falls back to the prior debug-signed artifact.)
+
 ## [6.26.0] - 2026-06-14
 
 **Deep audit — correctness, theming, and accessibility hardening (v6.26.0).**

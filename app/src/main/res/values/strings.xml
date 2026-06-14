@@ -248,6 +248,8 @@
     <string name="settings_autoactions_subtitle">When ON, recognized app screenshots can auto-redact sensitive text and save into app-specific albums.</string>
     <string name="settings_redact_share_title">Scan before sharing</string>
     <string name="settings_redact_share_subtitle">When ON, sharing scans for sensitive text (emails, phone numbers, cards) and offers to pixelate it before the share sheet opens.</string>
+    <string name="settings_secure_editor_title">Protect the editor screen</string>
+    <string name="settings_secure_editor_subtitle">When ON, the editor is marked secure: other apps can\'t screenshot or screen-record it, and it\'s hidden in Recents. Also blocks your own screenshots of the editor.</string>
     <string name="redact_share_dialog_title">Sensitive info detected</string>
     <string name="redact_share_dialog_message">SnapCrop found %d area(s) that may contain sensitive info. Share with these areas pixelated?</string>
     <string name="redact_share_action_redacted">Share redacted</string>
@@ -260,6 +262,22 @@
     <string name="settings_about_version">SnapCrop v%1$s</string>
     <string name="settings_about_tagline">Auto-crop, annotate, and redact screenshots instantly.</string>
     <string name="settings_about_url">github.com/SysAdminDoc/SnapCrop</string>
+    <string name="settings_crash_title">Crash log</string>
+    <string name="settings_crash_subtitle">%1$d crash report(s) saved on this device. Nothing is sent anywhere unless you share it.</string>
+    <string name="settings_crash_view">View latest</string>
+    <string name="settings_crash_share">Share</string>
+    <string name="settings_crash_clear">Clear</string>
+    <string name="settings_crash_none">No crash log to share.</string>
+    <string name="settings_update_check">Check for updates</string>
+    <string name="settings_update_checking">Checking…</string>
+    <string name="settings_update_current">You\'re on the latest version.</string>
+    <string name="settings_update_auto_title">Auto-check for updates</string>
+    <string name="settings_update_auto_subtitle">On launch, anonymously check GitHub for a newer release. No account, no tracking — just a version query.</string>
+    <string name="settings_update_available">Update available — v%1$s</string>
+    <string name="settings_update_download">Download</string>
+    <string name="settings_update_body">SnapCrop v%1$s is available on GitHub.</string>
+    <string name="update_notification_title">SnapCrop update available</string>
+    <string name="update_notification_body">v%1$s is on GitHub. Tap to download.</string>
 
     <!-- Eval harness -->
     <string name="eval_run">Run evaluation harness</string>

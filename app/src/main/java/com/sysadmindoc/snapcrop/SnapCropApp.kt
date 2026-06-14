@@ -12,6 +12,7 @@ class SnapCropApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashReporter.install(this)
         val manager = getSystemService(NotificationManager::class.java)
 
         // Delete old channel (had higher importance) so Android picks up the new one

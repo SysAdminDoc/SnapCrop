@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -41,6 +42,8 @@ import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.core.content.FileProvider
+import java.io.File
 import kotlin.math.roundToInt
 
 class SettingsActivity : ComponentActivity() {
@@ -878,6 +881,19 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var secureEditor by remember {
+                        mutableStateOf(prefs.getBoolean("secure_editor", false))
+                    }
+                    SettingToggle(
+                        title = stringResource(R.string.settings_secure_editor_title),
+                        subtitle = stringResource(R.string.settings_secure_editor_subtitle),
+                        checked = secureEditor,
+                        onCheckedChange = {
+                            secureEditor = it
+                            prefs.edit().putBoolean("secure_editor", it).apply()
+                        }
+                    )
+
                     Spacer(Modifier.height(20.dp))
 
                     // Storage section
@@ -923,6 +939,67 @@ class SettingsActivity : ComponentActivity() {
                         color = Primary, fontSize = 12.sp)
                     Spacer(Modifier.height(12.dp))
 
+                    // Update check — anonymous, opt-in, nothing sent off-device but a version query.
+                    var updateChecking by remember { mutableStateOf(false) }
+                    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+                    var updateUpToDate by remember { mutableStateOf(false) }
+                    val checkingLabel = stringResource(R.string.settings_update_checking)
+                    FilledTonalButton(
+                        onClick = {
+                            if (!updateChecking) {
+                                updateChecking = true
+                                updateUpToDate = false
+                                lifecycleScope.launch {
+                                    val info = UpdateChecker.check(BuildConfig.VERSION_NAME)
+                                    updateInfo = info
+                                    updateUpToDate = info == null
+                                    updateChecking = false
+                                }
+                            }
+                        },
+                        enabled = !updateChecking,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant, contentColor = OnSurface)
+                    ) {
+                        Text(if (updateChecking) checkingLabel else stringResource(R.string.settings_update_check), fontSize = 13.sp)
+                    }
+                    if (updateUpToDate) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(stringResource(R.string.settings_update_current), color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
+                    var autoUpdate by remember { mutableStateOf(prefs.getBoolean(UpdateChecker.PREF_AUTO, false)) }
+                    SettingToggle(
+                        title = stringResource(R.string.settings_update_auto_title),
+                        subtitle = stringResource(R.string.settings_update_auto_subtitle),
+                        checked = autoUpdate,
+                        onCheckedChange = {
+                            autoUpdate = it
+                            prefs.edit().putBoolean(UpdateChecker.PREF_AUTO, it).apply()
+                        }
+                    )
+                    updateInfo?.let { info ->
+                        AlertDialog(
+                            onDismissRequest = { updateInfo = null },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    updateInfo = null
+                                    try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.htmlUrl))) } catch (_: Exception) {}
+                                }) { Text(stringResource(R.string.settings_update_download), color = Primary) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
+                            },
+                            title = { Text(stringResource(R.string.settings_update_available, info.versionName), color = OnSurface) },
+                            text = {
+                                Text(info.notes.ifBlank { stringResource(R.string.settings_update_body, info.versionName) },
+                                    color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp,
+                                    modifier = Modifier.verticalScroll(rememberScrollState()))
+                            },
+                            containerColor = SurfaceVariant
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+
                     var evalResult by remember { mutableStateOf<String?>(null) }
                     var evalRunning by remember { mutableStateOf(false) }
                     FilledTonalButton(
@@ -959,9 +1036,77 @@ class SettingsActivity : ComponentActivity() {
                             lineHeight = 15.sp)
                     }
 
+                    // Crash diagnostics — local only, nothing leaves the device unless shared.
+                    var crashFiles by remember { mutableStateOf(CrashReporter.crashLogs(this@SettingsActivity)) }
+                    var crashViewText by remember { mutableStateOf<String?>(null) }
+                    if (crashFiles.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(stringResource(R.string.settings_crash_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text(stringResource(R.string.settings_crash_subtitle, crashFiles.size), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton(onClick = {
+                                        crashViewText = crashFiles.firstOrNull()?.let { runCatching { it.readText() }.getOrNull() }
+                                    }) { Text(stringResource(R.string.settings_crash_view), color = Primary, fontSize = 13.sp) }
+                                    TextButton(onClick = { shareCrashLog(crashFiles.firstOrNull()) }) {
+                                        Text(stringResource(R.string.settings_crash_share), color = Secondary, fontSize = 13.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        CrashReporter.clear(this@SettingsActivity)
+                                        crashFiles = emptyList()
+                                        crashViewText = null
+                                    }) { Text(stringResource(R.string.settings_crash_clear), color = Tertiary, fontSize = 13.sp) }
+                                }
+                            }
+                        }
+                    }
+                    crashViewText?.let { text ->
+                        AlertDialog(
+                            onDismissRequest = { crashViewText = null },
+                            confirmButton = {
+                                TextButton(onClick = { crashViewText = null }) { Text(stringResource(R.string.close), color = Primary) }
+                            },
+                            title = { Text(stringResource(R.string.settings_crash_title), color = OnSurface) },
+                            text = {
+                                Text(text, color = OnSurfaceVariant, fontSize = 10.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, lineHeight = 13.sp,
+                                    modifier = Modifier.verticalScroll(rememberScrollState()))
+                            },
+                            containerColor = SurfaceVariant
+                        )
+                    }
+
                     Spacer(Modifier.height(24.dp))
                 }
             }
+        }
+    }
+
+    private fun shareCrashLog(file: File?) {
+        if (file == null || !file.exists()) {
+            Toast.makeText(this, getString(R.string.settings_crash_none), Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val dir = File(cacheDir, "shared_crops").apply { mkdirs() }
+            val out = File(dir, file.name)
+            file.copyTo(out, overwrite = true)
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", out)
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "SnapCrop crash log")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }, null))
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
         }
     }
 

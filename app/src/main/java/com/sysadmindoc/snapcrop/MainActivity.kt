@@ -266,6 +266,31 @@ class MainActivity : ComponentActivity() {
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
                 val credPrefs = remember { NetworkExportSettings.encryptedPrefs(this@MainActivity) }
 
+                // Opt-in, once-per-launch anonymous update check (sideload has no other update path).
+                var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+                LaunchedEffect(Unit) {
+                    if (prefs.getBoolean(UpdateChecker.PREF_AUTO, false)) {
+                        updateInfo = UpdateChecker.check(BuildConfig.VERSION_NAME)
+                    }
+                }
+                updateInfo?.let { info ->
+                    AlertDialog(
+                        onDismissRequest = { updateInfo = null },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                updateInfo = null
+                                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.htmlUrl))) } catch (_: Exception) {}
+                            }) { Text(stringResource(R.string.settings_update_download), color = Primary) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
+                        },
+                        title = { Text(stringResource(R.string.settings_update_available, info.versionName), color = OnSurface) },
+                        text = { Text(stringResource(R.string.settings_update_body, info.versionName), color = OnSurfaceVariant, fontSize = 13.sp) },
+                        containerColor = SurfaceVariant
+                    )
+                }
+
                 Scaffold(
                     containerColor = Black,
                     bottomBar = {

@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import java.net.HttpURLConnection
@@ -47,15 +48,43 @@ data class NetworkExportSettings(
         const val PREF_AUTHORIZATION = "network_export_authorization"
         const val PREF_IMGUR_CLIENT_ID = "network_export_imgur_client_id"
 
-        fun encryptedPrefs(context: Context): SharedPreferences {
+        private const val CRED_STORE = "snapcrop_credentials"
+
+        private fun createEncrypted(context: Context): SharedPreferences {
             val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
             return EncryptedSharedPreferences.create(
-                "snapcrop_credentials",
+                CRED_STORE,
                 masterKey,
                 context,
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
+        }
+
+        /**
+         * EncryptedSharedPreferences (security-crypto, deprecated) can throw on some OEMs when the
+         * stored keyset is corrupted after a backup/restore or Keystore reset. Self-heal by wiping
+         * the corrupt store and recreating it, so the app never hard-crashes on launch over an
+         * optional credential store. Falls back to a transient store only if encryption is wholly
+         * unavailable (broken Keystore) so the app still runs.
+         */
+        fun encryptedPrefs(context: Context): SharedPreferences {
+            return try {
+                createEncrypted(context)
+            } catch (_: Exception) {
+                runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        context.deleteSharedPreferences(CRED_STORE)
+                    }
+                }
+                try {
+                    createEncrypted(context)
+                } catch (_: Exception) {
+                    // Degraded mode: encrypted storage unavailable. Creds entered now are not
+                    // persisted encrypted; network export is opt-in and off by default.
+                    context.getSharedPreferences("${CRED_STORE}_plain", Context.MODE_PRIVATE)
+                }
+            }
         }
 
         fun migrateCredentials(plainPrefs: SharedPreferences, encPrefs: SharedPreferences) {

@@ -28,12 +28,19 @@ android {
     namespace = "com.sysadmindoc.snapcrop"
     compileSdk = 36
 
+    androidResources {
+        // Auto-generate locales_config.xml from values-* folders and wire android:localeConfig,
+        // so SnapCrop appears under system per-app language settings as soon as a translation
+        // (e.g. values-es/) is added. Harmless with a single locale today.
+        generateLocaleConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 74
-        versionName = "6.26.0"
+        versionCode = 75
+        versionName = "6.27.0"
     }
 
     signingConfigs {
