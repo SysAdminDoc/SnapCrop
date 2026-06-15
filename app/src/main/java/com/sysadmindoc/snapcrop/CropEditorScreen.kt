@@ -465,8 +465,8 @@ fun CropEditorScreen(
     LaunchedEffect(bitmap.width, bitmap.height) {
         if (cropRight > bitmap.width) cropRight = bitmap.width
         if (cropBottom > bitmap.height) cropBottom = bitmap.height
-        cropLeft = cropLeft.coerceIn(0, cropRight - 50)
-        cropTop = cropTop.coerceIn(0, cropBottom - 50)
+        cropLeft = cropLeft.coerceIn(0, (cropRight - 50).coerceAtLeast(0))
+        cropTop = cropTop.coerceIn(0, (cropBottom - 50).coerceAtLeast(0))
     }
 
     val handleRadius = with(LocalDensity.current) { 14.dp.toPx() }

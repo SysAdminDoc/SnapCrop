@@ -71,6 +71,14 @@ All notable changes to SnapCrop will be documented in this file.
   photos" partial-access state: the home card now explains the screenshot monitor
   needs full media access instead of silently doing nothing.
 
+- **Crop editor crash on small images**: `coerceIn(0, cropRight - 50)` threw
+  `IllegalArgumentException` when the crop rect or bitmap was smaller than 50px,
+  creating an invalid range. Now clamps the upper bound to at least 0.
+- **Service crash on notification dismiss from background**: `ScreenshotService`
+  `onStartCommand` called `startForeground()` unconditionally, but Android 12+
+  blocks foreground promotion from background PendingIntent re-delivery. Now
+  catches `ForegroundServiceStartNotAllowedException`, dismisses the notification,
+  and stops cleanly instead of crash-looping.
 - **WebDAV upload fix**: `appendWebDavFileName` now appends the filename when the
   endpoint URL omits a trailing slash instead of silently uploading to the base URL.
 - **Bitmap leak fix**: `createCroppedBitmap` intermediate cleanup no longer leaks the

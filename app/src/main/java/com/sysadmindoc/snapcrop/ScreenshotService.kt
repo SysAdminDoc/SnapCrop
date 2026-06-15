@@ -67,7 +67,20 @@ class ScreenshotService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Any onStartCommand path must promote to foreground within 5s on Android 8+
         // to avoid ForegroundServiceDidNotStartInTimeException. Promote first, then dispatch.
-        ensureForeground()
+        // On Android 12+, notification PendingIntents (dismiss/quick-save) can re-deliver
+        // after the process dies; startForeground() is not allowed from the background in
+        // that case, so catch and handle gracefully instead of crashing.
+        try {
+            ensureForeground()
+        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                e is android.app.ForegroundServiceStartNotAllowedException) {
+                dismissDetectedNotification()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            throw e
+        }
         when (intent?.action) {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
