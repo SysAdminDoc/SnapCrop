@@ -6,7 +6,7 @@
 -keep class com.google.mlkit.** { *; }
 -dontwarn com.google.mlkit.**
 
-# ML Kit Play Services internals (vision, subject segmentation, NL)
+# ML Kit Play Services internals (vision, subject segmentation, NL, CJK/Devanagari text recognition)
 -keep class com.google.android.gms.internal.mlkit_vision_** { *; }
 -keep class com.google.android.gms.internal.mlkit_subject_segmentation_** { *; }
 -keep class com.google.android.gms.internal.mlkit_translate_** { *; }

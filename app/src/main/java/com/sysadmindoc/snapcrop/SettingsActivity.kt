@@ -515,6 +515,34 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
+                    var ocrScript by remember { mutableStateOf(OcrScript.fromKey(prefs.getString(OcrScript.PREF_KEY, null))) }
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.settings_ocr_script_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_ocr_script_subtitle), color = OnSurfaceVariant, fontSize = 12.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                                OcrScript.entries.forEach { script ->
+                                    FilterChip(
+                                        selected = ocrScript == script,
+                                        onClick = {
+                                            ocrScript = script
+                                            prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
+                                        },
+                                        label = { Text(script.label, fontSize = 11.sp) },
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
                     // Filename template
                     var filenameTemplate by remember {
                         mutableStateOf(prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%")
@@ -1191,8 +1219,9 @@ class SettingsActivity : ComponentActivity() {
                 val sourceHints = CropSourceHints.normalize(
                     CropSourceHints.fromMedia(contentResolver, uri) + listOf(uri.toString())
                 )
+                val ocrScript = OcrScript.fromContext(this@SettingsActivity)
                 val profileTextHints = if (UserAppProfileStore.needsOcr(userProfiles)) {
-                    TextExtractor.extract(bitmap).map { it.text }
+                    TextExtractor.extract(bitmap, ocrScript).map { it.text }
                 } else {
                     emptyList()
                 }

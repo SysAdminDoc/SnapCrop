@@ -10,6 +10,8 @@ coil = "3.3.0"
 material3 = "1.4.0"
 mlkitObjectDetection = "17.0.2"
 mlkitTextRecognition = "16.0.1"
+mlkitTextRecognitionCjk = "16.0.1"
+mlkitTextRecognitionDevanagari = "16.0.1"
 mlkitFaceDetection = "16.1.7"
 mlkitBarcodeScanning = "17.3.0"
 mlkitSubjectSegmentation = "16.0.0-beta1"
@@ -40,6 +42,10 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 mlkit-objectdetection = { group = "com.google.mlkit", name = "object-detection", version.ref = "mlkitObjectDetection" }
 mlkit-textrecognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
+mlkit-textrecognition-chinese = { group = "com.google.mlkit", name = "text-recognition-chinese", version.ref = "mlkitTextRecognitionCjk" }
+mlkit-textrecognition-japanese = { group = "com.google.mlkit", name = "text-recognition-japanese", version.ref = "mlkitTextRecognitionCjk" }
+mlkit-textrecognition-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkitTextRecognitionCjk" }
+mlkit-textrecognition-devanagari = { group = "com.google.mlkit", name = "text-recognition-devanagari", version.ref = "mlkitTextRecognitionDevanagari" }
 mlkit-facedetection = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFaceDetection" }
 mlkit-barcodescanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcodeScanning" }
 mlkit-subjectsegmentation = { group = "com.google.android.gms", name = "play-services-mlkit-subject-segmentation", version.ref = "mlkitSubjectSegmentation" }

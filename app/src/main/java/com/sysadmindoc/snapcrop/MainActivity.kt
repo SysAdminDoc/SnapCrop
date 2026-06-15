@@ -899,8 +899,9 @@ class MainActivity : ComponentActivity() {
                     val bitmap = decodeReportBitmap(uri) ?: return@forEachIndexed
                     var ocrBlocks = emptyList<TextBlock>()
                     if (includeOcr) {
+                        val ocrScript = OcrScript.fromContext(this@MainActivity)
                         ocrBlocks = try {
-                            TextExtractor.extract(bitmap)
+                            TextExtractor.extract(bitmap, ocrScript)
                         } catch (_: Exception) {
                             emptyList()
                         }

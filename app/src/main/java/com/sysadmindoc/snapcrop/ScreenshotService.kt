@@ -356,8 +356,9 @@ class ScreenshotService : Service() {
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri))
                 val userProfiles = UserAppProfileStore.load(prefs)
+                val ocrScript = OcrScript.fromContext(this@ScreenshotService)
                 val profileTextHints = if (UserAppProfileStore.needsOcr(userProfiles)) {
-                    TextExtractor.extract(bitmap).map { it.text }
+                    TextExtractor.extract(bitmap, ocrScript).map { it.text }
                 } else {
                     emptyList()
                 }

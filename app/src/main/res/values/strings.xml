@@ -224,6 +224,8 @@
     <string name="settings_target_kb_cd">Target file size, %1$d kilobytes</string>
     <string name="settings_strip_title">Strip metadata on share</string>
     <string name="settings_strip_subtitle">Remove EXIF data (location, device info) when sharing for privacy</string>
+    <string name="settings_ocr_script_title">OCR script</string>
+    <string name="settings_ocr_script_subtitle">Select the script for text recognition (OCR, search, redaction). Non-Latin scripts download a model via Play Services on first use.</string>
     <string name="settings_filename_title">Filename template</string>
     <string name="settings_filename_hint">Use %%timestamp%%, %%date%%, %%time%%, %%counter%%</string>
     <string name="settings_section_presets">Annotation presets</string>

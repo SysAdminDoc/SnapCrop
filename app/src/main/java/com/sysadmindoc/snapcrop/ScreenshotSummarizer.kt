@@ -34,7 +34,8 @@ object ScreenshotSummarizer {
             val orientation = if (h > w) "portrait" else if (w > h) "landscape" else "square"
             val dims = "${w}×${h}"
 
-            val textBlocks = withTimeoutOrNull(5_000) { TextExtractor.extract(bitmap) }
+            val ocrScript = OcrScript.fromContext(context)
+            val textBlocks = withTimeoutOrNull(5_000) { TextExtractor.extract(bitmap, ocrScript) }
                 ?: emptyList()
             val allText = textBlocks.joinToString(" ") { it.text }
             val words = allText.split("\\s+".toRegex()).filter { it.isNotBlank() }

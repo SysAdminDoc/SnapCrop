@@ -701,7 +701,8 @@ fun CropEditorScreen(
         if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
             ocrLoading = true
             scope.launch {
-                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap) }
+                val ocrScript = OcrScript.fromContext(context)
+                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap, ocrScript) }
                 val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
                 ocrBlocks = textDeferred.await()
                 scannedCodes = codeDeferred.await()
