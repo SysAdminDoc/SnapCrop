@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import org.json.JSONObject
 
 data class ShareTargetShortcut(
     val packageName: String,
@@ -19,7 +20,6 @@ data class ShareTargetShortcut(
 object ShareTargetStore {
     private const val PREFS = "snapcrop_share_targets"
     private const val KEY_TARGETS = "targets"
-    private const val SEP = "\u001F"
 
     fun record(context: Context, componentName: ComponentName) {
         val label = resolveLabel(context, componentName)
@@ -51,29 +51,47 @@ object ShareTargetStore {
     }
 
     internal fun encode(targets: List<ShareTargetShortcut>): Set<String> {
-        return targets.take(12).map {
-            listOf(
-                it.packageName.escape(),
-                it.className.escape(),
-                it.label.escape(),
-                it.count.toString(),
-                it.lastUsed.toString()
-            ).joinToString(SEP)
+        return targets.take(12).map { t ->
+            JSONObject().apply {
+                put("p", t.packageName)
+                put("c", t.className)
+                put("l", t.label)
+                put("n", t.count)
+                put("t", t.lastUsed)
+            }.toString()
         }.toSet()
     }
 
     internal fun decode(values: Set<String>): List<ShareTargetShortcut> {
         return values.mapNotNull { value ->
-            val parts = value.split(SEP)
-            if (parts.size != 5) return@mapNotNull null
-            ShareTargetShortcut(
-                packageName = parts[0].unescape(),
-                className = parts[1].unescape(),
-                label = parts[2].unescape(),
-                count = parts[3].toIntOrNull() ?: 0,
-                lastUsed = parts[4].toLongOrNull() ?: 0L
-            )
+            try {
+                val j = JSONObject(value)
+                ShareTargetShortcut(
+                    packageName = j.getString("p"),
+                    className = j.getString("c"),
+                    label = j.getString("l"),
+                    count = j.optInt("n"),
+                    lastUsed = j.optLong("t")
+                )
+            } catch (_: Exception) {
+                decodeLegacy(value)
+            }
         }
+    }
+
+    private val LEGACY_SEP = Char(0x1F).toString()
+
+    private fun decodeLegacy(value: String): ShareTargetShortcut? {
+        val parts = value.split(LEGACY_SEP)
+        if (parts.size != 5) return null
+        fun String.unesc() = replace("\\u001F", LEGACY_SEP).replace("\\\\", "\\")
+        return ShareTargetShortcut(
+            packageName = parts[0].unesc(),
+            className = parts[1].unesc(),
+            label = parts[2].unesc(),
+            count = parts[3].toIntOrNull() ?: 0,
+            lastUsed = parts[4].toLongOrNull() ?: 0L
+        )
     }
 
     private fun load(context: Context): List<ShareTargetShortcut> {
@@ -96,7 +114,4 @@ object ShareTargetStore {
             componentName.packageName
         }
     }
-
-    private fun String.escape(): String = replace("\\", "\\\\").replace(SEP, "\\u001F")
-    private fun String.unescape(): String = replace("\\u001F", SEP).replace("\\\\", "\\")
 }
