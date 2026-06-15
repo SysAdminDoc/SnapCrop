@@ -210,36 +210,33 @@ class ScreenshotService : Service() {
                     val path = cursor.getString(2) ?: ""
 
                     if (id == lastProcessedId) continue
+                    if (!looksLikeScreenshot(name, path)) continue
 
-                    val lowerName = name.lowercase()
-                    val lowerPath = path.lowercase()
-
-                    val isScreenshot = lowerPath.contains("screenshot") ||
-                            lowerPath.contains("screen") ||
-                            lowerName.contains("screenshot") ||
-                            lowerName.contains("screen")
-
-                    val isOurSave = path.contains("SnapCrop") || name.startsWith("SnapCrop_")
-
-                    if (isScreenshot && !isOurSave) {
-                        val uri = Uri.withAppendedPath(
-                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
-                        )
-                        // Validate the file is readable
-                        try {
-                            contentResolver.openInputStream(uri)?.use { stream ->
-                                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                                BitmapFactory.decodeStream(stream, null, opts)
-                                if (opts.outWidth > 0 && opts.outHeight > 0) {
-                                    return Pair(id, uri)
-                                }
+                    val uri = Uri.withAppendedPath(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString()
+                    )
+                    try {
+                        contentResolver.openInputStream(uri)?.use { stream ->
+                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            BitmapFactory.decodeStream(stream, null, opts)
+                            if (opts.outWidth > 0 && opts.outHeight > 0) {
+                                return Pair(id, uri)
                             }
-                        } catch (_: Exception) {}
-                    }
+                        }
+                    } catch (_: Exception) {}
                 }
             }
         } catch (_: Exception) {}
         return null
+    }
+
+    private fun looksLikeScreenshot(name: String, path: String): Boolean {
+        if (path.contains("SnapCrop") || name.startsWith("SnapCrop_")) return false
+        val lp = path.lowercase()
+        val ln = name.lowercase()
+        if (lp.contains("screenshot") || ln.contains("screenshot")) return true
+        if (lp.endsWith("screenshots/") || lp.contains("/screenshots/")) return true
+        return false
     }
 
     private fun findMostRecentScreenshot(): Pair<Long, Uri>? {
@@ -259,15 +256,8 @@ class ScreenshotService : Service() {
                     val id = cursor.getLong(0)
                     val name = cursor.getString(1) ?: continue
                     val path = cursor.getString(2) ?: ""
-                    val lowerName = name.lowercase()
-                    val lowerPath = path.lowercase()
-                    val isScreenshot = lowerPath.contains("screenshot") ||
-                            lowerPath.contains("screen") ||
-                            lowerName.contains("screenshot") ||
-                            lowerName.contains("screen")
-                    val isOurSave = path.contains("SnapCrop") || name.startsWith("SnapCrop_") ||
-                            name.startsWith("reddit_") || name.startsWith("twitter_")
-                    if (!isScreenshot || isOurSave) continue
+                    if (!looksLikeScreenshot(name, path)) continue
+                    if (name.startsWith("reddit_") || name.startsWith("twitter_")) continue
 
                     val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
                     try {
