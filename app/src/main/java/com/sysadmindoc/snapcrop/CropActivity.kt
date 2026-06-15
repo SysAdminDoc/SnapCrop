@@ -387,7 +387,7 @@ class CropActivity : ComponentActivity() {
         getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("app_crop_profiles", true)
 
     private fun projectSidecarsEnabled(): Boolean =
-        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("project_sidecars", true)
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("project_sidecars", false)
 
     private fun effectiveDeleteOriginalOnSave(): Boolean =
         getDeletePref() && !projectSidecarsEnabled()
@@ -1685,8 +1685,9 @@ class CropActivity : ComponentActivity() {
                     projectSidecarJson = projectSidecarJson
                 )
             } catch (e: Exception) {
+                android.util.Log.e("SnapCrop", "saveCropped failed", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CropActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@CropActivity, getString(R.string.toast_save_failed) + ": " + (e.message ?: e.javaClass.simpleName), Toast.LENGTH_LONG).show()
                 }
             } finally {
                 cropped?.let { if (!it.isRecycled) it.recycle() }
@@ -1944,15 +1945,25 @@ class CropActivity : ComponentActivity() {
         return bestBytes to bestQuality
     }
 
+    private fun sidecarPath(imageSavePath: String): String {
+        val dir = imageSavePath.trimEnd('/')
+        return if (dir.startsWith("Pictures") || dir.startsWith("DCIM")) {
+            "Documents/" + dir.substringAfter('/')
+        } else {
+            dir
+        }
+    }
+
     private fun saveSvgSidecar(name: String, savePath: String, svg: String): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.svg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/svg+xml")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, savePath)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
-            ?: return false
+        val uri = try {
+            contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+        } catch (_: Exception) { null } ?: return false
         return try {
             contentResolver.openOutputStream(uri)?.use { it.write(svg.toByteArray(Charsets.UTF_8)) }
                 ?: throw IOException("Failed to open SVG output stream")
@@ -1960,7 +1971,7 @@ class CropActivity : ComponentActivity() {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
             true
-        } catch (_: IOException) {
+        } catch (_: Exception) {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             false
         }
@@ -1970,11 +1981,12 @@ class CropActivity : ComponentActivity() {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.snapcrop.json")
             put(MediaStore.MediaColumns.MIME_TYPE, SnapCropProjectSidecar.MIME_TYPE)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, savePath)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
-            ?: return false
+        val uri = try {
+            contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
+        } catch (_: Exception) { null } ?: return false
         return try {
             contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
                 ?: throw IOException("Failed to open project output stream")
@@ -1982,7 +1994,7 @@ class CropActivity : ComponentActivity() {
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             contentResolver.update(uri, values, null, null)
             true
-        } catch (_: IOException) {
+        } catch (_: Exception) {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
             false
         }
@@ -2055,7 +2067,8 @@ class CropActivity : ComponentActivity() {
             }
             runOnUiThread { finish() }
         } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
+            android.util.Log.e("SnapCrop", "saveToGallery failed", e)
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed) + ": " + (e.message ?: e.javaClass.simpleName), Toast.LENGTH_LONG).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
         }
     }

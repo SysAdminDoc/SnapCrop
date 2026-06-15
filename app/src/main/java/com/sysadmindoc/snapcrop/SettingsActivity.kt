@@ -234,7 +234,7 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
-                    var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", true)) }
+                    var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", false)) }
                     SettingToggle(
                         title = stringResource(R.string.settings_sidecar_title),
                         subtitle = stringResource(R.string.settings_sidecar_subtitle),
