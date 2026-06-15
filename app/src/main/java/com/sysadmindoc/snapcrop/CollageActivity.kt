@@ -312,7 +312,7 @@ private fun CollageScreen(
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()) {
+    Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()) {
         // Top bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),

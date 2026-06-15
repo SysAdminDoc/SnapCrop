@@ -85,7 +85,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -406,6 +411,24 @@ fun CropEditorScreen(
         drawPaths[index] = transform(drawPaths[index])
         drawRedoStack.clear()
         haptic()
+    }
+
+    fun canTransformLayer(layer: DrawPath): Boolean =
+        layer.shapeType !in listOf("fill", "blur", "smart_erase", "heal")
+
+    fun transformDrawLayer(index: Int, dx: Float, dy: Float, scaleMul: Float, dRotation: Float): Boolean {
+        val layer = drawPaths.getOrNull(index) ?: return false
+        if (!canTransformLayer(layer)) return false
+        val step = maxOf(bitmap.width, bitmap.height) * 0.02f
+        updateDrawLayer(index) {
+            it.copy(
+                transOffsetX = it.transOffsetX + dx * step,
+                transOffsetY = it.transOffsetY + dy * step,
+                transScale = (it.transScale * scaleMul).coerceIn(0.2f, 5f),
+                transRotation = it.transRotation + dRotation
+            )
+        }
+        return true
     }
 
     fun deleteDrawLayer(index: Int) {
@@ -792,7 +815,8 @@ fun CropEditorScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .systemBarsPadding()
+            .safeDrawingPadding()
+            .imePadding()
             .focusRequester(editorFocusRequester)
             .onPreviewKeyEvent { handleEditorShortcut(it) }
             .focusable()
@@ -1174,15 +1198,7 @@ fun CropEditorScreen(
                             selectedIndex = selectedLayerIndex,
                             onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
                             onTransformLayer = { index, dx, dy, sMul, dRot ->
-                                val step = maxOf(bitmap.width, bitmap.height) * 0.02f
-                                updateDrawLayer(index) {
-                                    it.copy(
-                                        transOffsetX = it.transOffsetX + dx * step,
-                                        transOffsetY = it.transOffsetY + dy * step,
-                                        transScale = (it.transScale * sMul).coerceIn(0.2f, 5f),
-                                        transRotation = it.transRotation + dRot
-                                    )
-                                }
+                                transformDrawLayer(index, dx, dy, sMul, dRot)
                             },
                             onResetTransform = { index ->
                                 updateDrawLayer(index) {
@@ -1881,15 +1897,7 @@ fun CropEditorScreen(
                     selectedIndex = selectedLayerIndex,
                     onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
                     onTransformLayer = { index, dx, dy, sMul, dRot ->
-                        val step = maxOf(bitmap.width, bitmap.height) * 0.02f
-                        updateDrawLayer(index) {
-                            it.copy(
-                                transOffsetX = it.transOffsetX + dx * step,
-                                transOffsetY = it.transOffsetY + dy * step,
-                                transScale = (it.transScale * sMul).coerceIn(0.2f, 5f),
-                                transRotation = it.transRotation + dRot
-                            )
-                        }
+                        transformDrawLayer(index, dx, dy, sMul, dRot)
                     },
                     onResetTransform = { index ->
                         updateDrawLayer(index) {
@@ -2093,6 +2101,86 @@ fun CropEditorScreen(
         }
 
         // Canvas area
+        val selectedLayer = drawPaths.getOrNull(selectedLayerIndex)
+        val selectedLayerTitle = selectedLayer?.let { layerTitle(it) }
+        val selectedLayerState = selectedLayer?.let { layer ->
+            stringResource(
+                R.string.editor_canvas_selected_layer,
+                selectedLayerTitle ?: stringResource(R.string.draw_layers),
+                if (layer.visible) stringResource(R.string.layer_state_visible) else stringResource(R.string.layer_state_hidden)
+            )
+        } ?: stringResource(R.string.editor_canvas_no_selected_layer)
+        val editorCanvasState = stringResource(
+            R.string.editor_canvas_state,
+            modeOptions.firstOrNull { it.second == editMode }?.first ?: stringResource(R.string.mode_crop),
+            cropW,
+            cropH,
+            cropLeft,
+            cropTop,
+            bitmap.width,
+            bitmap.height,
+            pixelateRects.size,
+            drawPaths.size,
+            selectedLayerState
+        )
+        val nudgeCropLeftLabel = stringResource(R.string.editor_a11y_nudge_crop_left)
+        val nudgeCropRightLabel = stringResource(R.string.editor_a11y_nudge_crop_right)
+        val nudgeCropUpLabel = stringResource(R.string.editor_a11y_nudge_crop_up)
+        val nudgeCropDownLabel = stringResource(R.string.editor_a11y_nudge_crop_down)
+        val zoomInLabel = stringResource(R.string.editor_a11y_zoom_in)
+        val zoomOutLabel = stringResource(R.string.editor_a11y_zoom_out)
+        val previewLabel = stringResource(R.string.editor_a11y_toggle_preview)
+        val removeRedactionLabel = stringResource(R.string.editor_a11y_remove_last_redaction)
+        val layerMoveLeftLabel = stringResource(R.string.layer_move_left)
+        val layerMoveRightLabel = stringResource(R.string.layer_move_right)
+        val layerMoveUpLabel = stringResource(R.string.layer_move_up_dir)
+        val layerMoveDownLabel = stringResource(R.string.layer_move_down_dir)
+        val layerGrowLabel = stringResource(R.string.layer_grow)
+        val layerShrinkLabel = stringResource(R.string.layer_shrink)
+        val layerRotateLeftLabel = stringResource(R.string.layer_rotate_left)
+        val layerRotateRightLabel = stringResource(R.string.layer_rotate_right)
+        val layerDeleteLabel = selectedLayerTitle?.let { stringResource(R.string.layer_delete_cd, it) }
+            ?: stringResource(R.string.editor_delete)
+        val layerToggleLabel = selectedLayer?.let { layer ->
+            val title = selectedLayerTitle ?: stringResource(R.string.draw_layers)
+            if (layer.visible) stringResource(R.string.layer_hide_cd, title)
+            else stringResource(R.string.layer_show_cd, title)
+        } ?: stringResource(R.string.draw_layers)
+        val canvasActions = buildList {
+            add(CustomAccessibilityAction(nudgeCropLeftLabel) { pushUndo(); nudgeCrop(-1, 0); true })
+            add(CustomAccessibilityAction(nudgeCropRightLabel) { pushUndo(); nudgeCrop(1, 0); true })
+            add(CustomAccessibilityAction(nudgeCropUpLabel) { pushUndo(); nudgeCrop(0, -1); true })
+            add(CustomAccessibilityAction(nudgeCropDownLabel) { pushUndo(); nudgeCrop(0, 1); true })
+            add(CustomAccessibilityAction(zoomInLabel) { zoomBy(1.1f); true })
+            add(CustomAccessibilityAction(zoomOutLabel) { zoomBy(0.9f); true })
+            add(CustomAccessibilityAction(previewLabel) { previewMode = !previewMode; true })
+            if (pixelateRects.isNotEmpty()) {
+                add(CustomAccessibilityAction(removeRedactionLabel) {
+                    pushUndo()
+                    pixelateRects.removeLastOrNull()
+                    true
+                })
+            }
+            if (selectedLayer != null) {
+                add(CustomAccessibilityAction(layerMoveLeftLabel) { transformDrawLayer(selectedLayerIndex, -1f, 0f, 1f, 0f) })
+                add(CustomAccessibilityAction(layerMoveRightLabel) { transformDrawLayer(selectedLayerIndex, 1f, 0f, 1f, 0f) })
+                add(CustomAccessibilityAction(layerMoveUpLabel) { transformDrawLayer(selectedLayerIndex, 0f, -1f, 1f, 0f) })
+                add(CustomAccessibilityAction(layerMoveDownLabel) { transformDrawLayer(selectedLayerIndex, 0f, 1f, 1f, 0f) })
+                add(CustomAccessibilityAction(layerGrowLabel) { transformDrawLayer(selectedLayerIndex, 0f, 0f, 1.18f, 0f) })
+                add(CustomAccessibilityAction(layerShrinkLabel) { transformDrawLayer(selectedLayerIndex, 0f, 0f, 0.85f, 0f) })
+                add(CustomAccessibilityAction(layerRotateLeftLabel) { transformDrawLayer(selectedLayerIndex, 0f, 0f, 1f, -15f) })
+                add(CustomAccessibilityAction(layerRotateRightLabel) { transformDrawLayer(selectedLayerIndex, 0f, 0f, 1f, 15f) })
+                add(CustomAccessibilityAction(layerToggleLabel) {
+                    updateDrawLayer(selectedLayerIndex) { it.copy(visible = !it.visible) }
+                    true
+                })
+                add(CustomAccessibilityAction(layerDeleteLabel) {
+                    deleteDrawLayer(selectedLayerIndex)
+                    selectedLayerIndex = -1
+                    true
+                })
+            }
+        }
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -2140,6 +2228,12 @@ fun CropEditorScreen(
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
+                        .semantics {
+                            role = Role.Image
+                            contentDescription = context.getString(R.string.editor_canvas_cd)
+                            stateDescription = editorCanvasState
+                            customActions = canvasActions
+                        }
                         .pointerInput(bitmap, editMode, ocrBlocks, scannedCodes) {
                             var lastTapTime = 0L
                             var lastTapPos = Offset.Zero

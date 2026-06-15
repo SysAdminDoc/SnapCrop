@@ -6,6 +6,38 @@ All notable changes to SnapCrop will be documented in this file.
 
 **Trust, distribution, and resilience (v6.27.0).**
 
+- Quick Crop now copies the saved result to the system clipboard alongside
+  saving, so the image is ready to paste immediately. The home-screen recent
+  crops also gained a one-tap clipboard copy button.
+- After saving a long/scrolling screenshot, SnapCrop now offers to delete the
+  short seed screenshot that triggered the capture, avoiding a duplicate gallery
+  entry. Uses scoped-storage delete confirmation on Android 11+.
+- The Draw-mode eyedropper now doubles as a color sampler: tapping a pixel opens
+  a dialog with HEX, RGB, and HSL codes (tap to copy). Sample a second pixel to
+  see WCAG 2.x contrast ratio (AA/AAA pass/fail) and APCA Lc value.
+- PDF export with OCR enabled now embeds an invisible text layer aligned to the
+  image, making the PDF searchable and text-selectable in any viewer.
+- Added a deferred screenshot index worker: a WorkManager job constrained to
+  charging + idle + unmetered network rebuilds the screenshot intelligence index
+  every 6 hours, avoiding battery/thermal cost from reactive ML processing.
+- Added selectable OCR script: Settings now has a Chinese/Japanese/Korean/Devanagari
+  picker alongside the default Latin recognizer. The selected script flows through
+  all OCR paths (editor, search, smart albums, PDF export, Quick Crop).
+- The `strip_exif` setting now actually works: editor saves copy EXIF metadata
+  (orientation, capture time, color space, exposure) from the source screenshot
+  to the export. With strip ON, GPS, device make/model, and serial numbers are
+  removed while safe photographic metadata is preserved. Added `ExifTransfer`
+  utility and the `androidx.exifinterface` dependency.
+- Edge-to-edge hardening pass: editor, home, settings, stitch, collage, device
+  frame, video frame, long-screenshot review, and gallery viewer overlays now
+  use safe-drawing/display-cutout aware padding plus IME padding where relevant.
+- Added TalkBack-facing editor canvas semantics: the canvas announces current
+  mode, crop geometry, redaction count, layer count, and selected layer state,
+  with custom actions for crop nudging, zoom/preview, redaction removal, and
+  selected-layer move/resize/rotate/delete.
+- Custom Quick Crop app-rule deletion now asks for confirmation before removing
+  the rule.
+
 - Added settings/preset backup & restore: export all preferences, presets, and
   app-crop profiles to a JSON file and restore them after a reinstall (the app
   keeps `allowBackup=false`). Network credentials are excluded.

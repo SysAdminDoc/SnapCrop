@@ -1126,7 +1126,8 @@ private fun PhotoViewer(
         Row(
             Modifier.fillMaxWidth().align(Alignment.TopCenter)
                 .background(Color.Black.copy(alpha = 0.5f))
-                .statusBarsPadding().padding(horizontal = 4.dp, vertical = 4.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1146,7 +1147,8 @@ private fun PhotoViewer(
         Row(
             Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                 .background(Color.Black.copy(alpha = 0.5f))
-                .navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             IconButton(onClick = {

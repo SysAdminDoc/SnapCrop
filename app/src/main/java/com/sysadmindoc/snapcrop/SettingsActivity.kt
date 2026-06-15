@@ -92,12 +92,49 @@ class SettingsActivity : ComponentActivity() {
                 val backupImportLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocument()
                 ) { uri -> if (uri != null) importSettings(uri, prefs) }
+                var pendingRuleDelete by remember { mutableStateOf<UserAppCropProfile?>(null) }
+
+                pendingRuleDelete?.let { profile ->
+                    AlertDialog(
+                        onDismissRequest = { pendingRuleDelete = null },
+                        title = { Text(stringResource(R.string.rules_delete_title), color = OnSurface) },
+                        text = {
+                            Text(
+                                stringResource(R.string.rules_delete_body, profile.label),
+                                color = OnSurfaceVariant,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                userAppProfiles = userAppProfiles.filterNot { it.id == profile.id }
+                                UserAppProfileStore.save(prefs, userAppProfiles)
+                                pendingRuleDelete = null
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    getString(R.string.toast_app_rule_removed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }) {
+                                Text(stringResource(R.string.rules_delete_confirm), color = Tertiary)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { pendingRuleDelete = null }) {
+                                Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                            }
+                        },
+                        containerColor = SurfaceVariant
+                    )
+                }
 
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Black)
-                        .systemBarsPadding()
+                        .safeDrawingPadding()
+                        .imePadding()
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
@@ -238,9 +275,7 @@ class SettingsActivity : ComponentActivity() {
                             UserAppProfileStore.save(prefs, userAppProfiles)
                         },
                         onDeleteProfile = { profile ->
-                            userAppProfiles = userAppProfiles.filterNot { it.id == profile.id }
-                            UserAppProfileStore.save(prefs, userAppProfiles)
-                            Toast.makeText(this@SettingsActivity, getString(R.string.toast_app_rule_removed), Toast.LENGTH_SHORT).show()
+                            pendingRuleDelete = profile
                         },
                         onImportTextChange = { appRuleImportText = it },
                         onCopyProfiles = {

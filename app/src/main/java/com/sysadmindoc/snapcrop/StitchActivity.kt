@@ -238,7 +238,7 @@ private fun StitchScreen(
     onClose: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().background(Color.Black).systemBarsPadding()
+        Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()
     ) {
         // Top bar
         Row(

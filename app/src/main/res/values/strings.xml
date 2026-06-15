@@ -118,7 +118,7 @@
     <string name="rename_dialog_title">Batch rename</string>
     <string name="rename_count">%1$d images will be renamed in place.</string>
     <string name="rename_template_label">Template</string>
-    <string name="rename_tokens">Tokens: %app%, %date%, %time%, %timestamp%, %counter%, %profile%</string>
+    <string name="rename_tokens" formatted="false">Tokens: %app%, %date%, %time%, %timestamp%, %counter%, %profile%</string>
     <string name="rename_profile_label">Profile name</string>
 
     <!-- Color sampler -->
@@ -326,6 +326,9 @@
     <string name="rules_export_format">Export format</string>
     <string name="rules_save">Save rule</string>
     <string name="rules_save_hint">A rule needs a name plus at least one source hint or OCR keyword.</string>
+    <string name="rules_delete_title">Delete app rule?</string>
+    <string name="rules_delete_body">This removes \"%1$s\" from Quick Crop app rules. Existing exported screenshots are not affected.</string>
+    <string name="rules_delete_confirm">Delete rule</string>
     <string name="rules_packs_title">Profile packs</string>
     <string name="rules_packs_body">Copy exports a JSON pack. Import merges pasted profiles by id.</string>
     <string name="rules_packs_paste">Paste profile pack JSON</string>
@@ -479,6 +482,18 @@
     <string name="editor_share">Share</string>
     <string name="editor_copy">Copy</string>
     <string name="editor_delete">Delete</string>
+    <string name="editor_canvas_cd">Editor canvas</string>
+    <string name="editor_canvas_state">Mode: %1$s. Crop %2$d by %3$d at %4$d,%5$d of %6$d by %7$d. Redactions: %8$d. Layers: %9$d. %10$s</string>
+    <string name="editor_canvas_selected_layer">Selected layer: %1$s, %2$s.</string>
+    <string name="editor_canvas_no_selected_layer">No layer selected.</string>
+    <string name="editor_a11y_nudge_crop_left">Nudge crop left</string>
+    <string name="editor_a11y_nudge_crop_right">Nudge crop right</string>
+    <string name="editor_a11y_nudge_crop_up">Nudge crop up</string>
+    <string name="editor_a11y_nudge_crop_down">Nudge crop down</string>
+    <string name="editor_a11y_zoom_in">Zoom in</string>
+    <string name="editor_a11y_zoom_out">Zoom out</string>
+    <string name="editor_a11y_toggle_preview">Toggle preview</string>
+    <string name="editor_a11y_remove_last_redaction">Remove last redaction</string>
     <string name="editor_close">Close</string>
     <string name="editor_discard_title">Discard changes?</string>
     <string name="editor_discard_body">Your edits will be lost.</string>

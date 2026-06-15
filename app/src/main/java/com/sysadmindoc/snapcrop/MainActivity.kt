@@ -1641,7 +1641,8 @@ private fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Black)
-            .systemBarsPadding()
+            .safeDrawingPadding()
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
     ) {

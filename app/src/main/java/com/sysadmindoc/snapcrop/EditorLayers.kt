@@ -41,7 +41,7 @@ import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
 
 @Composable
-private fun layerTitle(layer: DrawPath): String = when {
+internal fun layerTitle(layer: DrawPath): String = when {
     layer.shapeType == "text" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_text)}: ${layer.text.take(22)}${if (layer.text.length > 22) "..." else ""}"
     layer.shapeType == "emoji" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_emoji)} ${layer.text}"
     layer.shapeType == "callout" && !layer.text.isNullOrBlank() -> "${stringResource(R.string.tool_callout)} ${layer.text}"
