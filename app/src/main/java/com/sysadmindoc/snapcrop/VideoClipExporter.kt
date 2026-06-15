@@ -102,17 +102,23 @@ object VideoClipExporter {
 
             var buffer = ByteBuffer.allocate(maxBufferSize)
             val info = android.media.MediaCodec.BufferInfo()
+            val finishedTracks = mutableSetOf<Int>()
             while (true) {
                 val sampleTrack = extractor.sampleTrackIndex
                 if (sampleTrack < 0) break
                 val outputTrack = trackMap[sampleTrack]
-                if (outputTrack == null) {
+                if (outputTrack == null || sampleTrack in finishedTracks) {
                     extractor.advance()
                     continue
                 }
 
                 val sampleTime = extractor.sampleTime
-                if (sampleTime < 0 || sampleTime > endUs) break
+                if (sampleTime < 0 || sampleTime > endUs) {
+                    finishedTracks.add(sampleTrack)
+                    if (finishedTracks.size >= trackMap.size) break
+                    extractor.advance()
+                    continue
+                }
 
                 buffer.clear()
                 // Some encoders under-report KEY_MAX_INPUT_SIZE; grow the buffer and retry rather
