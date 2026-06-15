@@ -81,7 +81,13 @@ object ConditionalAutoActions {
     }
 
     suspend fun redactSensitiveText(bitmap: Bitmap): AutoActionResult {
-        val result = SensitiveTextDetector.detect(bitmap)
+        // Redaction is best-effort: if detection fails (e.g. ML Kit/OCR error), still save the crop
+        // unredacted rather than aborting the whole Quick Crop pipeline.
+        val result = try {
+            SensitiveTextDetector.detect(bitmap)
+        } catch (_: Exception) {
+            return AutoActionResult(bitmap, 0)
+        }
         if (result.rects.isEmpty()) return AutoActionResult(bitmap, 0)
         return AutoActionResult(ImageRedactor.pixelate(bitmap, result.rects), result.rects.size)
     }

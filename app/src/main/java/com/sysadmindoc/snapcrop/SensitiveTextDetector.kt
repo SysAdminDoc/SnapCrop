@@ -39,8 +39,12 @@ object SensitiveTextDetector {
             }
         }
 
-        val regexBlocks = blocks
-            .filter { block -> SensitiveTextPatterns.containsSensitivePattern(block.text) }
+        // Match patterns over the joined cross-block text and map ranges back to overlapping blocks,
+        // so a value split across two ML Kit blocks (e.g. a card number wrapping a line) is still caught.
+        val regexRanges = SensitiveTextPatterns.sensitiveMatchRanges(joined)
+        val regexBlocks = blockRanges
+            .filter { (range, _) -> regexRanges.any { it.overlaps(range) } }
+            .map { it.second }
             .toSet()
 
         val entityRanges = extractSensitiveEntityRanges(joined)
@@ -94,12 +98,28 @@ internal object SensitiveTextPatterns {
 
     private val cardCandidate = Regex("(?<!\\d)(?:\\d[ -]*?){13,19}(?!\\d)")
 
+    // Guard against pathological OCR text causing super-linear regex cost.
+    private const val MAX_SCAN_LEN = 200_000
+
     fun containsSensitivePattern(text: String): Boolean {
+        if (text.length > MAX_SCAN_LEN) return false
         if (sensitivePatterns.any { it.containsMatchIn(text) }) return true
         return cardCandidate.findAll(text).any { match ->
             val digits = match.value.filter { it.isDigit() }
             digits.length in 13..19 && passesLuhn(digits)
         }
+    }
+
+    /** All character ranges in [text] that look sensitive, for mapping back to OCR block bounds. */
+    fun sensitiveMatchRanges(text: String): List<IntRange> {
+        if (text.length > MAX_SCAN_LEN) return emptyList()
+        val ranges = ArrayList<IntRange>()
+        sensitivePatterns.forEach { p -> p.findAll(text).forEach { ranges.add(it.range) } }
+        cardCandidate.findAll(text).forEach { match ->
+            val digits = match.value.filter { it.isDigit() }
+            if (digits.length in 13..19 && passesLuhn(digits)) ranges.add(match.range)
+        }
+        return ranges
     }
 
     fun passesLuhn(digits: String): Boolean {

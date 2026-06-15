@@ -564,7 +564,9 @@ class SettingsActivity : ComponentActivity() {
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
                                 contentDescription = "${preset.name} preset: ${preset.tool.label}, ${preset.strokeWidth.toInt()} pixels${if (preset.dashed) ", dashed" else ""}${if (styleDefault == preset.name) ", default" else ""}"
                             }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(Modifier.size(16.dp).background(androidx.compose.ui.graphics.Color(preset.color), RoundedCornerShape(3.dp)))
+                                Box(Modifier.size(16.dp)
+                                    .background(androidx.compose.ui.graphics.Color(preset.color), RoundedCornerShape(3.dp))
+                                    .border(1.dp, Outline, RoundedCornerShape(3.dp)))
                                 Column(Modifier.weight(1f)) {
                                     Text(preset.name, color = OnSurface, fontSize = 13.sp, fontWeight = if (styleDefault == preset.name) FontWeight.Bold else FontWeight.Normal)
                                     Text("${preset.tool.label}, ${preset.strokeWidth.toInt()}px${if (preset.dashed) ", dashed" else ""}", color = OnSurfaceVariant, fontSize = 11.sp)
@@ -577,7 +579,7 @@ class SettingsActivity : ComponentActivity() {
                                     stylePresets.removeAt(idx)
                                     DrawStylePresetStore.save(prefs, stylePresets.toList())
                                     if (styleDefault == preset.name) { styleDefault = null; DrawStylePresetStore.setDefault(prefs, null) }
-                                }, modifier = Modifier.size(32.dp)) {
+                                }, modifier = Modifier.size(36.dp)) {
                                     Icon(Icons.Default.Delete, stringResource(R.string.delete) + " ${preset.name}", tint = Tertiary, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -931,14 +933,17 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    Spacer(Modifier.height(20.dp))
+
                     // Settings backup / restore — survive reinstall (allowBackup=false).
-                    Text(stringResource(R.string.settings_backup_hint), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp,
-                        modifier = Modifier.padding(top = 8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    Text(stringResource(R.string.settings_section_backup), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.settings_backup_hint), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                         FilledTonalButton(
                             onClick = { backupExportLauncher.launch("snapcrop-settings.json") },
                             shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant, contentColor = OnSurface)
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer, contentColor = Primary)
                         ) { Text(stringResource(R.string.settings_backup_export), fontSize = 13.sp) }
                         FilledTonalButton(
                             onClick = { backupImportLauncher.launch(arrayOf("application/json")) },
@@ -958,36 +963,46 @@ class SettingsActivity : ComponentActivity() {
                         color = OnSurfaceVariant, fontSize = 13.sp)
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.settings_about_url),
-                        color = Primary, fontSize = 12.sp)
+                        color = Primary, fontSize = 12.sp,
+                        modifier = Modifier.clickable {
+                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SysAdminDoc/SnapCrop"))) } catch (_: Exception) {}
+                        })
                     Spacer(Modifier.height(12.dp))
 
                     // Update check — anonymous, opt-in, nothing sent off-device but a version query.
                     var updateChecking by remember { mutableStateOf(false) }
                     var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
-                    var updateUpToDate by remember { mutableStateOf(false) }
+                    var updateOutcome by remember { mutableStateOf<UpdateChecker.Result?>(null) }
                     val checkingLabel = stringResource(R.string.settings_update_checking)
                     FilledTonalButton(
                         onClick = {
                             if (!updateChecking) {
                                 updateChecking = true
-                                updateUpToDate = false
+                                updateOutcome = null
                                 lifecycleScope.launch {
-                                    val info = UpdateChecker.check(BuildConfig.VERSION_NAME)
-                                    updateInfo = info
-                                    updateUpToDate = info == null
+                                    val r = UpdateChecker.check(BuildConfig.VERSION_NAME)
+                                    updateInfo = (r as? UpdateChecker.Result.Available)?.info
+                                    updateOutcome = r
                                     updateChecking = false
                                 }
                             }
                         },
                         enabled = !updateChecking,
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = SurfaceVariant, contentColor = OnSurface)
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer, contentColor = Primary)
                     ) {
                         Text(if (updateChecking) checkingLabel else stringResource(R.string.settings_update_check), fontSize = 13.sp)
                     }
-                    if (updateUpToDate) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(stringResource(R.string.settings_update_current), color = OnSurfaceVariant, fontSize = 12.sp)
+                    when (updateOutcome) {
+                        is UpdateChecker.Result.UpToDate -> {
+                            Spacer(Modifier.height(4.dp))
+                            Text(stringResource(R.string.settings_update_current), color = Secondary, fontSize = 12.sp)
+                        }
+                        is UpdateChecker.Result.Failed -> {
+                            Spacer(Modifier.height(4.dp))
+                            Text(stringResource(R.string.settings_update_failed), color = Tertiary, fontSize = 12.sp)
+                        }
+                        else -> {}
                     }
                     var autoUpdate by remember { mutableStateOf(prefs.getBoolean(UpdateChecker.PREF_AUTO, false)) }
                     SettingToggle(
@@ -1015,7 +1030,7 @@ class SettingsActivity : ComponentActivity() {
                             text = {
                                 Text(info.notes.ifBlank { stringResource(R.string.settings_update_body, info.versionName) },
                                     color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp,
-                                    modifier = Modifier.verticalScroll(rememberScrollState()))
+                                    modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()))
                             },
                             containerColor = SurfaceVariant
                         )
@@ -1078,7 +1093,7 @@ class SettingsActivity : ComponentActivity() {
                                         crashViewText = crashFiles.firstOrNull()?.let { runCatching { it.readText() }.getOrNull() }
                                     }) { Text(stringResource(R.string.settings_crash_view), color = Primary, fontSize = 13.sp) }
                                     TextButton(onClick = { shareCrashLog(crashFiles.firstOrNull()) }) {
-                                        Text(stringResource(R.string.settings_crash_share), color = Secondary, fontSize = 13.sp)
+                                        Text(stringResource(R.string.settings_crash_share), color = Primary, fontSize = 13.sp)
                                     }
                                     TextButton(onClick = {
                                         CrashReporter.clear(this@SettingsActivity)
@@ -1117,7 +1132,7 @@ class SettingsActivity : ComponentActivity() {
                 ?: throw IllegalStateException("no stream")
             Toast.makeText(this, getString(R.string.settings_backup_done), Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {
-            Toast.makeText(this, getString(R.string.settings_backup_failed), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.settings_backup_failed), Toast.LENGTH_LONG).show()
         }
     }
 

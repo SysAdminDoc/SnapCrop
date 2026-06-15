@@ -168,8 +168,11 @@ class DeviceFrameActivity : ComponentActivity() {
                 }
 
                 src.recycle()
-                saveToGallery(result)
-                result.recycle()
+                try {
+                    saveToGallery(result)
+                } finally {
+                    if (!result.isRecycled) result.recycle()
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@DeviceFrameActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()

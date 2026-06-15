@@ -27,7 +27,8 @@
     <string name="home_permission_body">Allow photos/videos so SnapCrop can find screenshots. Notifications keep monitoring visible and provide edit/share actions.</string>
     <string name="home_permission_grant">Grant media access</string>
     <string name="home_permission_partial_title">Limited photo access</string>
-    <string name="home_permission_partial_body">You granted access to only selected photos. The screenshot monitor needs full media access to detect new screenshots automatically. Tap below and choose "Allow all".</string>
+    <string name="home_permission_partial_body">You granted access to only selected photos. The screenshot monitor needs full media access to detect new screenshots automatically. Tap below and choose “Allow all”.</string>
+    <string name="home_permission_partial_grant">Allow all photos</string>
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
@@ -260,6 +261,7 @@
     <string name="settings_section_storage">Storage</string>
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>
+    <string name="settings_section_backup">Backup</string>
     <string name="settings_backup_hint">Back up your settings, presets, and app rules to a file you can restore after a reinstall. Network credentials are not included.</string>
     <string name="settings_backup_export">Back up settings</string>
     <string name="settings_backup_import">Restore</string>
@@ -280,6 +282,7 @@
     <string name="settings_update_check">Check for updates</string>
     <string name="settings_update_checking">Checking…</string>
     <string name="settings_update_current">You\'re on the latest version.</string>
+    <string name="settings_update_failed">Couldn\'t reach GitHub. Check your connection and try again.</string>
     <string name="settings_update_auto_title">Auto-check for updates</string>
     <string name="settings_update_auto_subtitle">On launch, anonymously check GitHub for a newer release. No account, no tracking — just a version query.</string>
     <string name="settings_update_available">Update available — v%1$s</string>

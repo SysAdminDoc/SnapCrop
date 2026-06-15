@@ -271,7 +271,7 @@ class MainActivity : ComponentActivity() {
                 var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
                 LaunchedEffect(Unit) {
                     if (prefs.getBoolean(UpdateChecker.PREF_AUTO, false)) {
-                        updateInfo = UpdateChecker.check(BuildConfig.VERSION_NAME)
+                        updateInfo = (UpdateChecker.check(BuildConfig.VERSION_NAME) as? UpdateChecker.Result.Available)?.info
                     }
                 }
                 updateInfo?.let { info ->
@@ -715,8 +715,9 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
         // Android 14+ "Select photos" grants VISUAL_USER_SELECTED without full image read — the
-        // screenshot monitor can't see new screenshots in that state, so flag it for a clear warning.
-        hasPartialMedia.value = !hasPermissions.value &&
+        // screenshot monitor can't see new screenshots in that state. Detect it purely from the
+        // image grants, independent of the unrelated video/notification permissions.
+        hasPartialMedia.value =
             Build.VERSION.SDK_INT >= 34 &&
             ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED
@@ -1679,7 +1680,10 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.home_permission_grant), color = OnPrimary)
+                    Text(
+                        stringResource(if (partialMedia) R.string.home_permission_partial_grant else R.string.home_permission_grant),
+                        color = OnPrimary
+                    )
                 }
             }
         }

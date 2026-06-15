@@ -447,6 +447,12 @@ class CropActivity : ComponentActivity() {
                 showProjectError(getString(R.string.crop_sidecar_no_uri))
                 return
             }
+            // Only honor content:// sources — never let a project/draft point the editor at an
+            // arbitrary file:// path it shouldn't read.
+            if (!"content".equals(source.scheme, ignoreCase = true)) {
+                showProjectError(getString(R.string.crop_sidecar_no_uri))
+                return
+            }
             sourceUri = source
             intentSourceHints = listOf("snapcrop_project")
             loadBitmap(source, project)
@@ -1832,13 +1838,12 @@ class CropActivity : ComponentActivity() {
 
     /** When the user opts in, marks the editor window secure so the un-redacted image can't be
      *  captured by other screenshot tools and doesn't leak into the Recents thumbnail. */
-    private fun applySecureScreen() {
-        val secure = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("secure_editor", false)
-        if (!secure) return
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            try { setRecentsScreenshotEnabled(false) } catch (_: Exception) {}
-        }
+    private fun applySecureScreen() = applySecureWindow(this)
+
+    override fun onResume() {
+        super.onResume()
+        // Re-apply so toggling the setting (or a restored backup) takes effect without recreation.
+        applySecureScreen()
     }
 
     /** Applies the configured export border + watermark, recycling intermediates. No-op if neither
@@ -2080,6 +2085,9 @@ class CropActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // The draft only exists to survive process death; on a real finish, clean it up so the
+        // source URI + edit geometry don't linger in app-private storage.
+        if (isFinishing) runCatching { draftFile.delete() }
         val current = bitmapState.value
         if (current != null && current !== originalBitmap) current.recycle()
         originalBitmap?.recycle()

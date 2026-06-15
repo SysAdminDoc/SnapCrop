@@ -72,9 +72,15 @@ class LongScreenshotReviewActivity : ComponentActivity() {
     private var isSaving by mutableStateOf(false)
     private var keepReviewFile = false
 
+    override fun onResume() {
+        super.onResume()
+        applySecureWindow(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureWindow(this)
 
         reviewUri = intent.getStringExtra(EXTRA_REVIEW_URI)?.let(Uri::parse)
         reviewPath = intent.getStringExtra(EXTRA_REVIEW_PATH)

@@ -87,7 +87,8 @@ object VideoClipExporter {
                 val format = extractor.getTrackFormat(track)
                 val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
                 if (!mime.startsWith("video/") && !mime.startsWith("audio/")) continue
-                val outputTrack = muxer.addTrack(format)
+                // A single unmuxable track (e.g. an exotic codec) shouldn't abort the whole trim.
+                val outputTrack = try { muxer.addTrack(format) } catch (_: Exception) { continue }
                 trackMap[track] = outputTrack
                 extractor.selectTrack(track)
                 maxBufferSize = maxOf(maxBufferSize, safeMaxInputSize(format))
@@ -99,7 +100,7 @@ object VideoClipExporter {
             muxerStarted = true
             extractor.seekTo(startUs.coerceAtLeast(0L), MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-            val buffer = ByteBuffer.allocate(maxBufferSize)
+            var buffer = ByteBuffer.allocate(maxBufferSize)
             val info = android.media.MediaCodec.BufferInfo()
             while (true) {
                 val sampleTrack = extractor.sampleTrackIndex
@@ -114,7 +115,19 @@ object VideoClipExporter {
                 if (sampleTime < 0 || sampleTime > endUs) break
 
                 buffer.clear()
-                val sampleSize = extractor.readSampleData(buffer, 0)
+                // Some encoders under-report KEY_MAX_INPUT_SIZE; grow the buffer and retry rather
+                // than failing the whole trim with a BufferOverflowException on one large sample.
+                var sampleSize = -1
+                var attempts = 0
+                while (attempts < 4) {
+                    try {
+                        sampleSize = extractor.readSampleData(buffer, 0)
+                        break
+                    } catch (_: Exception) {
+                        buffer = ByteBuffer.allocate(buffer.capacity() * 2)
+                        attempts++
+                    }
+                }
                 if (sampleSize < 0) break
 
                 info.set(
