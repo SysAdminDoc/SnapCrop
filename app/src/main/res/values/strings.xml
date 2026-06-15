@@ -32,6 +32,9 @@
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
+    <string name="home_allfiles_title">Skip delete confirmation</string>
+    <string name="home_allfiles_body">Granting all-files access lets Save replace the original screenshot silently without an Android confirmation prompt every time.</string>
+    <string name="home_allfiles_grant">Grant file access</string>
     <string name="home_monitor_title">Screenshot Monitor</string>
     <string name="home_monitor_active">Active - new screenshots open in the editor</string>
     <string name="home_monitor_paused">Paused - turn on to catch screenshots automatically</string>

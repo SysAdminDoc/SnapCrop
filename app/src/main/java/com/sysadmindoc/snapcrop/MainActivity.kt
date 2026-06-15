@@ -94,6 +94,7 @@ class MainActivity : ComponentActivity() {
     private val hasPermissions = mutableStateOf(false)
     private val hasPartialMedia = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
+    private val hasAllFilesAccess = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
@@ -364,6 +365,17 @@ class MainActivity : ComponentActivity() {
                                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                         Uri.parse("package:$packageName")
                                     ))
+                                },
+                                hasAllFilesAccess = hasAllFilesAccess.value,
+                                onRequestAllFiles = {
+                                    try {
+                                        startActivity(Intent(
+                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                            Uri.parse("package:$packageName")
+                                        ))
+                                    } catch (_: Exception) {
+                                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                    }
                                 },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenCrop = { uri ->
@@ -694,6 +706,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
+        hasAllFilesAccess.value = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                android.os.Environment.isExternalStorageManager()
         refreshLongScreenshotState()
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
@@ -1455,8 +1469,22 @@ class MainActivity : ComponentActivity() {
 
     private fun requestDeleteUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            android.os.Environment.isExternalStorageManager()) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                var count = 0
+                for (uri in uris) {
+                    try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, getString(R.string.toast_deleted_count, count), Toast.LENGTH_SHORT).show()
+                    galleryRefreshKey.intValue++
+                    loadRecentCrops()
+                }
+            }
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            // Android 11+: use scoped-storage delete confirmation instead of all-files access.
             try {
                 val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
                 @Suppress("DEPRECATION")
@@ -1465,7 +1493,6 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, getString(R.string.toast_delete_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
             }
         } else {
-            // Android 10: direct delete (may throw RecoverableSecurityException)
             var count = 0
             for (uri in uris) {
                 try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
@@ -1631,6 +1658,8 @@ private fun HomeScreen(
     onBatchCancel: () -> Unit,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
+    hasAllFilesAccess: Boolean = false,
+    onRequestAllFiles: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onCopyCrop: (Uri) -> Unit,
@@ -1744,6 +1773,31 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text(stringResource(R.string.home_overlay_grant), color = OnPrimary) }
+            }
+        }
+
+        // All-files access (skips delete confirmation on Save & Replace)
+        if (hasPermissions && !hasAllFilesAccess && Build.VERSION.SDK_INT >= 30) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.home_allfiles_title), color = OnSurface, fontWeight = FontWeight.Medium)
+                        Text(stringResource(R.string.home_allfiles_body),
+                            color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+                    }
+                }
+                Button(
+                    onClick = onRequestAllFiles,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text(stringResource(R.string.home_allfiles_grant), color = OnPrimary) }
             }
         }
 
