@@ -67,6 +67,7 @@
     <string name="home_delete_crop_body">This removes the exported crop from your media library. The source screenshot is not touched.</string>
     <string name="home_delete_crop_confirm">Delete crop</string>
     <string name="home_open_crop_cd">Open recent crop</string>
+    <string name="home_copy_crop_cd">Copy to clipboard</string>
     <string name="home_delete_crop_cd">Delete recent crop</string>
 
     <!-- Batch operations -->
@@ -151,7 +152,7 @@
     <string name="toast_no_faces">No faces found</string>
     <string name="toast_share_failed">Share failed</string>
     <string name="toast_no_borders">No borders detected</string>
-    <string name="toast_autocropped_saved">Autocropped &amp; saved</string>
+    <string name="toast_autocropped_saved">Autocropped, saved &amp; copied</string>
     <string name="toast_quick_save_failed">Quick save failed</string>
     <string name="toast_no_screenshot">No new screenshot detected</string>
     <string name="toast_no_last_action">No last action available</string>

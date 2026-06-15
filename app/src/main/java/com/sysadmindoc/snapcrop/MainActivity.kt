@@ -2,6 +2,8 @@ package com.sysadmindoc.snapcrop
 
 import android.Manifest
 import android.app.PendingIntent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.ComponentName
@@ -41,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -365,6 +368,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenCrop = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
+                                onCopyCrop = { uri -> copyImageToClipboard(uri) },
                                 onDeleteCrop = { uri -> requestDeleteUris(listOf(uri)) }
                             )
                             1 -> GalleryScreen(
@@ -1421,6 +1425,13 @@ class MainActivity : ComponentActivity() {
         startActivity(chooser)
     }
 
+    private fun copyImageToClipboard(uri: Uri) {
+        val clip = ClipData.newUri(contentResolver, "SnapCrop", uri)
+        val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(clip)
+        Toast.makeText(this, getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
+    }
+
     private fun requestDeleteUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -1601,6 +1612,7 @@ private fun HomeScreen(
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
+    onCopyCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
 ) {
     var cropPendingDelete by remember { mutableStateOf<RecentCrop?>(null) }
@@ -1941,6 +1953,7 @@ private fun HomeScreen(
                     RecentCropTile(
                         crop = crop,
                         onOpen = { onOpenCrop(crop.uri) },
+                        onCopy = { onCopyCrop(crop.uri) },
                         onDelete = { cropPendingDelete = crop }
                     )
                 }
@@ -1998,6 +2011,7 @@ private fun HomeScreen(
 private fun RecentCropTile(
     crop: RecentCrop,
     onOpen: () -> Unit,
+    onCopy: () -> Unit,
     onDelete: () -> Unit
 ) {
     Box(
@@ -2012,20 +2026,36 @@ private fun RecentCropTile(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
-        IconButton(
-            onClick = onDelete,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(36.dp)
-                .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+        Column(
+            modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Icon(
-                Icons.Default.Delete,
-                contentDescription = stringResource(R.string.home_delete_crop_cd),
-                tint = Tertiary,
-                modifier = Modifier.size(18.dp)
-            )
+            IconButton(
+                onClick = onCopy,
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = stringResource(R.string.home_copy_crop_cd),
+                    tint = OnSurface,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.home_delete_crop_cd),
+                    tint = Tertiary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }

@@ -4,6 +4,8 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Intent
 import android.database.ContentObserver
@@ -437,6 +439,7 @@ class ScreenshotService : Service() {
                         }
 
                         prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()
+                        handler.post { copyUriToClipboard(savedUri) }
                         val message = if (actionRule != null) {
                             buildString {
                                 append(getString(R.string.notif_quick_auto_rule, actionRule.label, actionRule.albumName))
@@ -514,6 +517,13 @@ class ScreenshotService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(DETECTED_NOTIF_ID, notification)
         // Do NOT recycle thumbnail here — the notification system reads it asynchronously
+    }
+
+    private fun copyUriToClipboard(uri: Uri) {
+        try {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newUri(contentResolver, "SnapCrop", uri))
+        } catch (_: Exception) {}
     }
 
     private fun dismissDetectedNotification() {
