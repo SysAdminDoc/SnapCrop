@@ -30,6 +30,17 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: aCropalypse regression guard
+        run: |
+          # CVE-2023-21036: writing shorter data to an existing file without truncation leaks
+          # trailing bytes from the original. All SnapCrop saves use freshly insert()-ed MediaStore
+          # URIs (safe). Fail CI if any future code opens an existing URI with "rw" or explicit "w"
+          # mode — the safe alternatives are the default openOutputStream(uri) on a new URI, or "wt".
+          if grep -rn --include='*.kt' --include='*.java' -E 'open(OutputStream|FileDescriptor)\([^)]*"rw?"[^t]' app/src/main; then
+            echo "::error::Detected openOutputStream/openFileDescriptor with non-truncating write mode. Use insert()+default mode or \"wt\" to prevent aCropalypse trailing-byte leaks."
+            exit 1
+          fi
+
       - name: Verify app
         run: ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease
 
