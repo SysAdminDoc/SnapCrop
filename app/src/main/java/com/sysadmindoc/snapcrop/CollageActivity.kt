@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -51,13 +52,18 @@ private data class CollageLayout(
     val slots: Int = cols * rows
 )
 
+private data class CollageColor(
+    val color: Int,
+    @param:StringRes val nameRes: Int
+)
+
 private val collageBgColors = listOf(
-    0xFF1A1A1A.toInt() to "Dark",
-    0xFF000000.toInt() to "Black",
-    0xFFFFFFFF.toInt() to "White",
-    0xFF89B4FA.toInt() to "Blue",
-    0xFFA6E3A1.toInt() to "Green",
-    0xFFF38BA8.toInt() to "Pink",
+    CollageColor(0xFF1A1A1A.toInt(), R.string.collage_color_dark),
+    CollageColor(0xFF000000.toInt(), R.string.color_black),
+    CollageColor(0xFFFFFFFF.toInt(), R.string.color_white),
+    CollageColor(0xFF89B4FA.toInt(), R.string.color_blue),
+    CollageColor(0xFFA6E3A1.toInt(), R.string.color_green),
+    CollageColor(0xFFF38BA8.toInt(), R.string.collage_color_pink),
 )
 
 private val layouts = listOf(
@@ -179,7 +185,7 @@ class CollageActivity : ComponentActivity() {
                 val result = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(result)
                 // Background
-                canvas.drawColor(collageBgColors[bgColorIdx.intValue.coerceIn(0, collageBgColors.size - 1)].first)
+                canvas.drawColor(collageBgColors[bgColorIdx.intValue.coerceIn(0, collageBgColors.size - 1)].color)
 
                 // Decode only the cells we actually use, downsampled to roughly the cell size, one at
                 // a time — full-resolution sources are never all held in memory at once.
@@ -337,12 +343,14 @@ private fun CollageScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(layouts, key = { it.name }) { l ->
+                val selectedSuffix = if (layout == l) stringResource(R.string.selected_suffix) else ""
+                val layoutCd = stringResource(R.string.collage_layout_cd, l.name, l.slots, selectedSuffix)
                 FilterChip(
                     selected = layout == l,
                     onClick = { onLayoutChange(l) },
                     label = { Text(l.name, fontSize = 12.sp) },
                     modifier = Modifier.semantics {
-                        contentDescription = "${l.name} layout, ${l.slots} cells${if (layout == l) ", selected" else ""}"
+                        contentDescription = layoutCd
                     },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
@@ -355,12 +363,13 @@ private fun CollageScreen(
         // Spacing slider
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically) {
+            val gapCd = stringResource(R.string.collage_gap_cd, spacing)
             Text(stringResource(R.string.collage_gap_px, spacing), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(56.dp))
             Slider(
                 value = spacing.toFloat(), onValueChange = { onSpacingChange(it.toInt()) },
                 valueRange = 0f..20f,
                 modifier = Modifier.weight(1f).semantics {
-                    contentDescription = "Gap spacing, ${spacing} pixels"
+                    contentDescription = gapCd
                 },
                 colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
             )
@@ -373,12 +382,17 @@ private fun CollageScreen(
             Text(stringResource(R.string.collage_cells), color = OnSurfaceVariant, fontSize = 11.sp)
             listOf("4:3" to 4f/3f, "1:1" to 1f, "16:9" to 16f/9f, "3:4" to 3f/4f).forEach { (label, ratio) ->
                 val isSelected = kotlin.math.abs(cellAspect - ratio) < 0.01f
+                val aspectCd = stringResource(
+                    R.string.collage_aspect_cd,
+                    label,
+                    if (isSelected) stringResource(R.string.selected_suffix) else ""
+                )
                 FilterChip(
                     selected = isSelected,
                     onClick = { onCellAspectChange(ratio) },
                     label = { Text(label, fontSize = 11.sp) },
                     modifier = Modifier.semantics {
-                        contentDescription = "$label cell aspect ratio${if (isSelected) ", selected" else ""}"
+                        contentDescription = aspectCd
                     },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
@@ -395,11 +409,17 @@ private fun CollageScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(stringResource(R.string.collage_bg_label), color = OnSurfaceVariant, fontSize = 11.sp)
-            collageBgColors.forEachIndexed { i, (color, name) ->
+            collageBgColors.forEachIndexed { i, colorOption ->
+                val name = stringResource(colorOption.nameRes)
+                val bgCd = stringResource(
+                    R.string.collage_background_cd,
+                    name,
+                    if (i == bgColorIdx) stringResource(R.string.selected_suffix) else ""
+                )
                 Box(
                     Modifier.size(36.dp)
                         .semantics {
-                            contentDescription = "$name background color${if (i == bgColorIdx) ", selected" else ""}"
+                            contentDescription = bgCd
                         }
                         .clickable { onBgColorChange(i) }
                 ) {
@@ -407,7 +427,7 @@ private fun CollageScreen(
                         Modifier
                             .align(Alignment.Center)
                             .size(24.dp)
-                            .background(Color(color), RoundedCornerShape(4.dp))
+                            .background(Color(colorOption.color), RoundedCornerShape(4.dp))
                             .then(if (i == bgColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
                     )
                 }
@@ -446,16 +466,17 @@ private fun CollageScreen(
                             for (col in 0 until layout.cols) {
                                 val idx = row * layout.cols + col
                                 val occupied = idx < uris.size
+                                val cellCd = if (occupied) {
+                                    stringResource(R.string.collage_cell_loaded_cd, idx + 1)
+                                } else {
+                                    stringResource(R.string.collage_cell_empty_cd, idx + 1)
+                                }
                                 Box(
                                     Modifier.weight(1f).fillMaxHeight()
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(Color.Black.copy(alpha = 0.3f))
                                         .semantics {
-                                            contentDescription = if (occupied) {
-                                                "Collage cell ${idx + 1}, image loaded"
-                                            } else {
-                                                "Empty collage cell ${idx + 1}, tap to add image"
-                                            }
+                                            contentDescription = cellCd
                                         }
                                         .clickable {
                                             // Occupied cell: long-press would remove, single-tap is no-op

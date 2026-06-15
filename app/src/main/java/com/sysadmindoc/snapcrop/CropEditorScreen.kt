@@ -634,10 +634,10 @@ fun CropEditorScreen(
     } else 0
 
     val methodLabel = when (cropMethod) {
-        "border" -> "Border"
-        "border+bars" -> "Bars+Border"
-        "statusbar" -> "Bars"
-        "ai" -> "AI"
+        "border" -> stringResource(R.string.crop_method_border)
+        "border+bars" -> stringResource(R.string.crop_method_bars_border)
+        "statusbar" -> stringResource(R.string.crop_method_bars)
+        "ai" -> stringResource(R.string.crop_method_ai)
         else -> if (cropMethod.startsWith("profile:")) cropMethod.substringAfter(":") else ""
     }
 
@@ -875,7 +875,7 @@ fun CropEditorScreen(
                 Text(stringResource(R.string.editor_inspector), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(12.dp))
 
-                PanelSection("Mode") {
+                PanelSection(stringResource(R.string.editor_section_mode)) {
                     modeOptions.chunked(2).forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             row.forEach { (label, mode, color) ->
@@ -1076,7 +1076,7 @@ fun CropEditorScreen(
                                     Text(stringResource(R.string.editor_undo), color = Tertiary, fontSize = 11.sp)
                                 }
                                 TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
-                                    Text("Clear", color = Tertiary, fontSize = 11.sp)
+                                    Text(stringResource(R.string.editor_clear), color = Tertiary, fontSize = 11.sp)
                                 }
                             }
                         }
@@ -1085,7 +1085,7 @@ fun CropEditorScreen(
 
                 if (editMode == EditMode.DRAW || drawPaths.isNotEmpty()) {
                     if (drawPresets.isNotEmpty()) {
-                        PanelSection("Presets") {
+                        PanelSection(stringResource(R.string.editor_section_presets)) {
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 drawPresets.forEach { preset ->
                                     FilterChip(selected = false,
@@ -1196,7 +1196,7 @@ fun CropEditorScreen(
                             }
                             if (drawPaths.isNotEmpty()) {
                                 TextButton(onClick = { pushUndo(); drawPaths.clear(); drawRedoStack.clear() }) {
-                                    Text("Clear", color = Secondary, fontSize = 11.sp)
+                                    Text(stringResource(R.string.editor_clear), color = Secondary, fontSize = 11.sp)
                                 }
                             }
                         }
@@ -1583,7 +1583,7 @@ fun CropEditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("BG:", color = OnSurfaceVariant, fontSize = 11.sp)
+                Text(stringResource(R.string.draw_background_label), color = OnSurfaceVariant, fontSize = 11.sp)
                 gradLabels.forEachIndexed { i, label ->
                     FilterChip(
                         selected = gradientBg == i,
@@ -1711,7 +1711,7 @@ fun CropEditorScreen(
                             Text(stringResource(R.string.editor_undo), color = Tertiary, fontSize = 11.sp)
                         }
                         TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
-                            Text("Clear", color = Tertiary, fontSize = 11.sp)
+                            Text(stringResource(R.string.editor_clear), color = Tertiary, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1905,7 +1905,7 @@ fun CropEditorScreen(
                     }
                     if (drawPaths.isNotEmpty()) {
                         TextButton(onClick = { pushUndo(); drawPaths.clear(); drawRedoStack.clear() }) {
-                            Text("Clear", color = Secondary, fontSize = 11.sp)
+                            Text(stringResource(R.string.editor_clear), color = Secondary, fontSize = 11.sp)
                         }
                     }
                     TextButton(
@@ -2083,7 +2083,7 @@ fun CropEditorScreen(
                 }
                 // Curves (per-channel RGB)
                 val curvesColor = OcrAccent // Lavender
-                Text("Curves", color = curvesColor, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                Text(stringResource(R.string.adjust_curves), color = curvesColor, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(stringResource(R.string.adjust_curve_r), color = ChannelRed, fontSize = 11.sp, modifier = Modifier.width(72.dp))
@@ -2329,7 +2329,7 @@ fun CropEditorScreen(
                                                         cropBottom = (tapped.bounds.bottom + pad).coerceAtMost(bitmap.height)
                                                         selectedRatio = AspectRatio.FREE
                                                         editMode = EditMode.CROP
-                                                        android.widget.Toast.makeText(context, "Cropped to text block", android.widget.Toast.LENGTH_SHORT).show()
+                                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_cropped_to_text_block), android.widget.Toast.LENGTH_SHORT).show()
                                                         haptic()
                                                     }
                                                 } else if (zoomLevel > 1.05f) { zoomLevel = 1f; panX = 0f; panY = 0f }
@@ -3574,7 +3574,7 @@ fun CropEditorScreen(
             title = { Text(stringResource(R.string.resize_dialog_editor_title), color = OnSurface) },
             text = {
                 Column {
-                    Text("Current: ${bitmap.width}x${bitmap.height}", color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.resize_current_dimensions, bitmap.width, bitmap.height), color = OnSurfaceVariant, fontSize = 13.sp)
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.resize_max_dimension_px), color = OnSurfaceVariant, fontSize = 12.sp)
                     Spacer(Modifier.height(4.dp))
@@ -3742,7 +3742,7 @@ fun CropEditorScreen(
             title = { Text(stringResource(R.string.crop_precise_input_title), color = OnSurface) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Image: ${bitmap.width}x${bitmap.height}", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Text(stringResource(R.string.crop_image_dimensions, bitmap.width, bitmap.height), color = OnSurfaceVariant, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = inputX, onValueChange = { inputX = it.filter { c -> c.isDigit() } },
@@ -3787,15 +3787,19 @@ fun CropEditorScreen(
                     val y = inputY.toIntOrNull() ?: 0
                     val w = inputW.toIntOrNull() ?: cropW
                     val h = inputH.toIntOrNull() ?: cropH
-                    val newLeft = x.coerceIn(0, bitmap.width - 50)
-                    val newTop = y.coerceIn(0, bitmap.height - 50)
-                    val newRight = (newLeft + w).coerceIn(newLeft + 50, bitmap.width)
-                    val newBottom = (newTop + h).coerceIn(newTop + 50, bitmap.height)
+                    val minCropW = minOf(50, bitmap.width).coerceAtLeast(1)
+                    val minCropH = minOf(50, bitmap.height).coerceAtLeast(1)
+                    val maxLeft = (bitmap.width - minCropW).coerceAtLeast(0)
+                    val maxTop = (bitmap.height - minCropH).coerceAtLeast(0)
+                    val newLeft = x.coerceIn(0, maxLeft)
+                    val newTop = y.coerceIn(0, maxTop)
+                    val newRight = (newLeft + w.coerceAtLeast(minCropW)).coerceIn(newLeft + minCropW, bitmap.width)
+                    val newBottom = (newTop + h.coerceAtLeast(minCropH)).coerceIn(newTop + minCropH, bitmap.height)
                     pushUndo()
                     cropLeft = newLeft; cropTop = newTop; cropRight = newRight; cropBottom = newBottom
                     selectedRatio = AspectRatio.FREE
                     showCropInputDialog = false
-                }) { Text("Apply", color = Primary) }
+                }) { Text(stringResource(R.string.apply), color = Primary) }
             },
             dismissButton = {
                 TextButton(onClick = { showCropInputDialog = false }) { Text(stringResource(R.string.cancel), color = OnSurfaceVariant) }

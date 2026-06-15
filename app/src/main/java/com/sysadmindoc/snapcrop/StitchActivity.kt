@@ -47,6 +47,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
+private fun stitchItemKey(uris: List<Uri>, index: Int): String {
+    val uri = uris[index]
+    val duplicateOrdinal = uris.take(index + 1).count { it == uri }
+    return "${uri}#$duplicateOrdinal"
+}
+
 class StitchActivity : ComponentActivity() {
 
     private val imageUris = mutableStateListOf<Uri>()
@@ -259,24 +265,32 @@ private fun StitchScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            val verticalCd = stringResource(
+                R.string.stitch_vertical_cd,
+                if (isVertical) stringResource(R.string.selected_suffix) else ""
+            )
             FilterChip(
                 selected = isVertical,
                 onClick = { if (!isVertical) onToggleDirection() },
                 label = { Text(stringResource(R.string.stitch_vertical)) },
                 modifier = Modifier.semantics {
-                    contentDescription = "Vertical stitch direction${if (isVertical) ", selected" else ""}"
+                    contentDescription = verticalCd
                 },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                     containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
                 shape = RoundedCornerShape(8.dp)
             )
+            val horizontalCd = stringResource(
+                R.string.stitch_horizontal_cd,
+                if (!isVertical) stringResource(R.string.selected_suffix) else ""
+            )
             FilterChip(
                 selected = !isVertical,
                 onClick = { if (isVertical) onToggleDirection() },
                 label = { Text(stringResource(R.string.stitch_horizontal)) },
                 modifier = Modifier.semantics {
-                    contentDescription = "Horizontal stitch direction${if (!isVertical) ", selected" else ""}"
+                    contentDescription = horizontalCd
                 },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
@@ -314,7 +328,11 @@ private fun StitchScreen(
                 Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                items(uris.size) { index ->
+                items(
+                    count = uris.size,
+                    key = { index -> stitchItemKey(uris, index) },
+                    contentType = { "stitch-image-vertical" }
+                ) { index ->
                     Box {
                         AsyncImage(
                             model = uris[index], contentDescription = null,
@@ -353,7 +371,11 @@ private fun StitchScreen(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                items(uris.size) { index ->
+                items(
+                    count = uris.size,
+                    key = { index -> stitchItemKey(uris, index) },
+                    contentType = { "stitch-image-horizontal" }
+                ) { index ->
                     Box {
                         AsyncImage(
                             model = uris[index], contentDescription = null,

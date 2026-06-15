@@ -504,11 +504,21 @@
     <string name="editor_keep_editing">Keep editing</string>
     <string name="editor_file_size">~%1$s</string>
     <string name="editor_history">History</string>
+    <string name="editor_clear">Clear</string>
+    <string name="editor_section_mode">Mode</string>
+    <string name="editor_section_presets">Presets</string>
+    <string name="crop_method_border">Border</string>
+    <string name="crop_method_bars_border">Bars+Border</string>
+    <string name="crop_method_bars">Bars</string>
+    <string name="crop_method_ai">AI</string>
+    <string name="toast_cropped_to_text_block">Cropped to text block</string>
+    <string name="apply">Apply</string>
 
     <!-- Editor - draw options -->
     <string name="draw_filled">Fill</string>
     <string name="draw_dashed">Dash</string>
     <string name="draw_backdrop">BG</string>
+    <string name="draw_background_label">BG:</string>
     <string name="draw_width_label">Width</string>
     <string name="draw_color_picker_title">Choose color</string>
     <string name="draw_red">R</string>
@@ -607,6 +617,7 @@
     <string name="adjust_curve_r">Curve R</string>
     <string name="adjust_curve_g">Curve G</string>
     <string name="adjust_curve_b">Curve B</string>
+    <string name="adjust_curves">Curves</string>
     <string name="adjust_reset">Reset</string>
     <string name="adjust_auto_enhance">Auto</string>
     <string name="adjust_remove_bg">BG Remove</string>
@@ -635,6 +646,7 @@
     <!-- Resize dialog (editor) -->
     <string name="resize_dialog_editor_title">Resize image</string>
     <string name="resize_max_dimension_px">Max dimension:</string>
+    <string name="resize_current_dimensions">Current: %1$d x %2$d</string>
 
     <!-- Aspect ratios -->
     <string name="ratio_circle">Circle</string>
@@ -676,6 +688,8 @@
     <string name="stitch_move_up_cd">Move image %1$d up</string>
     <string name="stitch_move_down_cd">Move image %1$d down</string>
     <string name="stitch_remove_cd">Remove image %1$d</string>
+    <string name="stitch_vertical_cd">Vertical stitch direction%1$s</string>
+    <string name="stitch_horizontal_cd">Horizontal stitch direction%1$s</string>
 
     <!-- Collage activity -->
     <string name="collage_title">Collage</string>
@@ -696,6 +710,14 @@
     <string name="collage_cells">Cells:</string>
     <string name="collage_bg_label">BG:</string>
     <string name="collage_remove_cd">Remove image from cell %1$d</string>
+    <string name="collage_layout_cd">%1$s layout, %2$d cells%3$s</string>
+    <string name="collage_gap_cd">Gap spacing, %1$d pixels</string>
+    <string name="collage_aspect_cd">%1$s cell aspect ratio%2$s</string>
+    <string name="collage_background_cd">%1$s background color%2$s</string>
+    <string name="collage_cell_loaded_cd">Collage cell %1$d, image loaded</string>
+    <string name="collage_cell_empty_cd">Empty collage cell %1$d, tap to add image</string>
+    <string name="collage_color_dark">Dark</string>
+    <string name="collage_color_pink">Pink</string>
 
     <!-- Device frame activity -->
     <string name="device_frame_title">Device Mockup</string>
@@ -711,6 +733,8 @@
     <string name="device_frame_rendering">Rendering mockup…</string>
     <string name="device_frame_save_button">Save Mockup</string>
     <string name="device_frame_choose">Choose image</string>
+    <string name="device_frame_option_cd">%1$s device frame%2$s</string>
+    <string name="crop_image_dimensions">Image: %1$d x %2$d</string>
 
     <!-- Video clip activity -->
     <string name="video_title">Video Tools</string>

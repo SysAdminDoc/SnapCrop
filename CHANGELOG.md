@@ -52,6 +52,10 @@ All notable changes to SnapCrop will be documented in this file.
   hardcoded editor/video/collage accessibility strings were moved to resources.
   The half-width Batch tile copy was shortened to avoid awkward ellipsizing on
   small screens and larger font scales.
+- Release-candidate polish pass: localized the remaining Stitch/Collage/Device
+  Mockup option semantics plus editor utility labels, added stable lazy-list
+  keys to Stitch and Device Mockup pickers, and hardened precise crop input for
+  very small images.
 
 - Added settings/preset backup & restore: export all preferences, presets, and
   app-crop profiles to a JSON file and restore them after a reinstall (the app

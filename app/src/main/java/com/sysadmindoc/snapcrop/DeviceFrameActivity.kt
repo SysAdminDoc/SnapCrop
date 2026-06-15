@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,7 +42,8 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 private data class DeviceFrame(
-    val name: String,
+    val key: String,
+    @param:StringRes val nameRes: Int,
     val bezelColor: Int,       // bezel fill color
     val cornerRadius: Float,   // fraction of width
     val bezelWidth: Float,     // fraction of width
@@ -50,11 +52,11 @@ private data class DeviceFrame(
 )
 
 private val frames = listOf(
-    DeviceFrame("Pixel", 0xFF1A1A1A.toInt(), 0.08f, 0.03f, 0.06f, 0.015f),
-    DeviceFrame("iPhone", 0xFF2C2C2E.toInt(), 0.10f, 0.025f, 0.08f, 0.02f),
-    DeviceFrame("Samsung", 0xFF000000.toInt(), 0.07f, 0.02f, 0.05f, 0.01f),
-    DeviceFrame("Flat", 0xFF333333.toInt(), 0.05f, 0.04f, 0.03f, 0f),
-    DeviceFrame("White", 0xFFE0E0E0.toInt(), 0.08f, 0.03f, 0.06f, 0.015f),
+    DeviceFrame("pixel", R.string.device_frame_pixel, 0xFF1A1A1A.toInt(), 0.08f, 0.03f, 0.06f, 0.015f),
+    DeviceFrame("iphone", R.string.device_frame_iphone, 0xFF2C2C2E.toInt(), 0.10f, 0.025f, 0.08f, 0.02f),
+    DeviceFrame("samsung", R.string.device_frame_samsung, 0xFF000000.toInt(), 0.07f, 0.02f, 0.05f, 0.01f),
+    DeviceFrame("flat", R.string.device_frame_flat, 0xFF333333.toInt(), 0.05f, 0.04f, 0.03f, 0f),
+    DeviceFrame("white", R.string.device_frame_white, 0xFFE0E0E0.toInt(), 0.08f, 0.03f, 0.06f, 0.015f),
 )
 
 class DeviceFrameActivity : ComponentActivity() {
@@ -262,13 +264,19 @@ private fun FrameScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(frames) { f ->
+            items(frames, key = { it.key }, contentType = { "device-frame-chip" }) { f ->
+                val frameName = stringResource(f.nameRes)
+                val frameCd = stringResource(
+                    R.string.device_frame_option_cd,
+                    frameName,
+                    if (frame == f) stringResource(R.string.selected_suffix) else ""
+                )
                 FilterChip(
                     selected = frame == f,
                     onClick = { onFrameChange(f) },
-                    label = { Text(f.name, fontSize = 12.sp) },
+                    label = { Text(frameName, fontSize = 12.sp) },
                     modifier = Modifier.semantics {
-                        contentDescription = "${f.name} device frame${if (frame == f) ", selected" else ""}"
+                        contentDescription = frameCd
                     },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
