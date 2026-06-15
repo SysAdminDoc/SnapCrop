@@ -121,6 +121,13 @@
     <string name="rename_tokens">Tokens: %app%, %date%, %time%, %timestamp%, %counter%, %profile%</string>
     <string name="rename_profile_label">Profile name</string>
 
+    <!-- Color sampler -->
+    <string name="sampler_title">Color sampler</string>
+    <string name="sampler_color_1">Sample 1</string>
+    <string name="sampler_color_2">Sample 2</string>
+    <string name="sampler_contrast">Contrast</string>
+    <string name="sampler_clear">Clear</string>
+
     <!-- Accessibility disclosure dialog -->
     <string name="accessibility_dialog_title">Enable long screenshot access?</string>
     <string name="accessibility_dialog_body">Long Screenshot uses Android Accessibility only after you start the action. It captures the visible screen, reads window structure enough to scroll, and performs scroll gestures to stitch frames. Frames stay on this device and are saved to your SnapCrop folder; SnapCrop does not upload or share Accessibility data. You can skip this and still use manual crop, stitch, gallery, and editor tools.</string>

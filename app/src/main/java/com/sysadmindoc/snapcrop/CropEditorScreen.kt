@@ -211,6 +211,9 @@ fun CropEditorScreen(
     // Index of the committed layer currently in transform mode (move/resize/rotate), or -1.
     var selectedLayerIndex by remember { mutableIntStateOf(-1) }
     var eyedropperActive by remember { mutableStateOf(false) }
+    var samplerColor1 by remember { mutableStateOf<Int?>(null) }
+    var samplerColor2 by remember { mutableStateOf<Int?>(null) }
+    var showSamplerDialog by remember { mutableStateOf(false) }
     var showLayerPanel by remember { mutableStateOf(false) }
     var showSavePresetDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -2201,7 +2204,10 @@ fun CropEditorScreen(
                                                 if (eyedropperActive && editMode == EditMode.DRAW && !bitmap.isRecycled) {
                                                     val bx = ((downPos.x - offsetX) / scaleX).toInt().coerceIn(0, bitmap.width - 1)
                                                     val by = ((downPos.y - offsetY) / scaleY).toInt().coerceIn(0, bitmap.height - 1)
-                                                    drawColor = bitmap.getPixel(bx, by)
+                                                    val pixel = bitmap.getPixel(bx, by)
+                                                    drawColor = pixel
+                                                    if (samplerColor1 == null) { samplerColor1 = pixel } else { samplerColor2 = pixel }
+                                                    showSamplerDialog = true
                                                     eyedropperActive = false
                                                     haptic()
                                                 } else if (editMode == EditMode.DRAW) {
@@ -3573,6 +3579,16 @@ fun CropEditorScreen(
         )
     }
 
+    if (showSamplerDialog) {
+        ColorSamplerDialog(
+            color1 = samplerColor1,
+            color2 = samplerColor2,
+            onDismiss = { showSamplerDialog = false },
+            onClear = { samplerColor1 = null; samplerColor2 = null; showSamplerDialog = false },
+            context = context
+        )
+    }
+
     // Crop input dialog — type exact pixel values
     if (showCropInputDialog) {
         var inputX by remember { mutableStateOf(cropLeft.toString()) }
@@ -3645,4 +3661,123 @@ fun CropEditorScreen(
             containerColor = SurfaceVariant
         )
     }
+}
+
+@Composable
+private fun ColorSamplerDialog(
+    color1: Int?,
+    color2: Int?,
+    onDismiss: () -> Unit,
+    onClear: () -> Unit,
+    context: android.content.Context
+) {
+    fun copyText(text: String) {
+        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", text))
+        android.widget.Toast.makeText(context, context.getString(R.string.toast_copied), android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sampler_title), color = OnSurface) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                color1?.let { c ->
+                    ColorSample(c, stringResource(R.string.sampler_color_1)) { copyText(it) }
+                }
+                color2?.let { c ->
+                    ColorSample(c, stringResource(R.string.sampler_color_2)) { copyText(it) }
+                }
+                if (color1 != null && color2 != null) {
+                    val ratio = wcagContrastRatio(color1, color2)
+                    val apca = apcaContrast(color1, color2)
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.sampler_contrast), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("WCAG 2.x: %.2f:1".format(ratio), color = OnSurfaceVariant, fontSize = 12.sp,
+                        modifier = Modifier.clickable { copyText("%.2f:1".format(ratio)) })
+                    val wcagAA = if (ratio >= 4.5) "Pass" else "Fail"
+                    val wcagAAA = if (ratio >= 7.0) "Pass" else "Fail"
+                    Text("AA (4.5:1): $wcagAA  |  AAA (7:1): $wcagAAA", color = OnSurfaceVariant, fontSize = 11.sp)
+                    Text("APCA Lc: %.1f".format(apca), color = OnSurfaceVariant, fontSize = 12.sp,
+                        modifier = Modifier.clickable { copyText("Lc %.1f".format(apca)) })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close), color = Primary) }
+        },
+        dismissButton = {
+            TextButton(onClick = onClear) { Text(stringResource(R.string.sampler_clear), color = OnSurfaceVariant) }
+        },
+        containerColor = SurfaceVariant
+    )
+}
+
+@Composable
+private fun ColorSample(color: Int, label: String, onCopy: (String) -> Unit) {
+    val r = (color ushr 16) and 0xFF
+    val g = (color ushr 8) and 0xFF
+    val b = color and 0xFF
+    val hex = "#%02X%02X%02X".format(r, g, b)
+    val rgb = "rgb($r, $g, $b)"
+    val hsl = toHsl(r, g, b)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            Modifier.size(32.dp)
+                .background(Color(color), RoundedCornerShape(6.dp))
+                .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+        )
+        Column {
+            Text(label, color = OnSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(hex, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(hex) })
+            Text(rgb, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(rgb) })
+            Text(hsl, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(hsl) })
+        }
+    }
+}
+
+private fun toHsl(r: Int, g: Int, b: Int): String {
+    val rf = r / 255f; val gf = g / 255f; val bf = b / 255f
+    val max = maxOf(rf, gf, bf); val min = minOf(rf, gf, bf)
+    val l = (max + min) / 2f
+    if (max == min) return "hsl(0, 0%%, %.0f%%)".format(l * 100)
+    val d = max - min
+    val s = if (l > 0.5f) d / (2f - max - min) else d / (max + min)
+    val h = when (max) {
+        rf -> ((gf - bf) / d + (if (gf < bf) 6 else 0)) * 60
+        gf -> ((bf - rf) / d + 2) * 60
+        else -> ((rf - gf) / d + 4) * 60
+    }
+    return "hsl(%.0f, %.0f%%, %.0f%%)".format(h, s * 100, l * 100)
+}
+
+private fun relativeLuminance(color: Int): Double {
+    fun channel(v: Int): Double {
+        val s = v / 255.0
+        return if (s <= 0.04045) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channel((color ushr 16) and 0xFF) +
+        0.7152 * channel((color ushr 8) and 0xFF) +
+        0.0722 * channel(color and 0xFF)
+}
+
+private fun wcagContrastRatio(c1: Int, c2: Int): Double {
+    val l1 = relativeLuminance(c1)
+    val l2 = relativeLuminance(c2)
+    return if (l1 > l2) (l1 + 0.05) / (l2 + 0.05) else (l2 + 0.05) / (l1 + 0.05)
+}
+
+private fun apcaContrast(text: Int, bg: Int): Double {
+    fun sRGBtoY(c: Int): Double {
+        fun f(v: Int): Double { val s = v / 255.0; return if (s <= 0.04045) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4) }
+        return 0.2126729 * f((c ushr 16) and 0xFF) + 0.7151522 * f((c ushr 8) and 0xFF) + 0.0721750 * f(c and 0xFF)
+    }
+    val txtY = sRGBtoY(text)
+    val bgY = sRGBtoY(bg)
+    val sapc = if (bgY >= txtY) {
+        (Math.pow(bgY, 0.56) - Math.pow(txtY, 0.57)) * 1.14
+    } else {
+        (Math.pow(bgY, 0.65) - Math.pow(txtY, 0.62)) * 1.14
+    }
+    return if (Math.abs(sapc) < 0.1) 0.0 else if (sapc > 0) (sapc - 0.027) * 100 else (sapc + 0.027) * 100
 }
