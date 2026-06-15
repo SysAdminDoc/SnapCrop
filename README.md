@@ -55,7 +55,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Adaptive wide editor layout with persistent side controls for tablets, foldables, and desktop-mode windows
 - Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
 
-**Draw — 16 Tools**
+**Draw — 17 Tools**
 | Tool | What it does |
 |------|-------------|
 | Pen | Smooth freehand with velocity-based stroke width |
@@ -74,6 +74,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 | Eraser | Erase to transparent |
 | Flood Fill | Fill a region with your selected color |
 | Smart Erase | Mask-based object removal with edge-aware inpainting |
+| Ruler | Measure pixel distance between two points with dimension label |
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
