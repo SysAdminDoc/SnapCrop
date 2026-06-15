@@ -46,6 +46,12 @@ All notable changes to SnapCrop will be documented in this file.
   WorkManager job remain the refresh paths.
 - Home workflow tile titles can wrap to two lines, with explicit ellipsis as a
   last-resort guard for small screens and large font scales.
+- Stricter polish pass: Gallery album loads now assign Compose state on the
+  main dispatcher, album/photo grids use stable lazy-list keys, remaining dense
+  editor/collage controls meet the 36dp project touch-target floor, and
+  hardcoded editor/video/collage accessibility strings were moved to resources.
+  The half-width Batch tile copy was shortened to avoid awkward ellipsizing on
+  small screens and larger font scales.
 
 - Added settings/preset backup & restore: export all preferences, presets, and
   app-crop profiles to a JSON file and restore them after a reinstall (the app

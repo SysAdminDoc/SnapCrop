@@ -16,7 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.PlayCircle
@@ -226,7 +226,7 @@ private fun VideoClipScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = OnSurface)
             }
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
@@ -273,12 +273,17 @@ private fun VideoClipScreen(
         Text(stringResource(R.string.video_frame_label), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(formatMs(framePosition.toLong()), color = OnSurfaceVariant, fontSize = 12.sp, modifier = Modifier.width(56.dp))
+            val framePositionCd = stringResource(
+                R.string.video_frame_slider_cd,
+                formatMs(framePosition.toLong()),
+                formatMs(durationMs)
+            )
             Slider(
                 value = framePosition.coerceIn(0f, durationMs.toFloat().coerceAtLeast(1f)),
                 onValueChange = { framePosition = it },
                 valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
                 modifier = Modifier.weight(1f).semantics {
-                    contentDescription = "Frame position at ${formatMs(framePosition.toLong())} of ${formatMs(durationMs)}"
+                    contentDescription = framePositionCd
                 },
                 colors = SliderDefaults.colors(
                     thumbColor = Primary,
@@ -311,6 +316,11 @@ private fun VideoClipScreen(
             color = OnSurfaceVariant,
             fontSize = 12.sp
         )
+        val trimRangeCd = stringResource(
+            R.string.video_trim_slider_cd,
+            formatMs(trimRange.start.toLong()),
+            formatMs(trimRange.endInclusive.toLong())
+        )
         RangeSlider(
             value = trimRange,
             onValueChange = {
@@ -318,7 +328,7 @@ private fun VideoClipScreen(
             },
             valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
             modifier = Modifier.semantics {
-                contentDescription = "Trim range from ${formatMs(trimRange.start.toLong())} to ${formatMs(trimRange.endInclusive.toLong())}"
+                contentDescription = trimRangeCd
             },
             colors = SliderDefaults.colors(
                 thumbColor = Primary,

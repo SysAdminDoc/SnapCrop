@@ -1971,7 +1971,7 @@ private fun HomeScreen(
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(recentCrops) { crop ->
+                items(recentCrops, key = { it.uri }) { crop ->
                     RecentCropTile(
                         crop = crop,
                         onOpen = { onOpenCrop(crop.uri) },

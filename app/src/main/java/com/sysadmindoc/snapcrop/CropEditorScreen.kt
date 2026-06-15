@@ -1012,7 +1012,7 @@ fun CropEditorScreen(
                             ),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = onFlipV, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
                         }
                     }
@@ -1033,7 +1033,7 @@ fun CropEditorScreen(
                                             faceRedacting = false
                                             android.widget.Toast.makeText(
                                                 context,
-                                                if (faces.isEmpty()) context.getString(R.string.toast_no_faces) else "Redacted ${faces.size} face(s)",
+                                                if (faces.isEmpty()) context.getString(R.string.toast_no_faces) else context.getString(R.string.toast_redacted_faces, faces.size),
                                                 android.widget.Toast.LENGTH_SHORT
                                             ).show()
                                             if (faces.isNotEmpty()) haptic()
@@ -1057,7 +1057,7 @@ fun CropEditorScreen(
                                             textRedacting = false
                                             android.widget.Toast.makeText(
                                                 context,
-                                                if (result.rects.isEmpty()) context.getString(R.string.toast_no_text) else "Redacted ${result.rects.size} text block(s)",
+                                                if (result.rects.isEmpty()) context.getString(R.string.toast_no_text) else context.getString(R.string.toast_redacted_text_blocks, result.rects.size),
                                                 android.widget.Toast.LENGTH_SHORT
                                             ).show()
                                             if (result.rects.isNotEmpty()) haptic()
@@ -1151,19 +1151,28 @@ fun CropEditorScreen(
                                     shape = RoundedCornerShape(8.dp)
                                 )
                             }
-                            IconButton(onClick = { eyedropperActive = !eyedropperActive }, modifier = Modifier.size(30.dp)) {
+                            IconButton(onClick = { eyedropperActive = !eyedropperActive }, modifier = Modifier.size(36.dp)) {
                                 Icon(Icons.Default.Colorize, stringResource(R.string.draw_eyedropper), tint = if (eyedropperActive) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val selectedSuffix = stringResource(R.string.selected_suffix)
                             drawColors.take(7).forEach { (color, name) ->
+                                val selected = drawColor == color
                                 Box(
                                     Modifier
-                                        .size(if (drawColor == color) 24.dp else 18.dp)
-                                        .background(Color(color), RoundedCornerShape(3.dp))
-                                        .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
+                                        .size(36.dp)
+                                        .semantics { contentDescription = "$name color${if (selected) selectedSuffix else ""}" }
                                         .clickable { drawColor = color; eyedropperActive = false }
-                                )
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .align(Alignment.Center)
+                                            .size(if (selected) 24.dp else 18.dp)
+                                            .background(Color(color), RoundedCornerShape(3.dp))
+                                            .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                                    )
+                                }
                             }
                         }
                         PanelSlider(
@@ -1281,7 +1290,7 @@ fun CropEditorScreen(
                         tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
                 if (undoStack.isNotEmpty()) {
-                    IconButton(onClick = { showUndoHistory = !showUndoHistory }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { showUndoHistory = !showUndoHistory }, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.History, stringResource(R.string.editor_history),
                             tint = if (showUndoHistory) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
                     }
@@ -1380,8 +1389,8 @@ fun CropEditorScreen(
                     )
                 }
                 // Transform tools
-                IconButton(onClick = onFlipV, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Flip, "Flip V", tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
+                IconButton(onClick = onFlipV, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
             }
         }
 
@@ -1632,7 +1641,7 @@ fun CropEditorScreen(
                                     if (faces.isEmpty()) {
                                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_faces), android.widget.Toast.LENGTH_SHORT).show()
                                     } else {
-                                        android.widget.Toast.makeText(context, "Redacted ${faces.size} face(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_redacted_faces, faces.size), android.widget.Toast.LENGTH_SHORT).show()
                                         haptic()
                                     }
                                 }
@@ -1671,7 +1680,7 @@ fun CropEditorScreen(
                                     if (result.rects.isEmpty()) {
                                         android.widget.Toast.makeText(context, context.getString(R.string.toast_no_text), android.widget.Toast.LENGTH_SHORT).show()
                                     } else {
-                                        android.widget.Toast.makeText(context, "Redacted ${result.rects.size} text block(s)", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_redacted_text_blocks, result.rects.size), android.widget.Toast.LENGTH_SHORT).show()
                                         haptic()
                                     }
                                 }
@@ -1789,10 +1798,17 @@ fun CropEditorScreen(
                     // Recent custom colors
                     recentColors.forEachIndexed { index, color ->
                         val hex = String.format("#%06X", color and 0xFFFFFF)
+                        val selectedSuffix = stringResource(R.string.selected_suffix)
+                        val recentColorCd = stringResource(
+                            R.string.draw_recent_color_cd,
+                            index + 1,
+                            hex,
+                            if (drawColor == color) selectedSuffix else ""
+                        )
                         Box(
                             Modifier
                                 .size(36.dp)
-                                .semantics { contentDescription = "Recent color ${index + 1}, $hex${if (drawColor == color) ", selected" else ""}" }
+                                .semantics { contentDescription = recentColorCd }
                                 .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } }
                         ) {
                             Box(
@@ -1806,10 +1822,11 @@ fun CropEditorScreen(
                     }
                     // Current color preview (tap to open color picker)
                     var showColorPicker by remember { mutableStateOf(false) }
+                    val currentDrawColorCd = stringResource(R.string.draw_current_color_cd)
                     Box(
                         Modifier
                             .size(36.dp)
-                            .semantics { contentDescription = "Current draw color, tap to open color picker" }
+                            .semantics { contentDescription = currentDrawColorCd }
                             .clickable { showColorPicker = true }
                     ) {
                         Box(
@@ -3637,7 +3654,7 @@ fun CropEditorScreen(
                         ))
                     }
                     showTextDialog = false
-                }) { Text("Add", color = Primary) }
+                }) { Text(stringResource(R.string.draw_add_text), color = Primary) }
             },
             dismissButton = {
                 TextButton(onClick = { showTextDialog = false }) { Text(stringResource(R.string.cancel), color = OnSurfaceVariant) }

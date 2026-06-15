@@ -336,7 +336,7 @@ private fun CollageScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(layouts) { l ->
+            items(layouts, key = { it.name }) { l ->
                 FilterChip(
                     selected = layout == l,
                     onClick = { onLayoutChange(l) },
@@ -465,6 +465,7 @@ private fun CollageScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (occupied) {
+                                        val removeCellDescription = stringResource(R.string.collage_remove_cd, idx + 1)
                                         AsyncImage(
                                             model = uris[idx], contentDescription = null,
                                             modifier = Modifier.fillMaxSize(),
@@ -472,11 +473,11 @@ private fun CollageScreen(
                                         )
                                         IconButton(
                                             onClick = { onRemoveImage(idx) },
-                                            modifier = Modifier.align(Alignment.TopEnd).size(28.dp)
+                                            modifier = Modifier.align(Alignment.TopEnd).size(36.dp)
                                                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                                         ) {
-                                            Icon(Icons.Default.Close, "Remove image from cell ${idx + 1}",
-                                                tint = OnSurface, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Default.Close, removeCellDescription,
+                                                tint = OnSurface, modifier = Modifier.size(18.dp))
                                         }
                                     } else {
                                         Text("+", color = OnSurfaceVariant, fontSize = 24.sp)

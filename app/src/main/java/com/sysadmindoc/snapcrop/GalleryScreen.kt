@@ -320,8 +320,8 @@ fun GalleryScreen(
         selectedAlbum?.let { path ->
             isLoading = true
             selectedIds.clear()
-            withContext(Dispatchers.IO) {
-                photos = when (path) {
+            val loadedPhotos = withContext(Dispatchers.IO) {
+                when (path) {
                     ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries)
                     FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, indexEntries)
                     else -> if (path.startsWith(SMART_ALBUM_PREFIX)) {
@@ -331,6 +331,7 @@ fun GalleryScreen(
                     }
                 }
             }
+            photos = loadedPhotos
             isLoading = false
         }
     }
@@ -370,7 +371,7 @@ fun GalleryScreen(
                 else viewerIndex = viewerIndex.coerceIn(0, photos.size - 1)
                 scope.launch(Dispatchers.IO) {
                     val refreshed = loadAlbums(context.contentResolver)
-                    val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH)
+                    val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH, indexEntries)
                     withContext(Dispatchers.Main) {
                         albums = refreshed
                         smartAlbums = refreshedSmart
@@ -433,7 +434,7 @@ fun GalleryScreen(
                         // Refresh albums in background (counts changed)
                         scope.launch(Dispatchers.IO) {
                             val refreshed = loadAlbums(context.contentResolver)
-                            val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH)
+                            val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH, indexEntries)
                             withContext(Dispatchers.Main) {
                                 albums = refreshed
                                 smartAlbums = refreshedSmart
@@ -649,7 +650,7 @@ private fun AlbumGrid(
     ) {
         if (showLibraryCards) {
             // "All Photos" card first
-            item {
+            item(key = "library-all-photos", contentType = "library-card") {
                 val allPhotosLabel = stringResource(R.string.gallery_all_photos)
                 val allPhotosCd = stringResource(R.string.gallery_album_cd, allPhotosLabel, totalMediaCount)
                 Card(
@@ -672,7 +673,7 @@ private fun AlbumGrid(
 
             // Favorites card
             if (favCount > 0) {
-                item {
+                item(key = "library-favorites", contentType = "library-card") {
                     val favoritesLabel = stringResource(R.string.gallery_favorites)
                     val favoritesCd = stringResource(R.string.gallery_album_cd, favoritesLabel, favCount)
                     Card(
@@ -696,7 +697,7 @@ private fun AlbumGrid(
         }
 
         if (smartAlbums.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "smart-albums-header", span = { GridItemSpan(maxLineSpan) }, contentType = "section-header") {
                 Text(
                     stringResource(R.string.gallery_smart_albums),
                     color = OnSurfaceVariant,
@@ -705,7 +706,7 @@ private fun AlbumGrid(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                 )
             }
-            items(smartAlbums) { album ->
+            items(smartAlbums, key = { it.path }, contentType = { "smart-album" }) { album ->
                 val smartAlbumCd = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle)
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
@@ -750,7 +751,7 @@ private fun AlbumGrid(
         }
 
         if (albums.isNotEmpty() && smartAlbums.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "albums-header", span = { GridItemSpan(maxLineSpan) }, contentType = "section-header") {
                 Text(
                     stringResource(R.string.gallery_albums),
                     color = OnSurfaceVariant,
@@ -761,7 +762,7 @@ private fun AlbumGrid(
             }
         }
 
-        items(albums) { album ->
+        items(albums, key = { it.path }, contentType = { "album" }) { album ->
             val albumCd = stringResource(R.string.gallery_album_cd, album.name, album.count)
             Card(
                 modifier = Modifier.fillMaxWidth().aspectRatio(1f)
@@ -814,6 +815,15 @@ private fun PhotoGrid(
     }
 
     val dateFormat = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
+    val selectedIdSet = selectedIds.toSet()
+    val indexById = remember(photos) { photos.withIndex().associate { (i, p) -> p.id to i } }
+    val groupedByDate = remember(photos, showDateHeaders) {
+        if (showDateHeaders) {
+            photos.groupBy { dateFormat.format(java.util.Date(it.dateAdded * 1000)) }
+        } else {
+            emptyMap()
+        }
+    }
 
     var lastPinchZoom by remember { mutableFloatStateOf(1f) }
     LazyVerticalGrid(
@@ -833,74 +843,33 @@ private fun PhotoGrid(
     ) {
         // Date section headers (full-span)
         if (showDateHeaders) {
-            val indexById = photos.withIndex().associate { (i, p) -> p.id to i }
-            val grouped = photos.groupBy { dateFormat.format(java.util.Date(it.dateAdded * 1000)) }
-            grouped.forEach { (date, datePhotos) ->
-                item(span = { GridItemSpan(maxLineSpan) }) {
+            groupedByDate.forEach { (date, datePhotos) ->
+                item(key = "date-$date", span = { GridItemSpan(maxLineSpan) }, contentType = "date-header") {
                     Text(date, color = OnSurfaceVariant, fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp))
                 }
-                items(datePhotos.size) { i ->
+                items(
+                    count = datePhotos.size,
+                    key = { i -> datePhotos[i].uri },
+                    contentType = { "photo" }
+                ) { i ->
                     val photo = datePhotos[i]
                     val globalIdx = indexById[photo.id] ?: 0
-                    val isSelected = photo.id in selectedIds
+                    val isSelected = photo.id in selectedIdSet
                     PhotoItem(photo, globalIdx, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
                 }
             }
         } else {
-        items(photos.size) { index ->
-            val photo = photos[index]
-            val isSelected = photo.id in selectedIds
-            val mediaItemLabel = stringResource(R.string.gallery_media_item)
-            val photoLabel = buildString {
-                append(photo.name.ifBlank { mediaItemLabel })
-                if (photo.isVideo) append(", video")
-                if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
-                if (isSelected) append(", selected")
+            items(
+                count = photos.size,
+                key = { index -> photos[index].uri },
+                contentType = { "photo" }
+            ) { index ->
+                val photo = photos[index]
+                val isSelected = photo.id in selectedIdSet
+                PhotoItem(photo, index, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
             }
-            Box(Modifier.semantics { contentDescription = photoLabel }) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(photo.uri).crossfade(true).size(250, 250).build(),
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .clip(RoundedCornerShape(2.dp))
-                        .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
-                        .combinedClickable(
-                            onClick = { onPhotoClick(photo, index) },
-                            onLongClick = { onPhotoLongClick(photo) }
-                        ),
-                    contentScale = ContentScale.Crop
-                )
-                if (photo.isVideo) {
-                    // Play icon + duration
-                    Icon(Icons.Default.PlayCircle, null,
-                        modifier = Modifier.align(Alignment.Center).size(32.dp),
-                        tint = Color.White.copy(alpha = 0.8f))
-                    if (photo.duration > 0) {
-                        val secs = (photo.duration / 1000).toInt()
-                        val durText = if (secs >= 3600) String.format("%d:%02d:%02d", secs / 3600, (secs % 3600) / 60, secs % 60) else "${secs / 60}:${String.format("%02d", secs % 60)}"
-                        Text(durText, color = Color.White, fontSize = 10.sp,
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
-                                .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp))
-                    }
-                }
-                if (photo.isScreenshot && !photo.isVideo) {
-                    Icon(Icons.Default.PhoneAndroid, null,
-                        modifier = Modifier.align(Alignment.TopStart).padding(4.dp).size(14.dp)
-                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                            .padding(2.dp),
-                        tint = Tertiary)
-                }
-                if (isSelected) {
-                    Icon(Icons.Default.CheckCircle, null,
-                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
-                        tint = Primary)
-                }
-            }
-        }
         } // else no date headers
     }
 }
@@ -1217,7 +1186,7 @@ private fun PhotoViewer(
                         TextButton(onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             clipboard.setPrimaryClip(
-                                android.content.ClipData.newPlainText("Summary", summaryText)
+                                android.content.ClipData.newPlainText(context.getString(R.string.gallery_summary_clip_label), summaryText)
                             )
                             Toast.makeText(context, context.getString(R.string.gallery_summary_copied), Toast.LENGTH_SHORT).show()
                         }) {

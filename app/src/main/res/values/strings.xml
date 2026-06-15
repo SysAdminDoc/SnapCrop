@@ -43,7 +43,7 @@
     <string name="home_crop_one_title">Crop one image</string>
     <string name="home_crop_one_subtitle">Open the editor with auto-crop, redaction, OCR, and export tools.</string>
     <string name="home_batch_title">Batch autocrop</string>
-    <string name="home_batch_subtitle">Clean several screenshots at once.</string>
+    <string name="home_batch_subtitle">Clean multiple screenshots.</string>
     <string name="home_delay_title">Delayed capture</string>
     <string name="home_delay_subtitle">Start a timed screenshot.</string>
     <string name="home_delay_choose">Choose delay</string>
@@ -157,6 +157,8 @@
     <string name="toast_shared">Shared</string>
     <string name="toast_no_text">No text found</string>
     <string name="toast_no_faces">No faces found</string>
+    <string name="toast_redacted_faces">Redacted %1$d face(s)</string>
+    <string name="toast_redacted_text_blocks">Redacted %1$d text block(s)</string>
     <string name="toast_share_failed">Share failed</string>
     <string name="toast_no_borders">No borders detected</string>
     <string name="toast_autocropped_saved">Autocropped, saved &amp; copied</string>
@@ -379,6 +381,7 @@
     <string name="gallery_describe">Describe</string>
     <string name="gallery_summary_copied">Summary copied</string>
     <string name="gallery_summary_copy">Copy</string>
+    <string name="gallery_summary_clip_label">Summary</string>
     <string name="gallery_export_pdf">Export PDF</string>
     <string name="gallery_rename">Rename selected</string>
     <string name="gallery_photo_count">%1$d photos</string>
@@ -518,6 +521,10 @@
     <string name="draw_save_preset_title">Save preset</string>
     <string name="draw_preset_name_label">Preset name</string>
     <string name="draw_eyedropper">Eyedropper</string>
+    <string name="draw_add_text">Add</string>
+    <string name="draw_recent_color_cd">Recent color %1$d, %2$s%3$s</string>
+    <string name="draw_current_color_cd">Current draw color, tap to open color picker</string>
+    <string name="selected_suffix">, selected</string>
     <string name="draw_layers_title">Layers</string>
     <string name="draw_layers_subtitle">Top layers render last</string>
     <string name="draw_layers_empty">Draw, place text, or add a callout to create a layer.</string>
@@ -688,6 +695,7 @@
     <string name="collage_gap_px">Gap: %1$dpx</string>
     <string name="collage_cells">Cells:</string>
     <string name="collage_bg_label">BG:</string>
+    <string name="collage_remove_cd">Remove image from cell %1$d</string>
 
     <!-- Device frame activity -->
     <string name="device_frame_title">Device Mockup</string>
@@ -723,6 +731,8 @@
     <string name="video_trim_clip">Trim clip</string>
     <string name="video_save_trim">Save trimmed clip</string>
     <string name="video_min_duration">Choose at least one second</string>
+    <string name="video_frame_slider_cd">Frame position at %1$s of %2$s</string>
+    <string name="video_trim_slider_cd">Trim range from %1$s to %2$s</string>
     <string name="video_screen_recording">Screen Recording</string>
     <string name="video_empty_subtitle">Trim recordings or grab a frame to edit.</string>
     <string name="video_footer">Frames open in the editor. Trimmed clips save to Movies/SnapCrop.</string>
