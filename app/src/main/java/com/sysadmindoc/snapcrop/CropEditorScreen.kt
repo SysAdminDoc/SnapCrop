@@ -1854,26 +1854,26 @@ fun CropEditorScreen(
                                     Spacer(Modifier.height(8.dp))
                                     Text(stringResource(R.string.draw_red), color = ChannelRed, fontSize = 11.sp)
                                     Slider(value = pickerR, onValueChange = { pickerR = it },
-                                        modifier = Modifier.semantics { contentDescription = "$redLabel, ${(pickerR * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$redLabel, ${(pickerR * 255).roundToInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Red, activeTrackColor = Color.Red, inactiveTrackColor = SurfaceVariant))
                                     Text(stringResource(R.string.draw_green), color = ChannelGreen, fontSize = 11.sp)
                                     Slider(value = pickerG, onValueChange = { pickerG = it },
-                                        modifier = Modifier.semantics { contentDescription = "$greenLabel, ${(pickerG * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$greenLabel, ${(pickerG * 255).roundToInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Green, activeTrackColor = Color.Green, inactiveTrackColor = SurfaceVariant))
                                     Text(stringResource(R.string.draw_blue), color = ChannelBlue, fontSize = 11.sp)
                                     Slider(value = pickerB, onValueChange = { pickerB = it },
-                                        modifier = Modifier.semantics { contentDescription = "$blueLabel, ${(pickerB * 255).toInt()}" },
+                                        modifier = Modifier.semantics { contentDescription = "$blueLabel, ${(pickerB * 255).roundToInt()}" },
                                         colors = SliderDefaults.colors(
                                         thumbColor = Color.Blue, activeTrackColor = Color.Blue, inactiveTrackColor = SurfaceVariant))
-                                    val hex = String.format("%02X%02X%02X", (pickerR * 255).toInt(), (pickerG * 255).toInt(), (pickerB * 255).toInt())
+                                    val hex = String.format("%02X%02X%02X", (pickerR * 255).roundToInt(), (pickerG * 255).roundToInt(), (pickerB * 255).roundToInt())
                                     Text(stringResource(R.string.draw_hex, hex), color = OnSurfaceVariant, fontSize = 12.sp)
                                 }
                             },
                             confirmButton = {
                                 TextButton(onClick = {
-                                    val newColor = (0xFF000000.toInt() or ((pickerR * 255).toInt() shl 16) or ((pickerG * 255).toInt() shl 8) or (pickerB * 255).toInt())
+                                    val newColor = (0xFF000000.toInt() or ((pickerR * 255).roundToInt() shl 16) or ((pickerG * 255).roundToInt() shl 8) or (pickerB * 255).roundToInt())
                                     drawColor = newColor
                                     if (!recentColors.contains(newColor)) {
                                         recentColors.add(0, newColor)

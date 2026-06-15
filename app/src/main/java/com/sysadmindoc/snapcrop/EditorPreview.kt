@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -106,14 +107,14 @@ internal fun BeforeAfterPreview(
             drawCircle(Color.White, 12f, Offset(dividerPx, size.height / 2))
         }
         Text(
-            "BEFORE",
+            stringResource(R.string.crop_preview_before),
             Modifier.align(Alignment.TopStart).padding(12.dp),
             color = Color.White.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold
         )
         Text(
-            "AFTER",
+            stringResource(R.string.crop_preview_after),
             Modifier.align(Alignment.TopEnd).padding(12.dp),
             color = Color.White.copy(alpha = 0.7f),
             fontSize = 10.sp,

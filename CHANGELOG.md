@@ -71,6 +71,20 @@ All notable changes to SnapCrop will be documented in this file.
   photos" partial-access state: the home card now explains the screenshot monitor
   needs full media access instead of silently doing nothing.
 
+- **WebDAV upload fix**: `appendWebDavFileName` now appends the filename when the
+  endpoint URL omits a trailing slash instead of silently uploading to the base URL.
+- **Bitmap leak fix**: `createCroppedBitmap` intermediate cleanup no longer leaks the
+  rotated bitmap when adjustments are a no-op (rotation + identity adjust + pixelate).
+- **Color picker accuracy**: RGB slider hex/color conversion uses proper rounding instead
+  of truncation, eliminating off-by-one color errors at intermediate slider positions.
+- **Curves LUT accuracy**: per-channel gamma curve table values now round instead of
+  truncating, matching the visual preview more faithfully.
+- **Perspective sidecar data loss**: project sidecars now persist the quad-corner
+  perspective warp (adj indices 17-24); previously reopening a `.snapcrop.json`
+  project silently dropped the perspective transform.
+- **Localization**: before/after preview labels extracted from hardcoded strings to
+  localizable string resources.
+
 - Added local crash diagnostics: an `UncaughtExceptionHandler` writes a stacktrace
   plus app/OS/device info to the app-private directory (last 5 retained), viewable,
   shareable, and clearable from Settings → About. Nothing is sent anywhere unless

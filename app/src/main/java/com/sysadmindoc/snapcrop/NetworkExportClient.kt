@@ -186,9 +186,8 @@ object NetworkExportClient {
 
     internal fun appendWebDavFileName(endpoint: String, fileName: String): String {
         val cleanEndpoint = endpoint.trim()
-        if (!cleanEndpoint.endsWith("/")) return cleanEndpoint
         val encoded = URLEncoder.encode(fileName, Charsets.UTF_8.name()).replace("+", "%20")
-        return "$cleanEndpoint$encoded"
+        return if (cleanEndpoint.endsWith("/")) "$cleanEndpoint$encoded" else "$cleanEndpoint/$encoded"
     }
 
     private fun multipartUpload(

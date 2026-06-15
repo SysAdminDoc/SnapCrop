@@ -1076,7 +1076,7 @@ class CropActivity : ComponentActivity() {
                 if (amount == 0f) { for (i in 0..255) lut[i] = i; return lut }
                 val gamma = if (amount > 0) 1f / (1f + amount / 50f) else 1f + (-amount / 50f)
                 for (i in 0..255) {
-                    lut[i] = (255.0 * Math.pow(i / 255.0, gamma.toDouble())).toInt().coerceIn(0, 255)
+                    lut[i] = (255.0 * Math.pow(i / 255.0, gamma.toDouble())).roundToInt().coerceIn(0, 255)
                 }
                 return lut
             }
@@ -1249,9 +1249,9 @@ class CropActivity : ComponentActivity() {
         } else bitmap
 
         val adjusted = applyAdjustments(rotated, adj)
-        if (rotated !== bitmap && adjusted !== rotated) rotated.recycle()
+        if (adjusted !== rotated && rotated !== bitmap) rotated.recycle()
         val pixelated = applyPixelate(adjusted, pixRects)
-        if (pixelated !== adjusted && adjusted !== rotated && adjusted !== bitmap) adjusted.recycle()
+        if (pixelated !== adjusted && adjusted !== bitmap) adjusted.recycle()
         val drawn = applyDraw(pixelated, drawPaths)
         if (drawn !== pixelated && pixelated !== bitmap) pixelated.recycle()
 

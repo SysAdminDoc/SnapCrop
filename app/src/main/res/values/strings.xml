@@ -446,6 +446,8 @@
     <string name="crop_grid_golden">Golden</string>
     <string name="crop_grid_off">Off</string>
     <string name="crop_preview">Preview</string>
+    <string name="crop_preview_before">BEFORE</string>
+    <string name="crop_preview_after">AFTER</string>
     <string name="crop_straighten">Straighten</string>
     <string name="crop_straighten_angle">%1$.1f°</string>
     <string name="crop_perspective">Perspective</string>

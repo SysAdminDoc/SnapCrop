@@ -16,7 +16,8 @@ class SnapCropProjectSidecarTest {
     fun encodeDecodePreservesEditableProjectState() {
         val adjustments = floatArrayOf(
             10f, 1.2f, 0.8f, 3f, -4f, 0.25f, 2f, 0.5f, 1.5f,
-            -8f, 6f, 0.3f, 0.2f, 4f, 5f, -6f, 7f
+            -8f, 6f, 0.3f, 0.2f, 4f, 5f, -6f, 7f,
+            100f, 200f, 500f, 200f, 500f, 800f, 100f, 800f
         )
         val project = SnapCropProject(
             sourceUri = "content://media/external/images/media/42",
@@ -150,8 +151,10 @@ class SnapCropProjectSidecarTest {
 
         assertRectEquals(Rect(1, 2, 3, 4), decoded.cropRect)
         assertNotNull(decoded.adjustments)
+        assertEquals(25, decoded.adjustments.size)
         assertEquals(1f, decoded.adjustments[1], 0.0001f)
         assertEquals(1f, decoded.adjustments[2], 0.0001f)
+        assertEquals(0f, decoded.adjustments[17], 0.0001f)
         assertTrue(decoded.pixelateRects.isEmpty())
         assertTrue(decoded.drawLayers.isEmpty())
         assertFalse(decoded.deleteOriginal)

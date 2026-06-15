@@ -60,7 +60,7 @@ object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
     private const val VERSION = 1
-    private const val ADJUSTMENT_COUNT = 17
+    private const val ADJUSTMENT_COUNT = 25
 
     fun looksLikeProject(mimeType: String?, displayName: String?): Boolean {
         val lowerName = displayName?.lowercase().orEmpty()
@@ -214,6 +214,14 @@ object SnapCropProjectSidecar {
             .put("curveR", value(14, 0f))
             .put("curveG", value(15, 0f))
             .put("curveB", value(16, 0f))
+            .put("quadTLx", value(17, 0f))
+            .put("quadTLy", value(18, 0f))
+            .put("quadTRx", value(19, 0f))
+            .put("quadTRy", value(20, 0f))
+            .put("quadBRx", value(21, 0f))
+            .put("quadBRy", value(22, 0f))
+            .put("quadBLx", value(23, 0f))
+            .put("quadBLy", value(24, 0f))
     }
 
     private fun JSONObject?.toAdjustmentsArray(): FloatArray {
@@ -236,6 +244,14 @@ object SnapCropProjectSidecar {
             adj[14] = obj.optDouble("curveR", 0.0).toFloat()
             adj[15] = obj.optDouble("curveG", 0.0).toFloat()
             adj[16] = obj.optDouble("curveB", 0.0).toFloat()
+            adj[17] = obj.optDouble("quadTLx", 0.0).toFloat()
+            adj[18] = obj.optDouble("quadTLy", 0.0).toFloat()
+            adj[19] = obj.optDouble("quadTRx", 0.0).toFloat()
+            adj[20] = obj.optDouble("quadTRy", 0.0).toFloat()
+            adj[21] = obj.optDouble("quadBRx", 0.0).toFloat()
+            adj[22] = obj.optDouble("quadBRy", 0.0).toFloat()
+            adj[23] = obj.optDouble("quadBLx", 0.0).toFloat()
+            adj[24] = obj.optDouble("quadBLy", 0.0).toFloat()
         }
     }
 
