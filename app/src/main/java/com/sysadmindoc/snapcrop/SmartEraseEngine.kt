@@ -25,13 +25,23 @@ object SmartEraseEngine {
         )
         dilate(mask, width, height, expanded, iterations = (radius / 18).coerceIn(1, 3))
 
-        val originalMask = mask.copyOf()
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+        val rw = expanded.width()
+        val rh = expanded.height()
+        if (rw < 1 || rh < 1) return
+
+        val originalMask = BooleanArray(rw * rh)
+        for (y in expanded.top until expanded.bottom) {
+            for (x in expanded.left until expanded.right) {
+                if (mask[y * width + x]) originalMask[(y - expanded.top) * rw + (x - expanded.left)] = true
+            }
+        }
+
+        val pixels = IntArray(rw * rh)
+        bitmap.getPixels(pixels, 0, rw, expanded.left, expanded.top, rw, rh)
 
         fillMask(pixels, mask, width, height, expanded, radius)
-        featherEdges(pixels, originalMask, width, height, expanded, radius)
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        featherEdges(pixels, originalMask, rw, rh, mask, width, height, expanded, radius)
+        bitmap.setPixels(pixels, 0, rw, expanded.left, expanded.top, rw, rh)
     }
 
     private fun rasterizeStroke(
@@ -120,24 +130,27 @@ object SmartEraseEngine {
         }
     }
 
+    /** Pixel array is region-scoped to [bounds]; mask is full-image. */
     private fun fillMask(
         pixels: IntArray,
         mask: BooleanArray,
-        width: Int,
-        height: Int,
+        imgW: Int,
+        imgH: Int,
         bounds: Rect,
         radius: Int
     ) {
+        val rw = bounds.width()
         var remaining = 0
         for (y in bounds.top until bounds.bottom) {
             for (x in bounds.left until bounds.right) {
-                if (mask[y * width + x]) remaining++
+                if (mask[y * imgW + x]) remaining++
             }
         }
         if (remaining == 0) return
 
-        val capacity = (bounds.width() * bounds.height()).coerceAtLeast(1)
+        val capacity = (rw * bounds.height()).coerceAtLeast(1)
         val updateIndices = IntArray(capacity)
+        val updateMaskIndices = IntArray(capacity)
         val updateColors = IntArray(capacity)
         val sampleRadius = (radius * 2.4f).roundToInt().coerceIn(8, 96)
         val step = if (sampleRadius > 28) 3 else 2
@@ -148,11 +161,12 @@ object SmartEraseEngine {
             var updateCount = 0
             for (y in bounds.top until bounds.bottom) {
                 for (x in bounds.left until bounds.right) {
-                    val idx = y * width + x
-                    if (!mask[idx]) continue
-                    val color = estimateColor(pixels, mask, width, height, x, y, sampleRadius, step)
+                    if (!mask[y * imgW + x]) continue
+                    val color = estimateColor(pixels, mask, imgW, imgH, bounds, x, y, sampleRadius, step)
                     if (color != null) {
-                        updateIndices[updateCount] = idx
+                        val ri = (y - bounds.top) * rw + (x - bounds.left)
+                        updateIndices[updateCount] = ri
+                        updateMaskIndices[updateCount] = y * imgW + x
                         updateColors[updateCount] = color
                         updateCount++
                     }
@@ -160,9 +174,8 @@ object SmartEraseEngine {
             }
             if (updateCount == 0) return@repeat
             for (i in 0 until updateCount) {
-                val idx = updateIndices[i]
-                pixels[idx] = updateColors[i]
-                mask[idx] = false
+                pixels[updateIndices[i]] = updateColors[i]
+                mask[updateMaskIndices[i]] = false
                 remaining--
             }
         }
@@ -170,11 +183,12 @@ object SmartEraseEngine {
         if (remaining > 0) {
             for (y in bounds.top until bounds.bottom) {
                 for (x in bounds.left until bounds.right) {
-                    val idx = y * width + x
-                    if (mask[idx]) {
-                        pixels[idx] = estimateColor(pixels, mask, width, height, x, y, sampleRadius * 2, step)
-                            ?: nearestSafeColor(pixels, mask, width, height, x, y)
-                        mask[idx] = false
+                    val mi = y * imgW + x
+                    if (mask[mi]) {
+                        val ri = (y - bounds.top) * rw + (x - bounds.left)
+                        pixels[ri] = estimateColor(pixels, mask, imgW, imgH, bounds, x, y, sampleRadius * 2, step)
+                            ?: nearestSafeColor(pixels, mask, imgW, imgH, bounds, x, y)
+                        mask[mi] = false
                     }
                 }
             }
@@ -184,15 +198,16 @@ object SmartEraseEngine {
     private fun estimateColor(
         pixels: IntArray,
         mask: BooleanArray,
-        width: Int,
-        height: Int,
+        imgW: Int,
+        imgH: Int,
+        bounds: Rect,
         x: Int,
         y: Int,
         radius: Int,
         step: Int
     ): Int? {
-        val centerIdx = y * width + x
-        val center = pixels[centerIdx]
+        val rw = bounds.width()
+        val center = pixels[(y - bounds.top) * rw + (x - bounds.left)]
         var total = 0f
         var a = 0f
         var r = 0f
@@ -207,10 +222,10 @@ object SmartEraseEngine {
                 if (d2 == 0 || d2 > r2) continue
                 val sx = x + dx
                 val sy = y + dy
-                if (sx !in 0 until width || sy !in 0 until height) continue
-                val sampleIdx = sy * width + sx
-                if (mask[sampleIdx]) continue
-                val sample = pixels[sampleIdx]
+                if (sx !in 0 until imgW || sy !in 0 until imgH) continue
+                if (mask[sy * imgW + sx]) continue
+                if (sx !in bounds.left until bounds.right || sy !in bounds.top until bounds.bottom) continue
+                val sample = pixels[(sy - bounds.top) * rw + (sx - bounds.left)]
                 val distanceWeight = 1f / (sqrt(d2.toDouble()).toFloat() + 1f)
                 val colorWeight = 1f / (1f + colorDistance(center, sample) / 96f)
                 val weight = distanceWeight * (0.65f + colorWeight * 0.35f)
@@ -233,46 +248,51 @@ object SmartEraseEngine {
     private fun nearestSafeColor(
         pixels: IntArray,
         mask: BooleanArray,
-        width: Int,
-        height: Int,
+        imgW: Int,
+        imgH: Int,
+        bounds: Rect,
         x: Int,
         y: Int
     ): Int {
+        val rw = bounds.width()
         for (radius in 1..96) {
-            val left = (x - radius).coerceAtLeast(0)
-            val top = (y - radius).coerceAtLeast(0)
-            val right = (x + radius).coerceAtMost(width - 1)
-            val bottom = (y + radius).coerceAtMost(height - 1)
+            val left = (x - radius).coerceAtLeast(bounds.left)
+            val top = (y - radius).coerceAtLeast(bounds.top)
+            val right = (x + radius).coerceAtMost(bounds.right - 1)
+            val bottom = (y + radius).coerceAtMost(bounds.bottom - 1)
             for (xx in left..right) {
-                val topIdx = top * width + xx
-                if (!mask[topIdx]) return pixels[topIdx]
-                val bottomIdx = bottom * width + xx
-                if (!mask[bottomIdx]) return pixels[bottomIdx]
+                if (!mask[top * imgW + xx]) return pixels[(top - bounds.top) * rw + (xx - bounds.left)]
+                if (!mask[bottom * imgW + xx]) return pixels[(bottom - bounds.top) * rw + (xx - bounds.left)]
             }
             for (yy in top..bottom) {
-                val leftIdx = yy * width + left
-                if (!mask[leftIdx]) return pixels[leftIdx]
-                val rightIdx = yy * width + right
-                if (!mask[rightIdx]) return pixels[rightIdx]
+                if (!mask[yy * imgW + left]) return pixels[(yy - bounds.top) * rw + (left - bounds.left)]
+                if (!mask[yy * imgW + right]) return pixels[(yy - bounds.top) * rw + (right - bounds.left)]
             }
         }
-        return pixels[y * width + x]
+        return pixels[(y - bounds.top) * rw + (x - bounds.left)]
     }
 
+    /** Pixel arrays are region-scoped; mask is full-image. [originalMask] is region-scoped. */
     private fun featherEdges(
         pixels: IntArray,
         originalMask: BooleanArray,
-        width: Int,
-        height: Int,
+        rw: Int,
+        rh: Int,
+        fullMask: BooleanArray,
+        imgW: Int,
+        imgH: Int,
         bounds: Rect,
         radius: Int
     ) {
         val copy = pixels.copyOf()
         val featherRadius = (radius / 4).coerceIn(1, 6)
-        for (y in bounds.top until bounds.bottom) {
-            for (x in bounds.left until bounds.right) {
-                val idx = y * width + x
-                if (!originalMask[idx] || !touchesSafePixel(originalMask, width, height, x, y)) continue
+        for (ry in 0 until rh) {
+            for (rx in 0 until rw) {
+                val ri = ry * rw + rx
+                if (!originalMask[ri]) continue
+                val imgX = rx + bounds.left
+                val imgY = ry + bounds.top
+                if (!touchesSafePixel(fullMask, imgW, imgH, imgX, imgY)) continue
                 var a = 0
                 var r = 0
                 var g = 0
@@ -280,10 +300,10 @@ object SmartEraseEngine {
                 var count = 0
                 for (dy in -featherRadius..featherRadius) {
                     for (dx in -featherRadius..featherRadius) {
-                        val sx = x + dx
-                        val sy = y + dy
-                        if (sx !in 0 until width || sy !in 0 until height) continue
-                        val sample = copy[sy * width + sx]
+                        val sx = rx + dx
+                        val sy = ry + dy
+                        if (sx !in 0 until rw || sy !in 0 until rh) continue
+                        val sample = copy[sy * rw + sx]
                         a += (sample ushr 24) and 0xFF
                         r += (sample ushr 16) and 0xFF
                         g += (sample ushr 8) and 0xFF
@@ -292,7 +312,7 @@ object SmartEraseEngine {
                     }
                 }
                 if (count > 0) {
-                    pixels[idx] = ((a / count) shl 24) or ((r / count) shl 16) or ((g / count) shl 8) or (b / count)
+                    pixels[ri] = ((a / count) shl 24) or ((r / count) shl 16) or ((g / count) shl 8) or (b / count)
                 }
             }
         }
