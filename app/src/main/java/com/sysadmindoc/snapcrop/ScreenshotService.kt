@@ -37,6 +37,8 @@ class ScreenshotService : Service() {
         const val EXTRA_DELAY_SECONDS = "extra_delay_seconds"
         const val LAST_ACTION_QUICK_CROP = "quick_crop"
         const val PREF_LAST_ACTION = "last_action"
+        const val PREF_LAST_SEED_URI = "last_seed_uri"
+        const val PREF_LAST_SEED_TIME = "last_seed_time"
         private const val DETECTED_NOTIF_ID = 2
         private const val COUNTDOWN_NOTIF_ID = 3
         @Volatile var isRunning = false
@@ -306,6 +308,11 @@ class ScreenshotService : Service() {
     }
 
     private fun launchEditor(uri: Uri) {
+        getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
+            .putString(PREF_LAST_SEED_URI, uri.toString())
+            .putLong(PREF_LAST_SEED_TIME, System.currentTimeMillis())
+            .apply()
+
         // Show notification with action buttons as fallback
         showDetectedNotification(uri)
 

@@ -1,9 +1,12 @@
 package com.sysadmindoc.snapcrop
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -144,6 +147,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                 ).show()
                 LongScreenshotStore.deleteReviewFile(reviewPath)
                 keepReviewFile = true
+                deleteSeedScreenshot()
                 startActivity(
                     Intent(this@LongScreenshotReviewActivity, CropActivity::class.java).apply {
                         data = savedUri
@@ -153,6 +157,24 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                 finish()
             }
         }
+    }
+
+    private fun deleteSeedScreenshot() {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val seedTime = prefs.getLong(ScreenshotService.PREF_LAST_SEED_TIME, 0L)
+        if (System.currentTimeMillis() - seedTime > 120_000) return
+        val seedUriStr = prefs.getString(ScreenshotService.PREF_LAST_SEED_URI, null) ?: return
+        val seedUri = Uri.parse(seedUriStr)
+        prefs.edit().remove(ScreenshotService.PREF_LAST_SEED_URI).remove(ScreenshotService.PREF_LAST_SEED_TIME).apply()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val pi = MediaStore.createDeleteRequest(contentResolver, listOf(seedUri))
+                @Suppress("DEPRECATION")
+                startIntentSenderForResult(pi.intentSender, 99, null, 0, 0, 0)
+            } else {
+                contentResolver.delete(seedUri, null, null)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun retryCapture() {
