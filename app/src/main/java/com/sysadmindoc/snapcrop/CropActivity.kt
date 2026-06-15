@@ -1997,6 +1997,7 @@ class CropActivity : ComponentActivity() {
         projectSidecarJson: String? = null
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val stripExif = prefs.getBoolean("strip_exif", false)
         val exportFormat = getExportFormat(forcePng)
         val format = exportFormat.format
         val quality = exportFormat.quality
@@ -2029,6 +2030,7 @@ class CropActivity : ComponentActivity() {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
+                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
                 val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
                 val msg = getString(R.string.crop_saved_size, "${sizeKb}KB", usedQuality) +
@@ -2042,6 +2044,7 @@ class CropActivity : ComponentActivity() {
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 contentResolver.update(uri, values, null, null)
+                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
                 val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
                 val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
                 val msg = (if (deleteOriginal) getString(R.string.crop_saved_path, savePath) else getString(R.string.crop_copy_saved_path, savePath)) +

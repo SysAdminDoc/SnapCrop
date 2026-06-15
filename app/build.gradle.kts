@@ -121,6 +121,7 @@ dependencies {
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
