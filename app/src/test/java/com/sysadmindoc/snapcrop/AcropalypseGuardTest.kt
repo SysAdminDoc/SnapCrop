@@ -6,7 +6,7 @@ import java.io.File
 
 class AcropalypseGuardTest {
     private val dangerousPattern =
-        Regex("""open(?:OutputStream|FileDescriptor)\([^)]*"rw?"[^t]""")
+        Regex("""openOutputStream\([^)]*"[rw]+"[^t]""")
 
     @Test
     fun noNonTruncatingOverwriteInSource() {
@@ -24,7 +24,7 @@ class AcropalypseGuardTest {
             .toList()
         if (violations.isNotEmpty()) {
             fail(
-                "openOutputStream/openFileDescriptor with non-truncating write mode detected " +
+                "openOutputStream with non-truncating write mode detected " +
                 "(aCropalypse CVE-2023-21036 risk). Use insert()+default mode or \"wt\":\n" +
                 violations.joinToString("\n")
             )

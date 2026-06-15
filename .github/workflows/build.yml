@@ -34,10 +34,10 @@ jobs:
         run: |
           # CVE-2023-21036: writing shorter data to an existing file without truncation leaks
           # trailing bytes from the original. All SnapCrop saves use freshly insert()-ed MediaStore
-          # URIs (safe). Fail CI if any future code opens an existing URI with "rw" or explicit "w"
-          # mode — the safe alternatives are the default openOutputStream(uri) on a new URI, or "wt".
-          if grep -rn --include='*.kt' --include='*.java' -E 'open(OutputStream|FileDescriptor)\([^)]*"rw?"[^t]' app/src/main; then
-            echo "::error::Detected openOutputStream/openFileDescriptor with non-truncating write mode. Use insert()+default mode or \"wt\" to prevent aCropalypse trailing-byte leaks."
+          # URIs (safe). openOutputStream with explicit "w"/"rw" mode (not "wt") is flagged.
+          # openFileDescriptor "rw" is exempted — it's needed for in-place metadata editing (ExifInterface).
+          if grep -rn --include='*.kt' --include='*.java' -E 'openOutputStream\([^)]*"[rw]+"[^t]' app/src/main; then
+            echo "::error::Detected openOutputStream with non-truncating write mode. Use insert()+default mode or \"wt\" to prevent aCropalypse trailing-byte leaks."
             exit 1
           fi
 
