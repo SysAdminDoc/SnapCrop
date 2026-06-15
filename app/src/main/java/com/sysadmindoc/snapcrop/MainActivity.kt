@@ -68,6 +68,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -2124,14 +2125,16 @@ private fun HomeActionTile(
                     color = OnSurface.copy(alpha = contentAlpha),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     subtitle,
                     color = OnSurfaceVariant.copy(alpha = contentAlpha),
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
-                    maxLines = 2
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

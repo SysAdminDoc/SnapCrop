@@ -397,14 +397,20 @@ private fun CollageScreen(
             Text(stringResource(R.string.collage_bg_label), color = OnSurfaceVariant, fontSize = 11.sp)
             collageBgColors.forEachIndexed { i, (color, name) ->
                 Box(
-                    Modifier.size(24.dp)
-                        .background(Color(color), RoundedCornerShape(4.dp))
-                        .then(if (i == bgColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                    Modifier.size(36.dp)
                         .semantics {
                             contentDescription = "$name background color${if (i == bgColorIdx) ", selected" else ""}"
                         }
                         .clickable { onBgColorChange(i) }
-                )
+                ) {
+                    Box(
+                        Modifier
+                            .align(Alignment.Center)
+                            .size(24.dp)
+                            .background(Color(color), RoundedCornerShape(4.dp))
+                            .then(if (i == bgColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                    )
+                }
             }
         }
 

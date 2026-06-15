@@ -288,7 +288,6 @@ fun GalleryScreen(
         val refreshedCollections = withContext(Dispatchers.IO) {
             val index = if (indexEnabled) {
                 val store = ScreenshotIndexStore(context)
-                store.rebuildFromMediaStore(context.contentResolver, screenW, screenH, FavoritesStore.getAllIds(context))
                 store.loadEntryMap()
             } else {
                 emptyMap()

@@ -340,7 +340,7 @@ private fun StitchScreen(
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(36.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }
@@ -363,7 +363,7 @@ private fun StitchScreen(
                         Column(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
                             IconButton(
                                 onClick = { onRemoveImage(index) },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(36.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Tertiary, modifier = Modifier.size(18.dp)) }
                         }

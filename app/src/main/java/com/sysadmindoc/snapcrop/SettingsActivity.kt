@@ -868,13 +868,22 @@ class SettingsActivity : ComponentActivity() {
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
                                     Text(stringResource(R.string.settings_border_color), color = OnSurfaceVariant, fontSize = 11.sp)
-                                    borderColors.forEachIndexed { i, (color, _) ->
+                                    borderColors.forEachIndexed { i, (color, name) ->
                                         Box(
-                                            Modifier.size(24.dp)
-                                                .background(androidx.compose.ui.graphics.Color(color), RoundedCornerShape(4.dp))
-                                                .then(if (i == borderColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                                            Modifier.size(36.dp)
+                                                .semantics {
+                                                    contentDescription = "$name border color${if (i == borderColorIdx) ", selected" else ""}"
+                                                }
                                                 .clickable { borderColorIdx = i; prefs.edit().putInt("border_color", i).apply() }
-                                        )
+                                        ) {
+                                            Box(
+                                                Modifier
+                                                    .align(Alignment.Center)
+                                                    .size(24.dp)
+                                                    .background(androidx.compose.ui.graphics.Color(color), RoundedCornerShape(4.dp))
+                                                    .then(if (i == borderColorIdx) Modifier.border(2.dp, Primary, RoundedCornerShape(4.dp)) else Modifier)
+                                            )
+                                        }
                                     }
                                 }
                             }

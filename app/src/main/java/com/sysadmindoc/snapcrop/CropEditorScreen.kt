@@ -951,6 +951,7 @@ fun CropEditorScreen(
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
+                                        .sizeIn(minWidth = 40.dp, minHeight = 44.dp)
                                         .semantics { contentDescription = paletteCd }
                                         .clickable {
                                         val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -1765,35 +1766,60 @@ fun CropEditorScreen(
                     }
                     // Eyedropper
                     IconButton(onClick = { eyedropperActive = !eyedropperActive },
-                        modifier = Modifier.size(28.dp)) {
+                        modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.Colorize, stringResource(R.string.draw_eyedropper),
                             tint = if (eyedropperActive) Primary else OnSurfaceVariant,
                             modifier = Modifier.size(16.dp))
                     }
                     drawColors.forEach { (color, name) ->
-                        Box(Modifier
-                            .size(if (drawColor == color) 24.dp else 18.dp)
-                            .background(Color(color), RoundedCornerShape(3.dp))
-                            .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
-                            .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
+                                .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } }
+                        ) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .size(if (drawColor == color) 24.dp else 18.dp)
+                                    .background(Color(color), RoundedCornerShape(3.dp))
+                            )
+                        }
                     }
                     // Recent custom colors
                     recentColors.forEachIndexed { index, color ->
                         val hex = String.format("#%06X", color and 0xFFFFFF)
-                        Box(Modifier
-                            .size(if (drawColor == color) 24.dp else 18.dp)
-                            .background(Color(color), RoundedCornerShape(3.dp))
-                            .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
-                            .semantics { contentDescription = "Recent color ${index + 1}, $hex${if (drawColor == color) ", selected" else ""}" }
-                            .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } })
+                        Box(
+                            Modifier
+                                .size(36.dp)
+                                .semantics { contentDescription = "Recent color ${index + 1}, $hex${if (drawColor == color) ", selected" else ""}" }
+                                .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } }
+                        ) {
+                            Box(
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .size(if (drawColor == color) 24.dp else 18.dp)
+                                    .background(Color(color), RoundedCornerShape(3.dp))
+                                    .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
+                            )
+                        }
                     }
                     // Current color preview (tap to open color picker)
                     var showColorPicker by remember { mutableStateOf(false) }
-                    Box(Modifier.size(24.dp)
-                        .background(Color(drawColor), RoundedCornerShape(3.dp))
-                        .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp))
-                        .semantics { contentDescription = "Current draw color, tap to open color picker" }
-                        .clickable { showColorPicker = true })
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .semantics { contentDescription = "Current draw color, tap to open color picker" }
+                            .clickable { showColorPicker = true }
+                    ) {
+                        Box(
+                            Modifier
+                                .align(Alignment.Center)
+                                .size(24.dp)
+                                .background(Color(drawColor), RoundedCornerShape(3.dp))
+                                .border(1.dp, OnSurfaceVariant, RoundedCornerShape(3.dp))
+                        )
+                    }
                     if (showColorPicker) {
                         val redLabel = stringResource(R.string.draw_red)
                         val greenLabel = stringResource(R.string.draw_green)
@@ -3275,6 +3301,7 @@ fun CropEditorScreen(
 
             // Color palette display
             if (!isWideLayout && showPalette && paletteColors.isNotEmpty()) {
+                val paletteCd = stringResource(R.string.palette_tap_copy)
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -3282,11 +3309,14 @@ fun CropEditorScreen(
                 ) {
                     paletteColors.forEach { pc ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable {
-                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
-                                android.widget.Toast.makeText(context, context.getString(R.string.toast_copied), android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            modifier = Modifier
+                                .sizeIn(minWidth = 40.dp, minHeight = 48.dp)
+                                .semantics { contentDescription = paletteCd }
+                                .clickable {
+                                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Color", pc.hex))
+                                    android.widget.Toast.makeText(context, context.getString(R.string.toast_copied), android.widget.Toast.LENGTH_SHORT).show()
+                                }
                         ) {
                             Box(Modifier.size(28.dp).background(Color(pc.color), RoundedCornerShape(4.dp))
                                 .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(4.dp)))
@@ -3824,10 +3854,21 @@ private fun ColorSample(color: Int, label: String, onCopy: (String) -> Unit) {
         )
         Column {
             Text(label, color = OnSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Text(hex, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(hex) })
-            Text(rgb, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(rgb) })
-            Text(hsl, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.clickable { onCopy(hsl) })
+            ColorCopyButton(hex, onCopy)
+            ColorCopyButton(rgb, onCopy)
+            ColorCopyButton(hsl, onCopy)
         }
+    }
+}
+
+@Composable
+private fun ColorCopyButton(value: String, onCopy: (String) -> Unit) {
+    TextButton(
+        onClick = { onCopy(value) },
+        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+        modifier = Modifier.heightIn(min = 36.dp)
+    ) {
+        Text(value, color = OnSurfaceVariant, fontSize = 11.sp)
     }
 }
 

@@ -37,6 +37,15 @@ All notable changes to SnapCrop will be documented in this file.
   selected-layer move/resize/rotate/delete.
 - Custom Quick Crop app-rule deletion now asks for confirmation before removing
   the rule.
+- Second polish pass: color swatches, palette chips, border/background color
+  pickers, and stitch remove buttons now keep at least 36dp touch targets while
+  preserving compact visuals; color sampler values use copy buttons instead of
+  tiny clickable text.
+- Gallery now loads the existing Room-backed screenshot index on open instead
+  of rebuilding it during composition; manual rebuild and the deferred
+  WorkManager job remain the refresh paths.
+- Home workflow tile titles can wrap to two lines, with explicit ellipsis as a
+  last-resort guard for small screens and large font scales.
 
 - Added settings/preset backup & restore: export all preferences, presets, and
   app-crop profiles to a JSON file and restore them after a reinstall (the app
