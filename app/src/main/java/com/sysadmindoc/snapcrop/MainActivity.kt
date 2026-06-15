@@ -897,18 +897,20 @@ class MainActivity : ComponentActivity() {
                     }
                     val metadata = loadExportItemMetadata(uri, mediaIdFromUri(uri)?.let { indexEntries[it] })
                     val bitmap = decodeReportBitmap(uri) ?: return@forEachIndexed
+                    var ocrBlocks = emptyList<TextBlock>()
                     if (includeOcr) {
-                        val extractedText = try {
-                            TextExtractor.extract(bitmap).joinToString("\n") { it.text.trim() }.trim()
+                        ocrBlocks = try {
+                            TextExtractor.extract(bitmap)
                         } catch (_: Exception) {
-                            ""
+                            emptyList()
                         }
+                        val extractedText = ocrBlocks.joinToString("\n") { it.text.trim() }.trim()
                         val appendixText = extractedText.ifBlank { metadata.recognizedText }.trim()
                         if (appendixText.isNotBlank()) {
                             appendix.add(metadata to appendixText)
                         }
                     }
-                    pageNumber = drawReportImagePage(doc, pageNumber, index + 1, uris.size, bitmap, metadata)
+                    pageNumber = drawReportImagePage(doc, pageNumber, index + 1, uris.size, bitmap, metadata, ocrBlocks)
                     imagePages++
                     bitmap.recycle()
                 }
@@ -1110,7 +1112,8 @@ class MainActivity : ComponentActivity() {
         itemNumber: Int,
         totalItems: Int,
         bitmap: android.graphics.Bitmap,
-        metadata: ExportItemMetadata
+        metadata: ExportItemMetadata,
+        ocrBlocks: List<TextBlock> = emptyList()
     ): Int {
         val page = doc.startPage(PdfDocument.PageInfo.Builder(PDF_WIDTH, PDF_HEIGHT, pageNumber).create())
         val canvas = page.canvas
@@ -1152,6 +1155,22 @@ class MainActivity : ComponentActivity() {
         }
         canvas.drawBitmap(bitmap, null, dst, null)
         canvas.drawRect(dst, border)
+        if (ocrBlocks.isNotEmpty()) {
+            val invisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.TRANSPARENT
+                textSize = 1f
+            }
+            for (block in ocrBlocks) {
+                val b = block.bounds
+                val bx = left + b.left * scale
+                val by = top + b.top * scale
+                val bw = b.width() * scale
+                val bh = b.height() * scale
+                if (bw < 1f || bh < 1f) continue
+                invisPaint.textSize = (bh * 0.85f).coerceIn(1f, 40f)
+                canvas.drawText(block.text, bx, by + bh * 0.8f, invisPaint)
+            }
+        }
         drawPdfFooter(canvas, pageNumber)
         doc.finishPage(page)
         return pageNumber + 1
