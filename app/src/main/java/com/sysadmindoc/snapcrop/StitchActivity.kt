@@ -397,22 +397,30 @@ private fun StitchScreen(
         // Output dimensions estimate
         if (uris.size >= 2) {
             val context = LocalContext.current
-            val dims = remember(uris, isVertical) {
-                try {
-                    var totalW = 0; var totalH = 0; var maxW = 0; var maxH = 0
-                    for (u in uris) {
-                        val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                        context.contentResolver.openInputStream(u)?.use { android.graphics.BitmapFactory.decodeStream(it, null, opts) }
-                        val w = opts.outWidth; val h = opts.outHeight
-                        if (w > 0 && h > 0) {
-                            if (isVertical) { maxW = maxOf(maxW, w); totalH += h } else { totalW += w; maxH = maxOf(maxH, h) }
+            val uriSnapshot = uris.toList()
+            val dims by produceState<Pair<Int, Int>?>(initialValue = null, uriSnapshot, isVertical) {
+                value = withContext(Dispatchers.IO) {
+                    try {
+                        var totalW = 0; var totalH = 0; var maxW = 0; var maxH = 0
+                        for (u in uriSnapshot) {
+                            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            context.contentResolver.openInputStream(u)?.use {
+                                android.graphics.BitmapFactory.decodeStream(it, null, opts)
+                            }
+                            val w = opts.outWidth; val h = opts.outHeight
+                            if (w > 0 && h > 0) {
+                                if (isVertical) { maxW = maxOf(maxW, w); totalH += h } else { totalW += w; maxH = maxOf(maxH, h) }
+                            }
                         }
+                        if (isVertical) Pair(maxW, totalH) else Pair(totalW, maxH)
+                    } catch (_: Exception) {
+                        null
                     }
-                    if (isVertical) Pair(maxW, totalH) else Pair(totalW, maxH)
-                } catch (_: Exception) { null }
+                }
             }
-            if (dims != null && dims.first > 0 && dims.second > 0) {
-                Text(stringResource(R.string.stitch_dimensions, dims.first, dims.second),
+            val resolvedDims = dims
+            if (resolvedDims != null && resolvedDims.first > 0 && resolvedDims.second > 0) {
+                Text(stringResource(R.string.stitch_dimensions, resolvedDims.first, resolvedDims.second),
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     color = OnSurfaceVariant, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }

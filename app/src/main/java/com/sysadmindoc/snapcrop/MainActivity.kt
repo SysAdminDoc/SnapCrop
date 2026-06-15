@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MergeType
 import androidx.compose.material.icons.filled.BurstMode
 import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.ContentCopy
@@ -48,7 +49,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.MergeType
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Photo
@@ -1750,6 +1750,7 @@ private fun HomeScreen(
         // Service toggle
         val monitorStatusLabel = if (isRunning) stringResource(R.string.home_monitor_status_active) else stringResource(R.string.home_monitor_status_paused)
         val monitorCd = stringResource(R.string.home_monitor_cd, monitorStatusLabel)
+        val monitorSwitchCd = stringResource(R.string.home_monitor_switch_cd, monitorStatusLabel)
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -1797,6 +1798,9 @@ private fun HomeScreen(
                 Switch(
                     checked = isRunning,
                     onCheckedChange = { onToggleService() },
+                    modifier = Modifier.semantics {
+                        contentDescription = monitorSwitchCd
+                    },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = OnPrimary,
                         checkedTrackColor = Primary,
@@ -1914,7 +1918,7 @@ private fun HomeScreen(
         // Stitch + Collage row
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
-                icon = Icons.Default.MergeType,
+                icon = Icons.AutoMirrored.Filled.MergeType,
                 title = stringResource(R.string.home_stitch_title),
                 subtitle = stringResource(R.string.home_stitch_subtitle),
                 modifier = Modifier.weight(1f),

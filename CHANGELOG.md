@@ -56,6 +56,10 @@ All notable changes to SnapCrop will be documented in this file.
   Mockup option semantics plus editor utility labels, added stable lazy-list
   keys to Stitch and Device Mockup pickers, and hardened precise crop input for
   very small images.
+- Extra release polish pass: the Home monitor switch now exposes its own
+  stateful accessibility label, and Stitch output dimensions are calculated from
+  a stable URI snapshot on the IO dispatcher so reordered or appended images do
+  not leave stale size estimates or block composition.
 
 - Added settings/preset backup & restore: export all preferences, presets, and
   app-crop profiles to a JSON file and restore them after a reinstall (the app

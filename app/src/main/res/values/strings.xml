@@ -38,6 +38,7 @@
     <string name="home_monitor_status_active">Active</string>
     <string name="home_monitor_status_paused">Paused</string>
     <string name="home_monitor_cd">Screenshot Monitor, %1$s</string>
+    <string name="home_monitor_switch_cd">Screenshot Monitor switch, %1$s</string>
     <string name="home_workflows">Workflows</string>
     <string name="home_cancel_batch">Cancel batch</string>
     <string name="home_crop_one_title">Crop one image</string>
