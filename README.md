@@ -2,7 +2,7 @@
 
 **The screenshot tool Android should have shipped with.**
 
-Auto-detect, auto-crop, annotate, redact, and share screenshots — all in one tap. No ads, no tracking, no internet required.
+Auto-detect, auto-crop, annotate, redact, and share screenshots — all in one tap. Core editing works offline, with no ads or tracking.
 
 [![Android](https://img.shields.io/badge/Android-10%2B-3ddc84?logo=android&logoColor=white)](https://github.com/SysAdminDoc/SnapCrop/releases/latest)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -35,6 +35,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
   failures are reported individually instead of dropping unsupported inputs.
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, review, retry if needed, save, then continue editing
+- Optional static web-page capture accepts an entered or shared public HTTPS URL. SnapCrop fetches only the bounded main HTML document over public-IP-pinned TLS, renders it in an isolated offline WebView with scripts and external resources blocked, and sends the full-page image to the editor without uploading page content.
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums
 - User app rules can route Quick Crop by source app/package hints or OCR keywords, with per-rule crop bands, album, redaction, and export format
 - Survives reboots — auto-starts with your device

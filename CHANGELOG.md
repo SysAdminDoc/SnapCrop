@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Isolated static web-page capture (v6.49.0).**
+
+- Home and Android text sharing can open an explicit public HTTPS URL, fetch one
+  bounded HTML document through public-IP-pinned TLS, and send a capped full-page
+  PNG into the editor with the source URL retained as an explicit hint.
+- Rendering runs in a dedicated process and offline WebView. Scripts, subresources,
+  cookies, storage, file/content access, permissions, pop-ups, downloads, mixed
+  content, authentication, and private/local destinations are blocked.
+- Redirects, DNS, TLS, HTTP framing, body size, document type, render time,
+  dimensions, cache retention, and stale jobs are bounded and covered by host tests;
+  the Android instrumentation APK also assembles successfully.
+
 **Named export presets (v6.48.0).**
 
 - Settings can snapshot up to 20 named export configurations containing PNG/JPEG/WebP,

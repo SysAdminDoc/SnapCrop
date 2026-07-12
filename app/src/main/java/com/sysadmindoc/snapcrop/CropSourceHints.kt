@@ -11,6 +11,7 @@ object CropSourceHints {
             uri.toString(),
             uri.authority,
             uri.path,
+            intent.getStringExtra(WebCaptureActivity.EXTRA_SOURCE_URL),
             intent.getStringExtra("android.intent.extra.PACKAGE_NAME"),
             intent.getStringExtra("android.intent.extra.REFERRER_NAME")
         ).filter { it.isNotBlank() }

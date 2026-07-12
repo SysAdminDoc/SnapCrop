@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Timer
@@ -204,6 +205,21 @@ class MainActivity : ComponentActivity() {
     private val showInboundShareDialog = mutableStateOf(false)
 
     @Suppress("DEPRECATION")
+    private fun handleSharedUrl(intent: Intent): Boolean {
+        if (intent.action != Intent.ACTION_SEND || intent.type != "text/plain") return false
+        val shared = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
+        val url = WebCapturePolicy.normalizeHttpsUrl(shared)
+        intent.removeExtra(Intent.EXTRA_TEXT)
+        intent.action = null
+        if (url == null) {
+            Toast.makeText(this, R.string.web_capture_invalid_url, Toast.LENGTH_LONG).show()
+            return true
+        }
+        startActivity(Intent(this, WebCaptureActivity::class.java).putExtra(WebCaptureActivity.EXTRA_URL, url))
+        return true
+    }
+
+    @Suppress("DEPRECATION")
     private fun handleInboundShares(intent: Intent) {
         val forwarded = intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS).orEmpty()
         val raw = if (forwarded.isNotEmpty()) forwarded else InboundShareContract.extractUris(intent)
@@ -356,7 +372,7 @@ class MainActivity : ComponentActivity() {
             ?.map(Uri::parse) ?: emptyList()
         pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
         handleAccessibilityIntent(intent)
-        handleInboundShares(intent)
+        if (!handleSharedUrl(intent)) handleInboundShares(intent)
 
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
@@ -506,6 +522,7 @@ class MainActivity : ComponentActivity() {
                                 onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
                                 onRequestNotificationAccess = { requestPermissions(MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)) },
                                 onPickImage = { pickImageLauncher.launch("image/*") },
+                                onWebCapture = { startActivity(Intent(this@MainActivity, WebCaptureActivity::class.java)) },
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
                                 onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
@@ -1049,7 +1066,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleAccessibilityIntent(intent)
-        handleInboundShares(intent)
+        if (!handleSharedUrl(intent)) handleInboundShares(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -2154,6 +2171,7 @@ private fun HomeScreen(
     onRequestVideoAccess: () -> Unit,
     onRequestNotificationAccess: () -> Unit,
     onPickImage: () -> Unit,
+    onWebCapture: () -> Unit,
     onBatchCrop: () -> Unit,
     onStitch: () -> Unit,
     onCollage: () -> Unit,
@@ -2380,6 +2398,15 @@ private fun HomeScreen(
             title = stringResource(R.string.home_crop_one_title),
             subtitle = stringResource(R.string.home_crop_one_subtitle),
             onClick = onPickImage
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        HomeActionTile(
+            icon = Icons.Default.Language,
+            title = stringResource(R.string.home_web_capture_title),
+            subtitle = stringResource(R.string.home_web_capture_subtitle),
+            onClick = onWebCapture
         )
 
         Spacer(Modifier.height(8.dp))

@@ -3,6 +3,8 @@ package com.sysadmindoc.snapcrop
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.os.Build
+import android.webkit.WebView
 
 class SnapCropApp : Application() {
     companion object {
@@ -13,6 +15,15 @@ class SnapCropApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (Application.getProcessName().endsWith(":web_capture")) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                WebView.setDataDirectorySuffix("web_capture")
+            }
+            @Suppress("DEPRECATION")
+            WebView.enableSlowWholeDocumentDraw()
+            CrashReporter.install(this)
+            return
+        }
         CrashReporter.install(this)
         try { IndexWorker.schedule(this) } catch (_: Exception) {}
         val manager = getSystemService(NotificationManager::class.java)

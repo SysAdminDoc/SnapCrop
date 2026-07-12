@@ -4,4 +4,5 @@
     <cache-path name="clipboard" path="clipboard/" />
     <cache-path name="share_clean" path="share_clean/" />
     <cache-path name="long_screenshots" path="long_screenshots/" />
+    <cache-path name="web_capture" path="web_capture/" />
 </paths>
