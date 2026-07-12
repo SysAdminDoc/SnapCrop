@@ -57,7 +57,9 @@ class ScreenshotIndexDatabaseMigrationTest {
             close()
         }
 
-        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB).build()
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_1_2)
+            .build()
         try {
             database.openHelper.writableDatabase
             val rows = database.dao().getAll()
@@ -83,6 +85,28 @@ class ScreenshotIndexDatabaseMigrationTest {
 
             dao.deleteAll()
             assertEquals(0, dao.count())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun manualCollectionMembershipSurvivesIndexRebuild() = runBlocking<Unit> {
+        val database = Room.inMemoryDatabaseBuilder(context, ScreenshotIndexDatabase::class.java).build()
+        try {
+            val dao = database.dao()
+            val now = 1_700_000_000_000L
+            val collectionId = dao.insertCollection(
+                ManualCollectionRow(name = "Research", normalizedName = "research", createdAt = now, updatedAt = now)
+            )
+            val uri = "content://media/external/images/media/42"
+            dao.insertCollectionItems(listOf(ManualCollectionItemRow(collectionId, uri, 42L, now)))
+
+            dao.replaceAll(listOf(sampleRow(42)))
+            dao.replaceAll(listOf(sampleRow(7)))
+
+            assertEquals(listOf(uri), dao.getCollectionItems(collectionId).map { it.mediaUri })
+            assertEquals(1, dao.observeCollections().first().single().itemCount)
         } finally {
             database.close()
         }

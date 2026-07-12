@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Manual gallery collections (v6.44.0).**
+
+- Added named manual collections alongside smart albums: create/rename/delete from the
+  Gallery, add screenshots through URI-keyed multi-select, remove them without deleting
+  media, and search/sort within a collection.
+- Room schema v2 stores collections and URI-plus-original-date membership separately from
+  the rebuildable screenshot index. The fail-closed v1→v2 migration preserves index rows,
+  and index rebuild/purge operations cannot erase user collection membership.
+- Collection creation with selected screenshots is transactional; normalized names are
+  length/control-character checked and case-insensitively unique. Mixed selections report
+  skipped videos/non-screenshots instead of silently accepting them.
+- Gallery selection now uses canonical media URIs rather than numeric IDs, avoiding image
+  and video namespace collisions. Added pure filtering/selection/name tests, migration DAO
+  coverage, the exported v2 schema, and instrumentation-APK verification.
+
 **Non-visual editor placement and redaction control (v6.43.0).**
 
 - Canvas accessibility actions can now create a centered redaction or the current

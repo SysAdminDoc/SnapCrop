@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Info
@@ -46,6 +48,8 @@ import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -88,7 +92,8 @@ data class Album(
     val coverUri: Uri,
     val count: Int,
     val isSmart: Boolean = false,
-    val subtitle: String = ""
+    val subtitle: String = "",
+    val isManual: Boolean = false
 )
 data class Photo(
     val id: Long, val uri: Uri, val dateAdded: Long,
@@ -137,6 +142,12 @@ private enum class SortMode { DATE, NAME, SIZE }
 private const val ALL_PHOTOS_PATH = "__ALL__"
 private const val FAVORITES_PATH = "__FAVS__"
 private const val SMART_ALBUM_PREFIX = "__SMART__:"
+private const val MANUAL_COLLECTION_PREFIX = "__COLLECTION__:"
+
+private fun manualCollectionPath(id: Long) = "$MANUAL_COLLECTION_PREFIX$id"
+private fun manualCollectionId(path: String?): Long? =
+    path?.takeIf { it.startsWith(MANUAL_COLLECTION_PREFIX) }
+        ?.removePrefix(MANUAL_COLLECTION_PREFIX)?.toLongOrNull()
 
 private data class SmartAlbumRule(
     val id: String,
@@ -259,6 +270,25 @@ private fun Photo.matchesGalleryQuery(query: String): Boolean {
             indexCategories.any { it.contains(normalized) }
 }
 
+internal fun filterCollectionPhotos(
+    photos: List<Photo>,
+    members: Set<ManualCollectionMedia>
+): List<Photo> {
+    val keys = members.mapTo(hashSetOf()) { it.uri.toString() to it.dateAdded }
+    return photos.filter { (it.uri.toString() to it.dateAdded) in keys }
+}
+
+internal data class CollectionSelection(val media: List<ManualCollectionMedia>, val skipped: Int)
+
+internal fun collectionSelection(photos: List<Photo>, selectedUris: Set<String>): CollectionSelection {
+    val selected = photos.filter { it.uri.toString() in selectedUris }
+    val supported = selected.filter { it.isScreenshot && !it.isVideo }
+    return CollectionSelection(
+        media = supported.map { ManualCollectionMedia(it.uri, it.dateAdded) },
+        skipped = selected.size - supported.size
+    )
+}
+
 @Composable
 fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
@@ -280,22 +310,34 @@ fun GalleryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE) }
+    val collectionStore = remember { ScreenshotIndexStore(context) }
     val (screenW, screenH) = remember { getScreenSize(context) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
+    var manualCollections by remember { mutableStateOf<List<ManualCollectionSummary>>(emptyList()) }
     var selectedAlbum by remember { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var indexEntries by remember { mutableStateOf<Map<Long, ScreenshotIndexEntry>>(emptyMap()) }
     var indexEnabled by remember { mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) }
     var isLoading by remember { mutableStateOf(true) }
     var viewerIndex by remember { mutableIntStateOf(-1) }
-    val selectedIds = remember { mutableStateListOf<Long>() }
+    val selectedUris = remember { mutableStateListOf<String>() }
     var searchQuery by remember { mutableStateOf("") }
     var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
     var sortMode by remember { mutableStateOf(SortMode.DATE) }
     var gridColumns by remember { mutableIntStateOf(3) }
     var pendingDeleteUris by remember { mutableStateOf<List<Uri>?>(null) }
-    val selectionMode = selectedIds.isNotEmpty()
+    var showCollectionPicker by remember { mutableStateOf(false) }
+    var collectionEditorId by remember { mutableStateOf<Long?>(null) }
+    var collectionName by remember { mutableStateOf("") }
+    var collectionError by remember { mutableStateOf<String?>(null) }
+    var collectionMutating by remember { mutableStateOf(false) }
+    var addSelectionAfterCreate by remember { mutableStateOf(false) }
+    val selectionMode = selectedUris.isNotEmpty()
+
+    LaunchedEffect(Unit) {
+        collectionStore.observeCollections().collect { manualCollections = it }
+    }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
     LaunchedEffect(refreshKey, indexEnabled, favIds, canReadImages, canReadVideos) {
@@ -330,15 +372,22 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(selectedAlbum, indexEntries, refreshKey, favIds, canReadImages, canReadVideos) {
+    LaunchedEffect(selectedAlbum, manualCollections, indexEntries, refreshKey, favIds, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
-            selectedIds.clear()
+            selectedUris.clear()
             val loadedPhotos = withContext(Dispatchers.IO) {
                 when (path) {
                     ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries, canReadImages, canReadVideos)
                     FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, indexEntries, canReadImages, canReadVideos)
-                    else -> if (path.startsWith(SMART_ALBUM_PREFIX)) {
+                    else -> if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
+                        val collectionId = manualCollectionId(path) ?: return@withContext emptyList()
+                        val members = collectionStore.collectionItems(collectionId)
+                        filterCollectionPhotos(
+                            loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries, canReadImages, canReadVideos),
+                            members
+                        )
+                    } else if (path.startsWith(SMART_ALBUM_PREFIX)) {
                         loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages)
                     } else {
                         loadPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages, canReadVideos)
@@ -405,6 +454,118 @@ fun GalleryScreen(
         )
     }
 
+    collectionEditorId?.let { editorId ->
+        val existingNames = manualCollections.filter { it.id != editorId }.map { it.name.trim().lowercase() }.toSet()
+        val cleanName = collectionName.trim().replace(Regex("\\s+"), " ")
+        val nameValid = cleanName.isNotEmpty() && cleanName.length <= 80 && cleanName.lowercase() !in existingNames
+        AlertDialog(
+            onDismissRequest = { if (!collectionMutating) { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false } },
+            title = { Text(stringResource(if (editorId == -1L) R.string.gallery_collection_create else R.string.gallery_collection_rename), color = OnSurface) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = collectionName,
+                        onValueChange = { collectionName = it; collectionError = null },
+                        label = { Text(stringResource(R.string.gallery_collection_name)) },
+                        singleLine = true,
+                        isError = collectionError != null || (cleanName.isNotEmpty() && cleanName.lowercase() in existingNames),
+                        supportingText = {
+                            val message = collectionError ?: when {
+                                cleanName.lowercase() in existingNames -> stringResource(R.string.gallery_collection_duplicate)
+                                collectionName.length > 80 -> stringResource(R.string.gallery_collection_name_too_long)
+                                else -> null
+                            }
+                            if (message != null) Text(message)
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = nameValid && !collectionMutating,
+                    onClick = {
+                        collectionMutating = true
+                        scope.launch {
+                            try {
+                                var resultMessage = context.getString(R.string.gallery_collection_saved)
+                                if (editorId == -1L && addSelectionAfterCreate) {
+                                    val selected = collectionSelection(photos, selectedUris.toSet())
+                                    val (_, added) = collectionStore.createCollection(cleanName, selected.media)
+                                    resultMessage = context.getString(R.string.gallery_collection_added_result, added, selected.skipped)
+                                    selectedUris.clear()
+                                } else if (editorId == -1L) {
+                                    collectionStore.createCollection(cleanName)
+                                } else {
+                                    collectionStore.renameCollection(editorId, cleanName)
+                                }
+                                Toast.makeText(context, resultMessage, Toast.LENGTH_SHORT).show()
+                                collectionEditorId = null
+                                collectionError = null
+                                addSelectionAfterCreate = false
+                            } catch (error: Exception) {
+                                collectionError = error.message ?: context.getString(R.string.gallery_collection_failed)
+                            } finally {
+                                collectionMutating = false
+                            }
+                        }
+                    }
+                ) { Text(stringResource(R.string.save)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
+    if (showCollectionPicker) {
+        AlertDialog(
+            onDismissRequest = { showCollectionPicker = false },
+            title = { Text(stringResource(R.string.gallery_add_to_collection), color = OnSurface) },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    manualCollections.forEach { collection ->
+                        TextButton(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                showCollectionPicker = false
+                                scope.launch {
+                                    try {
+                                        val selected = collectionSelection(photos, selectedUris.toSet())
+                                        val added = collectionStore.addToCollection(collection.id, selected.media)
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.gallery_collection_added_result, added, selected.skipped),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        selectedUris.clear()
+                                    } catch (_: Exception) {
+                                        Toast.makeText(context, context.getString(R.string.gallery_collection_failed), Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        ) { Text(stringResource(R.string.gallery_collection_target, collection.name, collection.itemCount)) }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showCollectionPicker = false
+                    collectionName = ""
+                    collectionError = null
+                    addSelectionAfterCreate = true
+                    collectionEditorId = -1L
+                }) { Text(stringResource(R.string.gallery_collection_new)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCollectionPicker = false }) { Text(stringResource(R.string.cancel)) }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
     // Fullscreen viewer
     if (viewerIndex >= 0 && viewerPhotos.isNotEmpty()) {
         PhotoViewer(
@@ -433,37 +594,54 @@ fun GalleryScreen(
         ) {
             if (selectionMode) {
                 // Selection mode bar
-                IconButton(onClick = { selectedIds.clear() }) {
+                IconButton(onClick = { selectedUris.clear() }) {
                     Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = OnSurface)
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.gallery_selected_count, selectedIds.size), color = OnSurface, fontSize = 16.sp,
+                    Text(stringResource(R.string.gallery_selected_count, selectedUris.size), color = OnSurface, fontSize = 16.sp,
                         fontWeight = FontWeight.Medium)
                     Text(stringResource(R.string.gallery_selected_actions), color = OnSurfaceVariant, fontSize = 11.sp)
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
                     IconButton(onClick = {
-                        selectedIds.clear()
-                        selectedIds.addAll(viewerPhotos.map { it.id })
+                        selectedUris.clear()
+                        selectedUris.addAll(viewerPhotos.map { it.uri.toString() })
                     }) { Icon(Icons.Default.SelectAll, stringResource(R.string.gallery_select_all), tint = OnSurface) }
+                    IconButton(onClick = { showCollectionPicker = true }) {
+                        Icon(Icons.Default.PushPin, stringResource(R.string.gallery_add_to_collection), tint = Primary)
+                    }
+                    manualCollectionId(selectedAlbum)?.let { collectionId ->
+                        IconButton(onClick = {
+                            val selected = photos.filter { it.uri.toString() in selectedUris }.map { it.uri }
+                            scope.launch {
+                                try {
+                                    val removed = collectionStore.removeFromCollection(collectionId, selected)
+                                    selectedUris.clear()
+                                    Toast.makeText(context, context.getString(R.string.gallery_collection_removed, removed), Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, context.getString(R.string.gallery_collection_failed), Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.gallery_remove_from_collection), tint = Tertiary) }
+                    }
                     IconButton(onClick = {
-                        val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                        val uris = photos.filter { it.uri.toString() in selectedUris }.map { it.uri }
                         onShareUris(uris)
                     }) { Icon(Icons.Default.Share, stringResource(R.string.gallery_share), tint = OnSurface) }
                     IconButton(onClick = {
-                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
-                        if (uris.isNotEmpty()) { onExportPdf(uris); selectedIds.clear() }
+                        val uris = photos.filter { it.uri.toString() in selectedUris && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onExportPdf(uris); selectedUris.clear() }
                     }) { Icon(Icons.Default.PictureAsPdf, stringResource(R.string.gallery_export_pdf), tint = OnSurface) }
                     IconButton(onClick = {
-                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
-                        if (uris.isNotEmpty()) { onBatchRename(uris); selectedIds.clear() }
+                        val uris = photos.filter { it.uri.toString() in selectedUris && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onBatchRename(uris); selectedUris.clear() }
                     }) { Icon(Icons.Default.SortByAlpha, stringResource(R.string.gallery_rename), tint = OnSurface) }
                     IconButton(onClick = {
-                        val uris = photos.filter { it.id in selectedIds && !it.isVideo }.map { it.uri }
-                        if (uris.isNotEmpty()) { onBatchResize(uris); selectedIds.clear() }
+                        val uris = photos.filter { it.uri.toString() in selectedUris && !it.isVideo }.map { it.uri }
+                        if (uris.isNotEmpty()) { onBatchResize(uris); selectedUris.clear() }
                     }) { Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.resize), tint = OnSurface) }
                     IconButton(onClick = {
-                        val uris = photos.filter { it.id in selectedIds }.map { it.uri }
+                        val uris = photos.filter { it.uri.toString() in selectedUris }.map { it.uri }
                         if (uris.isNotEmpty()) pendingDeleteUris = uris
                     }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Tertiary) }
                 }
@@ -480,7 +658,10 @@ fun GalleryScreen(
                         ALL_PHOTOS_PATH -> stringResource(R.string.gallery_all_photos)
                         FAVORITES_PATH -> stringResource(R.string.gallery_favorites)
                         null -> stringResource(R.string.gallery_title)
-                        else -> smartAlbumRuleFor(selectedAlbum!!)?.title
+                        else -> manualCollectionId(selectedAlbum)?.let { id ->
+                            manualCollections.firstOrNull { it.id == id }?.name
+                                ?: stringResource(R.string.gallery_collection)
+                        } ?: smartAlbumRuleFor(selectedAlbum!!)?.title
                             ?: selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
                     fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
@@ -491,7 +672,37 @@ fun GalleryScreen(
                 if (selectedAlbum == null) {
                     Text(stringResource(R.string.gallery_photo_count, albums.sumOf { it.count }), color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
+                    IconButton(onClick = {
+                        collectionName = ""
+                        collectionError = null
+                        addSelectionAfterCreate = false
+                        collectionEditorId = -1L
+                    }) {
+                        Icon(Icons.Default.CreateNewFolder, stringResource(R.string.gallery_collection_new), tint = Primary)
+                    }
                 } else {
+                    manualCollectionId(selectedAlbum)?.let { collectionId ->
+                        val collection = manualCollections.firstOrNull { it.id == collectionId }
+                        IconButton(onClick = {
+                            collectionName = collection?.name.orEmpty()
+                            collectionError = null
+                            addSelectionAfterCreate = false
+                            collectionEditorId = collectionId
+                        }) { Icon(Icons.Default.Edit, stringResource(R.string.gallery_collection_rename), tint = OnSurfaceVariant) }
+                        IconButton(onClick = {
+                            scope.launch {
+                                try {
+                                    collectionStore.deleteCollection(collectionId)
+                                    selectedAlbum = null
+                                    photos = emptyList()
+                                    selectedUris.clear()
+                                    Toast.makeText(context, context.getString(R.string.gallery_collection_deleted), Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, context.getString(R.string.gallery_collection_failed), Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.gallery_collection_delete), tint = Tertiary) }
+                    }
                     // Photo count
                     Text("${viewerPhotos.size}", color = OnSurfaceVariant, fontSize = 12.sp,
                         modifier = Modifier.padding(end = 4.dp))
@@ -501,8 +712,8 @@ fun GalleryScreen(
                     if (screenshotCount > 0) {
                         TextButton(
                             onClick = {
-                            selectedIds.clear()
-                            selectedIds.addAll(viewerPhotos.filter { it.isScreenshot && it.id !in favIds }.map { it.id })
+                            selectedUris.clear()
+                            selectedUris.addAll(viewerPhotos.filter { it.isScreenshot && it.id !in favIds }.map { it.uri.toString() })
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
@@ -587,6 +798,19 @@ fun GalleryScreen(
                 it.name.contains(searchQuery, ignoreCase = true) ||
                         it.subtitle.contains(searchQuery, ignoreCase = true)
             }
+        val manualCollectionSubtitle = stringResource(R.string.gallery_collection_subtitle)
+        val collectionAlbums = manualCollections.map { collection ->
+            Album(
+                name = collection.name,
+                path = manualCollectionPath(collection.id),
+                coverUri = collection.coverUri?.let(Uri::parse) ?: Uri.EMPTY,
+                count = collection.itemCount,
+                subtitle = manualCollectionSubtitle,
+                isManual = true
+            )
+        }.let { values ->
+            if (searchQuery.isBlank()) values else values.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
 
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -597,7 +821,7 @@ fun GalleryScreen(
                 }
             }
         } else if (selectedAlbum == null) {
-            AlbumGrid(albums = filteredAlbums, smartAlbums = filteredSmartAlbums,
+            AlbumGrid(albums = filteredAlbums, smartAlbums = filteredSmartAlbums, manualAlbums = collectionAlbums,
                 showLibraryCards = searchQuery.isBlank(),
                 totalMediaCount = albums.sumOf { it.count },
                 onAlbumClick = { searchQuery = ""; selectedAlbum = it.path },
@@ -612,14 +836,16 @@ fun GalleryScreen(
                 photos = viewerPhotos,
                 columns = gridColumns,
                 showDateHeaders = sortMode == SortMode.DATE,
-                selectedIds = selectedIds,
+                emptyTitle = if (manualCollectionId(selectedAlbum) != null) stringResource(R.string.gallery_collection_empty_title) else stringResource(R.string.gallery_no_media_title),
+                emptySubtitle = if (manualCollectionId(selectedAlbum) != null) stringResource(R.string.gallery_collection_empty_subtitle) else stringResource(R.string.gallery_no_media_subtitle),
+                selectedUris = selectedUris,
                 selectionMode = selectionMode,
                 onPhotoClick = { photo, index ->
-                    if (selectionMode) toggleSelection(selectedIds, photo.id)
+                    if (selectionMode) toggleSelection(selectedUris, photo.uri.toString())
                     else if (photo.isVideo) onPlayVideo(photo.uri)
                     else viewerIndex = index
                 },
-                onPhotoLongClick = { photo -> toggleSelection(selectedIds, photo.id) },
+                onPhotoLongClick = { photo -> toggleSelection(selectedUris, photo.uri.toString()) },
                 onPinchZoom = { zoom ->
                     if (zoom < 0.8f) gridColumns = (gridColumns + 1).coerceAtMost(6)
                     else if (zoom > 1.2f) gridColumns = (gridColumns - 1).coerceAtLeast(2)
@@ -649,8 +875,8 @@ private fun GalleryCapabilityBanner(title: String, body: String, action: String,
     }
 }
 
-private fun toggleSelection(selectedIds: MutableList<Long>, id: Long) {
-    if (id in selectedIds) selectedIds.remove(id) else selectedIds.add(id)
+private fun toggleSelection(selectedUris: MutableList<String>, uri: String) {
+    if (uri in selectedUris) selectedUris.remove(uri) else selectedUris.add(uri)
 }
 
 @Composable
@@ -690,6 +916,7 @@ private fun GalleryEmptyState(
 private fun AlbumGrid(
     albums: List<Album>,
     smartAlbums: List<Album>,
+    manualAlbums: List<Album>,
     showLibraryCards: Boolean,
     totalMediaCount: Int,
     onAlbumClick: (Album) -> Unit,
@@ -699,7 +926,7 @@ private fun AlbumGrid(
     emptyTitle: String,
     emptySubtitle: String
 ) {
-    if (albums.isEmpty() && smartAlbums.isEmpty() && (!showLibraryCards || favCount == 0)) {
+    if (albums.isEmpty() && smartAlbums.isEmpty() && manualAlbums.isEmpty() && (!showLibraryCards || favCount == 0)) {
         GalleryEmptyState(
             icon = Icons.Default.Photo,
             title = emptyTitle,
@@ -755,6 +982,50 @@ private fun AlbumGrid(
                                 Spacer(Modifier.height(8.dp))
                                 Text(favoritesLabel, color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 Text("$favCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (manualAlbums.isNotEmpty()) {
+            item(key = "manual-collections-header", span = { GridItemSpan(maxLineSpan) }, contentType = "section-header") {
+                Text(
+                    stringResource(R.string.gallery_collections),
+                    color = OnSurfaceVariant,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                )
+            }
+            items(manualAlbums, key = { it.path }, contentType = { "manual-collection" }) { album ->
+                val albumCd = stringResource(R.string.gallery_collection_cd, album.name, album.count)
+                Card(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        .semantics { contentDescription = albumCd }
+                        .clickable { onAlbumClick(album) },
+                    colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        if (album.coverUri != Uri.EMPTY) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(album.coverUri).crossfade(true).size(300, 300).build(),
+                                contentDescription = album.name,
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(Icons.Default.Folder, null, tint = Primary, modifier = Modifier.size(42.dp).align(Alignment.Center))
+                        }
+                        Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.68f)).padding(8.dp)) {
+                            Column {
+                                Text(album.name, color = Color.White, fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(stringResource(R.string.gallery_collection_items, album.count), color = Color.White.copy(alpha = 0.78f), fontSize = 11.sp)
                             }
                         }
                     }
@@ -865,7 +1136,9 @@ private fun PhotoGrid(
     photos: List<Photo>,
     columns: Int,
     showDateHeaders: Boolean = false,
-    selectedIds: List<Long>,
+    emptyTitle: String,
+    emptySubtitle: String,
+    selectedUris: List<String>,
     selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit,
     onPhotoLongClick: (Photo) -> Unit,
@@ -874,15 +1147,15 @@ private fun PhotoGrid(
     if (photos.isEmpty()) {
         GalleryEmptyState(
             icon = Icons.Default.Photo,
-            title = stringResource(R.string.gallery_no_media_title),
-            subtitle = stringResource(R.string.gallery_no_media_subtitle)
+            title = emptyTitle,
+            subtitle = emptySubtitle
         )
         return
     }
 
     val dateFormat = remember { java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()) }
-    val selectedIdSet = selectedIds.toSet()
-    val indexById = remember(photos) { photos.withIndex().associate { (i, p) -> p.id to i } }
+    val selectedUriSet = selectedUris.toSet()
+    val indexByUri = remember(photos) { photos.withIndex().associate { (i, p) -> p.uri.toString() to i } }
     val groupedByDate = remember(photos, showDateHeaders) {
         if (showDateHeaders) {
             photos.groupBy { dateFormat.format(java.util.Date(it.dateAdded * 1000)) }
@@ -921,8 +1194,8 @@ private fun PhotoGrid(
                     contentType = { "photo" }
                 ) { i ->
                     val photo = datePhotos[i]
-                    val globalIdx = indexById[photo.id] ?: 0
-                    val isSelected = photo.id in selectedIdSet
+                    val globalIdx = indexByUri[photo.uri.toString()] ?: 0
+                    val isSelected = photo.uri.toString() in selectedUriSet
                     PhotoItem(photo, globalIdx, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
                 }
             }
@@ -933,7 +1206,7 @@ private fun PhotoGrid(
                 contentType = { "photo" }
             ) { index ->
                 val photo = photos[index]
-                val isSelected = photo.id in selectedIdSet
+                val isSelected = photo.uri.toString() in selectedUriSet
                 PhotoItem(photo, index, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
             }
         } // else no date headers

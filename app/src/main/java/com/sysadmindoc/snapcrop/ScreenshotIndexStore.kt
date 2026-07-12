@@ -9,6 +9,8 @@ import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
@@ -16,10 +18,14 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.Normalizer
+import java.util.Locale
 
 data class ScreenshotIndexEntry(
     val mediaId: Long,
@@ -141,6 +147,59 @@ internal data class ScreenshotIndexRow(
     @ColumnInfo(name = "indexed_at") val indexedAt: Long
 )
 
+@Entity(
+    tableName = "manual_collection",
+    indices = [Index(value = ["normalized_name"], unique = true)]
+)
+internal data class ManualCollectionRow(
+    @PrimaryKey(autoGenerate = true) @ColumnInfo(name = "collection_id") val id: Long = 0,
+    @ColumnInfo(name = "name") val name: String,
+    @ColumnInfo(name = "normalized_name") val normalizedName: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+@Entity(
+    tableName = "manual_collection_item",
+    primaryKeys = ["collection_id", "media_uri"],
+    foreignKeys = [
+        ForeignKey(
+            entity = ManualCollectionRow::class,
+            parentColumns = ["collection_id"],
+            childColumns = ["collection_id"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("collection_id"), Index(value = ["media_uri", "media_date_added"])]
+)
+internal data class ManualCollectionItemRow(
+    @ColumnInfo(name = "collection_id") val collectionId: Long,
+    @ColumnInfo(name = "media_uri") val mediaUri: String,
+    @ColumnInfo(name = "media_date_added") val mediaDateAdded: Long,
+    @ColumnInfo(name = "added_at") val addedAt: Long
+)
+
+data class ManualCollectionMedia(val uri: Uri, val dateAdded: Long)
+
+data class ManualCollectionSummary(
+    @ColumnInfo(name = "collection_id") val id: Long,
+    @ColumnInfo(name = "name") val name: String,
+    @ColumnInfo(name = "item_count") val itemCount: Int,
+    @ColumnInfo(name = "cover_uri") val coverUri: String?
+)
+
+internal data class NormalizedCollectionName(val display: String, val key: String)
+
+internal object ManualCollectionNames {
+    fun normalize(name: String): NormalizedCollectionName {
+        val display = Normalizer.normalize(name, Normalizer.Form.NFKC)
+            .trim().replace(Regex("\\s+"), " ")
+        require(display.length in 1..80) { "Collection names must be 1 to 80 characters" }
+        require(display.none(Char::isISOControl)) { "Collection names cannot contain control characters" }
+        return NormalizedCollectionName(display, display.lowercase(Locale.ROOT))
+    }
+}
+
 @Dao
 internal interface ScreenshotIndexDao {
     @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
@@ -169,11 +228,79 @@ internal interface ScreenshotIndexDao {
         deleteAll()
         upsertAll(rows)
     }
+
+    @Query("""SELECT c.collection_id, c.name, COUNT(i.media_uri) AS item_count,
+        MIN(i.media_uri) AS cover_uri FROM manual_collection c
+        LEFT JOIN manual_collection_item i ON i.collection_id = c.collection_id
+        GROUP BY c.collection_id ORDER BY c.normalized_name""")
+    fun observeCollections(): Flow<List<ManualCollectionSummary>>
+
+    @Query("SELECT * FROM manual_collection WHERE normalized_name = :normalizedName LIMIT 1")
+    suspend fun getCollectionByName(normalizedName: String): ManualCollectionRow?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertCollection(row: ManualCollectionRow): Long
+
+    @Query("UPDATE manual_collection SET name = :name, normalized_name = :normalizedName, updated_at = :updatedAt WHERE collection_id = :id")
+    suspend fun renameCollection(id: Long, name: String, normalizedName: String, updatedAt: Long): Int
+
+    @Query("DELETE FROM manual_collection WHERE collection_id = :id")
+    suspend fun deleteCollection(id: Long): Int
+
+    @Query("SELECT * FROM manual_collection_item WHERE collection_id = :collectionId ORDER BY added_at DESC")
+    suspend fun getCollectionItems(collectionId: Long): List<ManualCollectionItemRow>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCollectionItems(rows: List<ManualCollectionItemRow>): List<Long>
+
+    @Transaction
+    suspend fun insertCollectionWithItems(
+        collection: ManualCollectionRow,
+        items: List<ManualCollectionItemRow>
+    ): Pair<Long, Int> {
+        val id = insertCollection(collection)
+        val inserted = if (items.isEmpty()) 0 else insertCollectionItems(items.map { it.copy(collectionId = id) }).count { it != -1L }
+        return id to inserted
+    }
+
+    @Query("DELETE FROM manual_collection_item WHERE collection_id = :collectionId AND media_uri IN (:mediaUris)")
+    suspend fun deleteCollectionItems(collectionId: Long, mediaUris: List<String>): Int
 }
 
-@Database(entities = [ScreenshotIndexRow::class], version = 1, exportSchema = true)
+@Database(
+    entities = [ScreenshotIndexRow::class, ManualCollectionRow::class, ManualCollectionItemRow::class],
+    version = 2,
+    exportSchema = true
+)
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
     abstract fun dao(): ScreenshotIndexDao
+}
+
+internal object ScreenshotIndexMigrations {
+    val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `manual_collection` (
+                    `collection_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `normalized_name` TEXT NOT NULL,
+                    `created_at` INTEGER NOT NULL,
+                    `updated_at` INTEGER NOT NULL)""".trimIndent()
+            )
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_manual_collection_normalized_name` ON `manual_collection` (`normalized_name`)")
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `manual_collection_item` (
+                    `collection_id` INTEGER NOT NULL,
+                    `media_uri` TEXT NOT NULL,
+                    `media_date_added` INTEGER NOT NULL,
+                    `added_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`collection_id`, `media_uri`),
+                    FOREIGN KEY(`collection_id`) REFERENCES `manual_collection`(`collection_id`) ON UPDATE NO ACTION ON DELETE CASCADE)""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_collection_item_collection_id` ON `manual_collection_item` (`collection_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_collection_item_media_uri_media_date_added` ON `manual_collection_item` (`media_uri`, `media_date_added`)")
+        }
+    }
 }
 
 /**
@@ -232,6 +359,52 @@ class ScreenshotIndexStore(context: Context) {
     }
 
     suspend fun count(): Int = dao.count()
+
+    fun observeCollections(): Flow<List<ManualCollectionSummary>> = dao.observeCollections()
+
+    suspend fun createCollection(name: String): Long {
+        val normalized = ManualCollectionNames.normalize(name)
+        require(dao.getCollectionByName(normalized.key) == null) { "A collection with that name already exists" }
+        val now = System.currentTimeMillis()
+        return dao.insertCollection(ManualCollectionRow(name = normalized.display, normalizedName = normalized.key, createdAt = now, updatedAt = now))
+    }
+
+    suspend fun createCollection(name: String, media: Collection<ManualCollectionMedia>): Pair<Long, Int> {
+        val normalized = ManualCollectionNames.normalize(name)
+        require(dao.getCollectionByName(normalized.key) == null) { "A collection with that name already exists" }
+        val now = System.currentTimeMillis()
+        val collection = ManualCollectionRow(name = normalized.display, normalizedName = normalized.key, createdAt = now, updatedAt = now)
+        val items = media.asSequence().distinctBy { it.uri.toString() }
+            .map { ManualCollectionItemRow(0, it.uri.toString(), it.dateAdded, now) }.toList()
+        return dao.insertCollectionWithItems(collection, items)
+    }
+
+    suspend fun renameCollection(id: Long, name: String) {
+        val normalized = ManualCollectionNames.normalize(name)
+        val existing = dao.getCollectionByName(normalized.key)
+        require(existing == null || existing.id == id) { "A collection with that name already exists" }
+        require(dao.renameCollection(id, normalized.display, normalized.key, System.currentTimeMillis()) == 1) { "Collection no longer exists" }
+    }
+
+    suspend fun deleteCollection(id: Long) {
+        dao.deleteCollection(id)
+    }
+
+    suspend fun collectionItems(id: Long): Set<ManualCollectionMedia> = dao.getCollectionItems(id)
+        .mapTo(linkedSetOf()) { ManualCollectionMedia(Uri.parse(it.mediaUri), it.mediaDateAdded) }
+
+    suspend fun addToCollection(id: Long, media: Collection<ManualCollectionMedia>): Int {
+        val now = System.currentTimeMillis()
+        val rows = media.asSequence().distinctBy { it.uri.toString() }
+            .map { ManualCollectionItemRow(id, it.uri.toString(), it.dateAdded, now) }.toList()
+        if (rows.isEmpty()) return 0
+        return dao.insertCollectionItems(rows).count { it != -1L }
+    }
+
+    suspend fun removeFromCollection(id: Long, uris: Collection<Uri>): Int {
+        val values = uris.asSequence().map(Uri::toString).distinct().toList()
+        return if (values.isEmpty()) 0 else dao.deleteCollectionItems(id, values)
+    }
 
     private fun queryImages(
         resolver: ContentResolver,
@@ -383,6 +556,7 @@ class ScreenshotIndexStore(context: Context) {
         private fun database(context: Context): ScreenshotIndexDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, DB_NAME)
+                    .addMigrations(ScreenshotIndexMigrations.MIGRATION_1_2)
                     .build()
                     .also {
                         INSTANCE = it

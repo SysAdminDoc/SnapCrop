@@ -118,10 +118,11 @@ are blocked behind explicit opt-in and evaluation gates.
 ### Gallery
 - Browse all photos and videos by album
 - Optional local intelligence index powers smart auto-albums for Screenshots, Chats, Games, Sites, Documents, Codes, and Payments without moving files
+- Create named manual collections, add screenshots with multi-select, and search/sort them without moving or duplicating media; memberships survive index rebuilds
 - Search screenshot albums by filename, source hints, indexed categories, dimensions, and OCR/barcode text after using OCR in the editor
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
-- Multi-select for batch delete, share, resize, batch rename, or PDF report export
+- Multi-select for collections, batch delete, share, resize, batch rename, or PDF report export
 - Favorites, search, and sort by date/name/size
 - Rebuild or purge the local screenshot index from Settings
 - Home recent crops include explicit delete confirmation for safe cleanup
