@@ -99,39 +99,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private enum class OcrEntityType { PHONE, EMAIL, URL }
-
-private data class OcrEntity(val type: OcrEntityType, val value: String, val display: String)
-
-private fun extractEntities(text: String): List<OcrEntity> {
-    val entities = mutableListOf<OcrEntity>()
-    val emailRegex = Regex("[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
-    val phoneRegex = Regex("(?<!\\d)(?:\\+?\\d[\\d\\s().-]{7,}\\d)(?!\\d)")
-    val urlRegex = Regex("https?://[^\\s)\"'>]+|www\\.[^\\s)\"'>]+")
-    val seen = mutableSetOf<String>()
-    for (match in emailRegex.findAll(text)) {
-        val v = match.value
-        if (seen.add(v.lowercase())) {
-            entities += OcrEntity(OcrEntityType.EMAIL, v, v)
-        }
-    }
-    for (match in phoneRegex.findAll(text)) {
-        val raw = match.value.trim()
-        val digits = raw.filter { it.isDigit() || it == '+' }
-        if (digits.length >= 7 && seen.add(digits)) {
-            entities += OcrEntity(OcrEntityType.PHONE, digits, raw)
-        }
-    }
-    for (match in urlRegex.findAll(text)) {
-        val v = match.value
-        if (seen.add(v.lowercase())) {
-            val url = if (v.startsWith("www.")) "https://$v" else v
-            entities += OcrEntity(OcrEntityType.URL, url, v)
-        }
-    }
-    return entities
-}
-
 @Composable
 fun CropEditorScreen(
     bitmap: Bitmap,
@@ -3963,16 +3930,21 @@ fun CropEditorScreen(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                val copiedMessage = stringResource(R.string.ocr_entity_copied)
                                 entities.forEach { entity ->
                                     val chipLabel = when (entity.type) {
                                         OcrEntityType.PHONE -> stringResource(R.string.ocr_entity_call, entity.display)
                                         OcrEntityType.EMAIL -> stringResource(R.string.ocr_entity_email, entity.display)
                                         OcrEntityType.URL -> stringResource(R.string.ocr_entity_open_url)
+                                        OcrEntityType.IPV4 -> stringResource(R.string.ocr_entity_copy_ip)
+                                        OcrEntityType.MAC -> stringResource(R.string.ocr_entity_copy_mac)
+                                        OcrEntityType.IBAN -> stringResource(R.string.ocr_entity_copy_iban)
                                     }
                                     val chipIcon = when (entity.type) {
                                         OcrEntityType.PHONE -> Icons.Default.Call
                                         OcrEntityType.EMAIL -> Icons.Default.Email
                                         OcrEntityType.URL -> Icons.AutoMirrored.Filled.OpenInNew
+                                        else -> Icons.Default.ContentCopy
                                     }
                                     AssistChip(
                                         onClick = {
@@ -3980,8 +3952,10 @@ fun CropEditorScreen(
                                                 OcrEntityType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${entity.value}"))
                                                 OcrEntityType.EMAIL -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${entity.value}"))
                                                 OcrEntityType.URL -> Intent(Intent.ACTION_VIEW, Uri.parse(entity.value))
+                                                else -> null
                                             }
-                                            context.startActivity(intent)
+                                            if (intent != null) runCatching { context.startActivity(intent) }
+                                            else copyText("SnapCrop", entity.value, copiedMessage)
                                         },
                                         label = { Text(chipLabel, fontSize = 11.sp, maxLines = 1) },
                                         leadingIcon = { Icon(chipIcon, null, modifier = Modifier.size(16.dp)) },

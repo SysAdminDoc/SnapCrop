@@ -15,6 +15,9 @@ All notable changes to SnapCrop will be documented in this file.
   matches grouped instead of discarding the whole group.
 - Added launcher long-press app shortcuts: Quick Crop on the newest screenshot,
   Long screenshot, toggle screenshot monitoring, and open Gallery.
+- OCR detected-actions now also surface IBAN, IPv4, and MAC-address chips that copy
+  the value on tap (alongside the existing call/email/open-link chips). Detection is
+  fully on-device, and IPv4 addresses are no longer misread as phone numbers.
 
 **Straighten export now matches the editor preview (v6.65.0).**
 

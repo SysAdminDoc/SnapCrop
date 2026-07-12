@@ -937,6 +937,10 @@
     <string name="ocr_entity_call">Call %1$s</string>
     <string name="ocr_entity_email">Email %1$s</string>
     <string name="ocr_entity_open_url">Open link</string>
+    <string name="ocr_entity_copy_ip">Copy IP</string>
+    <string name="ocr_entity_copy_mac">Copy MAC</string>
+    <string name="ocr_entity_copy_iban">Copy IBAN</string>
+    <string name="ocr_entity_copied">Copied</string>
     <string name="ocr_entity_actions">Detected actions</string>
 
     <!-- Editor - adjust mode -->
