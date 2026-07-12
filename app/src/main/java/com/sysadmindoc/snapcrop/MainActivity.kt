@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.CropOriginal
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.GridView
@@ -109,6 +110,7 @@ class MainActivity : ComponentActivity() {
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
+    private val recentWorkflowIds = mutableStateOf<List<WorkflowId>>(emptyList())
     private val cropCount = mutableStateOf(0)
     private val pendingAccessibilityDisclosure = mutableStateOf<AccessibilityPurpose?>(null)
     private var pendingMutationUris = mutableListOf<Uri>()
@@ -157,13 +159,17 @@ class MainActivity : ComponentActivity() {
     ) { uri ->
         uri?.let {
             startActivity(Intent(this, CropActivity::class.java).apply { data = it })
+            recordWorkflow(WorkflowId.EDIT_IMAGE)
         }
     }
 
     private val batchPickLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isNotEmpty()) batchAutocrop(uris)
+        if (uris.isNotEmpty()) {
+            batchAutocrop(uris)
+            recordWorkflow(WorkflowId.BATCH_CROP)
+        }
     }
 
     private val pickVideoLauncher = registerForActivityResult(
@@ -174,7 +180,15 @@ class MainActivity : ComponentActivity() {
                 data = it
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             })
+            recordWorkflow(WorkflowId.VIDEO_CLIP)
         }
+    }
+
+    private fun recentWorkflowPrefs() =
+        getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
+
+    private fun recordWorkflow(workflow: WorkflowId) {
+        recentWorkflowIds.value = RecentWorkflowStore.record(recentWorkflowPrefs(), workflow)
     }
 
     private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {
@@ -482,8 +496,23 @@ class MainActivity : ComponentActivity() {
                 }
                 var selectedTab by rememberSaveable { mutableIntStateOf(0) }
                 val tabStateHolder = rememberSaveableStateHolder()
+                var showHelp by remember { mutableStateOf(false) }
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
                 val credentialStore = remember { NetworkCredentialStore.open(this@MainActivity) }
+
+                if (showHelp) {
+                    LocalHelpDialog(
+                        onOpenRoute = { route ->
+                            when (route) {
+                                HelpRoute.GALLERY_FILTERS, HelpRoute.GALLERY_COLLECTIONS -> selectedTab = 1
+                                HelpRoute.SETTINGS_PROJECTS -> startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                                HelpRoute.EDITOR_SAVE_ACTIONS, HelpRoute.EDITOR_REDACTION, HelpRoute.SHARE_PRIVACY -> pickImageLauncher.launch("image/*")
+                                else -> selectedTab = 0
+                            }
+                        },
+                        onDismiss = { showHelp = false }
+                    )
+                }
 
                 // Opt-in, once-per-launch anonymous update check (sideload has no other update path).
                 var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
@@ -551,16 +580,29 @@ class MainActivity : ComponentActivity() {
                                 mediaCapabilities = mediaCapabilities.value,
                                 recentCrops = recentCrops.value,
                                 cropCount = cropCount.value,
+                                recentWorkflows = recentWorkflowIds.value,
                                 onToggleService = { toggleService() },
                                 onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
                                 onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
                                 onRequestNotificationAccess = { requestPermissions(MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)) },
                                 onPickImage = { pickImageLauncher.launch("image/*") },
-                                onWebCapture = { startActivity(Intent(this@MainActivity, WebCaptureActivity::class.java)) },
+                                onWebCapture = {
+                                    startActivity(Intent(this@MainActivity, WebCaptureActivity::class.java))
+                                    recordWorkflow(WorkflowId.WEB_CAPTURE)
+                                },
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
-                                onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
-                                onCollage = { startActivity(Intent(this@MainActivity, CollageActivity::class.java)) },
-                                onDeviceFrame = { startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java)) },
+                                onStitch = {
+                                    startActivity(Intent(this@MainActivity, StitchActivity::class.java))
+                                    recordWorkflow(WorkflowId.STITCH)
+                                },
+                                onCollage = {
+                                    startActivity(Intent(this@MainActivity, CollageActivity::class.java))
+                                    recordWorkflow(WorkflowId.COLLAGE)
+                                },
+                                onDeviceFrame = {
+                                    startActivity(Intent(this@MainActivity, DeviceFrameActivity::class.java))
+                                    recordWorkflow(WorkflowId.DEVICE_FRAME)
+                                },
                                 onVideoClip = { pickVideoLauncher.launch("video/*") },
                                 longScreenshotReady = longScreenshotReady.value,
                                 onLongScreenshot = { requestLongScreenshot() },
@@ -587,6 +629,7 @@ class MainActivity : ComponentActivity() {
                                     ))
                                 },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
+                                onOpenHelp = { showHelp = true },
                                 onOpenCrop = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
@@ -1086,6 +1129,7 @@ class MainActivity : ComponentActivity() {
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
         refreshLongScreenshotState()
+        recentWorkflowIds.value = RecentWorkflowStore.load(recentWorkflowPrefs())
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getBoolean("auto_start", false)
@@ -2123,6 +2167,7 @@ class MainActivity : ComponentActivity() {
                 putExtra(ScreenshotService.EXTRA_DELAY_SECONDS, seconds)
             }
         )
+        recordWorkflow(WorkflowId.DELAYED_CAPTURE)
         Toast.makeText(this, getString(R.string.toast_capturing_in, seconds), Toast.LENGTH_SHORT).show()
     }
 
@@ -2166,7 +2211,14 @@ class MainActivity : ComponentActivity() {
                 ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 2500L)
             AccessibilityPurpose.STEP_CAPTURE -> StepCaptureService.toggleCapture(this)
         }
-        if (started) moveTaskToBack(true) else openAccessibilitySettings(purpose)
+        if (started) {
+            if (purpose == AccessibilityPurpose.LONG_SCREENSHOT) {
+                recordWorkflow(WorkflowId.LONG_SCREENSHOT)
+            }
+            moveTaskToBack(true)
+        } else {
+            openAccessibilitySettings(purpose)
+        }
     }
 
     private fun isAccessibilityPurposeReady(purpose: AccessibilityPurpose): Boolean = when (purpose) {
@@ -2291,6 +2343,7 @@ private fun HomeScreen(
     mediaCapabilities: MediaCapabilities,
     recentCrops: List<RecentCrop>,
     cropCount: Int,
+    recentWorkflows: List<WorkflowId>,
     onToggleService: () -> Unit,
     onRequestImageAccess: () -> Unit,
     onRequestVideoAccess: () -> Unit,
@@ -2311,11 +2364,13 @@ private fun HomeScreen(
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenHelp: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onCopyCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
 ) {
     var cropPendingDelete by remember { mutableStateOf<RecentCrop?>(null) }
+    var showDelayPicker by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -2348,6 +2403,9 @@ private fun HomeScreen(
                     color = OnSurfaceVariant,
                     lineHeight = 18.sp
                 )
+            }
+            IconButton(onClick = onOpenHelp) {
+                Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurfaceVariant)
             }
             IconButton(onClick = onOpenSettings) {
                 Icon(Icons.Default.Settings, stringResource(R.string.home_settings), tint = OnSurfaceVariant)
@@ -2485,6 +2543,21 @@ private fun HomeScreen(
         Text(stringResource(R.string.home_workflows), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(8.dp))
 
+        RecentWorkflowRow(recentWorkflows) { workflow ->
+            when (workflow) {
+                WorkflowId.EDIT_IMAGE -> onPickImage()
+                WorkflowId.WEB_CAPTURE -> onWebCapture()
+                WorkflowId.BATCH_CROP -> onBatchCrop()
+                WorkflowId.DELAYED_CAPTURE -> showDelayPicker = true
+                WorkflowId.LONG_SCREENSHOT -> onLongScreenshot()
+                WorkflowId.STITCH -> onStitch()
+                WorkflowId.COLLAGE -> onCollage()
+                WorkflowId.DEVICE_FRAME -> onDeviceFrame()
+                WorkflowId.VIDEO_CLIP -> onVideoClip()
+                else -> Unit
+            }
+        }
+
         // Batch progress bar
         if (batchProgress.isNotEmpty()) {
             Card(
@@ -2517,7 +2590,6 @@ private fun HomeScreen(
             }
         }
 
-        var showDelayPicker by remember { mutableStateOf(false) }
         HomeActionTile(
             icon = Icons.Default.PhotoLibrary,
             title = stringResource(R.string.home_crop_one_title),

@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -111,6 +112,24 @@ class SettingsActivity : ComponentActivity() {
                     ActivityResultContracts.OpenDocument()
                 ) { uri -> if (uri != null) importSettings(uri, prefs) }
                 var pendingRuleDelete by remember { mutableStateOf<UserAppCropProfile?>(null) }
+                var showHelp by remember { mutableStateOf(false) }
+                val recentWorkflowPrefs = remember {
+                    getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
+                }
+                var recentWorkflowsEnabled by remember {
+                    mutableStateOf(RecentWorkflowStore.isEnabled(recentWorkflowPrefs))
+                }
+
+                if (showHelp) {
+                    LocalHelpDialog(
+                        onOpenRoute = { route ->
+                            if (route != HelpRoute.SETTINGS_PROJECTS) {
+                                startActivity(Intent(this@SettingsActivity, MainActivity::class.java))
+                            }
+                        },
+                        onDismiss = { showHelp = false }
+                    )
+                }
 
                 pendingRuleDelete?.let { profile ->
                     AlertDialog(
@@ -166,6 +185,10 @@ class SettingsActivity : ComponentActivity() {
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.settings_title), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = OnSurface)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { showHelp = true }) {
+                            Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurface)
+                        }
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -235,6 +258,18 @@ class SettingsActivity : ComponentActivity() {
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    SettingToggle(
+                        title = stringResource(R.string.settings_recent_workflows_title),
+                        subtitle = stringResource(R.string.settings_recent_workflows_subtitle),
+                        checked = recentWorkflowsEnabled,
+                        onCheckedChange = {
+                            recentWorkflowsEnabled = it
+                            RecentWorkflowStore.setEnabled(recentWorkflowPrefs, it)
+                        }
+                    )
 
                     Spacer(Modifier.height(12.dp))
 
@@ -1563,6 +1598,9 @@ class SettingsActivity : ComponentActivity() {
             if (count < 0) {
                 Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
             } else {
+                RecentWorkflowStore.clear(
+                    getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
+                )
                 Toast.makeText(this, getString(R.string.settings_backup_restored), Toast.LENGTH_LONG).show()
                 recreate()
             }

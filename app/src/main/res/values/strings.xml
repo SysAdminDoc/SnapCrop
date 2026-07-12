@@ -1198,4 +1198,13 @@
     <string name="source_context_saved">Source context saved</string>
     <string name="source_context_save_failed">Could not save source context</string>
     <string name="source_context_open_failed">No browser can open this source link</string>
+    <string name="help_title">Help &amp; tips</string>
+    <string name="help_search">Search offline help</string>
+    <string name="help_open">Open relevant controls</string>
+    <string name="help_no_results">No offline help matches this search.</string>
+    <string name="help_content_description">Open searchable offline help</string>
+    <string name="home_recent_workflows">Recent workflows</string>
+    <string name="home_recent_workflows_private">Only workflow IDs are stored—never media, names, paths, or recognized text.</string>
+    <string name="settings_recent_workflows_title">Recent workflows</string>
+    <string name="settings_recent_workflows_subtitle">Show up to six recent workflow shortcuts on Home. Stores only allowlisted workflow IDs and clears history when disabled.</string>
 </resources>

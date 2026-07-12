@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Searchable offline help and private recent workflows (v6.59.0).**
+
+- Home, Settings, and the editor now open task-based offline help covering
+  permission recovery, save/sidecar semantics, safe redaction, share privacy,
+  Gallery organization, and delayed/long/step/static-web capture recovery.
+  Search is deterministic and help routes users to the relevant Home, Gallery,
+  Settings, picker, or editor control without executing an action automatically.
+- Home can show up to six successful recent workflows. The dedicated local store
+  persists only allowlisted workflow enum IDs, sanitizes corrupt/unknown values,
+  clears immediately when disabled or after settings restore, and is excluded
+  from settings exports; failed/cancelled pickers and captures are not recorded.
+
 **Explicit source context through edit, projects, Gallery, and sharing (v6.58.0).**
 
 - Whole-field shared/Web Capture URLs plus explicit referrer/package hints now use

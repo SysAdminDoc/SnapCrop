@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Crop
@@ -198,6 +199,15 @@ fun CropEditorScreen(
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
+    var showHelp by remember { mutableStateOf(false) }
+    if (showHelp) {
+        LocalHelpDialog(
+            onOpenRoute = { route ->
+                if (route == HelpRoute.EDITOR_REDACTION) editMode = EditMode.PIXELATE
+            },
+            onDismiss = { showHelp = false }
+        )
+    }
     val redactions = remember { mutableStateListOf<RedactionRegion>().apply { addAll(initialRedactions.map { it.copy() }) } }
     var selectedRedactionIndex by remember { mutableIntStateOf(-1) }
     var pixDragStart by remember { mutableStateOf<Offset?>(null) }
@@ -1555,6 +1565,9 @@ fun CropEditorScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { showHelp = true }, modifier = Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurface, modifier = Modifier.size(20.dp))
+                }
                 IconButton(onClick = onRotate, modifier = Modifier.size(40.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, stringResource(R.string.editor_rotate), tint = OnSurface, modifier = Modifier.size(20.dp)) }
                 IconButton(onClick = onFlipH, modifier = Modifier.size(40.dp)) {
