@@ -84,6 +84,8 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
+Named export presets capture format, quality or target size, border, watermark, filename,
+and destination; choose one in the editor for Save/Share or assign one to Quick Crop in Settings.
 Auto-detected and manual redactions remain editable until export: review individual
 email/phone/card/IP/face regions, toggle whole categories, choose safe opaque Bar or
 cosmetic Pixelate/Blur, and move or resize each region before it is flattened once.

@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Named export presets (v6.48.0).**
+
+- Settings can snapshot up to 20 named export configurations containing PNG/JPEG/WebP,
+  quality or target KB, border, watermark, filename template, and MediaStore location;
+  presets can be applied, updated, deleted, and assigned as editor or Quick Crop defaults.
+- The editor exposes Current Settings plus every valid preset beside Save/Share. Save and
+  Share resolve one immutable configuration at operation start; alpha crops and Ultra HDR
+  compatibility continue to override incompatible format requests safely.
+- Quick Crop honors its configured preset for decoration, compression budget, filename,
+  and destination while app-rule format/album overrides retain precedence. Versioned,
+  bounded JSON validation and rendering/compression tests cover corrupt or missing presets.
+
 **Manual long-screenshot seam correction (v6.47.0).**
 
 - Long-screenshot review now preserves the original lossless frames and a versioned

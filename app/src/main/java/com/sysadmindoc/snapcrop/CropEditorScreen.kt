@@ -149,6 +149,7 @@ fun CropEditorScreen(
     initialAdjustments: FloatArray? = null,
     initialOcrBlocks: List<TextBlock> = emptyList(),
     initialOcrReviewed: Boolean = false,
+    initialExportPresetId: String? = null,
     onSave: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
@@ -165,6 +166,7 @@ fun CropEditorScreen(
     onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
     onOcrChanged: (List<TextBlock>) -> Unit = {},
     onOcrReviewedChanged: (Boolean) -> Unit = {},
+    onExportPresetChanged: (String?) -> Unit = {},
     registerStateProvider: ((() -> EditorDraft)?) -> Unit = {},
     replaceOriginalOnSave: Boolean
 ) {
@@ -228,6 +230,11 @@ fun CropEditorScreen(
     var showSavePresetDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val drawPrefs = remember { context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE) }
+    val exportPresets = remember { ExportPresetStore.load(drawPrefs) }
+    var selectedExportPresetId by remember {
+        mutableStateOf(initialExportPresetId?.takeIf { id -> exportPresets.any { it.id == id } })
+    }
+    val selectedExportSettings = ExportPresetStore.resolve(drawPrefs, selectedExportPresetId)
     val drawPresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(drawPrefs)) } }
     val defaultPresetName = remember { DrawStylePresetStore.defaultName(drawPrefs) }
 
@@ -3608,6 +3615,32 @@ fun CropEditorScreen(
 
             Spacer(Modifier.height(6.dp))
 
+            if (exportPresets.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedExportPresetId == null,
+                        onClick = {
+                            selectedExportPresetId = null
+                            onExportPresetChanged(null)
+                        },
+                        label = { Text(stringResource(R.string.export_preset_current), fontSize = 10.sp) }
+                    )
+                    exportPresets.forEach { preset ->
+                        FilterChip(
+                            selected = selectedExportPresetId == preset.id,
+                            onClick = {
+                                selectedExportPresetId = preset.id
+                                onExportPresetChanged(preset.id)
+                            },
+                            label = { Text(preset.name, fontSize = 10.sp, maxLines = 1) }
+                        )
+                    }
+                }
+            }
+
             // Action icons row
             val adj = exportAdjustments()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -3631,15 +3664,11 @@ fun CropEditorScreen(
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = OnPrimary)
                 Spacer(Modifier.width(8.dp))
                 // Estimated file size (read prefs once, not every recomposition)
-                val (isJpeg, isWebp) = remember {
-                    val prefs = context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE)
-                    prefs.getBoolean("use_jpeg", false) to prefs.getBoolean("use_webp", false)
-                }
                 val pixels = cropW.toLong() * cropH
-                val estKb = when {
-                    isWebp -> pixels * 0.5f / 1024 // ~0.5 bytes/px for WebP
-                    isJpeg -> pixels * 0.8f / 1024  // ~0.8 bytes/px for JPEG
-                    else -> pixels * 3f / 1024       // ~3 bytes/px for PNG
+                val estKb = when (selectedExportSettings.format) {
+                    ExportImageFormat.WEBP -> pixels * 0.5f / 1024
+                    ExportImageFormat.JPEG -> pixels * 0.8f / 1024
+                    ExportImageFormat.PNG -> pixels * 3f / 1024
                 }
                 val estLabel = if (estKb > 1024) String.format("~%.1f MB", estKb / 1024) else String.format("~%.0f KB", estKb)
                 Spacer(Modifier.width(6.dp))

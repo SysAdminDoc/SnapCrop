@@ -354,8 +354,8 @@ class ScreenshotService : Service() {
         }
     }
 
-    private fun getSaveFormat(prefs: SharedPreferences, overrideFormat: String? = null): SaveFormat {
-        val quality = prefs.getInt("jpeg_quality", 95)
+    private fun getSaveFormat(settings: ExportSettings, overrideFormat: String? = null): SaveFormat {
+        val quality = settings.quality
         return when (UserAppProfileStore.normalizeExportFormat(overrideFormat.orEmpty())) {
             "webp" -> {
                 @Suppress("DEPRECATION")
@@ -365,15 +365,15 @@ class ScreenshotService : Service() {
             }
             "jpeg" -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
             "png" -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-            else -> when {
-                prefs.getBoolean("use_webp", false) -> {
+            else -> when (settings.format) {
+                ExportImageFormat.WEBP -> {
                     @Suppress("DEPRECATION")
                     val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
                               else Bitmap.CompressFormat.WEBP
                     SaveFormat(fmt, quality, "webp", "image/webp")
                 }
-                prefs.getBoolean("use_jpeg", false) -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-                else -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+                ExportImageFormat.JPEG -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+                ExportImageFormat.PNG -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
             }
         }
     }
@@ -388,6 +388,9 @@ class ScreenshotService : Service() {
                 } ?: return@launch
 
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                val presetId = prefs.getString(ExportPresetStore.PREF_QUICK_PRESET_ID, null)
+                val exportSettings = ExportPresetStore.resolve(prefs, presetId)
+                val exportPresetName = ExportPresetStore.load(prefs).firstOrNull { it.id == presetId }?.name
                 val sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri))
                 val userProfiles = UserAppProfileStore.load(prefs)
                 val ocrScript = OcrScript.fromContext(this@ScreenshotService)
@@ -449,13 +452,21 @@ class ScreenshotService : Service() {
                     }
                 }
 
-                val (fmt, quality, ext, mime) = getSaveFormat(prefs, actionRule?.exportFormat)
+                var decorated = requireNotNull(cropped)
+                val bordered = ExportPresetRenderer.applyBorder(decorated, exportSettings)
+                if (bordered !== decorated) decorated.recycle()
+                decorated = bordered
+                val watermarked = ExportPresetRenderer.applyWatermark(decorated, exportSettings)
+                if (watermarked !== decorated) decorated.recycle()
+                cropped = watermarked
+
+                val (fmt, quality, ext, mime) = getSaveFormat(exportSettings, actionRule?.exportFormat)
                 val savePath = actionRule?.let { ConditionalAutoActions.savePath(prefs, it) }
-                    ?: (prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
-                val displayPrefix = actionRule?.id ?: "SnapCrop"
+                    ?: exportSettings.savePath
+                val displayName = ExportPresetStore.nextFilename(prefs, exportSettings)
 
                 val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "${displayPrefix}_${System.currentTimeMillis()}.$ext")
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "$displayName.$ext")
                     put(MediaStore.Images.Media.MIME_TYPE, mime)
                     put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
                     put(MediaStore.Images.Media.IS_PENDING, 1)
@@ -464,10 +475,16 @@ class ScreenshotService : Service() {
                 val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 if (savedUri != null) {
                     try {
-                        val compressed = contentResolver.openOutputStream(savedUri)?.use { out ->
-                            cropped.compress(fmt, quality, out)
-                        } ?: false
-                        if (!compressed) throw IOException("Image encoder failed")
+                        if (exportSettings.targetSizeEnabled && fmt != Bitmap.CompressFormat.PNG) {
+                            val (bytes, _) = ExportPresetRenderer.compressToTarget(requireNotNull(cropped), fmt, exportSettings.targetSizeKb)
+                            contentResolver.openOutputStream(savedUri)?.use { out -> out.write(bytes) }
+                                ?: throw IOException("Output stream unavailable")
+                        } else {
+                            val compressed = contentResolver.openOutputStream(savedUri)?.use { out ->
+                                requireNotNull(cropped).compress(fmt, quality, out)
+                            } ?: false
+                            if (!compressed) throw IOException("Image encoder failed")
+                        }
                         values.clear()
                         values.put(MediaStore.Images.Media.IS_PENDING, 0)
                         if (contentResolver.update(savedUri, values, null, null) != 1) {
@@ -482,9 +499,11 @@ class ScreenshotService : Service() {
                                 if (redactionCount > 0) append(", replaced $redactionCount sensitive area(s)")
                                 if (actionRule.redactSensitiveText && redactionCount == 0) append(", no sensitive text found")
                                 if (actionRule.exportFormat != "default") append(", ${actionRule.exportFormat.uppercase()} export")
+                                if (exportPresetName != null) append(", $exportPresetName preset")
                             }
                         } else {
-                            getString(R.string.toast_autocropped_saved)
+                            getString(R.string.toast_autocropped_saved) +
+                                    (exportPresetName?.let { ", $it preset" } ?: "")
                         }
                         handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show() }
                     } catch (e: IOException) {

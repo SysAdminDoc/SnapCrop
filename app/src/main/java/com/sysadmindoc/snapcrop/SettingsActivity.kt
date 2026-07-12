@@ -64,6 +64,14 @@ class SettingsActivity : ComponentActivity() {
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
                 var jpegQuality by remember { mutableIntStateOf(prefs.getInt("jpeg_quality", 95).coerceIn(50, 100)) }
+                var exportPresets by remember { mutableStateOf(ExportPresetStore.load(prefs)) }
+                var exportPresetName by remember { mutableStateOf("") }
+                var editorPresetId by remember {
+                    mutableStateOf(prefs.getString(ExportPresetStore.PREF_EDITOR_PRESET_ID, null))
+                }
+                var quickPresetId by remember {
+                    mutableStateOf(prefs.getString(ExportPresetStore.PREF_QUICK_PRESET_ID, null))
+                }
                 val outputFormat = when {
                     useWebp -> stringResource(R.string.format_webp)
                     useJpeg -> stringResource(R.string.format_jpeg)
@@ -993,6 +1001,106 @@ class SettingsActivity : ComponentActivity() {
                                             selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                                             containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
                                         shape = RoundedCornerShape(8.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.settings_export_presets_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(stringResource(R.string.settings_export_presets_hint), color = OnSurfaceVariant, fontSize = 11.sp)
+                            OutlinedTextField(
+                                value = exportPresetName,
+                                onValueChange = { exportPresetName = it.take(40) },
+                                label = { Text(stringResource(R.string.settings_export_preset_name)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Primary,
+                                    unfocusedBorderColor = Outline,
+                                    focusedTextColor = OnSurface,
+                                    unfocusedTextColor = OnSurface,
+                                    cursorColor = Primary
+                                )
+                            )
+                            Button(
+                                onClick = {
+                                    val updated = ExportPresetStore.upsertCurrent(prefs, exportPresetName)
+                                    if (updated == null) {
+                                        Toast.makeText(this@SettingsActivity, R.string.settings_export_preset_invalid, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        exportPresets = updated
+                                        exportPresetName = ""
+                                    }
+                                },
+                                enabled = exportPresetName.isNotBlank(),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                            ) { Text(stringResource(R.string.settings_export_preset_save), color = OnPrimary) }
+
+                            exportPresets.forEach { preset ->
+                                Surface(color = SurfaceElevated, shape = RoundedCornerShape(8.dp)) {
+                                    Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(preset.name, color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                                        Text(
+                                            stringResource(
+                                                R.string.settings_export_preset_summary,
+                                                preset.settings.format.key.uppercase(),
+                                                preset.settings.quality,
+                                                preset.settings.savePath,
+                                                preset.settings.borderSize,
+                                                if (preset.settings.watermarkEnabled) stringResource(R.string.settings_export_preset_on) else stringResource(R.string.settings_export_preset_off)
+                                            ),
+                                            color = OnSurfaceVariant,
+                                            fontSize = 10.sp,
+                                            lineHeight = 14.sp
+                                        )
+                                        Row(
+                                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            FilterChip(
+                                                selected = editorPresetId == preset.id,
+                                                onClick = {
+                                                    editorPresetId = if (editorPresetId == preset.id) null else preset.id
+                                                    prefs.edit().apply {
+                                                        editorPresetId?.let { putString(ExportPresetStore.PREF_EDITOR_PRESET_ID, it) }
+                                                            ?: remove(ExportPresetStore.PREF_EDITOR_PRESET_ID)
+                                                    }.apply()
+                                                },
+                                                label = { Text(stringResource(R.string.settings_export_preset_editor), fontSize = 10.sp) }
+                                            )
+                                            FilterChip(
+                                                selected = quickPresetId == preset.id,
+                                                onClick = {
+                                                    quickPresetId = if (quickPresetId == preset.id) null else preset.id
+                                                    prefs.edit().apply {
+                                                        quickPresetId?.let { putString(ExportPresetStore.PREF_QUICK_PRESET_ID, it) }
+                                                            ?: remove(ExportPresetStore.PREF_QUICK_PRESET_ID)
+                                                    }.apply()
+                                                },
+                                                label = { Text(stringResource(R.string.settings_export_preset_quick), fontSize = 10.sp) }
+                                            )
+                                            TextButton(onClick = {
+                                                ExportPresetStore.applyToCurrent(prefs, preset)
+                                                recreate()
+                                            }) { Text(stringResource(R.string.settings_export_preset_apply), color = Primary) }
+                                            TextButton(onClick = {
+                                                exportPresets = ExportPresetStore.upsertCurrent(prefs, preset.name, preset.id) ?: exportPresets
+                                            }) { Text(stringResource(R.string.settings_export_preset_update), color = Secondary) }
+                                            TextButton(onClick = {
+                                                exportPresets = ExportPresetStore.delete(prefs, preset.id)
+                                                if (editorPresetId == preset.id) editorPresetId = null
+                                                if (quickPresetId == preset.id) quickPresetId = null
+                                            }) { Text(stringResource(R.string.delete), color = Tertiary) }
+                                        }
+                                    }
                                 }
                             }
                         }

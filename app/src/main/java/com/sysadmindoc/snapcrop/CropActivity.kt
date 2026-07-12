@@ -105,6 +105,7 @@ class CropActivity : ComponentActivity() {
     private val isSaving = mutableStateOf(false)
     private val showFlash = mutableStateOf(false)
     private var sourceUri: Uri? = null
+    private var selectedExportPresetId: String? = null
     private var draftStateProvider: (() -> EditorDraft)? = null
     private val draftFile get() = File(filesDir, "editor_draft.json")
     private var intentSourceHints: List<String> = emptyList()
@@ -180,6 +181,8 @@ class CropActivity : ComponentActivity() {
         initialAdjustments.value = null
         initialOcrBlocks.value = emptyList()
         initialOcrReviewed.value = false
+        selectedExportPresetId = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            .getString(ExportPresetStore.PREF_EDITOR_PRESET_ID, null)
         projectLoadError.value = null
         projectCanRelink.value = false
         pendingRelinkProject = null
@@ -246,6 +249,14 @@ class CropActivity : ComponentActivity() {
                             onOcrChanged = { initialOcrBlocks.value = it.map(TextBlock::deepCopy) },
                             initialOcrReviewed = initialOcrReviewed.value,
                             onOcrReviewedChanged = { initialOcrReviewed.value = it },
+                            initialExportPresetId = selectedExportPresetId,
+                            onExportPresetChanged = { presetId ->
+                                selectedExportPresetId = presetId
+                                getSharedPreferences("snapcrop", MODE_PRIVATE).edit().apply {
+                                    presetId?.let { putString(ExportPresetStore.PREF_EDITOR_PRESET_ID, it) }
+                                        ?: remove(ExportPresetStore.PREF_EDITOR_PRESET_ID)
+                                }.apply()
+                            },
                             registerStateProvider = { provider -> draftStateProvider = provider },
                             onSave = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
                             onSaveCopy = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = false) },
@@ -464,32 +475,47 @@ class CropActivity : ComponentActivity() {
         initialOcrReviewed.value = false
     }
 
+    private fun currentExportSettings(): ExportSettings = ExportPresetStore.resolve(
+        getSharedPreferences("snapcrop", MODE_PRIVATE),
+        selectedExportPresetId
+    )
+
     private fun effectiveDeleteOriginalOnSave(): Boolean =
         getDeletePref() && !projectSidecarsEnabled()
 
-    private fun getSaveFormat(bitmap: Bitmap? = null): Pair<Bitmap.CompressFormat, Int> {
-        val resolved = getExportFormat(forcePng = false, ultraHdr = bitmap?.hasUltraHdrGainmap() == true)
+    private fun getSaveFormat(
+        bitmap: Bitmap? = null,
+        settings: ExportSettings = currentExportSettings()
+    ): Pair<Bitmap.CompressFormat, Int> {
+        val resolved = getExportFormat(
+            forcePng = false,
+            ultraHdr = bitmap?.hasUltraHdrGainmap() == true,
+            settings = settings
+        )
         return resolved.format to resolved.quality
     }
 
-    private fun getExportFormat(forcePng: Boolean, ultraHdr: Boolean = false): CropExportFormat {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
+    private fun getExportFormat(
+        forcePng: Boolean,
+        ultraHdr: Boolean = false,
+        settings: ExportSettings = currentExportSettings()
+    ): CropExportFormat {
+        val quality = settings.quality
         if (ultraHdr) {
             return CropExportFormat(Bitmap.CompressFormat.JPEG, quality.coerceAtLeast(90), "jpg", "image/jpeg")
         }
         if (forcePng) {
             return CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
         }
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
+        return when (settings.format) {
+            ExportImageFormat.WEBP -> {
                 @Suppress("DEPRECATION")
                 val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
                           else Bitmap.CompressFormat.WEBP
                 CropExportFormat(fmt, quality, "webp", "image/webp")
             }
-            prefs.getBoolean("use_jpeg", false) -> CropExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            else -> CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+            ExportImageFormat.JPEG -> CropExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+            ExportImageFormat.PNG -> CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
         }
     }
 
@@ -571,7 +597,7 @@ class CropActivity : ComponentActivity() {
                 ocrReviewed = d.ocrReviewed,
                 deleteOriginal = effectiveDeleteOriginalOnSave(),
                 exportFormat = getExportFormat(forcePng = false),
-                savePath = getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop",
+                savePath = currentExportSettings().savePath,
                 computeHash = false
             )
             draftFile.writeText(json)
@@ -1870,19 +1896,23 @@ class CropActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
+                val exportSettings = currentExportSettings()
                 cropped = createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj)
-                val bordered = applyBorder(cropped)
+                val bordered = ExportPresetRenderer.applyBorder(cropped, exportSettings)
                 if (bordered !== cropped) cropped.recycle()
                 cropped = bordered
-                val watermarked = applyWatermark(cropped)
+                val watermarked = ExportPresetRenderer.applyWatermark(cropped, exportSettings)
                 if (watermarked !== cropped) cropped.recycle()
                 cropped = watermarked
                 val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
-                val name = resolveFilename()
+                val name = resolveFilename(exportSettings)
                 val annotationSvg = buildAnnotationSvg(rect, redactions, drawPaths)
-                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-                val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-                val exportFormat = getExportFormat(forcePng = hasShapeCrop, ultraHdr = cropped.hasUltraHdrGainmap())
+                val savePath = exportSettings.savePath
+                val exportFormat = getExportFormat(
+                    forcePng = hasShapeCrop,
+                    ultraHdr = cropped.hasUltraHdrGainmap(),
+                    settings = exportSettings
+                )
                 val projectSidecarJson = if (projectSidecarsEnabled()) {
                     buildProjectSidecarJson(rect, redactions, drawPaths, adj, deleteOriginal, exportFormat, savePath)
                 } else {
@@ -1901,7 +1931,8 @@ class CropActivity : ComponentActivity() {
                     forcePng = hasShapeCrop,
                     annotationSvg = annotationSvg,
                     projectSidecarJson = projectSidecarJson,
-                    correctedOcrText = correctedOcrText
+                    correctedOcrText = correctedOcrText,
+                    exportSettings = exportSettings
                 )
             } catch (e: Exception) {
                 android.util.Log.e("SnapCrop", "saveCropped failed", e)
@@ -1921,7 +1952,11 @@ class CropActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
-                cropped = applyExportDecorations(createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj))
+                val exportSettings = currentExportSettings()
+                cropped = applyExportDecorations(
+                    createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj),
+                    exportSettings
+                )
                 val clipDir = File(cacheDir, "clipboard")
                 clipDir.mkdirs()
                 val ultraHdr = cropped.hasUltraHdrGainmap()
@@ -2034,17 +2069,23 @@ class CropActivity : ComponentActivity() {
      *  Recycles [shareBitmap] when done. */
     private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
-            val out = applyExportDecorations(shareBitmap)
-            val (format, quality) = getSaveFormat(out)
+            val exportSettings = currentExportSettings()
+            val out = applyExportDecorations(shareBitmap, exportSettings)
+            val (format, quality) = getSaveFormat(out, exportSettings)
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
             val (shareFmt, shareQual) = if (hasShapeCrop && !out.hasUltraHdrGainmap()) Bitmap.CompressFormat.PNG to 100 else format to quality
             val isWebp = shareFmt.isWebpFormat()
             val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
-            val shareFile = File(shareDir, "snapcrop_share.$ext")
+            val shareFile = File(shareDir, "${resolveFilename(exportSettings)}.$ext")
             try {
-                shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
+                if (exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG) {
+                    val (bytes, _) = ExportPresetRenderer.compressToTarget(out, shareFmt, exportSettings.targetSizeKb)
+                    shareFile.writeBytes(bytes)
+                } else {
+                    shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
+                }
                 val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
                 withContext(Dispatchers.Main) {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -2088,106 +2129,22 @@ class CropActivity : ComponentActivity() {
 
     /** Applies the configured export border + watermark, recycling intermediates. No-op if neither
      *  is enabled (returns the input). Used by share/copy so they match the saved file. */
-    private fun applyExportDecorations(input: Bitmap): Bitmap {
+    private fun applyExportDecorations(
+        input: Bitmap,
+        settings: ExportSettings = currentExportSettings()
+    ): Bitmap {
         var out = input
-        val bordered = applyBorder(out)
+        val bordered = ExportPresetRenderer.applyBorder(out, settings)
         if (bordered !== out) out.recycle()
         out = bordered
-        val watermarked = applyWatermark(out)
+        val watermarked = ExportPresetRenderer.applyWatermark(out, settings)
         if (watermarked !== out) out.recycle()
         return watermarked
     }
 
-    private fun applyBorder(bitmap: Bitmap): Bitmap {
+    private fun resolveFilename(settings: ExportSettings = currentExportSettings()): String {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val borderSize = prefs.getInt("border_size", 0)
-        if (borderSize <= 0) return bitmap
-        val borderColorIdx = prefs.getInt("border_color", 0)
-        val borderColors = intArrayOf(
-            0xFF000000.toInt(), 0xFFFFFFFF.toInt(), 0xFF1E1E2E.toInt(),
-            0xFF89B4FA.toInt(), 0xFFA6E3A1.toInt(), 0xFFF38BA8.toInt()
-        )
-        val bgColor = borderColors[borderColorIdx.coerceIn(0, borderColors.size - 1)]
-        val newW = bitmap.width + borderSize * 2
-        val newH = bitmap.height + borderSize * 2
-        val result = Bitmap.createBitmap(newW, newH, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        canvas.drawColor(bgColor)
-        canvas.drawBitmap(bitmap, borderSize.toFloat(), borderSize.toFloat(), null)
-        preserveUltraHdrGainmap(
-            bitmap,
-            result,
-            Matrix().apply { postTranslate(borderSize.toFloat(), borderSize.toFloat()) }
-        )
-        return result
-    }
-
-    private fun applyWatermark(bitmap: Bitmap): Bitmap {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        if (!prefs.getBoolean("watermark_enabled", false)) return bitmap
-        val text = prefs.getString("watermark_text", "SnapCrop") ?: return bitmap
-        if (text.isBlank()) return bitmap
-
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = 0x40FFFFFF // 25% white
-            textSize = (bitmap.width * 0.04f).coerceAtLeast(24f)
-            style = Paint.Style.FILL
-        }
-        canvas.save()
-        canvas.rotate(-30f, bitmap.width / 2f, bitmap.height / 2f)
-        val spacing = paint.textSize * 3
-        val diag = kotlin.math.sqrt((bitmap.width.toDouble() * bitmap.width + bitmap.height.toDouble() * bitmap.height)).toFloat()
-        var y = -diag / 2
-        while (y < diag * 1.5f) {
-            var x = -diag / 2
-            while (x < diag * 1.5f) {
-                canvas.drawText(text, x, y, paint)
-                x += paint.measureText(text) + spacing
-            }
-            y += spacing
-        }
-        canvas.restore()
-        preserveUltraHdrGainmap(bitmap, result)
-        return result
-    }
-
-    private fun resolveFilename(): String {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val template = prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%"
-        val counter = prefs.getInt("save_counter", 1)
-        prefs.edit().putInt("save_counter", counter + 1).apply()
-        val now = System.currentTimeMillis()
-        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-        val timeFmt = java.text.SimpleDateFormat("HH-mm-ss", java.util.Locale.US)
-        return template
-            .replace("%timestamp%", now.toString())
-            .replace("%date%", dateFmt.format(java.util.Date(now)))
-            .replace("%time%", timeFmt.format(java.util.Date(now)))
-            .replace("%counter%", String.format("%04d", counter))
-    }
-
-    private fun compressToTargetSize(bitmap: Bitmap, format: Bitmap.CompressFormat, targetKb: Int): Pair<ByteArray, Int> {
-        // Binary search for quality that meets target file size
-        var lo = 10; var hi = 100; var bestBytes: ByteArray? = null; var bestQuality = hi
-        while (lo <= hi) {
-            val mid = (lo + hi) / 2
-            val baos = java.io.ByteArrayOutputStream()
-            bitmap.compress(format, mid, baos)
-            val bytes = baos.toByteArray()
-            if (bytes.size <= targetKb * 1024) {
-                bestBytes = bytes; bestQuality = mid; lo = mid + 1
-            } else {
-                hi = mid - 1
-            }
-        }
-        if (bestBytes == null) {
-            val baos = java.io.ByteArrayOutputStream()
-            bitmap.compress(format, 10, baos)
-            bestBytes = baos.toByteArray(); bestQuality = 10
-        }
-        return bestBytes to bestQuality
+        return ExportPresetStore.nextFilename(prefs, settings)
     }
 
     private fun sidecarPath(imageSavePath: String): String {
@@ -2287,21 +2244,26 @@ class CropActivity : ComponentActivity() {
         forcePng: Boolean = false,
         annotationSvg: String? = null,
         projectSidecarJson: String? = null,
-        correctedOcrText: String? = null
+        correctedOcrText: String? = null,
+        exportSettings: ExportSettings = currentExportSettings()
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val stripExif = prefs.getBoolean("strip_exif", false)
-        val exportFormat = getExportFormat(forcePng, ultraHdr = bitmap.hasUltraHdrGainmap())
+        val exportFormat = getExportFormat(
+            forcePng,
+            ultraHdr = bitmap.hasUltraHdrGainmap(),
+            settings = exportSettings
+        )
         val format = exportFormat.format
         val quality = exportFormat.quality
         val ext = exportFormat.ext
         val mime = exportFormat.mime
 
-        val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+        val savePath = exportSettings.savePath
 
         // Target file size compression (JPEG/WebP only, not PNG)
-        val targetSizeEnabled = prefs.getBoolean("target_size_enabled", false)
-        val targetSizeKb = prefs.getInt("target_size_kb", 500)
+        val targetSizeEnabled = exportSettings.targetSizeEnabled
+        val targetSizeKb = exportSettings.targetSizeKb
         val useTargetSize = targetSizeEnabled && !forcePng && format != Bitmap.CompressFormat.PNG
 
         val values = ContentValues().apply {
@@ -2320,7 +2282,7 @@ class CropActivity : ComponentActivity() {
         try {
             val baseMessage: String
             if (useTargetSize) {
-                val (bytes, usedQuality) = compressToTargetSize(bitmap, format, targetSizeKb)
+                val (bytes, usedQuality) = ExportPresetRenderer.compressToTarget(bitmap, format, targetSizeKb)
                 contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                     ?: throw IOException("Failed to open output stream")
                 val sizeKb = bytes.size / 1024
