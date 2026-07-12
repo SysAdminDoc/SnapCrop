@@ -952,6 +952,17 @@
 
     <!-- Long screenshot -->
     <string name="long_screenshot_review_title">Long Screenshot</string>
+    <string name="long_screenshot_seam_title">Correct frame joins</string>
+    <string name="long_screenshot_seam_help">Adjust where the previous frame ends and the next frame starts. The full preview refreshes when you release a slider.</string>
+    <string name="long_screenshot_join_label">Join %1$d of %2$d · output row %3$d</string>
+    <string name="long_screenshot_next_start">Start next frame at row %1$d (detected %2$d)</string>
+    <string name="long_screenshot_previous_trim">Trim previous frame by %1$d px (detected %2$d)</string>
+    <string name="long_screenshot_reset_join">Reset join</string>
+    <string name="long_screenshot_nudge_up">Start −8 px</string>
+    <string name="long_screenshot_nudge_down">Start +8 px</string>
+    <string name="long_screenshot_trim_less">Trim −8 px</string>
+    <string name="long_screenshot_trim_more">Trim +8 px</string>
+    <string name="long_screenshot_seam_render_failed">Could not render that join. The last valid preview was kept.</string>
     <string name="long_screenshot_save_edit">Save &amp; Edit</string>
     <string name="long_screenshot_retry">Retry</string>
     <string name="long_screenshot_discard">Discard</string>

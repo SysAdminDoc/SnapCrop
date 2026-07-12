@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -44,6 +45,57 @@ class ScrollStitcherTest {
             first.recycle()
             same.recycle()
             different.recycle()
+        }
+    }
+
+    @Test
+    fun manualJoinEditsChangeHeightExactlyAndResetToDetection() {
+        val frames = listOf(
+            scrollFrame(contentStart = 0),
+            scrollFrame(contentStart = 40),
+            scrollFrame(contentStart = 80)
+        )
+        val automatic = ScrollStitcher.createPlan(frames)
+        val automaticBitmap = ScrollStitcher.stitch(frames, automatic)
+        val next = automatic.frames[1]
+        val adjustedTop = automatic.withCropTop(1, next.cropTop + 8)
+        val previous = adjustedTop.frames[0]
+        val adjusted = adjustedTop.withBottomTrim(0, previous.bottomTrim + 4)
+        val adjustedBitmap = ScrollStitcher.stitch(frames, adjusted)
+
+        try {
+            val removedRows = (adjusted.frames[1].cropTop - automatic.frames[1].cropTop) +
+                    (adjusted.frames[0].bottomTrim - automatic.frames[0].bottomTrim)
+            assertEquals(automaticBitmap.height - removedRows, adjustedBitmap.height)
+            assertEquals(automatic, adjusted.resetJoin(1))
+            assertEquals(2, automatic.seamCount)
+            assertTrue(automatic.outputJoinY(1) > 0)
+        } finally {
+            automaticBitmap.recycle()
+            adjustedBitmap.recycle()
+            frames.forEach(Bitmap::recycle)
+        }
+    }
+
+    @Test
+    fun manualJoinEditsClampAndMixedWidthsNormalize() {
+        val frames = listOf(
+            scrollFrame(contentStart = 0, width = 96),
+            scrollFrame(contentStart = 40, width = 120)
+        )
+        val plan = ScrollStitcher.createPlan(frames)
+        val clamped = plan.withCropTop(1, Int.MAX_VALUE).withBottomTrim(0, Int.MAX_VALUE)
+        val stitched = ScrollStitcher.stitch(frames, clamped)
+
+        try {
+            assertEquals(96, plan.width)
+            assertTrue(clamped.frames[1].cropTop + clamped.frames[1].bottomTrim < clamped.frames[1].frameHeight)
+            assertTrue(clamped.frames[0].cropTop + clamped.frames[0].bottomTrim < clamped.frames[0].frameHeight)
+            assertEquals(96, stitched.width)
+            assertTrue(stitched.height >= 2)
+        } finally {
+            stitched.recycle()
+            frames.forEach(Bitmap::recycle)
         }
     }
 

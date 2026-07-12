@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Manual long-screenshot seam correction (v6.47.0).**
+
+- Long-screenshot review now preserves the original lossless frames and a versioned
+  stitch plan instead of only a flattened preview. Every detected join exposes the
+  previous-frame trim and next-frame start, sliders, ±8 px nudges, and reset.
+- Corrected plans are persisted atomically, rerender the overview without stale-job
+  overwrites, and drive the final Gallery save; retry and discard clean the bounded
+  cache session, while corrupt/missing sessions fail back to the last valid preview.
+- Stitch rendering validates frame geometry, clamps edits to retain content, caps
+  output pixels, supports mixed-width normalization, and has plan/store/cleanup tests.
+
 **Editable OCR correction and export sidecars (v6.46.0).**
 
 - OCR blocks can now be reviewed, corrected, deleted, and merged without changing

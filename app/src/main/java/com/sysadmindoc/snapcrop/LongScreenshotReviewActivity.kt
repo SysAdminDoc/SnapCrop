@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -47,12 +51,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.sysadmindoc.snapcrop.ui.theme.OnPrimary
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
@@ -65,6 +71,7 @@ import com.sysadmindoc.snapcrop.ui.theme.OnMediaSurfaceVariant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class LongScreenshotReviewActivity : ComponentActivity() {
     private var pendingSavedUri: Uri? = null
@@ -77,6 +84,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
     companion object {
         const val EXTRA_REVIEW_URI = "review_uri"
         const val EXTRA_REVIEW_PATH = "review_path"
+        const val EXTRA_BUNDLE_PATH = "review_bundle_path"
         const val EXTRA_FRAME_COUNT = "frame_count"
         const val EXTRA_STOP_REASON = "stop_reason"
         private const val KEY_PENDING_SAVED_URI = "pending_saved_uri"
@@ -84,9 +92,15 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
     private var reviewUri by mutableStateOf<Uri?>(null)
     private var reviewPath: String? = null
+    private var bundlePath: String? = null
     private var frameCount by mutableStateOf(0)
     private var stopReason by mutableStateOf("")
     private var isSaving by mutableStateOf(false)
+    private var isRendering by mutableStateOf(false)
+    private var stitchPlan by mutableStateOf<ScrollStitchPlan?>(null)
+    private var previewRevision by mutableStateOf(0)
+    @Volatile private var renderGeneration = 0
+    private val renderPublishLock = Any()
     private var keepReviewFile = false
 
     override fun onResume() {
@@ -102,8 +116,10 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
         reviewUri = intent.getStringExtra(EXTRA_REVIEW_URI)?.let(Uri::parse)
         reviewPath = intent.getStringExtra(EXTRA_REVIEW_PATH)
+        bundlePath = intent.getStringExtra(EXTRA_BUNDLE_PATH)
         frameCount = intent.getIntExtra(EXTRA_FRAME_COUNT, 0)
         stopReason = intent.getStringExtra(EXTRA_STOP_REASON).orEmpty()
+        stitchPlan = LongScreenshotStore.loadPlan(this, bundlePath)
 
         setContent {
             SnapCropTheme {
@@ -111,7 +127,11 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                     uri = reviewUri,
                     frameCount = frameCount,
                     stopReason = stopReason,
-                    isSaving = isSaving,
+                    isBusy = isSaving || isRendering,
+                    stitchPlan = stitchPlan,
+                    previewRevision = previewRevision,
+                    onPlanChanged = { plan, render -> updateStitchPlan(plan, render) },
+                    onRenderPlan = { stitchPlan?.let { updateStitchPlan(it, true) } },
                     onSave = { saveAndOpenEditor() },
                     onRetry = { retryCapture() },
                     onDiscard = { finish() }
@@ -126,8 +146,45 @@ class LongScreenshotReviewActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (!keepReviewFile) LongScreenshotStore.deleteReviewFile(reviewPath)
+        if (!keepReviewFile) {
+            LongScreenshotStore.deleteReviewFile(reviewPath)
+            LongScreenshotStore.deleteReviewBundle(this, bundlePath)
+        }
         super.onDestroy()
+    }
+
+    private fun updateStitchPlan(plan: ScrollStitchPlan, render: Boolean) {
+        stitchPlan = plan
+        if (!render || isSaving) return
+        val generation = ++renderGeneration
+        isRendering = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            val rendered = LongScreenshotStore.renderBundle(this@LongScreenshotReviewActivity, bundlePath, plan)
+            val published = rendered?.let { bitmap ->
+                try {
+                    synchronized(renderPublishLock) {
+                        generation == renderGeneration &&
+                                LongScreenshotStore.writePreview(reviewPath, bitmap) &&
+                                LongScreenshotStore.savePlan(this@LongScreenshotReviewActivity, bundlePath, plan)
+                    }
+                } finally {
+                    bitmap.recycle()
+                }
+            } == true
+            withContext(Dispatchers.Main) {
+                if (generation != renderGeneration) return@withContext
+                isRendering = false
+                if (published) {
+                    previewRevision++
+                } else {
+                    Toast.makeText(
+                        this@LongScreenshotReviewActivity,
+                        getString(R.string.long_screenshot_seam_render_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun saveAndOpenEditor() {
@@ -137,8 +194,12 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             val savedUri = try {
-                contentResolver.openInputStream(uri)?.use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream) ?: return@use null
+                val bitmap = stitchPlan?.let { plan ->
+                    LongScreenshotStore.renderBundle(this@LongScreenshotReviewActivity, bundlePath, plan)
+                } ?: contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                if (bitmap == null) {
+                    null
+                } else {
                     try {
                         LongScreenshotStore.saveToGallery(this@LongScreenshotReviewActivity, bitmap)
                     } finally {
@@ -166,6 +227,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
                 LongScreenshotStore.deleteReviewFile(reviewPath)
+                LongScreenshotStore.deleteReviewBundle(this@LongScreenshotReviewActivity, bundlePath)
                 keepReviewFile = true
                 pendingSavedUri = savedUri
                 if (!requestSeedTrash()) openSavedResult()
@@ -215,6 +277,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
     private fun retryCapture() {
         LongScreenshotStore.deleteReviewFile(reviewPath)
+        LongScreenshotStore.deleteReviewBundle(this, bundlePath)
         keepReviewFile = true
         val started = ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 900L)
         if (!started) {
@@ -233,7 +296,11 @@ private fun LongScreenshotReviewScreen(
     uri: Uri?,
     frameCount: Int,
     stopReason: String,
-    isSaving: Boolean,
+    isBusy: Boolean,
+    stitchPlan: ScrollStitchPlan?,
+    previewRevision: Int,
+    onPlanChanged: (ScrollStitchPlan, Boolean) -> Unit,
+    onRenderPlan: () -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit,
     onDiscard: () -> Unit
@@ -258,12 +325,12 @@ private fun LongScreenshotReviewScreen(
                         fontSize = 12.sp
                     )
                 }
-                IconButton(onClick = onDiscard, enabled = !isSaving) {
+                IconButton(onClick = onDiscard, enabled = !isBusy) {
                     Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), tint = OnSurface)
                 }
             }
 
-            if (isSaving) {
+            if (isBusy) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Primary)
             } else {
                 Spacer(modifier = Modifier.height(4.dp))
@@ -280,11 +347,119 @@ private fun LongScreenshotReviewScreen(
                     Text(stringResource(R.string.long_screenshot_preview_unavailable), color = OnMediaSurfaceVariant)
                 } else {
                     AsyncImage(
-                        model = uri,
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(uri)
+                            .memoryCacheKey("$uri:$previewRevision")
+                            .build(),
                         contentDescription = stringResource(R.string.long_screenshot_preview_cd),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
+                }
+            }
+
+            if (stitchPlan != null && stitchPlan.seamCount > 0) {
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Text(
+                        stringResource(R.string.long_screenshot_seam_title),
+                        color = OnSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        stringResource(R.string.long_screenshot_seam_help),
+                        color = OnSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (nextIndex in 1 until stitchPlan.frames.size) {
+                            val next = stitchPlan.frames[nextIndex]
+                            val previous = stitchPlan.frames[nextIndex - 1]
+                            Surface(
+                                modifier = Modifier.width(280.dp),
+                                color = com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Text(
+                                        stringResource(
+                                            R.string.long_screenshot_join_label,
+                                            nextIndex,
+                                            stitchPlan.seamCount,
+                                            stitchPlan.outputJoinY(nextIndex)
+                                        ),
+                                        color = Primary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        stringResource(
+                                            R.string.long_screenshot_next_start,
+                                            next.cropTop,
+                                            next.detectedCropTop
+                                        ),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
+                                    Slider(
+                                        value = next.cropTop.toFloat(),
+                                        onValueChange = { value ->
+                                            onPlanChanged(stitchPlan.withCropTop(nextIndex, value.roundToInt()), false)
+                                        },
+                                        onValueChangeFinished = onRenderPlan,
+                                        valueRange = 0f..(next.frameHeight - next.bottomTrim - 1).coerceAtLeast(1).toFloat(),
+                                        enabled = !isBusy
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(
+                                            onClick = { onPlanChanged(stitchPlan.withCropTop(nextIndex, next.cropTop - 8), true) },
+                                            enabled = !isBusy
+                                        ) { Text(stringResource(R.string.long_screenshot_nudge_up), color = Secondary) }
+                                        TextButton(
+                                            onClick = { onPlanChanged(stitchPlan.withCropTop(nextIndex, next.cropTop + 8), true) },
+                                            enabled = !isBusy
+                                        ) { Text(stringResource(R.string.long_screenshot_nudge_down), color = Secondary) }
+                                    }
+                                    Text(
+                                        stringResource(
+                                            R.string.long_screenshot_previous_trim,
+                                            previous.bottomTrim,
+                                            previous.detectedBottomTrim
+                                        ),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
+                                    Slider(
+                                        value = previous.bottomTrim.toFloat(),
+                                        onValueChange = { value ->
+                                            onPlanChanged(stitchPlan.withBottomTrim(nextIndex - 1, value.roundToInt()), false)
+                                        },
+                                        onValueChangeFinished = onRenderPlan,
+                                        valueRange = 0f..(previous.frameHeight - previous.cropTop - 1).coerceAtLeast(1).toFloat(),
+                                        enabled = !isBusy
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(
+                                            onClick = { onPlanChanged(stitchPlan.withBottomTrim(nextIndex - 1, previous.bottomTrim - 8), true) },
+                                            enabled = !isBusy
+                                        ) { Text(stringResource(R.string.long_screenshot_trim_less), color = Secondary) }
+                                        TextButton(
+                                            onClick = { onPlanChanged(stitchPlan.withBottomTrim(nextIndex - 1, previous.bottomTrim + 8), true) },
+                                            enabled = !isBusy
+                                        ) { Text(stringResource(R.string.long_screenshot_trim_more), color = Secondary) }
+                                    }
+                                    TextButton(
+                                        onClick = { onPlanChanged(stitchPlan.resetJoin(nextIndex), true) },
+                                        enabled = !isBusy
+                                    ) { Text(stringResource(R.string.long_screenshot_reset_join), color = Secondary) }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -295,7 +470,7 @@ private fun LongScreenshotReviewScreen(
             ) {
                 OutlinedButton(
                     onClick = onRetry,
-                    enabled = !isSaving,
+                    enabled = !isBusy,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Secondary)
                 ) {
                     Icon(Icons.Default.Refresh, stringResource(R.string.long_screenshot_retry), modifier = Modifier.size(18.dp))
@@ -304,7 +479,7 @@ private fun LongScreenshotReviewScreen(
                 }
                 OutlinedButton(
                     onClick = onDiscard,
-                    enabled = !isSaving,
+                    enabled = !isBusy,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary)
                 ) {
                     Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), modifier = Modifier.size(18.dp))
@@ -313,7 +488,7 @@ private fun LongScreenshotReviewScreen(
                 }
                 Button(
                     onClick = onSave,
-                    enabled = uri != null && !isSaving,
+                    enabled = uri != null && !isBusy,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary)
                 ) {

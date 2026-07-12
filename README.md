@@ -134,7 +134,7 @@ are blocked behind explicit opt-in and evaluation gates.
 - Home recent crops include explicit delete confirmation for safe cleanup
 
 ### More Tools
-- **Long Screenshot** — Accessibility-powered scroll capture with sticky-header aware stitching, review/retry, and editor handoff
+- **Long Screenshot** — Accessibility-powered scroll capture with sticky-header aware stitching, editable frame joins (trim/start sliders, precise nudges, reset), review/retry, and editor handoff
 - **Screen Recording Tools** — Trim recordings and grab editable frames from video
 - **Image Stitching** — Combine 2+ images vertically or horizontally with reorder controls
 - **Collage Maker** — 25 grid layouts, adjustable gaps, multiple aspect ratios

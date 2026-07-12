@@ -260,9 +260,10 @@ class ScrollCaptureService : AccessibilityService() {
     }
 
     private suspend fun reviewLongScreenshot(frames: List<Bitmap>, stopReason: String) {
-        val stitched = try {
+        val (plan, stitched) = try {
             withContext(Dispatchers.Default) {
-                ScrollStitcher.stitch(frames)
+                val detectedPlan = ScrollStitcher.createPlan(frames)
+                detectedPlan to ScrollStitcher.stitch(frames, detectedPlan)
             }
         } catch (_: Exception) {
             Toast.makeText(this, getString(R.string.long_screenshot_stitch_failed), Toast.LENGTH_SHORT).show()
@@ -271,17 +272,18 @@ class ScrollCaptureService : AccessibilityService() {
 
         try {
             val reviewFile = withContext(Dispatchers.IO) {
-                LongScreenshotStore.writeReviewFile(this@ScrollCaptureService, stitched)
+                LongScreenshotStore.writeReviewFile(this@ScrollCaptureService, stitched, frames, plan)
             }
             if (reviewFile != null) {
-                if (openReview(reviewFile.first, reviewFile.second, frames.size, stopReason)) {
+                if (openReview(reviewFile, frames.size, stopReason)) {
                     Toast.makeText(
                         this,
                         getString(R.string.long_screenshot_review_body),
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
-                    LongScreenshotStore.deleteReviewFile(reviewFile.second)
+                    LongScreenshotStore.deleteReviewFile(reviewFile.previewPath)
+                    LongScreenshotStore.deleteReviewBundle(this@ScrollCaptureService, reviewFile.bundlePath)
                     val fallbackUri = withContext(Dispatchers.IO) {
                         LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                     }
@@ -308,12 +310,13 @@ class ScrollCaptureService : AccessibilityService() {
         }
     }
 
-    private fun openReview(uri: android.net.Uri, path: String, frameCount: Int, stopReason: String): Boolean =
+    private fun openReview(reviewFile: LongScreenshotReviewFile, frameCount: Int, stopReason: String): Boolean =
         try {
             startActivity(
                 Intent(this, LongScreenshotReviewActivity::class.java).apply {
-                    putExtra(LongScreenshotReviewActivity.EXTRA_REVIEW_URI, uri.toString())
-                    putExtra(LongScreenshotReviewActivity.EXTRA_REVIEW_PATH, path)
+                    putExtra(LongScreenshotReviewActivity.EXTRA_REVIEW_URI, reviewFile.uri.toString())
+                    putExtra(LongScreenshotReviewActivity.EXTRA_REVIEW_PATH, reviewFile.previewPath)
+                    putExtra(LongScreenshotReviewActivity.EXTRA_BUNDLE_PATH, reviewFile.bundlePath)
                     putExtra(LongScreenshotReviewActivity.EXTRA_FRAME_COUNT, frameCount)
                     putExtra(LongScreenshotReviewActivity.EXTRA_STOP_REASON, stopReason)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -338,6 +341,69 @@ class ScrollCaptureService : AccessibilityService() {
     }
 }
 
+internal data class StitchFrameCrop(
+    val cropTop: Int,
+    val detectedCropTop: Int,
+    val bottomTrim: Int,
+    val detectedBottomTrim: Int,
+    val frameHeight: Int
+)
+
+internal data class ScrollStitchPlan(
+    val width: Int,
+    val frames: List<StitchFrameCrop>
+) {
+    init {
+        require(width > 0)
+        require(frames.isNotEmpty())
+        frames.forEachIndexed { index, frame ->
+            require(frame.frameHeight > 0)
+            require(frame.cropTop in 0 until frame.frameHeight)
+            require(frame.detectedCropTop in 0 until frame.frameHeight)
+            require(frame.bottomTrim in 0 until frame.frameHeight - frame.cropTop)
+            require(frame.detectedBottomTrim in 0 until frame.frameHeight - frame.detectedCropTop)
+            if (index == 0) require(frame.cropTop == 0 && frame.detectedCropTop == 0)
+        }
+    }
+
+    val seamCount: Int get() = (frames.size - 1).coerceAtLeast(0)
+
+    fun withCropTop(frameIndex: Int, cropTop: Int): ScrollStitchPlan {
+        require(frameIndex in 1 until frames.size)
+        val frame = frames[frameIndex]
+        val maxTop = (frame.frameHeight - frame.bottomTrim - 1).coerceAtLeast(0)
+        return copy(frames = frames.mapIndexed { index, current ->
+            if (index == frameIndex) current.copy(cropTop = cropTop.coerceIn(0, maxTop)) else current
+        })
+    }
+
+    fun resetCropTop(frameIndex: Int): ScrollStitchPlan =
+        withCropTop(frameIndex, frames[frameIndex].detectedCropTop)
+
+    fun withBottomTrim(frameIndex: Int, bottomTrim: Int): ScrollStitchPlan {
+        require(frameIndex in 0 until frames.lastIndex)
+        val frame = frames[frameIndex]
+        val maxTrim = (frame.frameHeight - frame.cropTop - 1).coerceAtLeast(0)
+        return copy(frames = frames.mapIndexed { index, current ->
+            if (index == frameIndex) current.copy(bottomTrim = bottomTrim.coerceIn(0, maxTrim)) else current
+        })
+    }
+
+    fun resetJoin(nextFrameIndex: Int): ScrollStitchPlan {
+        require(nextFrameIndex in 1 until frames.size)
+        val previousIndex = nextFrameIndex - 1
+        return withCropTop(nextFrameIndex, frames[nextFrameIndex].detectedCropTop)
+            .withBottomTrim(previousIndex, frames[previousIndex].detectedBottomTrim)
+    }
+
+    fun outputJoinY(frameIndex: Int): Int {
+        require(frameIndex in 1 until frames.size)
+        return frames.take(frameIndex).sumOf { frame ->
+            (frame.frameHeight - frame.cropTop - frame.bottomTrim).coerceAtLeast(1)
+        }
+    }
+}
+
 internal object ScrollStitcher {
     private const val OVERLAP_STEP = 8
     private const val START_STEP = 8
@@ -346,23 +412,17 @@ internal object ScrollStitcher {
     private const val SAME_FRAME_THRESHOLD = 5
     private const val OVERLAP_THRESHOLD = 34f
     private const val STICKY_BAND_THRESHOLD = 9f
+    private const val MAX_OUTPUT_PIXELS = 64_000_000L
 
     private data class Transition(
         val nextCropTop: Int,
         val previousBottomTrim: Int
     )
 
-    fun stitch(frames: List<Bitmap>): Bitmap {
+    fun createPlan(frames: List<Bitmap>): ScrollStitchPlan {
         require(frames.isNotEmpty()) { "At least one frame is required" }
-
         val width = frames.minOf { it.width }
-        val normalized = frames.map { frame ->
-            if (frame.width == width) frame else {
-                val scaledHeight = (frame.height * (width.toFloat() / frame.width)).toInt()
-                    .coerceAtLeast(1)
-                Bitmap.createScaledBitmap(frame, width, scaledHeight, true)
-            }
-        }
+        val normalized = normalize(frames, width)
 
         try {
             val cropTops = IntArray(normalized.size)
@@ -373,18 +433,48 @@ internal object ScrollStitcher {
                 bottomTrims[index - 1] = transition.previousBottomTrim
             }
 
-            val totalHeight = normalized.indices.sumOf { index ->
-                val cropTop = cropTops[index].coerceIn(0, normalized[index].height - 1)
-                val cropBottomTrim = bottomTrims[index].coerceIn(0, normalized[index].height - cropTop - 1)
-                (normalized[index].height - cropTop - cropBottomTrim).coerceAtLeast(1)
+            return ScrollStitchPlan(
+                width = width,
+                frames = normalized.indices.map { index ->
+                    val frame = normalized[index]
+                    val top = cropTops[index].coerceIn(0, frame.height - 1)
+                    val trim = bottomTrims[index].coerceIn(0, frame.height - top - 1)
+                    StitchFrameCrop(top, top, trim, trim, frame.height)
+                }
+            )
+        } finally {
+            recycleNormalized(normalized, frames)
+        }
+    }
+
+    fun stitch(frames: List<Bitmap>): Bitmap = stitch(frames, createPlan(frames))
+
+    fun stitch(frames: List<Bitmap>, plan: ScrollStitchPlan): Bitmap {
+        require(frames.isNotEmpty()) { "At least one frame is required" }
+        require(plan.frames.size == frames.size) { "Plan/frame count mismatch" }
+        val width = plan.width
+        val normalized = normalize(frames, width)
+
+        try {
+            require(normalized.indices.all { normalized[it].height == plan.frames[it].frameHeight }) {
+                "Plan/frame geometry mismatch"
             }
+
+            val totalHeightLong = normalized.indices.sumOf { index ->
+                val cropTop = plan.frames[index].cropTop
+                val cropBottomTrim = plan.frames[index].bottomTrim
+                (normalized[index].height - cropTop - cropBottomTrim).coerceAtLeast(1).toLong()
+            }
+            require(totalHeightLong in 1..Int.MAX_VALUE.toLong()) { "Stitched output height is invalid" }
+            require(plan.width.toLong() * totalHeightLong <= MAX_OUTPUT_PIXELS) { "Stitched output is too large" }
+            val totalHeight = totalHeightLong.toInt()
             val result = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(result)
             var y = 0
 
             normalized.forEachIndexed { index, frame ->
-                val cropTop = cropTops[index].coerceIn(0, frame.height - 1)
-                val cropBottomTrim = bottomTrims[index].coerceIn(0, frame.height - cropTop - 1)
+                val cropTop = plan.frames[index].cropTop
+                val cropBottomTrim = plan.frames[index].bottomTrim
                 val sourceBottom = frame.height - cropBottomTrim
                 val drawHeight = (sourceBottom - cropTop).coerceAtLeast(1)
                 canvas.drawBitmap(
@@ -398,9 +488,20 @@ internal object ScrollStitcher {
 
             return result
         } finally {
-            normalized.forEachIndexed { index, bitmap ->
-                if (bitmap !== frames[index]) bitmap.recycle()
-            }
+            recycleNormalized(normalized, frames)
+        }
+    }
+
+    private fun normalize(frames: List<Bitmap>, width: Int): List<Bitmap> = frames.map { frame ->
+        if (frame.width == width) frame else {
+            val scaledHeight = (frame.height * (width.toFloat() / frame.width)).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(frame, width, scaledHeight, true)
+        }
+    }
+
+    private fun recycleNormalized(normalized: List<Bitmap>, source: List<Bitmap>) {
+        normalized.forEachIndexed { index, bitmap ->
+            if (bitmap !== source[index]) bitmap.recycle()
         }
     }
 
