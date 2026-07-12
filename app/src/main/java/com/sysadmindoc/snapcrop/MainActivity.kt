@@ -527,14 +527,24 @@ class MainActivity : ComponentActivity() {
                         confirmButton = {
                             TextButton(onClick = {
                                 updateInfo = null
-                                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.htmlUrl))) } catch (_: Exception) {}
+                                try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))) } catch (_: Exception) {}
                             }) { Text(stringResource(R.string.settings_update_download), color = Primary) }
                         },
                         dismissButton = {
                             TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
                         },
                         title = { Text(stringResource(R.string.settings_update_available, info.versionName), color = OnSurface) },
-                        text = { Text(stringResource(R.string.settings_update_body, info.versionName), color = OnSurfaceVariant, fontSize = 13.sp) },
+                        text = {
+                            Column {
+                                Text(stringResource(R.string.settings_update_body, info.versionName), color = OnSurfaceVariant, fontSize = 13.sp)
+                                info.apkUrl?.let {
+                                    Text(stringResource(R.string.settings_update_exact_asset), color = Primary, fontSize = 12.sp)
+                                }
+                                info.apkSha256?.let { digest ->
+                                    Text(stringResource(R.string.settings_update_checksum, digest), color = OnSurfaceVariant, fontSize = 11.sp)
+                                }
+                            }
+                        },
                         containerColor = SurfaceVariant
                     )
                 }

@@ -186,6 +186,19 @@ are blocked behind explicit opt-in and evaluation gates.
 
 Grab the latest versioned APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Each release also includes a CycloneDX JSON SBOM and a provenance JSON file. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
 
+### Automatic sideload updates with Obtainium
+
+1. In Obtainium, add `https://github.com/SysAdminDoc/SnapCrop` as a GitHub source.
+2. Keep prereleases disabled. If an APK filter is requested, use
+   `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+\.apk$` so SBOM/provenance files and any
+   future alternate artifacts cannot be selected accidentally.
+3. Before installing, compare Obtainium/GitHub's SHA-256 with the digest shown by
+   SnapCrop's update dialog or `SnapCrop-<version>-provenance.json`.
+
+Official release assets always use `SnapCrop-<version>.apk`; the in-app update
+checker opens that exact asset when GitHub publishes it and falls back to the
+release page if the expected name or trusted URL is absent.
+
 **Requirements:**
 - Android 10+ (API 29)
 - Google Play Services (for ML Kit features)

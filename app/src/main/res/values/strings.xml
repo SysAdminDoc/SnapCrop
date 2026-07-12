@@ -464,6 +464,8 @@
     <string name="settings_update_available">Update available — v%1$s</string>
     <string name="settings_update_download">Download</string>
     <string name="settings_update_body">SnapCrop v%1$s is available on GitHub.</string>
+    <string name="settings_update_exact_asset">Downloads the exact versioned APK asset.</string>
+    <string name="settings_update_checksum">SHA-256: %1$s</string>
     <string name="update_notification_title">SnapCrop update available</string>
     <string name="update_notification_body">v%1$s is on GitHub. Tap to download.</string>
 

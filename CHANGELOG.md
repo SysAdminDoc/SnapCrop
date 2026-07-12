@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Exact release-asset update metadata and Obtainium setup (v6.61.0).**
+
+- The update checker now selects only the exact trusted
+  `SnapCrop-<version>.apk` asset from GitHub's latest-release response and opens
+  its `browser_download_url`; missing, renamed, untrusted, or non-uploaded assets
+  fail safely to the release page.
+- When GitHub supplies its `sha256:` asset digest, update dialogs display the
+  validated 64-hex checksum. Malformed digests are ignored, and release notes
+  remain bounded. Fixture tests cover exact selection and hostile URL/name data.
+- README installation guidance documents the GitHub source, stable APK regex,
+  prerelease posture, and provenance/checksum verification for Obtainium users.
+
 **Non-destructive Cut Out / squeeze editing (v6.60.0).**
 
 - The editor can remove up to 32 horizontal or vertical source bands, edit or
