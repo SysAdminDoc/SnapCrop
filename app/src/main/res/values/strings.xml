@@ -640,6 +640,15 @@
     <string name="shortcut_monitor_long">Toggle screenshot monitoring</string>
     <string name="shortcut_gallery_short">Gallery</string>
     <string name="shortcut_gallery_long">Open the gallery</string>
+    <string name="widget_title">SnapCrop shortcuts</string>
+    <string name="widget_description">Open the newest screenshot, rerun Quick Crop, or browse Gallery without showing private thumbnails.</string>
+    <string name="widget_privacy_status">Private shortcuts · no thumbnail preview</string>
+    <string name="widget_latest">Latest</string>
+    <string name="widget_quick_crop">Quick Crop</string>
+    <string name="widget_gallery">Gallery</string>
+    <string name="widget_latest_cd">Open the newest screenshot in the editor</string>
+    <string name="widget_quick_crop_cd">Rerun Quick Crop on the newest screenshot</string>
+    <string name="widget_gallery_cd">Open SnapCrop Gallery</string>
     <string name="toast_monitor_stopped">Screenshot monitoring stopped</string>
     <string name="duplicate_skip">Next group</string>
     <string name="duplicate_trash_count">Trash %1$d</string>

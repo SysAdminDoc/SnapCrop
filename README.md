@@ -27,6 +27,8 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Background service monitors for new screenshots and opens the editor automatically
 - Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions; Protect media previews omits screenshot pixels and marks the notification secret
 - Quick Settings tiles for monitoring, long screenshot capture, bounded step-by-step guide capture, and rerunning the last Quick Crop action. On Android 14+, Long Screenshot and Step Capture target only the active app window so overlays and system UI do not contaminate captures; Android 11–13 use a visible-display fallback. Step Capture keeps at most 10 normalized 720 px frames in private temporary storage, stops after 10 minutes or 2 minutes idle, and exposes Stop in its ongoing notification.
+- A resizable home-screen widget opens the newest screenshot, reruns Quick Crop,
+  or opens Gallery without ever loading or displaying a private thumbnail.
 - Dark, Light, and System themes cover the editor, Gallery, crop, stitch, collage,
   device-frame, video, launch, and system-bar surfaces; media previews retain a
   neutral black canvas with dedicated high-contrast controls.

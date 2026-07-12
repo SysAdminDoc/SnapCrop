@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
     )
     private var pendingMonitorStart = false
     private var pendingDelayedCaptureSeconds: Int? = null
+    private var pendingWidgetOpenLatest = false
     private val hasOverlayPermission = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
@@ -165,6 +166,10 @@ class MainActivity : ComponentActivity() {
         pendingDelayedCaptureSeconds?.let { seconds ->
             pendingDelayedCaptureSeconds = null
             if (mediaCapabilities.value.canMonitorScreenshots) startDelayedCapture(seconds)
+        }
+        if (pendingWidgetOpenLatest) {
+            pendingWidgetOpenLatest = false
+            if (mediaCapabilities.value.canQueryImages) openLatestScreenshotFromWidget()
         }
     }
 
@@ -1302,6 +1307,9 @@ class MainActivity : ComponentActivity() {
             SHORTCUT_LONG_SCREENSHOT -> requestLongScreenshot()
             SHORTCUT_MONITOR -> toggleMonitoringFromShortcut()
             SHORTCUT_LAST_ACTION -> runLastActionFromShortcut()
+            SnapCropWidgetProvider.ACTION_EDIT_LATEST -> openLatestScreenshotFromWidget()
+            SnapCropWidgetProvider.ACTION_QUICK_CROP -> runLastActionFromShortcut()
+            SnapCropWidgetProvider.ACTION_GALLERY -> pendingOpenGallery.value = true
             else -> return
         }
         intent.action = null
@@ -1329,6 +1337,30 @@ class MainActivity : ComponentActivity() {
                 action = ScreenshotService.ACTION_RUN_LAST_ACTION
             }
         )
+    }
+
+    private fun openLatestScreenshotFromWidget() {
+        val capabilities = MediaCapabilityResolver.current(this)
+        mediaCapabilities.value = capabilities
+        if (!capabilities.canQueryImages) {
+            pendingWidgetOpenLatest = true
+            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
+            return
+        }
+        lifecycleScope.launch {
+            val latest = withContext(Dispatchers.IO) {
+                LatestScreenshotResolver.find(contentResolver)
+            }
+            if (latest == null) {
+                Toast.makeText(this@MainActivity, R.string.toast_no_recent_screenshot, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            startActivity(Intent(this@MainActivity, CropActivity::class.java).apply {
+                data = latest.uri
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+            recordWorkflow(WorkflowId.EDIT_IMAGE)
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

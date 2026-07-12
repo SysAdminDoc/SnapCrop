@@ -4,6 +4,14 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Privacy-safe home widget (v6.68.0).**
+
+- Added a resizable AMOLED home-screen widget with direct actions for the newest
+  screenshot, the last Quick Crop, and Gallery. It never loads or displays media
+  pixels, so Protect media previews cannot leak screenshot thumbnails.
+- Shared the validated newest-screenshot resolver between the widget and Quick
+  Crop, including readable-image checks and exclusion of SnapCrop/automated outputs.
+
 **Premium interface system and workflow-focused Home (v6.67.0).**
 
 - Rebuilt Home around a calm monitoring hero, one dominant Edit image action,

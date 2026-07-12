@@ -281,41 +281,8 @@ class ScreenshotService : Service() {
         return false
     }
 
-    private fun findMostRecentScreenshot(): Pair<Long, Uri>? {
-        val projection = arrayOf(
-            MediaStore.Images.Media._ID,
-            MediaStore.Images.Media.DISPLAY_NAME,
-            MediaStore.Images.Media.RELATIVE_PATH
-        )
-        val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-
-        try {
-            contentResolver.query(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection, null, null, sortOrder
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(0)
-                    val name = cursor.getString(1) ?: continue
-                    val path = cursor.getString(2) ?: ""
-                    if (!looksLikeScreenshot(name, path)) continue
-                    if (name.startsWith("reddit_") || name.startsWith("twitter_")) continue
-
-                    val uri = Uri.withAppendedPath(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id.toString())
-                    try {
-                        contentResolver.openInputStream(uri)?.use { stream ->
-                            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                            BitmapFactory.decodeStream(stream, null, opts)
-                            if (opts.outWidth > 0 && opts.outHeight > 0) return Pair(id, uri)
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-        } catch (_: Exception) {
-        }
-        return null
-    }
+    private fun findMostRecentScreenshot(): Pair<Long, Uri>? =
+        LatestScreenshotResolver.find(contentResolver)?.let { it.id to it.uri }
 
     private fun runLastAction(stopWhenDone: Boolean) {
         serviceScope.launch {
