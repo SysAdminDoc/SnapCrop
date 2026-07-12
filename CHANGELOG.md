@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**HDR-safe PNG export, per-image duplicate correction, and launcher shortcuts (v6.66.0).**
+
+- On Android 16 the PNG codec carries HDR gain maps, so HDR screenshots saved,
+  copied, or shared as PNG now stay PNG instead of being force-encoded to JPEG.
+  Older releases still fall back to JPEG (the only pre-16 gain-map format). The
+  save/clipboard/share export-format decision is now resolved in one place.
+- Duplicate review's correction is now per-image: "Not a match" splits only the
+  previewed screenshot out of its group and remembers it, keeping the remaining
+  matches grouped instead of discarding the whole group.
+- Added launcher long-press app shortcuts: Quick Crop on the newest screenshot,
+  Long screenshot, toggle screenshot monitoring, and open Gallery.
+
 **Straighten export now matches the editor preview (v6.65.0).**
 
 - The straighten angle is applied within the original image frame on export instead

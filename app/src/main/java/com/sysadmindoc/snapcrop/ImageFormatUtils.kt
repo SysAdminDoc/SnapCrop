@@ -17,6 +17,52 @@ internal fun Bitmap.hasUltraHdrGainmap(): Boolean =
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && hasGainmap()
 
 /**
+ * Android 16 (API 36) is the first release whose PNG codec encodes HDR gain maps (the `gmAP`
+ * chunk, ISO 21496-1). Before it, only JPEG carries a gain map, so HDR content must fall back
+ * to JPEG to stay HDR.
+ */
+internal fun supportsPngGainmapEncoding(): Boolean = Build.VERSION.SDK_INT >= 36
+
+internal data class ResolvedExportFormat(
+    val format: Bitmap.CompressFormat,
+    val quality: Int,
+    val ext: String,
+    val mime: String,
+)
+
+/**
+ * Chooses an export encoder. When [ultraHdr] is set the result must preserve the gain map:
+ * a PNG preference (or a forced-PNG shape crop) stays PNG only where [pngGainmapSupported]
+ * (Android 16+); otherwise HDR falls back to JPEG. Non-HDR output honors the user's format,
+ * or forced PNG for alpha-bearing shape crops.
+ */
+internal fun resolveExportFormat(
+    userFormat: ExportImageFormat,
+    quality: Int,
+    forcePng: Boolean,
+    ultraHdr: Boolean,
+    pngGainmapSupported: Boolean = supportsPngGainmapEncoding(),
+): ResolvedExportFormat {
+    val png = ResolvedExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
+    if (ultraHdr) {
+        val wantsPng = forcePng || userFormat == ExportImageFormat.PNG
+        return if (wantsPng && pngGainmapSupported) png
+        else ResolvedExportFormat(Bitmap.CompressFormat.JPEG, quality.coerceAtLeast(90), "jpg", "image/jpeg")
+    }
+    if (forcePng) return png
+    return when (userFormat) {
+        ExportImageFormat.WEBP -> {
+            @Suppress("DEPRECATION")
+            val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                      else Bitmap.CompressFormat.WEBP
+            ResolvedExportFormat(fmt, quality, "webp", "image/webp")
+        }
+        ExportImageFormat.JPEG -> ResolvedExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
+        ExportImageFormat.PNG -> png
+    }
+}
+
+/**
  * Reattaches the source gain map after Canvas/pixel edits. [baseTransform] maps source-image
  * coordinates into [target]; gain-map coordinates are scaled independently because the gain map
  * is commonly lower resolution than the SDR base image.

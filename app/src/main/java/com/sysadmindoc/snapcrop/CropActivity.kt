@@ -571,23 +571,8 @@ class CropActivity : ComponentActivity() {
         ultraHdr: Boolean = false,
         settings: ExportSettings = currentExportSettings()
     ): CropExportFormat {
-        val quality = settings.quality
-        if (ultraHdr) {
-            return CropExportFormat(Bitmap.CompressFormat.JPEG, quality.coerceAtLeast(90), "jpg", "image/jpeg")
-        }
-        if (forcePng) {
-            return CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-        }
-        return when (settings.format) {
-            ExportImageFormat.WEBP -> {
-                @Suppress("DEPRECATION")
-                val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-                          else Bitmap.CompressFormat.WEBP
-                CropExportFormat(fmt, quality, "webp", "image/webp")
-            }
-            ExportImageFormat.JPEG -> CropExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            ExportImageFormat.PNG -> CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-        }
+        val r = resolveExportFormat(settings.format, settings.quality, forcePng, ultraHdr)
+        return CropExportFormat(r.format, r.quality, r.ext, r.mime)
     }
 
     private fun vibrateShort() {
@@ -2136,10 +2121,16 @@ class CropActivity : ComponentActivity() {
                 )
                 val clipDir = File(cacheDir, "clipboard")
                 clipDir.mkdirs()
-                val ultraHdr = cropped.hasUltraHdrGainmap()
-                val file = File(clipDir, if (ultraHdr) "clip.jpg" else "clip.png")
+                // Clipboard stays lossless PNG unless HDR forces JPEG (pre-Android 16). On API 36+
+                // the PNG codec carries the gain map, so HDR pastes keep PNG too.
+                val clipFormat = getExportFormat(
+                    forcePng = true,
+                    ultraHdr = cropped.hasUltraHdrGainmap(),
+                    settings = exportSettings
+                )
+                val file = File(clipDir, "clip.${clipFormat.ext}")
                 file.outputStream().use {
-                    cropped.compress(if (ultraHdr) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG, 100, it)
+                    cropped.compress(clipFormat.format, clipFormat.quality, it)
                 }
                 withContext(Dispatchers.Main) {
                     val clipUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", file)
