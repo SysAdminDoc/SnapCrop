@@ -6,5 +6,5 @@ plugins {
 
 allprojects {
     group = "com.sysadmindoc"
-    version = "6.28.0"
+    version = "6.28.1"
 }

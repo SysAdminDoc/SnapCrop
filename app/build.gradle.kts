@@ -1,4 +1,7 @@
 import java.util.Properties
+import java.security.MessageDigest
+import java.time.Instant
+import java.util.Locale
 import org.cyclonedx.model.Component
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -39,8 +42,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 76
-        versionName = "6.28.0"
+        versionCode = 77
+        versionName = "6.28.1"
     }
 
     signingConfigs {
@@ -140,4 +143,104 @@ tasks.cyclonedxDirectBom {
     projectType.set(Component.Type.APPLICATION)
     includeConfigs.set(listOf("releaseRuntimeClasspath"))
     skipConfigs.set(listOf(".*[Tt]est.*", "debug.*", "androidTest.*"))
+}
+
+tasks.register("generateReleaseProvenance") {
+    group = "distribution"
+    description = "Builds stable release artifacts and a machine-readable provenance manifest."
+    dependsOn("assembleRelease", "cyclonedxDirectBom")
+
+    val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
+    outputs.dir(provenanceDirectory)
+
+    doLast {
+        val versionName = android.defaultConfig.versionName
+            ?: error("versionName is required for release provenance")
+        val versionCode = android.defaultConfig.versionCode
+        val sourceApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
+        val sourceSbom = layout.buildDirectory.file("reports/cyclonedx-direct/bom.json").get().asFile
+        require(sourceApk.isFile) { "Release APK was not produced: $sourceApk" }
+        require(sourceSbom.isFile) { "CycloneDX JSON SBOM was not produced: $sourceSbom" }
+
+        val outputDir = provenanceDirectory.get().asFile.apply { mkdirs() }
+        val stableApk = outputDir.resolve("SnapCrop-$versionName.apk")
+        val stableSbom = outputDir.resolve("SnapCrop-$versionName-sbom.json")
+        sourceApk.copyTo(stableApk, overwrite = true)
+        sourceSbom.copyTo(stableSbom, overwrite = true)
+
+        fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        val localProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf(File::isFile)?.inputStream()?.use { load(it) }
+        }
+        val sdkDirectory = sequenceOf(
+            System.getenv("ANDROID_HOME"),
+            System.getenv("ANDROID_SDK_ROOT"),
+            localProperties.getProperty("sdk.dir")
+        ).filterNotNull().firstOrNull()?.let(::File)
+            ?: error("Android SDK path was not found in the environment or local.properties")
+        val buildToolsDir = sdkDirectory.resolve("build-tools").listFiles()
+            ?.filter(File::isDirectory)
+            ?.maxByOrNull { dir ->
+                dir.name.split('.').joinToString("") { it.padStart(4, '0') }
+            }
+            ?: error("Android build-tools are required to verify the signing certificate")
+        val apksigner = buildToolsDir.resolve(
+            if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+                "apksigner.bat"
+            } else {
+                "apksigner"
+            }
+        )
+        require(apksigner.isFile) { "apksigner was not found: $apksigner" }
+        val signerOutput = providers.exec {
+            commandLine(apksigner.absolutePath, "verify", "--print-certs", stableApk.absolutePath)
+        }.standardOutput.asText.get()
+        val certificateDigest = Regex(
+            "certificate SHA-256 digest: ([0-9a-fA-F]+)"
+        ).find(signerOutput)?.groupValues?.get(1)
+            ?: error("apksigner did not report a SHA-256 certificate digest")
+        val certificateFingerprint = certificateDigest.chunked(2)
+            .joinToString(":").uppercase(Locale.ROOT)
+
+        val sourceCommit = providers.exec {
+            commandLine("git", "rev-parse", "HEAD")
+        }.standardOutput.asText.get().trim()
+        val sourceState = providers.exec {
+            isIgnoreExitValue = true
+            commandLine("git", "status", "--porcelain")
+        }.standardOutput.asText.get().trim().let { if (it.isEmpty()) "clean" else "dirty" }
+        val command = ".\\gradlew.bat :app:generateReleaseProvenance --console=plain"
+        val provenance = outputDir.resolve("SnapCrop-$versionName-provenance.json")
+        provenance.writeText(
+            """
+            {
+              "schemaVersion": 1,
+              "project": "SnapCrop",
+              "versionName": "$versionName",
+              "versionCode": $versionCode,
+              "apk": "${stableApk.name}",
+              "apkSha256": "${sha256(stableApk)}",
+              "signingCertificateSha256": "$certificateFingerprint",
+              "sbom": "${stableSbom.name}",
+              "sourceCommit": "$sourceCommit",
+              "sourceState": "$sourceState",
+              "buildCommand": "${command.replace("\\", "\\\\")}",
+              "generatedAtUtc": "${Instant.now()}"
+            }
+            """.trimIndent() + "\n"
+        )
+        logger.lifecycle("Release provenance: ${provenance.absolutePath}")
+    }
 }

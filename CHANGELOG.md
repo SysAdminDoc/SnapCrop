@@ -4,6 +4,13 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Verifiable local release artifacts (v6.28.1).**
+
+- Added `:app:generateReleaseProvenance`, which produces a stable versioned APK,
+  versioned CycloneDX JSON SBOM, and JSON provenance manifest containing the
+  APK SHA-256, signing-certificate SHA-256 fingerprint, version code/name,
+  source commit/state, and exact local build command.
+
 **Scoped, recoverable media mutations (v6.28.0).**
 
 - Removed the broad all-files permission and its Home prompt. Android 11+

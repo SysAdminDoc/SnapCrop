@@ -145,7 +145,7 @@ are blocked behind explicit opt-in and evaluation gates.
 
 ## Download
 
-Grab the latest APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it.
+Grab the latest versioned APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Each release also includes a CycloneDX JSON SBOM and a provenance JSON file. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
 
 **Requirements:**
 - Android 10+ (API 29)
@@ -202,12 +202,17 @@ release/security policy.
 ```bash
 git clone https://github.com/SysAdminDoc/SnapCrop.git
 cd SnapCrop
-./gradlew assembleRelease
+./gradlew clean :app:lintDebug :app:testDebugUnitTest --console=plain
+./gradlew :app:generateReleaseProvenance --console=plain
 ```
 
-The signed APK will be at `app/build/outputs/apk/release/app-release.apk`.
+Stable release artifacts are written to `app/build/outputs/provenance/` as
+`SnapCrop-<version>.apk`, `SnapCrop-<version>-sbom.json`, and
+`SnapCrop-<version>-provenance.json`. The manifest records the exact APK hash,
+certificate fingerprint, version metadata, source commit/state, and build command.
 
-> Requires JDK 17 and the Android SDK.
+> Requires JDK 17 and the Android SDK. Official releases must show
+> `"sourceState": "clean"` and use the published certificate fingerprint.
 
 ---
 
