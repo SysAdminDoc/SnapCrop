@@ -169,8 +169,10 @@ release/security policy.
 - Long Screenshot uses Accessibility only after the user starts that workflow;
   SnapCrop shows an in-app disclosure before opening Android Accessibility
   settings.
-- SnapCrop does not request all-files access. On Android 11+, source screenshot
-  cleanup uses Android's scoped delete confirmation.
+- SnapCrop does not request all-files access. On Android 11+, removals use
+  Android's scoped Trash confirmation; the gallery updates only after approval.
+  If Save & Replace cannot move the source, the copy remains saved and the
+  original is explicitly retained.
 - The screenshot intelligence index is opt-in, local-only, and can be rebuilt
   or purged from Settings.
 - Network exports are opt-in. HTTP/WebDAV report uploads and Imgur image

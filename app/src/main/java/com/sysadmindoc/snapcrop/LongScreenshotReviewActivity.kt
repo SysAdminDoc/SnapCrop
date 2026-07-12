@@ -1,6 +1,6 @@
 package com.sysadmindoc.snapcrop
 
-import android.app.PendingIntent
+import android.app.RecoverableSecurityException
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -63,11 +65,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class LongScreenshotReviewActivity : ComponentActivity() {
+    private var pendingSavedUri: Uri? = null
+
+    private val seedMutationLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) {
+        openSavedResult()
+    }
     companion object {
         const val EXTRA_REVIEW_URI = "review_uri"
         const val EXTRA_REVIEW_PATH = "review_path"
         const val EXTRA_FRAME_COUNT = "frame_count"
         const val EXTRA_STOP_REASON = "stop_reason"
+        private const val KEY_PENDING_SAVED_URI = "pending_saved_uri"
     }
 
     private var reviewUri by mutableStateOf<Uri?>(null)
@@ -86,6 +96,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
+        pendingSavedUri = savedInstanceState?.getString(KEY_PENDING_SAVED_URI)?.let(Uri::parse)
 
         reviewUri = intent.getStringExtra(EXTRA_REVIEW_URI)?.let(Uri::parse)
         reviewPath = intent.getStringExtra(EXTRA_REVIEW_PATH)
@@ -105,6 +116,11 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingSavedUri?.let { outState.putString(KEY_PENDING_SAVED_URI, it.toString()) }
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
@@ -149,34 +165,50 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                 ).show()
                 LongScreenshotStore.deleteReviewFile(reviewPath)
                 keepReviewFile = true
-                deleteSeedScreenshot()
-                startActivity(
-                    Intent(this@LongScreenshotReviewActivity, CropActivity::class.java).apply {
-                        data = savedUri
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                )
-                finish()
+                pendingSavedUri = savedUri
+                if (!requestSeedTrash()) openSavedResult()
             }
         }
     }
 
-    private fun deleteSeedScreenshot() {
+    private fun requestSeedTrash(): Boolean {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val seedTime = prefs.getLong(ScreenshotService.PREF_LAST_SEED_TIME, 0L)
-        if (System.currentTimeMillis() - seedTime > 120_000) return
-        val seedUriStr = prefs.getString(ScreenshotService.PREF_LAST_SEED_URI, null) ?: return
+        if (System.currentTimeMillis() - seedTime > 120_000) return false
+        val seedUriStr = prefs.getString(ScreenshotService.PREF_LAST_SEED_URI, null) ?: return false
         val seedUri = Uri.parse(seedUriStr)
         prefs.edit().remove(ScreenshotService.PREF_LAST_SEED_URI).remove(ScreenshotService.PREF_LAST_SEED_TIME).apply()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pi = MediaStore.createDeleteRequest(contentResolver, listOf(seedUri))
-                @Suppress("DEPRECATION")
-                startIntentSenderForResult(pi.intentSender, 99, null, 0, 0, 0)
+                val pi = MediaStore.createTrashRequest(contentResolver, listOf(seedUri), true)
+                seedMutationLauncher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                return true
             } else {
-                contentResolver.delete(seedUri, null, null)
+                try {
+                    contentResolver.delete(seedUri, null, null)
+                } catch (recoverable: RecoverableSecurityException) {
+                    seedMutationLauncher.launch(
+                        IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
+                    )
+                    return true
+                }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.w("SnapCrop", "Unable to request seed screenshot trash", e)
+        }
+        return false
+    }
+
+    private fun openSavedResult() {
+        val savedUri = pendingSavedUri ?: return
+        pendingSavedUri = null
+        startActivity(
+            Intent(this, CropActivity::class.java).apply {
+                data = savedUri
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        )
+        finish()
     }
 
     private fun retryCapture() {

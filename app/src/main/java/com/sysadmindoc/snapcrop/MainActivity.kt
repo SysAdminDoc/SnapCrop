@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.Manifest
 import android.app.PendingIntent
+import android.app.RecoverableSecurityException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentUris
@@ -30,6 +31,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.IntentSenderRequest
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -88,18 +90,43 @@ class MainActivity : ComponentActivity() {
         const val PDF_WIDTH = 1240
         const val PDF_HEIGHT = 1754
         const val PAGE_MARGIN = 72f
+        const val KEY_PENDING_MUTATION_URIS = "pending_mutation_uris"
+        const val KEY_PENDING_MUTATION_SUCCEEDED = "pending_mutation_succeeded"
+        const val KEY_PENDING_MUTATION_CHUNK = "pending_mutation_chunk"
+        const val KEY_PENDING_MUTATION_REQUESTED = "pending_mutation_requested"
     }
 
     private val serviceRunning = mutableStateOf(false)
     private val hasPermissions = mutableStateOf(false)
     private val hasPartialMedia = mutableStateOf(false)
     private val hasOverlayPermission = mutableStateOf(false)
-    private val hasAllFilesAccess = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
     private val showAccessibilityDisclosure = mutableStateOf(false)
+    private var pendingMutationUris = mutableListOf<Uri>()
+    private var pendingMutationSucceeded = mutableListOf<Uri>()
+    private var pendingMutationChunk = emptyList<Uri>()
+    private var pendingMutationRequested = 0
+
+    private val mediaMutationLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (result.resultCode == RESULT_OK) {
+                pendingMutationSucceeded.addAll(pendingMutationChunk)
+                pendingMutationUris.removeAll(pendingMutationChunk.toSet())
+                launchNextTrashChunk()
+            } else {
+                completeMediaMutation()
+            }
+        } else if (result.resultCode == RESULT_OK) {
+            deleteLegacyMutationUris()
+        } else {
+            completeMediaMutation()
+        }
+    }
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -243,6 +270,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pendingMutationUris = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_URIS)
+            ?.map(Uri::parse)?.toMutableList() ?: mutableListOf()
+        pendingMutationSucceeded = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_SUCCEEDED)
+            ?.map(Uri::parse)?.toMutableList() ?: mutableListOf()
+        pendingMutationChunk = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_CHUNK)
+            ?.map(Uri::parse) ?: emptyList()
+        pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
 
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
@@ -365,17 +399,6 @@ class MainActivity : ComponentActivity() {
                                         Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                         Uri.parse("package:$packageName")
                                     ))
-                                },
-                                hasAllFilesAccess = hasAllFilesAccess.value,
-                                onRequestAllFiles = {
-                                    try {
-                                        startActivity(Intent(
-                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                            Uri.parse("package:$packageName")
-                                        ))
-                                    } catch (_: Exception) {
-                                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                                    }
                                 },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenCrop = { uri ->
@@ -706,8 +729,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
-        hasAllFilesAccess.value = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                android.os.Environment.isExternalStorageManager()
         refreshLongScreenshotState()
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
@@ -719,6 +740,14 @@ class MainActivity : ComponentActivity() {
 
         if (hasPermissions.value) loadRecentCrops()
         galleryRefreshKey.intValue++
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putStringArrayList(KEY_PENDING_MUTATION_URIS, ArrayList(pendingMutationUris.map(Uri::toString)))
+        outState.putStringArrayList(KEY_PENDING_MUTATION_SUCCEEDED, ArrayList(pendingMutationSucceeded.map(Uri::toString)))
+        outState.putStringArrayList(KEY_PENDING_MUTATION_CHUNK, ArrayList(pendingMutationChunk.map(Uri::toString)))
+        outState.putInt(KEY_PENDING_MUTATION_REQUESTED, pendingMutationRequested)
+        super.onSaveInstanceState(outState)
     }
 
     private fun checkPermissions() {
@@ -1468,51 +1497,83 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestDeleteUris(uris: List<Uri>) {
-        if (uris.isEmpty()) return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            android.os.Environment.isExternalStorageManager()) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                var count = 0
-                for (uri in uris) {
-                    try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
-                }
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, getString(R.string.toast_deleted_count, count), Toast.LENGTH_SHORT).show()
-                    galleryRefreshKey.intValue++
-                    loadRecentCrops()
-                }
-            }
+        if (pendingMutationUris.isNotEmpty() || pendingMutationChunk.isNotEmpty()) {
+            Toast.makeText(this, R.string.toast_mutation_pending, Toast.LENGTH_SHORT).show()
             return
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, uris)
-                @Suppress("DEPRECATION")
-                startIntentSenderForResult(pendingIntent.intentSender, 42, null, 0, 0, 0)
-            } catch (e: Exception) {
-                Toast.makeText(this, getString(R.string.toast_delete_failed, e.message ?: ""), Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            var count = 0
-            for (uri in uris) {
-                try { contentResolver.delete(uri, null, null); count++ } catch (_: Exception) {}
-            }
-            Toast.makeText(this, getString(R.string.toast_deleted_count, count), Toast.LENGTH_SHORT).show()
-            galleryRefreshKey.intValue++
-            loadRecentCrops()
+        pendingMutationUris = uris
+            .filter { it.scheme.equals("content", ignoreCase = true) }
+            .distinctBy(Uri::toString)
+            .toMutableList()
+        pendingMutationSucceeded.clear()
+        if (pendingMutationUris.isEmpty()) {
+            Toast.makeText(this, R.string.toast_delete_unsupported, Toast.LENGTH_SHORT).show()
+            return
+        }
+        pendingMutationRequested = pendingMutationUris.size
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) launchNextTrashChunk()
+        else deleteLegacyMutationUris()
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.R)
+    private fun launchNextTrashChunk() {
+        if (pendingMutationUris.isEmpty()) {
+            completeMediaMutation()
+            return
+        }
+        pendingMutationChunk = pendingMutationUris.take(2_000)
+        try {
+            val pendingIntent = MediaStore.createTrashRequest(contentResolver, pendingMutationChunk, true)
+            mediaMutationLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+        } catch (e: Exception) {
+            android.util.Log.e("SnapCrop", "Unable to request scoped trash", e)
+            completeMediaMutation()
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 42) {
+    private fun deleteLegacyMutationUris() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            while (pendingMutationUris.isNotEmpty()) {
+                val uri = pendingMutationUris.first()
+                try {
+                    if (contentResolver.delete(uri, null, null) == 1) {
+                        pendingMutationSucceeded.add(uri)
+                    }
+                    pendingMutationUris.removeAt(0)
+                } catch (recoverable: RecoverableSecurityException) {
+                    withContext(Dispatchers.Main) {
+                        mediaMutationLauncher.launch(
+                            IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
+                        )
+                    }
+                    return@launch
+                } catch (e: Exception) {
+                    android.util.Log.w("SnapCrop", "Scoped media deletion failed", e)
+                    pendingMutationUris.removeAt(0)
+                }
+            }
+            withContext(Dispatchers.Main) { completeMediaMutation() }
+        }
+    }
+
+    private fun completeMediaMutation() {
+        val succeeded = pendingMutationSucceeded.toList()
+        val outcome = MediaMutationOutcome(pendingMutationRequested, succeeded.size)
+        pendingMutationUris.clear()
+        pendingMutationChunk = emptyList()
+        pendingMutationSucceeded.clear()
+        pendingMutationRequested = 0
+        if (succeeded.isNotEmpty()) {
+            FavoritesStore.removeAll(this, succeeded.mapNotNull { runCatching { ContentUris.parseId(it) }.getOrNull() })
             galleryRefreshKey.intValue++
             loadRecentCrops()
-            if (resultCode == RESULT_OK) {
-                Toast.makeText(this, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
-            }
         }
+        val message = when (outcome.result) {
+            MediaMutationResult.RETAINED -> getString(R.string.toast_items_retained)
+            MediaMutationResult.PARTIAL -> getString(R.string.toast_trashed_partial, outcome.succeeded, outcome.retained)
+            MediaMutationResult.SUCCESS -> getString(R.string.toast_trashed_count, outcome.succeeded)
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleService() {
@@ -1658,8 +1719,6 @@ private fun HomeScreen(
     onBatchCancel: () -> Unit,
     hasOverlayPermission: Boolean,
     onRequestOverlay: () -> Unit,
-    hasAllFilesAccess: Boolean = false,
-    onRequestAllFiles: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onCopyCrop: (Uri) -> Unit,
@@ -1773,31 +1832,6 @@ private fun HomeScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text(stringResource(R.string.home_overlay_grant), color = OnPrimary) }
-            }
-        }
-
-        // All-files access (skips delete confirmation on Save & Replace)
-        if (hasPermissions && !hasAllFilesAccess && Build.VERSION.SDK_INT >= 30) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = Primary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.home_allfiles_title), color = OnSurface, fontWeight = FontWeight.Medium)
-                        Text(stringResource(R.string.home_allfiles_body),
-                            color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
-                    }
-                }
-                Button(
-                    onClick = onRequestAllFiles,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text(stringResource(R.string.home_allfiles_grant), color = OnPrimary) }
             }
         }
 
@@ -2059,7 +2093,10 @@ private fun HomeScreen(
             title = { Text(stringResource(R.string.home_delete_crop_title), color = OnSurface) },
             text = {
                 Text(
-                    stringResource(R.string.home_delete_crop_body),
+                    stringResource(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.home_delete_crop_body
+                        else R.string.home_delete_crop_body_legacy
+                    ),
                     color = OnSurfaceVariant,
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -2073,7 +2110,10 @@ private fun HomeScreen(
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
                 ) {
-                    Text(stringResource(R.string.home_delete_crop_confirm))
+                    Text(stringResource(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
+                        else R.string.delete_permanently
+                    ))
                 }
             },
             dismissButton = {

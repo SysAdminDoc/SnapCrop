@@ -436,17 +436,14 @@ class ScreenshotService : Service() {
                 val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
                 if (savedUri != null) {
                     try {
-                        contentResolver.openOutputStream(savedUri)?.use { out ->
+                        val compressed = contentResolver.openOutputStream(savedUri)?.use { out ->
                             cropped.compress(fmt, quality, out)
-                        }
+                        } ?: false
+                        if (!compressed) throw IOException("Image encoder failed")
                         values.clear()
                         values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                        contentResolver.update(savedUri, values, null, null)
-
-                        // Services cannot show Android 11+ scoped-storage delete confirmation.
-                        // On newer devices, leave the source screenshot in place.
-                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                        if (contentResolver.update(savedUri, values, null, null) != 1) {
+                            throw IOException("Failed to publish Quick Crop output")
                         }
 
                         prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()

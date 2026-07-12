@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Intent
+import android.app.RecoverableSecurityException
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -29,6 +30,8 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.Animatable
@@ -82,11 +85,15 @@ private data class CropExportFormat(
     val mime: String
 )
 
+private enum class SourceMutationPurpose { REPLACE_AFTER_SAVE, DELETE_FROM_EDITOR }
+
 class CropActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SHOW_FLASH = "show_flash"
         private const val KEY_HAS_DRAFT = "has_editor_draft"
+        private const val KEY_MUTATION_PURPOSE = "source_mutation_purpose"
+        private const val KEY_MUTATION_MESSAGE = "source_mutation_message"
     }
 
     private var originalBitmap: Bitmap? = null
@@ -106,6 +113,20 @@ class CropActivity : ComponentActivity() {
     private val initialAdjustments = mutableStateOf<FloatArray?>(null)
     private val projectLoadError = mutableStateOf<String?>(null)
     private val rotationKey = mutableIntStateOf(0)
+    private var pendingMutationPurpose: SourceMutationPurpose? = null
+    private var pendingExportMessage: String? = null
+
+    private val sourceMutationLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            completeSourceMutation(result.resultCode == RESULT_OK)
+        } else if (result.resultCode == RESULT_OK) {
+            deleteSourceOnLegacyAndroid()
+        } else {
+            completeSourceMutation(false)
+        }
+    }
 
     private fun handleIntent(incomingIntent: Intent) {
         val newUri = when {
@@ -152,6 +173,9 @@ class CropActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureScreen()
+        pendingMutationPurpose = savedInstanceState?.getString(KEY_MUTATION_PURPOSE)
+            ?.let { runCatching { SourceMutationPurpose.valueOf(it) }.getOrNull() }
+        pendingExportMessage = savedInstanceState?.getString(KEY_MUTATION_MESSAGE)
         // Restore an in-progress edit checkpointed before a process death; otherwise open the intent.
         val draft = if (savedInstanceState?.getBoolean(KEY_HAS_DRAFT) == true) {
             runCatching { draftFile.takeIf { it.exists() }?.readText() }.getOrNull()
@@ -354,17 +378,14 @@ class CropActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     showDeleteConfirm.value = false
-                                    val needsDialog = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                                    deleteOriginalFile()
-                                    if (!needsDialog) {
-                                        Toast.makeText(this@CropActivity, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
-                                        finish()
-                                    }
-                                    // If needsDialog, onActivityResult handles toast + finish
+                                    requestSourceTrash(SourceMutationPurpose.DELETE_FROM_EDITOR)
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
                             ) {
-                                Text(stringResource(R.string.delete))
+                                Text(stringResource(
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
+                                    else R.string.delete_permanently
+                                ))
                             }
                         },
                         dismissButton = {
@@ -463,6 +484,8 @@ class CropActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        pendingMutationPurpose?.let { outState.putString(KEY_MUTATION_PURPOSE, it.name) }
+        pendingExportMessage?.let { outState.putString(KEY_MUTATION_MESSAGE, it) }
         // Checkpoint the in-progress edit as a project draft so a low-memory kill doesn't lose work.
         val provider = draftStateProvider ?: return
         if (sourceUri == null || bitmapState.value == null) return
@@ -1691,7 +1714,9 @@ class CropActivity : ComponentActivity() {
                 }
             } finally {
                 cropped?.let { if (!it.isRecycled) it.recycle() }
-                withContext(Dispatchers.Main) { isSaving.value = false }
+                withContext(Dispatchers.Main) {
+                    if (pendingMutationPurpose == null) isSaving.value = false
+                }
             }
         }
     }
@@ -1965,11 +1990,15 @@ class CropActivity : ComponentActivity() {
             contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
         } catch (_: Exception) { null } ?: return false
         return try {
-            contentResolver.openOutputStream(uri)?.use { it.write(svg.toByteArray(Charsets.UTF_8)) }
+            val bytes = svg.toByteArray(Charsets.UTF_8)
+            if (bytes.isEmpty()) throw IOException("SVG sidecar is empty")
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                 ?: throw IOException("Failed to open SVG output stream")
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
+            if (contentResolver.update(uri, values, null, null) != 1) {
+                throw IOException("Failed to publish SVG sidecar")
+            }
             true
         } catch (_: Exception) {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
@@ -1988,11 +2017,15 @@ class CropActivity : ComponentActivity() {
             contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
         } catch (_: Exception) { null } ?: return false
         return try {
-            contentResolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            val bytes = json.toByteArray(Charsets.UTF_8)
+            if (bytes.isEmpty()) throw IOException("Project sidecar is empty")
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                 ?: throw IOException("Failed to open project output stream")
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
+            if (contentResolver.update(uri, values, null, null) != 1) {
+                throw IOException("Failed to publish project sidecar")
+            }
             true
         } catch (_: Exception) {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
@@ -2031,76 +2064,142 @@ class CropActivity : ComponentActivity() {
         }
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) { runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }; return }
+        if (uri == null) {
+            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
+            return
+        }
 
         try {
+            val baseMessage: String
             if (useTargetSize) {
                 val (bytes, usedQuality) = compressToTargetSize(bitmap, format, targetSizeKb)
                 contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
                     ?: throw IOException("Failed to open output stream")
                 val sizeKb = bytes.size / 1024
+                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
-                val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
-                val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
-                val msg = getString(R.string.crop_saved_size, "${sizeKb}KB", usedQuality) +
-                    (if (svgSaved) " + SVG" else "") +
-                    (if (projectSaved) " + Project" else "")
-                runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
-                if (deleteOriginal) deleteOriginalFile()
+                if (contentResolver.update(uri, values, null, null) != 1) {
+                    throw IOException("Failed to publish output")
+                }
+                baseMessage = getString(R.string.crop_saved_size, "${sizeKb}KB", usedQuality)
             } else {
-                contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
+                val compressed = contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
                     ?: throw IOException("Failed to open output stream")
+                if (!compressed) throw IOException("Image encoder failed")
+                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
                 values.clear()
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(uri, values, null, null)
-                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
-                val svgSaved = annotationSvg?.let { saveSvgSidecar(name, savePath, it) } == true
-                val projectSaved = projectSidecarJson?.let { saveProjectSidecar(name, savePath, it) } == true
-                val msg = (if (deleteOriginal) getString(R.string.crop_saved_path, savePath) else getString(R.string.crop_copy_saved_path, savePath)) +
-                    (if (svgSaved) " + SVG" else "") +
-                    (if (projectSaved) " + Project" else "")
-                runOnUiThread { Toast.makeText(this, msg, Toast.LENGTH_SHORT).show() }
-                if (deleteOriginal) deleteOriginalFile()
+                if (contentResolver.update(uri, values, null, null) != 1) {
+                    throw IOException("Failed to publish output")
+                }
+                baseMessage = if (deleteOriginal) getString(R.string.crop_saved_path, savePath)
+                    else getString(R.string.crop_copy_saved_path, savePath)
             }
-            runOnUiThread { finish() }
-        } catch (e: IOException) {
+
+            val svgSaved = annotationSvg == null || saveSvgSidecar(name, savePath, annotationSvg)
+            val projectSaved = projectSidecarJson == null || saveProjectSidecar(name, savePath, projectSidecarJson)
+            val requestedSidecarsSaved = svgSaved && projectSaved
+            val detailMessage = baseMessage +
+                (if (annotationSvg != null && svgSaved) " + SVG" else "") +
+                (if (projectSidecarJson != null && projectSaved) " + Project" else "")
+
+            runOnUiThread {
+                when {
+                    deleteOriginal && requestedSidecarsSaved -> {
+                        requestSourceTrash(SourceMutationPurpose.REPLACE_AFTER_SAVE, detailMessage)
+                    }
+                    deleteOriginal -> {
+                        Toast.makeText(this, R.string.crop_sidecar_failed_original_retained, Toast.LENGTH_LONG).show()
+                        finish()
+                    }
+                    else -> {
+                        val message = if (requestedSidecarsSaved) detailMessage
+                            else getString(R.string.crop_saved_sidecar_omitted)
+                        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                        finish()
+                    }
+                }
+            }
+        } catch (e: Exception) {
             android.util.Log.e("SnapCrop", "saveToGallery failed", e)
             runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed) + ": " + (e.message ?: e.javaClass.simpleName), Toast.LENGTH_LONG).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
         }
     }
 
-    private fun deleteOriginalFile() {
-        val uri = sourceUri ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            android.os.Environment.isExternalStorageManager()) {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+    private fun requestSourceTrash(
+        purpose: SourceMutationPurpose,
+        exportMessage: String? = null
+    ) {
+        if (pendingMutationPurpose != null) return
+        pendingMutationPurpose = purpose
+        pendingExportMessage = exportMessage
+        isSaving.value = true
+        val uri = sourceUri
+        if (uri == null || !uri.scheme.equals("content", ignoreCase = true)) {
+            completeSourceMutation(false)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                val pendingIntent = MediaStore.createDeleteRequest(contentResolver, listOf(uri))
-                @Suppress("DEPRECATION")
-                startIntentSenderForResult(pendingIntent.intentSender, 99, null, 0, 0, 0)
-            } catch (_: Exception) {
-                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                val pendingIntent = MediaStore.createTrashRequest(contentResolver, listOf(uri), true)
+                sourceMutationLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            } catch (e: Exception) {
+                android.util.Log.w("SnapCrop", "Unable to request scoped source trash", e)
+                completeSourceMutation(false)
             }
         } else {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            deleteSourceOnLegacyAndroid()
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 99) {
-            if (resultCode == RESULT_OK) {
-                Toast.makeText(this, getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
+    private fun deleteSourceOnLegacyAndroid() {
+        val uri = sourceUri ?: run {
+            completeSourceMutation(false)
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val deleted = contentResolver.delete(uri, null, null) == 1
+                withContext(Dispatchers.Main) { completeSourceMutation(deleted) }
+            } catch (recoverable: RecoverableSecurityException) {
+                withContext(Dispatchers.Main) {
+                    sourceMutationLauncher.launch(
+                        IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
+                    )
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SnapCrop", "Unable to delete source", e)
+                withContext(Dispatchers.Main) { completeSourceMutation(false) }
             }
-            finish()
+        }
+    }
+
+    private fun completeSourceMutation(succeeded: Boolean) {
+        val purpose = pendingMutationPurpose ?: return
+        val exportMessage = pendingExportMessage
+        pendingMutationPurpose = null
+        pendingExportMessage = null
+        isSaving.value = false
+        when (purpose) {
+            SourceMutationPurpose.REPLACE_AFTER_SAVE -> {
+                val message = if (succeeded) {
+                    listOfNotNull(exportMessage, getString(R.string.crop_original_trashed)).joinToString(". ")
+                } else {
+                    getString(R.string.crop_copy_saved_original_retained)
+                }
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                finish()
+            }
+            SourceMutationPurpose.DELETE_FROM_EDITOR -> {
+                Toast.makeText(
+                    this,
+                    if (succeeded) R.string.toast_moved_to_trash else R.string.toast_items_retained,
+                    Toast.LENGTH_SHORT
+                ).show()
+                if (succeeded) finish()
+            }
         }
     }
 

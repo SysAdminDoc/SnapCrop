@@ -232,6 +232,13 @@ object FavoritesStore {
 
     fun getAllIds(context: Context): Set<Long> =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys.mapNotNull { it.toLongOrNull() }.toSet()
+
+    fun removeAll(context: Context, ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().apply {
+            ids.forEach { remove(it.toString()) }
+        }.apply()
+    }
 }
 
 private fun Photo.withIndex(entry: ScreenshotIndexEntry?): Photo {
@@ -281,6 +288,7 @@ fun GalleryScreen(
     var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
     var sortMode by remember { mutableStateOf(SortMode.DATE) }
     var gridColumns by remember { mutableIntStateOf(3) }
+    var pendingDeleteUris by remember { mutableStateOf<List<Uri>?>(null) }
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -350,6 +358,47 @@ fun GalleryScreen(
         }
     }
 
+    LaunchedEffect(viewerPhotos.size) {
+        if (viewerIndex >= viewerPhotos.size) {
+            viewerIndex = if (viewerPhotos.isEmpty()) -1 else viewerPhotos.lastIndex
+        }
+    }
+
+    pendingDeleteUris?.let { uris ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteUris = null },
+            title = { Text(stringResource(R.string.gallery_trash_title), color = OnSurface) },
+            text = {
+                Text(
+                    stringResource(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.gallery_trash_body
+                        else R.string.gallery_trash_body_legacy,
+                        uris.size
+                    ),
+                    color = OnSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDeleteUris = null
+                        onDeleteUris(uris)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
+                ) { Text(stringResource(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
+                    else R.string.delete_permanently
+                )) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteUris = null }) {
+                    Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                }
+            },
+            containerColor = SurfaceVariant
+        )
+    }
+
     // Fullscreen viewer
     if (viewerIndex >= 0 && viewerPhotos.isNotEmpty()) {
         PhotoViewer(
@@ -359,24 +408,7 @@ fun GalleryScreen(
             onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
             onShare = { onShareUris(listOf(it.uri)) },
             onDelete = { photo ->
-                onDeleteUris(listOf(photo.uri))
-                // Drop the favorite entry too — leaving it stranded keeps a dead ID in
-                // SharedPreferences that the Favorites view would then fail to resolve.
-                if (FavoritesStore.isFavorite(context, photo.id)) {
-                    FavoritesStore.toggle(context, photo.id)
-                    favIds = FavoritesStore.getAllIds(context)
-                }
-                photos = photos.filter { it.id != photo.id }
-                if (photos.isEmpty()) viewerIndex = -1
-                else viewerIndex = viewerIndex.coerceIn(0, photos.size - 1)
-                scope.launch(Dispatchers.IO) {
-                    val refreshed = loadAlbums(context.contentResolver)
-                    val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH, indexEntries)
-                    withContext(Dispatchers.Main) {
-                        albums = refreshed
-                        smartAlbums = refreshedSmart
-                    }
-                }
+                pendingDeleteUris = listOf(photo.uri)
             },
             onToggleFavorite = { photo ->
                 val newState = FavoritesStore.toggle(context, photo.id)
@@ -426,20 +458,7 @@ fun GalleryScreen(
                     }) { Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.resize), tint = OnSurface) }
                     IconButton(onClick = {
                         val uris = photos.filter { it.id in selectedIds }.map { it.uri }
-                        val deletedIds = selectedIds.toSet()
-                        onDeleteUris(uris)
-                        // Remove deleted photos from local list immediately
-                        photos = photos.filter { it.id !in deletedIds }
-                        selectedIds.clear()
-                        // Refresh albums in background (counts changed)
-                        scope.launch(Dispatchers.IO) {
-                            val refreshed = loadAlbums(context.contentResolver)
-                            val refreshedSmart = loadSmartAlbums(context.contentResolver, screenW, screenH, indexEntries)
-                            withContext(Dispatchers.Main) {
-                                albums = refreshed
-                                smartAlbums = refreshedSmart
-                            }
-                        }
+                        if (uris.isNotEmpty()) pendingDeleteUris = uris
                     }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Tertiary) }
                 }
             } else {

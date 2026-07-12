@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Scoped, recoverable media mutations (v6.28.0).**
+
+- Removed the broad all-files permission and its Home prompt. Android 11+
+  cleanup now uses recoverable MediaStore Trash requests; Android 10 clearly
+  labels its permanent-delete fallback.
+- Save & Replace now publishes the image and requested sidecars before asking
+  to remove the source. Denial or failure reports "Copy saved; original
+  retained" instead of closing as if replacement succeeded.
+- Gallery, recent-crop, editor, and long-screenshot cleanup now wait for the
+  Activity Result before changing UI/favorites. Batch cleanup includes an
+  item-count confirmation, supports Android's 2,000-item request limit, and
+  preserves pending state across activity recreation.
+- Quick Crop no longer silently removes its source on Android 10, and verifies
+  that its MediaStore row was encoded and published before success feedback.
+
 **Trust, distribution, and resilience (v6.27.0).**
 
 - Quick Crop now copies the saved result to the system clipboard alongside

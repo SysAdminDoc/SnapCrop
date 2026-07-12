@@ -32,9 +32,6 @@
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
-    <string name="home_allfiles_title">Skip delete confirmation</string>
-    <string name="home_allfiles_body">Granting all-files access lets Save replace the original screenshot silently without an Android confirmation prompt every time.</string>
-    <string name="home_allfiles_grant">Grant file access</string>
     <string name="home_monitor_title">Screenshot Monitor</string>
     <string name="home_monitor_active">Active - new screenshots open in the editor</string>
     <string name="home_monitor_paused">Paused - turn on to catch screenshots automatically</string>
@@ -68,8 +65,9 @@
     <string name="home_recent">Recent</string>
     <string name="home_footer">Screenshots are detected automatically when the monitor is active. Exports follow your format and location settings.</string>
     <string name="home_delete_crop_title">Delete recent crop?</string>
-    <string name="home_delete_crop_body">This removes the exported crop from your media library. The source screenshot is not touched.</string>
-    <string name="home_delete_crop_confirm">Delete crop</string>
+    <string name="home_delete_crop_body">Android will move this exported crop to Trash. The source screenshot is not touched.</string>
+    <string name="home_delete_crop_body_legacy">This permanently deletes the exported crop. The source screenshot is not touched.</string>
+    <string name="home_delete_crop_confirm">Move crop to Trash</string>
     <string name="home_open_crop_cd">Open recent crop</string>
     <string name="home_copy_crop_cd">Copy to clipboard</string>
     <string name="home_delete_crop_cd">Delete recent crop</string>
@@ -360,8 +358,8 @@
     <string name="crop_saving_title">Saving export</string>
     <string name="crop_saving_replace">Replacing the source after the crop is written</string>
     <string name="crop_saving_copy">Writing a separate copy to your save location</string>
-    <string name="crop_delete_title">Delete original screenshot?</string>
-    <string name="crop_delete_body">This removes the source image from your library. Saved copies and shared exports stay where they are.</string>
+    <string name="crop_delete_title">Remove original screenshot?</string>
+    <string name="crop_delete_body">Android 11+ moves the source to Trash. Android 10 deletes it permanently. Saved copies and shared exports stay where they are.</string>
     <string name="crop_sidecar_no_uri">This project sidecar does not include a source image URI.</string>
     <string name="crop_sidecar_open_failed">SnapCrop could not open this project sidecar: %1$s</string>
     <string name="crop_source_missing">The original image referenced by this project is missing or inaccessible: %1$s</string>
@@ -371,6 +369,10 @@
     <string name="crop_save_replace">Save &amp; Replace</string>
     <string name="crop_saved_path">Saved to %1$s</string>
     <string name="crop_copy_saved_path">Copy saved to %1$s</string>
+    <string name="crop_original_trashed">Original moved to Trash</string>
+    <string name="crop_copy_saved_original_retained">Copy saved; original retained</string>
+    <string name="crop_sidecar_failed_original_retained">Image saved, but a requested sidecar could not be written. Original retained.</string>
+    <string name="crop_saved_sidecar_omitted">Image saved; a requested sidecar could not be written.</string>
 
     <!-- Gallery screen -->
     <string name="gallery_title">Gallery</string>
@@ -414,6 +416,17 @@
     <string name="gallery_favorite">Favorite</string>
     <string name="gallery_edit">Edit</string>
     <string name="gallery_delete_selected">Delete selected</string>
+    <string name="gallery_trash_title">Remove selected media?</string>
+    <string name="gallery_trash_body">Android will move %1$d selected item(s) to Trash.</string>
+    <string name="gallery_trash_body_legacy">This permanently deletes %1$d selected item(s).</string>
+    <string name="move_to_trash">Move to Trash</string>
+    <string name="delete_permanently">Delete permanently</string>
+    <string name="toast_moved_to_trash">Moved to Trash</string>
+    <string name="toast_trashed_count">Moved %1$d item(s) to Trash</string>
+    <string name="toast_trashed_partial">Moved %1$d item(s) to Trash; retained %2$d</string>
+    <string name="toast_items_retained">Nothing removed; items retained</string>
+    <string name="toast_mutation_pending">Wait for the current media operation to finish</string>
+    <string name="toast_delete_unsupported">SnapCrop cannot remove this provider’s item</string>
 
     <!-- Smart albums -->
     <string name="smart_screenshots">Screenshots</string>
