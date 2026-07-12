@@ -1520,12 +1520,13 @@ class CropActivity : ComponentActivity() {
         // Redact source pixels before any geometric transform so rotate/perspective cannot move
         // secrets away from an untransformed mask. Invalid enabled regions abort the export.
         val redacted = applyRedactions(bitmap, redactions)
-        // Apply free rotation before adjustments/crop.
+        // Apply free rotation before adjustments/crop. Straighten rotates within the original
+        // editor coordinate frame (corners clipped) so the crop rect - expressed in source
+        // coordinates - stays aligned with the preview instead of drifting onto an expanded canvas.
         val rotAngle = if (adj.size > 8) adj[8] else 0f
         require(cutout.bands.isEmpty() || rotAngle == 0f) { "Cut Out cannot be combined with free rotation" }
         val rotated = if (rotAngle != 0f) {
-            val matrix = Matrix().apply { postRotate(rotAngle, bitmap.width / 2f, bitmap.height / 2f) }
-            Bitmap.createBitmap(redacted, 0, 0, redacted.width, redacted.height, matrix, true)
+            createEditorSpaceStraightenedBitmap(redacted, rotAngle)
         } else redacted
 
         val adjusted = applyAdjustments(rotated, adj)
