@@ -33,7 +33,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -82,6 +84,7 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -171,6 +174,7 @@ fun CropEditorScreen(
     var cutSeparatorStyle by remember(bitmap) { mutableStateOf(initialCutout.separatorStyle) }
     var selectedCutBand by remember { mutableIntStateOf(-1) }
     var showHelp by remember { mutableStateOf(false) }
+    var showEditorMenu by remember { mutableStateOf(false) }
     if (showHelp) {
         LocalHelpDialog(
             onOpenRoute = { route ->
@@ -1285,7 +1289,7 @@ fun CropEditorScreen(
                                             .background(Color(pc.color), RoundedCornerShape(4.dp))
                                             .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
                                     )
-                                    Text(pc.hex, fontSize = 7.sp, color = OnSurfaceVariant)
+                                    Text(pc.hex, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                                 }
                             }
                         }
@@ -1582,22 +1586,16 @@ fun CropEditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDiscard() }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDiscard() }, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.Default.Close, stringResource(R.string.editor_close), tint = OnSurface, modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(44.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.Undo, stringResource(R.string.editor_undo),
                         tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(44.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.Redo, stringResource(R.string.editor_redo),
                         tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
-                }
-                if (undoStack.isNotEmpty()) {
-                    IconButton(onClick = { showUndoHistory = !showUndoHistory }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.History, stringResource(R.string.editor_history),
-                            tint = if (showUndoHistory) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
-                    }
                 }
             }
 
@@ -1620,16 +1618,50 @@ fun CropEditorScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { showHelp = true }, modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurface, modifier = Modifier.size(20.dp))
-                }
-                IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(40.dp)) {
-                    Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, stringResource(R.string.editor_rotate), tint = OnSurface, modifier = Modifier.size(20.dp)) }
-                IconButton(onClick = onFlipH, enabled = cutBands.isEmpty(), modifier = Modifier.size(40.dp)) {
-                    Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_h), tint = OnSurface, modifier = Modifier.size(20.dp)) }
-                IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(44.dp)) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         stringResource(R.string.crop_preview), tint = if (previewMode) Primary else OnSurface, modifier = Modifier.size(20.dp))
+                }
+                Box {
+                    IconButton(onClick = { showEditorMenu = true }, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = OnSurface, modifier = Modifier.size(20.dp))
+                    }
+                    DropdownMenu(
+                        expanded = showEditorMenu,
+                        onDismissRequest = { showEditorMenu = false },
+                        containerColor = SurfaceElevated,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_history)) },
+                            enabled = undoStack.isNotEmpty(),
+                            onClick = { showUndoHistory = !showUndoHistory; showEditorMenu = false },
+                            leadingIcon = { Icon(Icons.Default.History, null, tint = if (showUndoHistory) Primary else OnSurfaceVariant) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_rotate)) },
+                            enabled = cutBands.isEmpty(),
+                            onClick = { onRotate(); showEditorMenu = false },
+                            leadingIcon = { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_flip_h)) },
+                            enabled = cutBands.isEmpty(),
+                            onClick = { onFlipH(); showEditorMenu = false },
+                            leadingIcon = { Icon(Icons.Default.Flip, null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.editor_flip_v)) },
+                            enabled = cutBands.isEmpty(),
+                            onClick = { onFlipV(); showEditorMenu = false },
+                            leadingIcon = { Icon(Icons.Default.Flip, null, modifier = Modifier.graphicsLayer(rotationZ = 90f)) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.help_content_description)) },
+                            onClick = { showHelp = true; showEditorMenu = false },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.HelpOutline, null) }
+                        )
+                    }
                 }
             }
         }
@@ -1695,9 +1727,6 @@ fun CropEditorScreen(
                         shape = RoundedCornerShape(8.dp)
                     )
                 }
-                // Transform tools
-                IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
             }
         }
 
@@ -2022,19 +2051,12 @@ fun CropEditorScreen(
                             modifier = Modifier.size(16.dp))
                     }
                     drawColors.forEach { (color, name) ->
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .semantics { contentDescription = "$name color${if (drawColor == color) ", selected" else ""}" }
-                                .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } }
-                        ) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .size(if (drawColor == color) 24.dp else 18.dp)
-                                    .background(Color(color), RoundedCornerShape(3.dp))
-                            )
-                        }
+                        EditorColorSwatch(
+                            color = color,
+                            selected = drawColor == color,
+                            contentDescription = "$name color",
+                            onClick = { drawColor = color; eyedropperActive = false }
+                        )
                     }
                     // Recent custom colors
                     recentColors.forEachIndexed { index, color ->
@@ -2046,20 +2068,12 @@ fun CropEditorScreen(
                             hex,
                             if (drawColor == color) selectedSuffix else ""
                         )
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .semantics { contentDescription = recentColorCd }
-                                .pointerInput(color) { detectTapGestures { drawColor = color; eyedropperActive = false } }
-                        ) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .size(if (drawColor == color) 24.dp else 18.dp)
-                                    .background(Color(color), RoundedCornerShape(3.dp))
-                                    .border(0.5f.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(3.dp))
-                            )
-                        }
+                        EditorColorSwatch(
+                            color = color,
+                            selected = drawColor == color,
+                            contentDescription = recentColorCd,
+                            onClick = { drawColor = color; eyedropperActive = false }
+                        )
                     }
                     // Current color preview (tap to open color picker)
                     var showColorPicker by remember { mutableStateOf(false) }
@@ -3665,8 +3679,8 @@ fun CropEditorScreen(
                         ) {
                             Box(Modifier.size(28.dp).background(Color(pc.color), RoundedCornerShape(4.dp))
                                 .border(1.dp, OnSurfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(4.dp)))
-                            Text(pc.hex, fontSize = 8.sp, color = OnSurfaceVariant)
-                            Text("${pc.percentage.toInt()}%", fontSize = 7.sp, color = OnSurfaceVariant)
+                            Text(pc.hex, style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
+                            Text("${pc.percentage.toInt()}%", style = MaterialTheme.typography.labelSmall, color = OnSurfaceVariant)
                         }
                     }
                 }
@@ -3703,7 +3717,7 @@ fun CropEditorScreen(
             // Action icons row
             val adj = exportAdjustments()
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.editor_delete), tint = Tertiary) }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.editor_delete), tint = Danger) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.adjust_resize_button), tint = OnSurface) }
                 IconButton(onClick = { onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
@@ -3860,7 +3874,7 @@ fun CropEditorScreen(
                                 Icon(
                                     Icons.Default.Delete,
                                     stringResource(R.string.ocr_delete_block, index + 1),
-                                    tint = Tertiary
+                                    tint = Danger
                                 )
                             }
                         }
@@ -4320,6 +4334,51 @@ fun CropEditorScreen(
             },
             containerColor = SurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun EditorColorSwatch(
+    color: Int,
+    selected: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .semantics {
+                this.contentDescription = contentDescription
+                this.selected = selected
+                role = Role.Button
+            }
+            .clickable(role = Role.Button, onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(28.dp)
+                .background(Color(color), RoundedCornerShape(6.dp))
+                .border(
+                    width = if (selected) 2.dp else 1.dp,
+                    color = if (selected) Primary else OnSurfaceVariant.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(6.dp)
+                )
+        )
+        if (selected) {
+            Surface(
+                color = SurfaceElevated,
+                shape = RoundedCornerShape(6.dp),
+                modifier = Modifier.align(Alignment.TopEnd).size(18.dp)
+            ) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.padding(3.dp)
+                )
+            }
+        }
     }
 }
 

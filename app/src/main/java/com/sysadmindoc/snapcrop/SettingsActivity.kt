@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -154,7 +156,7 @@ class SettingsActivity : ComponentActivity() {
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }) {
-                                Text(stringResource(R.string.rules_delete_confirm), color = Tertiary)
+                                Text(stringResource(R.string.rules_delete_confirm), color = Danger)
                             }
                         },
                         dismissButton = {
@@ -169,7 +171,11 @@ class SettingsActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Black)
+                        .background(
+                            androidx.compose.ui.graphics.Brush.verticalGradient(
+                                listOf(Black, Surface.copy(alpha = 0.72f), Black)
+                            )
+                        )
                         .safeDrawingPadding()
                         .imePadding()
                         .verticalScroll(rememberScrollState())
@@ -184,7 +190,11 @@ class SettingsActivity : ComponentActivity() {
                             Icon(@Suppress("DEPRECATION") Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
                         }
                         Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_title), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = OnSurface)
+                        Text(
+                            stringResource(R.string.settings_title),
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = OnSurface
+                        )
                         Spacer(Modifier.weight(1f))
                         IconButton(onClick = { showHelp = true }) {
                             Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurface)
@@ -196,17 +206,21 @@ class SettingsActivity : ComponentActivity() {
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Primary.copy(alpha = 0.35f)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Text(stringResource(R.string.settings_export_defaults), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Text(
+                                stringResource(R.string.settings_export_defaults),
+                                color = OnSurface,
+                                style = MaterialTheme.typography.titleMedium
+                            )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 if (deleteOriginal) stringResource(R.string.settings_export_summary_replace, outputFormat)
                                 else stringResource(R.string.settings_export_summary_keep, outputFormat),
                                 color = OnSurfaceVariant,
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                     }
@@ -214,7 +228,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     // Appearance section
-                    Text(stringResource(R.string.settings_section_appearance), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_appearance))
                     Spacer(Modifier.height(8.dp))
 
                     var themePref by remember { mutableStateOf(prefs.getString("theme", "dark") ?: "dark") }
@@ -274,7 +288,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     // Save behavior section
-                    Text(stringResource(R.string.settings_section_save), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_save))
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
@@ -366,7 +380,7 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
-                    Text(stringResource(R.string.settings_section_intelligence), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_intelligence))
                     Spacer(Modifier.height(8.dp))
 
                     var screenshotIndexEnabled by remember {
@@ -449,7 +463,7 @@ class SettingsActivity : ComponentActivity() {
                                         },
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text(stringResource(R.string.settings_purge), color = Tertiary)
+                                        Text(stringResource(R.string.settings_purge), color = Danger)
                                     }
                                 }
                             }
@@ -458,7 +472,7 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(20.dp))
 
-                    Text(stringResource(R.string.settings_section_erase), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_erase))
                     Spacer(Modifier.height(8.dp))
 
                     var allowAdvancedErase by remember {
@@ -683,7 +697,7 @@ class SettingsActivity : ComponentActivity() {
                     // Annotation presets section
                     val stylePresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(prefs)) } }
                     var styleDefault by remember { mutableStateOf(DrawStylePresetStore.defaultName(prefs)) }
-                    Text(stringResource(R.string.settings_section_presets), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_presets))
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.settings_presets_body), color = OnSurfaceVariant, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
@@ -710,7 +724,7 @@ class SettingsActivity : ComponentActivity() {
                                     DrawStylePresetStore.save(prefs, stylePresets.toList())
                                     if (styleDefault == preset.name) { styleDefault = null; DrawStylePresetStore.setDefault(prefs, null) }
                                 }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Delete, stringResource(R.string.delete) + " ${preset.name}", tint = Tertiary, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Delete, stringResource(R.string.delete) + " ${preset.name}", tint = Danger, modifier = Modifier.size(16.dp))
                                 }
                             }
                         }
@@ -757,7 +771,7 @@ class SettingsActivity : ComponentActivity() {
                             Toast.makeText(this@SettingsActivity, getString(R.string.settings_credentials_save_failed), Toast.LENGTH_LONG).show()
                         }
                     }
-                    Text(stringResource(R.string.settings_section_network), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_network))
                     Spacer(Modifier.height(8.dp))
                     SettingToggle(
                         title = stringResource(R.string.settings_network_title),
@@ -920,7 +934,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Watermark section
-                    Text(stringResource(R.string.settings_section_watermark), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_watermark))
                     Spacer(Modifier.height(8.dp))
 
                     var watermarkEnabled by remember { mutableStateOf(prefs.getBoolean("watermark_enabled", false)) }
@@ -1143,7 +1157,7 @@ class SettingsActivity : ComponentActivity() {
                                                 exportPresets = ExportPresetStore.delete(prefs, preset.id)
                                                 if (editorPresetId == preset.id) editorPresetId = null
                                                 if (quickPresetId == preset.id) quickPresetId = null
-                                            }) { Text(stringResource(R.string.delete), color = Tertiary) }
+                                            }) { Text(stringResource(R.string.delete), color = Danger) }
                                         }
                                     }
                                 }
@@ -1154,7 +1168,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Service section
-                    Text(stringResource(R.string.settings_section_service), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_service))
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
@@ -1279,7 +1293,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Storage section
-                    Text(stringResource(R.string.settings_section_storage), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_storage))
                     Spacer(Modifier.height(8.dp))
 
                     Card(
@@ -1310,7 +1324,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Settings backup / restore — survive reinstall (allowBackup=false).
-                    Text(stringResource(R.string.settings_section_backup), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_backup))
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.settings_backup_hint), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -1329,7 +1343,7 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // About
-                    Text(stringResource(R.string.settings_section_about), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    SettingsSectionHeader(stringResource(R.string.settings_section_about))
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
@@ -1374,7 +1388,7 @@ class SettingsActivity : ComponentActivity() {
                         }
                         is UpdateChecker.Result.Failed -> {
                             Spacer(Modifier.height(4.dp))
-                            Text(stringResource(R.string.settings_update_failed), color = Tertiary, fontSize = 12.sp)
+                            Text(stringResource(R.string.settings_update_failed), color = Danger, fontSize = 12.sp)
                         }
                         else -> {}
                     }
@@ -1513,7 +1527,7 @@ class SettingsActivity : ComponentActivity() {
                                             journalEvents = emptyList()
                                             journalViewText = null
                                         }
-                                    ) { Text(stringResource(R.string.settings_journal_clear), color = Tertiary, fontSize = 13.sp) }
+                                    ) { Text(stringResource(R.string.settings_journal_clear), color = Danger, fontSize = 13.sp) }
                                 }
                             }
                         }
@@ -1565,7 +1579,7 @@ class SettingsActivity : ComponentActivity() {
                                         CrashReporter.clear(this@SettingsActivity)
                                         crashFiles = emptyList()
                                         crashViewText = null
-                                    }) { Text(stringResource(R.string.settings_crash_clear), color = Tertiary, fontSize = 13.sp) }
+                                    }) { Text(stringResource(R.string.settings_crash_clear), color = Danger, fontSize = 13.sp) }
                                 }
                             }
                         }
@@ -1716,6 +1730,24 @@ class SettingsActivity : ComponentActivity() {
 }
 
 @Composable
+private fun SettingsSectionHeader(title: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(4.dp, 20.dp)
+                .background(Primary, RoundedCornerShape(4.dp))
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(title, color = OnSurface, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
 private fun SettingToggle(
     title: String,
     subtitle: String,
@@ -1724,9 +1756,18 @@ private fun SettingToggle(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = if (enabled) SurfaceVariant else SurfaceContainer),
-        shape = RoundedCornerShape(12.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            ),
+        colors = CardDefaults.cardColors(containerColor = if (enabled) SurfaceContainer else Surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = if (enabled) 0.72f else 0.42f)),
+        shape = RoundedCornerShape(10.dp)
     ) {
         Row(
             modifier = Modifier
@@ -1740,14 +1781,13 @@ private fun SettingToggle(
                 Text(
                     title,
                     color = if (enabled) OnSurface else OnSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp
+                    style = MaterialTheme.typography.titleSmall
                 )
-                Text(subtitle, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
+                Text(subtitle, color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = null,
                 enabled = enabled,
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = OnPrimary,
@@ -2113,7 +2153,7 @@ private fun UserRuleRow(
             lineHeight = 15.sp
         )
         OutlinedButton(onClick = onDelete, shape = RoundedCornerShape(8.dp)) {
-            Text(stringResource(R.string.delete), color = Tertiary)
+            Text(stringResource(R.string.delete), color = Danger)
         }
     }
 }

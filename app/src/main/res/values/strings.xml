@@ -38,6 +38,7 @@
     <!-- Navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_gallery">Gallery</string>
+    <string name="more_actions">More actions</string>
 
     <!-- Home screen -->
     <string name="home_subtitle">Private screenshot studio · v%1$s</string>
@@ -736,6 +737,11 @@
     <string name="mode_draw">Draw</string>
     <string name="mode_ocr">OCR</string>
     <string name="mode_adjust">Adjust</string>
+    <string name="editor_banner_pixelate">%1$s — Draw over private details</string>
+    <string name="editor_banner_draw">%1$s — %2$s</string>
+    <string name="editor_banner_ocr">%1$s — Tap text to review, copy, or translate</string>
+    <string name="editor_banner_ocr_counts">%1$d text blocks · %2$d codes</string>
+    <string name="editor_banner_adjust">%1$s — Tune light, color, and detail</string>
 
     <!-- Editor - crop mode -->
     <string name="crop_auto">Auto</string>
@@ -1267,6 +1273,8 @@
     <string name="gallery_filter_index_disabled">Enable the local screenshot index in Settings to filter by category.</string>
     <string name="gallery_filter_no_categories">No indexed categories are available in this album.</string>
     <string name="gallery_filter_clear_all">Clear all</string>
+    <string name="gallery_clear_search">Clear search</string>
+    <string name="gallery_clear_search_filters">Clear search and filters</string>
     <string name="gallery_filter_add_collection">Add results to collection</string>
     <string name="gallery_filter_collection_summary">%1$d matching screenshots can be added; %2$d other items will be skipped.</string>
     <string name="share_source_title">Share source context</string>

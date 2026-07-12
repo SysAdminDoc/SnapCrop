@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import com.sysadmindoc.snapcrop.ui.theme.Black
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 import com.sysadmindoc.snapcrop.ui.theme.MediaSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnMediaSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnMediaSurfaceVariant
@@ -11,6 +12,7 @@ import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.Secondary
+import com.sysadmindoc.snapcrop.ui.theme.Success
 import com.sysadmindoc.snapcrop.ui.theme.Surface
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
@@ -43,6 +45,8 @@ class ThemeContrastTest {
                 "secondary/background" to (Secondary to Black),
                 "tertiary/background" to (Tertiary to Black),
                 "warning/background" to (Warning to Black),
+                "danger/background" to (Danger to Black),
+                "success/background" to (Success to Black),
                 "onPrimary/primary" to (OnPrimary to Primary),
                 "media/body" to (OnMediaSurface to MediaSurface),
                 "media/secondary" to (OnMediaSurfaceVariant to MediaSurface)

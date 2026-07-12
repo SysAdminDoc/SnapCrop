@@ -56,7 +56,7 @@ import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
-import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 import java.text.DateFormat
 import java.util.Date
 
@@ -126,7 +126,7 @@ internal fun DuplicateReviewDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(
             modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.96f),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(12.dp),
             color = Black
         ) {
             Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -193,7 +193,7 @@ internal fun DuplicateReviewDialog(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                            Text(stringResource(R.string.duplicate_remove), color = if (removing) Tertiary else OnSurfaceVariant)
+                            Text(stringResource(R.string.duplicate_remove), color = if (removing) Danger else OnSurfaceVariant)
                             Checkbox(
                                 checked = removing,
                                 onCheckedChange = { removals = DuplicateReviewSelection.toggle(group, removals, candidate.identity) }
@@ -222,7 +222,7 @@ internal fun DuplicateReviewDialog(
                     Button(
                         onClick = { onTrash(removableUris) },
                         enabled = removableUris.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(containerColor = Tertiary)
+                        colors = ButtonDefaults.buttonColors(containerColor = Danger)
                     ) { Text(stringResource(R.string.duplicate_trash_count, removableUris.size)) }
                 }
             }

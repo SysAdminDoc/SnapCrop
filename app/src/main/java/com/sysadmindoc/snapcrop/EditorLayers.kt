@@ -40,6 +40,7 @@ import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Secondary
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 
 @Composable
 internal fun layerTitle(layer: DrawPath): String = when {
@@ -244,7 +245,7 @@ internal fun DrawLayerPanel(
                                 contentDescription = deleteCd
                             }
                         ) {
-                            Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, null, tint = Danger, modifier = Modifier.size(16.dp))
                         }
                     }
                     if (isSelected) {

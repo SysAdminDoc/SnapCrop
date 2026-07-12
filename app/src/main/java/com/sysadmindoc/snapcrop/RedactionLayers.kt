@@ -45,6 +45,7 @@ import com.sysadmindoc.snapcrop.ui.theme.PrimaryContainer
 import com.sysadmindoc.snapcrop.ui.theme.Secondary
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 
 @Composable
 internal fun RedactionLayerPanel(
@@ -175,7 +176,7 @@ internal fun RedactionLayerPanel(
                                 contentDescription = "Delete $categoryLabel redaction"
                             }
                         ) {
-                            Icon(Icons.Default.Delete, null, tint = Tertiary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, null, tint = Danger, modifier = Modifier.size(16.dp))
                         }
                     }
 

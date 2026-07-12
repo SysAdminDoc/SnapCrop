@@ -1,13 +1,17 @@
 package com.sysadmindoc.snapcrop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Translate
@@ -51,40 +55,50 @@ internal fun EditorModeBanner(
     val adjustLabel = stringResource(R.string.mode_adjust).uppercase()
     val (bannerBg, bannerColor, bannerText) = when (editMode) {
         EditMode.CUTOUT -> Triple(Primary.copy(alpha = 0.15f), Primary, stringResource(R.string.cutout_mode_banner))
-        EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, "$pixelateLabel — draw rectangles to redact")
-        EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "$drawLabel — ${drawTool.label.lowercase()}")
+        EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, stringResource(R.string.editor_banner_pixelate, pixelateLabel))
+        EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, stringResource(R.string.editor_banner_draw, drawLabel, drawTool.label.lowercase()))
         EditMode.OCR -> {
             val info = if (ocrLoading) stringResource(R.string.ocr_scan).uppercase() + "..." else buildString {
-                append("$ocrLabel — tap block for copy/translate")
-                if (ocrBlockCount > 0) append(" | $ocrBlockCount text")
-                if (scannedCodeCount > 0) append(" | $scannedCodeCount code")
+                append(stringResource(R.string.editor_banner_ocr, ocrLabel))
+                if (ocrBlockCount > 0 || scannedCodeCount > 0) {
+                    append(" · ")
+                    append(stringResource(R.string.editor_banner_ocr_counts, ocrBlockCount, scannedCodeCount))
+                }
             }
             Triple(OcrAccent.copy(alpha = 0.15f), OcrAccent, info)
         }
-        EditMode.ADJUST -> Triple(AdjustAccent.copy(alpha = 0.15f), AdjustAccent, "$adjustLabel — brightness, contrast, saturation")
+        EditMode.ADJUST -> Triple(AdjustAccent.copy(alpha = 0.15f), AdjustAccent, stringResource(R.string.editor_banner_adjust, adjustLabel))
         EditMode.CROP -> Triple(Color.Transparent, Color.Transparent, "")
     }
-    Row(
-        Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxWidth().background(bannerBg)) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (ocrLoading && editMode == EditMode.OCR) {
                 CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
                 Spacer(Modifier.width(6.dp))
             }
-            Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            Text(
+                bannerText,
+                color = bannerColor,
+                fontSize = 11.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
         }
         if (editMode == EditMode.OCR && ocrBlockCount > 0) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = actions.onReviewOcr, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = actions.onReviewOcr, modifier = Modifier.heightIn(min = 40.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                     Text(stringResource(R.string.ocr_review), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = actions.onCopyOcr, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                TextButton(onClick = actions.onCopyOcr, modifier = Modifier.heightIn(min = 40.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                     Text(stringResource(R.string.ocr_copy_all), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
-                TextButton(onClick = actions.onTranslateOcr, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                TextButton(onClick = actions.onTranslateOcr, modifier = Modifier.heightIn(min = 40.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
                     Icon(Icons.Default.Translate, null, tint = bannerColor, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(3.dp))
                     Text(stringResource(R.string.ocr_translate), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)

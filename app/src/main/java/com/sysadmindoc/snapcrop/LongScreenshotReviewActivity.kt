@@ -66,6 +66,7 @@ import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.Secondary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 import com.sysadmindoc.snapcrop.ui.theme.MediaSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnMediaSurfaceVariant
 import kotlinx.coroutines.Dispatchers
@@ -480,7 +481,7 @@ private fun LongScreenshotReviewScreen(
                 OutlinedButton(
                     onClick = onDiscard,
                     enabled = !isBusy,
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
                 ) {
                     Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))

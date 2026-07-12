@@ -72,6 +72,7 @@ import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Danger
 import com.sysadmindoc.snapcrop.ui.theme.Black
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
@@ -508,7 +509,7 @@ class CropActivity : ComponentActivity() {
                                     showDeleteConfirm.value = false
                                     requestSourceTrash(SourceMutationPurpose.DELETE_FROM_EDITOR)
                                 },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
+                                colors = ButtonDefaults.textButtonColors(contentColor = Danger)
                             ) {
                                 Text(stringResource(
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
