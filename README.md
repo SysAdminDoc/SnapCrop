@@ -206,6 +206,7 @@ git clone https://github.com/SysAdminDoc/SnapCrop.git
 cd SnapCrop
 ./gradlew clean :app:lintDebug :app:testDebugUnitTest --console=plain
 ./gradlew :app:generateReleaseProvenance --console=plain
+./gradlew :app:verifyOfficialRelease --console=plain
 ```
 
 Stable release artifacts are written to `app/build/outputs/provenance/` as
@@ -215,6 +216,9 @@ certificate fingerprint, version metadata, source commit/state, and build comman
 Gradle also verifies the pinned wrapper distribution/JAR and all resolved plugin,
 test, and release-runtime artifacts by SHA-256 against
 `gradle/verification-metadata.xml`; PGP signer records are retained for audit.
+The official-release task additionally requires the production keystore and
+pinned certificate, a clean worktree, synchronized app/root/SBOM versions,
+uncompressed ELF libraries, and successful 16 KB `zipalign` verification.
 
 > Requires JDK 17 and the Android SDK. Official releases must show
 > `"sourceState": "clean"` and use the published certificate fingerprint.

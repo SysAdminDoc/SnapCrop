@@ -2,6 +2,8 @@ import java.util.Properties
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import org.cyclonedx.model.Component
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -42,8 +44,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 81
-        versionName = "6.31.1"
+        versionCode = 82
+        versionName = "6.31.2"
     }
 
     signingConfigs {
@@ -242,5 +244,72 @@ tasks.register("generateReleaseProvenance") {
             """.trimIndent() + "\n"
         )
         logger.lifecycle("Release provenance: ${provenance.absolutePath}")
+    }
+}
+
+tasks.register("verifyOfficialRelease") {
+    group = "distribution"
+    description = "Fails closed unless the official APK is production-signed, clean, synchronized, and 16 KB aligned."
+    dependsOn("generateReleaseProvenance")
+
+    doLast {
+        check(hasReleaseKeystore) {
+            "Official release requires keystore.properties or SNAPCROP_KEYSTORE_* production credentials"
+        }
+        val versionName = android.defaultConfig.versionName ?: error("versionName is required")
+        val outputDir = layout.buildDirectory.dir("outputs/provenance").get().asFile
+        val apk = outputDir.resolve("SnapCrop-$versionName.apk")
+        val sbom = outputDir.resolve("SnapCrop-$versionName-sbom.json")
+        val provenance = outputDir.resolve("SnapCrop-$versionName-provenance.json")
+        check(apk.isFile && sbom.isFile && provenance.isFile) { "Versioned release artifacts are missing" }
+        val json = provenance.readText()
+        fun jsonValue(name: String): String = Regex("\\\"$name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+            .find(json)?.groupValues?.get(1) ?: error("Missing provenance field: $name")
+        val expectedCertificate = providers.gradleProperty("snapcrop.releaseCertificateSha256")
+            .orNull?.replace(":", "")?.uppercase(Locale.ROOT)
+            ?: error("snapcrop.releaseCertificateSha256 must be pinned in gradle.properties")
+        val actualCertificate = jsonValue("signingCertificateSha256").replace(":", "").uppercase(Locale.ROOT)
+        check(actualCertificate == expectedCertificate) {
+            "Signing certificate mismatch: expected $expectedCertificate, got $actualCertificate"
+        }
+        check(jsonValue("versionName") == versionName) { "Provenance versionName is not synchronized" }
+        check(rootProject.version.toString() == versionName) { "Root and app versions are not synchronized" }
+        val sbomVersion = Regex("\\\"name\\\"\\s*:\\s*\\\"app\\\"\\s*,\\s*\\\"version\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+            .find(sbom.readText())?.groupValues?.get(1)
+            ?: error("SBOM application version is missing")
+        check(sbomVersion == versionName) { "SBOM and app versions are not synchronized" }
+        val allowDirty = providers.gradleProperty("allowDirtyOfficialVerification").orNull == "true"
+        check(allowDirty || jsonValue("sourceState") == "clean") {
+            "Official releases require a clean Git worktree"
+        }
+
+        ZipFile(apk).use { zip ->
+            val nativeEntries = zip.entries().asSequence().filter { it.name.startsWith("lib/") && it.name.endsWith(".so") }.toList()
+            check(nativeEntries.isNotEmpty()) { "No native libraries found for 16 KB compatibility verification" }
+            nativeEntries.forEach { entry ->
+                check(entry.method == ZipEntry.STORED) { "Native library is compressed: ${entry.name}" }
+                val magic = zip.getInputStream(entry).use { it.readNBytes(4) }
+                check(magic.contentEquals(byteArrayOf(0x7F, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte()))) {
+                    "Native entry is not ELF: ${entry.name}"
+                }
+            }
+        }
+
+        val localProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf(File::isFile)?.inputStream()?.use { load(it) }
+        }
+        val sdkDirectory = sequenceOf(
+            System.getenv("ANDROID_HOME"), System.getenv("ANDROID_SDK_ROOT"), localProperties.getProperty("sdk.dir")
+        ).filterNotNull().firstOrNull()?.let(::File) ?: error("Android SDK path not found")
+        val buildToolsDir = sdkDirectory.resolve("build-tools").listFiles()
+            ?.filter(File::isDirectory)
+            ?.maxByOrNull { dir -> dir.name.split('.').joinToString("") { it.padStart(4, '0') } }
+            ?: error("Android build-tools not found")
+        val zipalign = buildToolsDir.resolve(if (System.getProperty("os.name").startsWith("Windows", true)) "zipalign.exe" else "zipalign")
+        check(zipalign.isFile) { "zipalign not found: $zipalign" }
+        providers.exec {
+            commandLine(zipalign.absolutePath, "-c", "-P", "16", "-v", "4", apk.absolutePath)
+        }.result.get().assertNormalExitValue()
+        logger.lifecycle("Official release gate passed: ${apk.absolutePath}")
     }
 }

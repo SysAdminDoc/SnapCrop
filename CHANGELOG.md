@@ -4,6 +4,14 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Fail-closed official release gate (v6.31.2).**
+
+- Added `:app:verifyOfficialRelease`, which refuses contributor/debug signing,
+  verifies the pinned production certificate, rejects dirty source state, and
+  checks that root, app, provenance, and SBOM versions agree.
+- Official APK verification now checks every packaged native library is an
+  uncompressed ELF and runs SDK `zipalign -c -P 16 -v 4` before publication.
+
 **Pinned build inputs (v6.31.1).**
 
 - Pinned the Gradle 9.4.1 distribution SHA-256 and added a local task that
