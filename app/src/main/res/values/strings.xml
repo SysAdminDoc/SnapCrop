@@ -167,8 +167,8 @@
     <string name="toast_shared">Shared</string>
     <string name="toast_no_text">No text found</string>
     <string name="toast_no_faces">No faces found</string>
-    <string name="toast_redacted_faces">Redacted %1$d face(s)</string>
-    <string name="toast_redacted_text_blocks">Redacted %1$d text block(s)</string>
+    <string name="toast_redacted_faces">Cosmetically blurred %1$d face(s)</string>
+    <string name="toast_redacted_text_blocks">Cosmetically concealed %1$d text block(s)</string>
     <string name="toast_share_failed">Share failed</string>
     <string name="toast_no_borders">No borders detected</string>
     <string name="toast_autocropped_saved">Autocropped, saved &amp; copied</string>
@@ -209,7 +209,7 @@
     <string name="settings_replace_title">Replace original on Save</string>
     <string name="settings_replace_subtitle">When ON (default), manual Save deletes the screenshot you cropped from. Android may ask you to confirm deletion.</string>
     <string name="settings_sidecar_title">Editable project sidecars</string>
-    <string name="settings_sidecar_subtitle">Save a .snapcrop.json file next to exports so crops, redactions, and layers can be reopened later. Keeps the source image when enabled.</string>
+    <string name="settings_sidecar_subtitle">Save a .snapcrop.json file next to exports so crops, reversible concealment masks, and layers can be reopened later. Keeps the source image when enabled.</string>
     <string name="settings_profiles_title">App crop profiles</string>
     <string name="settings_profiles_subtitle">Use built-in visual templates to strip Reddit, X/Twitter, and similar app chrome during auto-crop.</string>
     <string name="settings_section_intelligence">Library intelligence</string>
@@ -272,14 +272,19 @@
     <string name="settings_autoactions_title">Quick Crop auto-actions</string>
     <string name="settings_autoactions_subtitle">When ON, recognized app screenshots can auto-redact sensitive text and save into app-specific albums.</string>
     <string name="settings_redact_share_title">Scan before sharing</string>
-    <string name="settings_redact_share_subtitle">When ON, sharing scans for sensitive text (emails, phone numbers, cards) and offers to pixelate it before the share sheet opens.</string>
+    <string name="settings_redact_share_subtitle">When ON, sharing scans for sensitive text (emails, phone numbers, cards) and offers to replace it using the selected style before the share sheet opens.</string>
+    <string name="settings_redaction_style_title">Sensitive-text replacement</string>
+    <string name="settings_redaction_style_subtitle">Opaque fill destroys the selected pixels and is safest. Pixelation is cosmetic concealment and may be partly reversible.</string>
+    <string name="redaction_style_solid">Opaque fill (safe)</string>
+    <string name="redaction_style_pixelate">Pixelate (cosmetic)</string>
     <string name="settings_secure_editor_title">Protect the editor screen</string>
     <string name="settings_secure_editor_subtitle">When ON, the editor is marked secure: other apps can\'t screenshot or screen-record it, and it\'s hidden in Recents. Also blocks your own screenshots of the editor.</string>
     <string name="redact_share_dialog_title">Sensitive info detected</string>
-    <string name="redact_share_dialog_message">SnapCrop found %d area(s) that may contain sensitive info. Share with these areas pixelated?</string>
+    <string name="redact_share_dialog_message">SnapCrop found %d area(s) that may contain sensitive info. Share with these pixels replaced using your selected style?</string>
     <string name="redact_share_action_redacted">Share redacted</string>
     <string name="redact_share_action_original">Share original</string>
     <string name="redact_share_scanning">Scanning for sensitive info…</string>
+    <string name="toast_redaction_scan_failed">Sensitive-text scanning failed, so SnapCrop did not share the image.</string>
     <string name="settings_section_storage">Storage</string>
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>
@@ -463,7 +468,7 @@
 
     <!-- Editor modes -->
     <string name="mode_crop">Crop</string>
-    <string name="mode_pixelate">Pixelate</string>
+    <string name="mode_pixelate">Conceal</string>
     <string name="mode_draw">Draw</string>
     <string name="mode_ocr">OCR</string>
     <string name="mode_adjust">Adjust</string>
@@ -532,7 +537,7 @@
     <string name="editor_a11y_zoom_in">Zoom in</string>
     <string name="editor_a11y_zoom_out">Zoom out</string>
     <string name="editor_a11y_toggle_preview">Toggle preview</string>
-    <string name="editor_a11y_remove_last_redaction">Remove last redaction</string>
+    <string name="editor_a11y_remove_last_redaction">Remove last concealment mask</string>
     <string name="editor_close">Close</string>
     <string name="editor_discard_title">Discard changes?</string>
     <string name="editor_discard_body">Your edits will be lost.</string>
@@ -621,8 +626,8 @@
     <string name="layer_delete_cd">Delete %1$s</string>
 
     <!-- Editor - pixelate mode -->
-    <string name="pixelate_auto_text">Auto Text</string>
-    <string name="pixelate_blur_faces">Blur Faces</string>
+    <string name="pixelate_auto_text">Auto text conceal</string>
+    <string name="pixelate_blur_faces">Blur faces (cosmetic)</string>
     <string name="pixelate_faces_count">%1$d</string>
 
     <!-- Editor - OCR mode -->
@@ -838,7 +843,7 @@
 
     <!-- Undo history labels -->
     <string name="undo_crop">Crop change</string>
-    <string name="undo_pixelate">Pixelate</string>
+    <string name="undo_pixelate">Cosmetic concealment</string>
     <string name="undo_draw">Draw</string>
     <string name="undo_adjust">Adjust</string>
     <string name="undo_filter">Filter</string>

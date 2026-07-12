@@ -78,16 +78,17 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
-Annotated saves include a same-name SVG sidecar for visible vector layers and redaction rectangles.
+Annotated saves include a same-name SVG sidecar for visible vector layers and reversible concealment rectangles.
 Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
-then reopened later to restore the crop, redactions, adjustment state, and draw
+then reopened later to restore the crop, concealment masks, adjustment state, and draw
 layers without mutating the source screenshot.
 Smart Erase remains local by default; experimental downloaded erase model packs
 are blocked behind explicit opt-in and evaluation gates.
 
 **Pixelate**
-- Draw rectangles to mosaic-redact sensitive info
-- One-tap **face blur** powered by ML Kit (shows face count)
+- Draw reversible pixelation rectangles for cosmetic concealment
+- One-tap **face blur** powered by ML Kit (cosmetic; shows face count)
+- Sensitive-text automation and scan-before-share use destructive opaque pixel replacement by default; Settings can explicitly select cosmetic pixelation instead
 - One-tap **Auto Text** detects emails, phones, payment cards, IP/MAC addresses, and ML Kit entities
 
 **OCR**

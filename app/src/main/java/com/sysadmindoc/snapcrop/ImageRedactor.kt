@@ -5,7 +5,43 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 
+enum class RedactionStyle(val preferenceValue: String) {
+    SOLID("solid"),
+    PIXELATE("pixelate");
+
+    companion object {
+        fun fromPreference(value: String?): RedactionStyle =
+            entries.firstOrNull { it.preferenceValue == value } ?: SOLID
+    }
+}
+
 object ImageRedactor {
+    const val PREF_REDACTION_STYLE = "redaction_style"
+
+    fun redact(bitmap: Bitmap, rects: List<Rect>, style: RedactionStyle = RedactionStyle.SOLID): Bitmap =
+        when (style) {
+            RedactionStyle.SOLID -> opaque(bitmap, rects)
+            RedactionStyle.PIXELATE -> pixelate(bitmap, rects)
+        }
+
+    fun opaque(bitmap: Bitmap, rects: List<Rect>, color: Int = android.graphics.Color.BLACK): Bitmap {
+        if (rects.isEmpty()) return bitmap
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        rects.forEach { rect ->
+            val left = rect.left.coerceIn(0, result.width)
+            val top = rect.top.coerceIn(0, result.height)
+            val right = rect.right.coerceIn(0, result.width)
+            val bottom = rect.bottom.coerceIn(0, result.height)
+            if (left < right && top < bottom) {
+                val row = IntArray(right - left) { color or (0xFF shl 24) }
+                for (y in top until bottom) {
+                    result.setPixels(row, 0, row.size, left, y, row.size, 1)
+                }
+            }
+        }
+        return result
+    }
+
     fun pixelate(bitmap: Bitmap, rects: List<Rect>): Bitmap {
         if (rects.isEmpty()) return bitmap
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)

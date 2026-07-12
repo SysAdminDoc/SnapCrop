@@ -1891,8 +1891,13 @@ class CropActivity : ComponentActivity() {
 
             val detection = try {
                 SensitiveTextDetector.detect(cropped)
-            } catch (_: Exception) {
-                SensitiveTextResult(emptyList(), 0, 0)
+            } catch (e: Exception) {
+                android.util.Log.w("SnapCrop", "Sensitive-text share scan failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@CropActivity, R.string.toast_redaction_scan_failed, Toast.LENGTH_LONG).show()
+                }
+                cropped.recycle()
+                return@launch
             }
             if (detection.rects.isEmpty()) {
                 dispatchShare(cropped, adj)
@@ -1900,7 +1905,13 @@ class CropActivity : ComponentActivity() {
             }
 
             // Build a redacted copy and a downscaled preview off the main thread.
-            val redacted = ImageRedactor.pixelate(cropped, detection.rects)
+            val redactionStyle = RedactionStyle.fromPreference(
+                getSharedPreferences("snapcrop", MODE_PRIVATE).getString(
+                    ImageRedactor.PREF_REDACTION_STYLE,
+                    RedactionStyle.SOLID.preferenceValue
+                )
+            )
+            val redacted = ImageRedactor.redact(cropped, detection.rects, redactionStyle)
             val preview = scaledPreview(redacted, 720)
             withContext(Dispatchers.Main) {
                 val previewView = ImageView(this@CropActivity).apply {

@@ -413,7 +413,10 @@ class ScreenshotService : Service() {
                 var redactionCount = 0
                 if (actionRule?.redactSensitiveText == true) {
                     val currentCropped = cropped
-                    val actionResult = ConditionalAutoActions.redactSensitiveText(currentCropped)
+                    val redactionStyle = RedactionStyle.fromPreference(
+                        prefs.getString(ImageRedactor.PREF_REDACTION_STYLE, RedactionStyle.SOLID.preferenceValue)
+                    )
+                    val actionResult = ConditionalAutoActions.redactSensitiveText(currentCropped, redactionStyle)
                     redactionCount = actionResult.redactionCount
                     if (actionResult.bitmap !== currentCropped) {
                         currentCropped.recycle()
@@ -451,7 +454,7 @@ class ScreenshotService : Service() {
                         val message = if (actionRule != null) {
                             buildString {
                                 append(getString(R.string.notif_quick_auto_rule, actionRule.label, actionRule.albumName))
-                                if (redactionCount > 0) append(", redacted $redactionCount")
+                                if (redactionCount > 0) append(", replaced $redactionCount sensitive area(s)")
                                 if (actionRule.redactSensitiveText && redactionCount == 0) append(", no sensitive text found")
                                 if (actionRule.exportFormat != "default") append(", ${actionRule.exportFormat.uppercase()} export")
                             }

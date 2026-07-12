@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Destructive redaction by default (v6.31.0).**
+
+- Sensitive-text automation and scan-before-share now replace every selected
+  raster pixel with a fully opaque fill by default. PNG round-trip tests verify
+  that original region pixels do not survive the export.
+- Added an explicit Sensitive-text replacement setting: Opaque fill (safe) or
+  Pixelate (cosmetic). Manual pixelation and face blur are now labeled cosmetic
+  concealment, while editable project masks are labeled reversible.
+- Automated redaction and scan-before-share now fail closed when recognition
+  fails instead of silently saving or sharing an unscanned original.
+
 **Bounded, verified project imports (v6.30.0).**
 
 - External `.snapcrop.json` imports now enforce an 8 MB UTF-8 input ceiling,

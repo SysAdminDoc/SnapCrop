@@ -961,6 +961,47 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var redactionStyle by remember {
+                        mutableStateOf(RedactionStyle.fromPreference(
+                            prefs.getString(ImageRedactor.PREF_REDACTION_STYLE, RedactionStyle.SOLID.preferenceValue)
+                        ))
+                    }
+                    Text(
+                        stringResource(R.string.settings_redaction_style_title),
+                        color = OnSurface,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        stringResource(R.string.settings_redaction_style_subtitle),
+                        color = OnSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RedactionStyle.entries.forEach { style ->
+                            FilterChip(
+                                selected = redactionStyle == style,
+                                onClick = {
+                                    redactionStyle = style
+                                    prefs.edit().putString(ImageRedactor.PREF_REDACTION_STYLE, style.preferenceValue).apply()
+                                },
+                                label = {
+                                    Text(stringResource(
+                                        if (style == RedactionStyle.SOLID) R.string.redaction_style_solid
+                                        else R.string.redaction_style_pixelate
+                                    ))
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Primary.copy(alpha = 0.22f),
+                                    selectedLabelColor = Primary
+                                )
+                            )
+                        }
+                    }
+
                     var secureEditor by remember {
                         mutableStateOf(prefs.getBoolean("secure_editor", false))
                     }
