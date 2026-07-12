@@ -5,15 +5,27 @@
     <string name="scroll_capture_service_description">When you start Long screenshot, SnapCrop reads the active window structure, performs scroll gestures, captures visible frames, and stitches them locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
     <string name="step_capture_service_label">SnapCrop Step capture</string>
     <string name="step_capture_service_description">During a Step capture session, SnapCrop observes click and long-click events, reads control bounds, captures the visible screen after each step, and assembles a numbered guide locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
-    <string name="step_capture_started">Step capture started — tap through your steps, then tap the tile again to finish.</string>
-    <string name="step_capture_step">Captured step %1$d</string>
     <string name="step_capture_building">Building guide from %1$d steps…</string>
     <string name="step_capture_saved">Step guide saved — opening editor.</string>
     <string name="step_capture_none">No steps captured.</string>
     <string name="step_capture_failed">Could not build the step guide.</string>
+    <string name="step_capture_still_building">The previous step guide is still being built.</string>
+    <string name="step_capture_missed">A step could not be captured; the session is still active.</string>
+    <string name="step_capture_storage_failed">Step Capture stopped because temporary storage failed.</string>
+    <string name="step_capture_limit_frames">Step Capture reached its %1$d-step limit and is building the guide.</string>
+    <string name="step_capture_limit_pixels">Step Capture reached its pixel limit and is building the saved steps.</string>
+    <string name="step_capture_limit_memory">Step Capture reached its memory limit and is building the saved steps.</string>
+    <string name="step_capture_limit_storage">Step Capture reached its temporary-storage limit and is building the saved steps.</string>
+    <string name="step_capture_limit_duration">Step Capture reached 10 minutes and is building the guide.</string>
+    <string name="step_capture_limit_inactivity">Step Capture stopped after 2 minutes without a step.</string>
+    <string name="step_capture_notification_title">Step Capture</string>
+    <string name="step_capture_notification_active">Active · %1$d/%2$d steps</string>
+    <string name="step_capture_notification_unavailable">Notifications are unavailable. Keep the Step Capture Quick Settings tile available so you can stop safely.</string>
+    <string name="step_capture_stop">Stop and build guide</string>
     <string name="tile_step_label">Step capture</string>
     <string name="tile_step_ready">Tap to start</string>
     <string name="tile_step_capturing">Capturing — tap to finish</string>
+    <string name="tile_step_building">Building guide</string>
     <string name="tile_step_enable">Enable accessibility</string>
 
     <!-- Navigation -->

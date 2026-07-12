@@ -8,6 +8,7 @@ class SnapCropApp : Application() {
     companion object {
         const val CHANNEL_ID = "snapcrop_bg"
         const val CHANNEL_DETECTED = "snapcrop_detected"
+        const val CHANNEL_STEP_CAPTURE = "snapcrop_step_capture"
     }
 
     override fun onCreate() {
@@ -38,6 +39,17 @@ class SnapCropApp : Application() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Actions for detected screenshots"
+                setShowBadge(false)
+            }
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_STEP_CAPTURE,
+                "Step Capture",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Active Step Capture status and stop control"
                 setShowBadge(false)
             }
         )

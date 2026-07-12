@@ -3,24 +3,31 @@ package com.sysadmindoc.snapcrop
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityService.ScreenshotResult
 import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.service.quicksettings.TileService
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -30,9 +37,6 @@ import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
 
-/** One captured step: the full-screen frame plus where the user tapped (screen coords). */
-internal data class StepFrame(val bitmap: Bitmap, val clickX: Int, val clickY: Int)
-
 /**
  * Snagit-style step capture. While active (toggled on by the user), each tap captures the current
  * screen and marks where the tap landed. Stopping assembles the frames into a single numbered guide
@@ -41,15 +45,19 @@ internal data class StepFrame(val bitmap: Bitmap, val clickX: Int, val clickY: I
 class StepCaptureService : AccessibilityService() {
 
     companion object {
-        private const val MAX_STEPS = 24
         private const val CAPTURE_THROTTLE_MS = 450L
         private const val POST_CLICK_DELAY_MS = 130L
+        private const val WATCHDOG_INTERVAL_MS = 5_000L
+        private const val NOTIFICATION_ID = 4103
+        private const val ACTION_STOP = "com.sysadmindoc.snapcrop.STOP_STEP_CAPTURE"
 
         private var activeService: WeakReference<StepCaptureService>? = null
 
         fun isReady(): Boolean = activeService?.get() != null
 
         fun isCapturing(): Boolean = activeService?.get()?.capturing == true
+
+        fun isFinalizing(): Boolean = activeService?.get()?.state == SessionState.FINALIZING
 
         /** Toggles a capture session. Returns false when the service is not enabled. */
         fun toggleCapture(context: Context): Boolean {
@@ -58,20 +66,52 @@ class StepCaptureService : AccessibilityService() {
                 return false
             }
             val service = activeService?.get() ?: return false
-            if (service.capturing) service.stopCapture() else service.startCapture()
+            if (service.state == SessionState.FINALIZING) {
+                Toast.makeText(context, context.getString(R.string.step_capture_still_building), Toast.LENGTH_SHORT).show()
+            } else if (service.capturing) {
+                service.stopCapture(StepCaptureStopReason.MANUAL)
+            } else {
+                service.startCapture()
+            }
             return true
         }
     }
 
+    private enum class SessionState { IDLE, CAPTURING, FINALIZING }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val frames = mutableListOf<StepFrame>()
-    @Volatile private var capturing = false
+    private val store by lazy { StepCaptureStore(cacheDir.resolve("step-capture")) }
+    private val frames = mutableListOf<StoredStepFrame>()
+    @Volatile private var state = SessionState.IDLE
+    private val capturing: Boolean get() = state == SessionState.CAPTURING
     private var lastCaptureAt = 0L
+    private var sessionStartedAt = 0L
+    private var lastActivityAt = 0L
+    private var generation = 0L
     private var captureInFlight = false
+    private var watchdogJob: Job? = null
+    private var finalizationJob: Job? = null
+    private var receiverRegistered = false
+
+    private val stopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_STOP) stopCapture(StepCaptureStopReason.MANUAL)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeService = WeakReference(this)
+        store.purgeStaleSessions()
+        if (!receiverRegistered) {
+            ContextCompat.registerReceiver(
+                this,
+                stopReceiver,
+                IntentFilter(ACTION_STOP),
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+            receiverRegistered = true
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -83,8 +123,8 @@ class StepCaptureService : AccessibilityService() {
         if (event.packageName == packageName) return
 
         val now = SystemClock.elapsedRealtime()
+        lastActivityAt = now
         if (captureInFlight || now - lastCaptureAt < CAPTURE_THROTTLE_MS) return
-        if (frames.size >= MAX_STEPS) return
         lastCaptureAt = now
 
         val bounds = Rect()
@@ -104,49 +144,101 @@ class StepCaptureService : AccessibilityService() {
 
     override fun onDestroy() {
         if (activeService?.get() === this) activeService = null
-        recycleFrames()
+        generation++
+        watchdogJob?.cancel()
+        finalizationJob?.cancel()
+        frames.clear()
+        store.deleteSession()
+        cancelNotification()
+        if (receiverRegistered) runCatching { unregisterReceiver(stopReceiver) }
         scope.cancel()
         super.onDestroy()
     }
 
     private fun startCapture() {
-        recycleFrames()
-        capturing = true
-        lastCaptureAt = 0L
-        Toast.makeText(this, getString(R.string.step_capture_started), Toast.LENGTH_LONG).show()
-    }
-
-    private fun stopCapture() {
-        capturing = false
-        val captured = frames.toList()
-        frames.clear()
-        if (captured.isEmpty()) {
-            Toast.makeText(this, getString(R.string.step_capture_none), Toast.LENGTH_SHORT).show()
+        if (state != SessionState.IDLE) return
+        try {
+            store.startSession()
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.step_capture_storage_failed), Toast.LENGTH_LONG).show()
             return
         }
+        frames.clear()
+        generation++
+        state = SessionState.CAPTURING
+        lastCaptureAt = 0L
+        sessionStartedAt = SystemClock.elapsedRealtime()
+        lastActivityAt = sessionStartedAt
+        showCaptureNotification(0)
+        if (!getSystemService(NotificationManager::class.java).areNotificationsEnabled()) {
+            Toast.makeText(this, getString(R.string.step_capture_notification_unavailable), Toast.LENGTH_LONG).show()
+        }
+        watchdogJob = scope.launch {
+            while (capturing) {
+                delay(WATCHDOG_INTERVAL_MS)
+                StepCapturePolicy.timeoutReason(sessionStartedAt, lastActivityAt, SystemClock.elapsedRealtime())
+                    ?.let { stopCapture(it) }
+            }
+        }
+        requestTileUpdate()
+    }
+
+    private fun stopCapture(reason: StepCaptureStopReason) {
+        if (state != SessionState.CAPTURING) return
+        generation++
+        state = SessionState.FINALIZING
+        watchdogJob?.cancel()
+        watchdogJob = null
+        val captured = frames.toList()
+        frames.clear()
+        requestTileUpdate()
+        if (captured.isEmpty()) {
+            store.deleteSession()
+            state = SessionState.IDLE
+            cancelNotification()
+            Toast.makeText(
+                this,
+                getString(if (reason == StepCaptureStopReason.STORAGE_FAILURE) R.string.step_capture_storage_failed else R.string.step_capture_none),
+                Toast.LENGTH_SHORT
+            ).show()
+            requestTileUpdate()
+            return
+        }
+        showBuildingNotification(captured.size)
+        automaticStopMessage(reason)?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
         Toast.makeText(this, getString(R.string.step_capture_building, captured.size), Toast.LENGTH_SHORT).show()
-        scope.launch {
-            val guide = try {
-                withContext(Dispatchers.Default) { StepGuideAssembler.assemble(captured) }
-            } catch (_: Exception) {
-                null
+        finalizationJob = scope.launch {
+            try {
+                val guide = try {
+                    withContext(Dispatchers.Default) { StepGuideAssembler.assemble(captured) }
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    null
+                }
+                if (guide == null) {
+                    Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_failed), Toast.LENGTH_SHORT).show()
+                } else {
+                    val uri = try {
+                        withContext(Dispatchers.IO) { saveGuide(guide) }
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        null
+                    } finally {
+                        guide.recycle()
+                    }
+                    if (uri != null) {
+                        Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_saved), Toast.LENGTH_SHORT).show()
+                        openEditor(uri)
+                    } else {
+                        Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_failed), Toast.LENGTH_SHORT).show()
+                    }
+                }
             } finally {
-                captured.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
-            }
-            if (guide == null) {
-                Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_failed), Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            val uri = try {
-                withContext(Dispatchers.IO) { saveGuide(guide) }
-            } finally {
-                guide.recycle()
-            }
-            if (uri != null) {
-                Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_saved), Toast.LENGTH_SHORT).show()
-                openEditor(uri)
-            } else {
-                Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_failed), Toast.LENGTH_SHORT).show()
+                runCatching { store.deleteSession() }
+                state = SessionState.IDLE
+                finalizationJob = null
+                cancelNotification()
+                requestTileUpdate()
             }
         }
     }
@@ -154,17 +246,50 @@ class StepCaptureService : AccessibilityService() {
     @RequiresApi(Build.VERSION_CODES.R)
     private fun captureStep(clickX: Int, clickY: Int) {
         captureInFlight = true
+        val captureGeneration = generation
         scope.launch {
+            var raw: Bitmap? = null
+            var normalized: Bitmap? = null
             try {
                 delay(POST_CLICK_DELAY_MS)
-                if (!capturing) return@launch
-                val frame = captureScreen() ?: return@launch
-                // The session may have been stopped while the screenshot was in flight; drop the
-                // late frame so it isn't orphaned past the cleared list.
-                if (!capturing) { frame.recycle(); return@launch }
-                frames.add(StepFrame(frame, clickX, clickY))
-                Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_step, frames.size), Toast.LENGTH_SHORT).show()
+                if (!capturing || captureGeneration != generation) return@launch
+                raw = captureScreen()
+                val source = raw
+                if (source == null) {
+                    showCaptureNotification(frames.size, getString(R.string.step_capture_missed))
+                    return@launch
+                }
+                if (!capturing || captureGeneration != generation) return@launch
+                val tapX = if (clickX >= 0) clickX.toFloat() / source.width else Float.NaN
+                val tapY = if (clickY >= 0) clickY.toFloat() / source.height else Float.NaN
+                val normalizedFrame = withContext(Dispatchers.Default) { StepCapturePolicy.normalizedBitmap(source) }
+                normalized = normalizedFrame
+                val candidate = withContext(Dispatchers.IO) { store.persist(normalizedFrame, tapX, tapY) }
+                if (!capturing || captureGeneration != generation) {
+                    store.deleteFrame(candidate)
+                    return@launch
+                }
+                val violation = StepCapturePolicy.violation(frames, candidate)
+                if (violation != null) {
+                    store.deleteFrame(candidate)
+                    stopCapture(violation)
+                    return@launch
+                }
+                frames.add(candidate)
+                showCaptureNotification(frames.size)
+                if (frames.size >= StepCapturePolicy.MAX_FRAMES) stopCapture(StepCaptureStopReason.FRAME_LIMIT)
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                stopCapture(
+                    when (e) {
+                        is StepCaptureLimitException -> e.reason
+                        is OutOfMemoryError -> StepCaptureStopReason.MEMORY_LIMIT
+                        else -> StepCaptureStopReason.STORAGE_FAILURE
+                    }
+                )
             } finally {
+                normalized?.takeIf { it !== raw && !it.isRecycled }?.recycle()
+                raw?.takeIf { !it.isRecycled }?.recycle()
                 captureInFlight = false
             }
         }
@@ -213,11 +338,13 @@ class StepCaptureService : AccessibilityService() {
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
         return try {
-            contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                ?: throw IllegalStateException("Output stream unavailable")
+            val encoded = contentResolver.openOutputStream(uri)?.use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            } ?: throw IllegalStateException("Output stream unavailable")
+            check(encoded) { "Could not encode step guide" }
             values.clear()
             values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
+            check(contentResolver.update(uri, values, null, null) == 1) { "Could not publish step guide" }
             uri
         } catch (_: Exception) {
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
@@ -238,75 +365,56 @@ class StepCaptureService : AccessibilityService() {
         }
     }
 
-    private fun recycleFrames() {
-        frames.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
-        frames.clear()
-    }
-}
-
-/** Stacks step frames vertically into a single guide image, marking each tap with a numbered badge. */
-internal object StepGuideAssembler {
-    private const val BG_COLOR = 0xFF1E1E2E.toInt()
-    private const val ACCENT = 0xFF89B4FA.toInt()
-
-    fun assemble(frames: List<StepFrame>): Bitmap {
-        require(frames.isNotEmpty()) { "At least one step is required" }
-        val width = frames.minOf { it.bitmap.width }.coerceAtLeast(1)
-        val gap = (width * 0.025f).toInt().coerceAtLeast(12)
-
-        // Scale each frame to the common width and draw its tap marker + step badge.
-        val rendered = ArrayList<Bitmap>(frames.size)
-        try {
-            frames.forEachIndexed { index, step ->
-                val src = step.bitmap
-                val scale = width.toFloat() / src.width
-                val scaledHeight = (src.height * scale).toInt().coerceAtLeast(1)
-                val canvasBmp = Bitmap.createBitmap(width, scaledHeight, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(canvasBmp)
-                canvas.drawBitmap(
-                    src,
-                    Rect(0, 0, src.width, src.height),
-                    Rect(0, 0, width, scaledHeight),
-                    null
-                )
-                drawMarker(canvas, width, scaledHeight, index + 1, step, scale)
-                rendered.add(canvasBmp)
-            }
-
-            val totalHeight = rendered.sumOf { it.height } + gap * (rendered.size + 1)
-            val result = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(result)
-            canvas.drawColor(BG_COLOR)
-            var y = gap
-            for (bmp in rendered) {
-                canvas.drawBitmap(bmp, 0f, y.toFloat(), null)
-                y += bmp.height + gap
-            }
-            return result
-        } finally {
-            rendered.forEach { if (!it.isRecycled) it.recycle() }
-        }
+    private fun automaticStopMessage(reason: StepCaptureStopReason): String? = when (reason) {
+        StepCaptureStopReason.MANUAL -> null
+        StepCaptureStopReason.FRAME_LIMIT -> getString(R.string.step_capture_limit_frames, StepCapturePolicy.MAX_FRAMES)
+        StepCaptureStopReason.PIXEL_LIMIT -> getString(R.string.step_capture_limit_pixels)
+        StepCaptureStopReason.MEMORY_LIMIT -> getString(R.string.step_capture_limit_memory)
+        StepCaptureStopReason.CACHE_LIMIT -> getString(R.string.step_capture_limit_storage)
+        StepCaptureStopReason.DURATION -> getString(R.string.step_capture_limit_duration)
+        StepCaptureStopReason.INACTIVITY -> getString(R.string.step_capture_limit_inactivity)
+        StepCaptureStopReason.STORAGE_FAILURE -> getString(R.string.step_capture_storage_failed)
     }
 
-    private fun drawMarker(canvas: Canvas, width: Int, height: Int, number: Int, step: StepFrame, scale: Float) {
-        val radius = (width * 0.045f).coerceAtLeast(28f)
-        // Tap location in scaled coords; fall back to top-left corner when unknown.
-        val hasPoint = step.clickX >= 0 && step.clickY >= 0
-        val cx = if (hasPoint) (step.clickX * scale).coerceIn(radius, width - radius) else radius + width * 0.02f
-        val cy = if (hasPoint) (step.clickY * scale).coerceIn(radius, height - radius) else radius + height * 0.02f
+    private fun showCaptureNotification(count: Int, message: String = getString(R.string.step_capture_notification_active, count, StepCapturePolicy.MAX_FRAMES)) {
+        val stopIntent = Intent(ACTION_STOP).setPackage(packageName)
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            0,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_STEP_CAPTURE)
+            .setSmallIcon(R.drawable.ic_crop)
+            .setContentTitle(getString(R.string.step_capture_notification_title))
+            .setContentText(message)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .addAction(R.drawable.ic_crop, getString(R.string.step_capture_stop), stopPendingIntent)
+            .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification) }
+    }
 
-        if (hasPoint) {
-            val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = ACCENT; style = Paint.Style.STROKE; strokeWidth = radius * 0.18f
-            }
-            canvas.drawCircle(cx, cy, radius * 1.4f, ring)
+    private fun showBuildingNotification(count: Int) {
+        val notification = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_STEP_CAPTURE)
+            .setSmallIcon(R.drawable.ic_crop)
+            .setContentTitle(getString(R.string.step_capture_notification_title))
+            .setContentText(getString(R.string.step_capture_building, count))
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification) }
+    }
+
+    private fun cancelNotification() {
+        runCatching { getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID) }
+    }
+
+    private fun requestTileUpdate() {
+        runCatching {
+            TileService.requestListeningState(this, ComponentName(this, StepCaptureTileService::class.java))
         }
-        val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ACCENT; style = Paint.Style.FILL }
-        canvas.drawCircle(cx, cy, radius, badge)
-        val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = radius * 1.1f; isFakeBoldText = true
-        }
-        val fm = text.fontMetrics
-        canvas.drawText(number.toString(), cx, cy - (fm.ascent + fm.descent) / 2f, text)
     }
 }

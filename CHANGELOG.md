@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Bounded Step Capture pipeline (v6.33.0).**
+
+- Step Capture now normalizes frames to at most 720 px, stores at most 10
+  lossless frames in a private session directory, and enforces 12M-pixel,
+  48 MiB decoded, 64 MiB cache, 10-minute, and 2-minute inactivity limits.
+- Added automatic limit finalization, stale/late-frame cleanup, explicit
+  capture/finalizing state, an ongoing Stop notification, and finalization state
+  in the Quick Settings tile. Notifications-disabled sessions retain the tile as
+  the guaranteed stop control.
+- Guide assembly preflights dimensions and decodes one cached frame at a time;
+  1080p/1440p fixture tests keep the estimated bitmap peak below 80 MiB.
+
 **Keystore-backed network credentials (v6.32.0).**
 
 - Replaced active `EncryptedSharedPreferences` storage with a bounded,

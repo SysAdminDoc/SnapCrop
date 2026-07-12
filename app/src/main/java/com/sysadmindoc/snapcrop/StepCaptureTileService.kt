@@ -59,14 +59,17 @@ class StepCaptureTileService : TileService() {
     private fun updateTile() {
         val tile = qsTile ?: return
         val capturing = StepCaptureService.isCapturing()
+        val finalizing = StepCaptureService.isFinalizing()
         tile.state = when {
             capturing -> Tile.STATE_ACTIVE
+            finalizing -> Tile.STATE_UNAVAILABLE
             StepCaptureService.isReady() -> Tile.STATE_INACTIVE
             else -> Tile.STATE_INACTIVE
         }
         tile.label = getString(R.string.tile_step_label)
         tile.subtitle = when {
             capturing -> getString(R.string.tile_step_capturing)
+            finalizing -> getString(R.string.tile_step_building)
             StepCaptureService.isReady() -> getString(R.string.tile_step_ready)
             else -> getString(R.string.tile_step_enable)
         }
