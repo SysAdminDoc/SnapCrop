@@ -1050,7 +1050,9 @@ fun CropEditorScreen(
                                     if (!textRedacting) {
                                         textRedacting = true
                                         scope.launch {
-                                            val result = withContext(Dispatchers.IO) { SensitiveTextDetector.detect(bitmap) }
+                                            val result = withContext(Dispatchers.IO) {
+                                                SensitiveTextDetector.detect(bitmap, OcrScript.fromContext(context))
+                                            }
                                             if (result.rects.isNotEmpty()) pushUndo()
                                             pixelateRects.addAll(result.rects)
                                             lastTextRedactionCount = result.rects.size
@@ -1671,7 +1673,7 @@ fun CropEditorScreen(
                                 textRedacting = true
                                 scope.launch {
                                     val result = withContext(Dispatchers.IO) {
-                                        SensitiveTextDetector.detect(bitmap)
+                                        SensitiveTextDetector.detect(bitmap, OcrScript.fromContext(context))
                                     }
                                     if (result.rects.isNotEmpty()) pushUndo()
                                     pixelateRects.addAll(result.rects)

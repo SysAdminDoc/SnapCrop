@@ -45,8 +45,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 88
-        versionName = "6.37.0"
+        versionCode = 89
+        versionName = "6.38.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -274,7 +274,7 @@ tasks.register("generateReleaseProvenance") {
 tasks.register("verifyOfficialRelease") {
     group = "distribution"
     description = "Fails closed unless the official APK is production-signed, clean, synchronized, and 16 KB aligned."
-    dependsOn("generateReleaseProvenance")
+    dependsOn("generateReleaseProvenance", "verifyRedactionQuality")
 
     doLast {
         check(hasReleaseKeystore) {
@@ -335,5 +335,26 @@ tasks.register("verifyOfficialRelease") {
             commandLine(zipalign.absolutePath, "-c", "-P", "16", "-v", "4", apk.absolutePath)
         }.result.get().assertNormalExitValue()
         logger.lifecycle("Official release gate passed: ${apk.absolutePath}")
+    }
+}
+
+tasks.register("verifyRedactionQuality") {
+    group = "verification"
+    description = "Runs the fixed synthetic redaction corpus and verifies its release thresholds."
+    dependsOn("testDebugUnitTest")
+
+    doLast {
+        val report = layout.buildDirectory
+            .file("test-results/testDebugUnitTest/TEST-com.sysadmindoc.snapcrop.RedactionQualityGateTest.xml")
+            .get().asFile
+        check(report.isFile) { "Redaction quality gate test report is missing" }
+        val xml = report.readText()
+        val tests = Regex("tests=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val failures = Regex("failures=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+        val errors = Regex("errors=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+        check(tests >= 3 && failures == 0 && errors == 0) {
+            "Redaction quality gate did not pass: tests=$tests failures=$failures errors=$errors"
+        }
+        logger.lifecycle("Redaction quality gate passed: ${report.absolutePath}")
     }
 }

@@ -1890,7 +1890,11 @@ class CropActivity : ComponentActivity() {
             }
 
             val detection = try {
-                SensitiveTextDetector.detect(cropped)
+                SensitiveTextDetector.detect(
+                    cropped,
+                    OcrScript.fromContext(this@CropActivity),
+                    failOnOcrError = true
+                )
             } catch (e: Exception) {
                 android.util.Log.w("SnapCrop", "Sensitive-text share scan failed", e)
                 withContext(Dispatchers.Main) {

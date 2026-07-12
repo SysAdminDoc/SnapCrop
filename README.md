@@ -177,6 +177,10 @@ release/security policy.
   the visible display and removes system bars before processing.
   Step Capture deletes its private cached frames after incremental assembly and
   enforces 12M-pixel, 48 MiB decoded, and 64 MiB cache budgets.
+- Sensitive-text Quick Crop/share scans use the OCR script selected in Settings
+  and fail closed when recognition fails. Official local releases run a fixed
+  synthetic light/dark corpus across every supported OCR script and sensitive
+  category; fixture values are reserved examples, never real personal data.
 - SnapCrop does not request all-files access. On Android 11+, removals use
   Android's scoped Trash confirmation; the gallery updates only after approval.
   If Save & Replace cannot move the source, the copy remains saved and the

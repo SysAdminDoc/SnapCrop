@@ -13,6 +13,7 @@ import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 data class TextBlock(val text: String, val bounds: Rect)
 
@@ -66,6 +67,29 @@ object TextExtractor {
                     }
                 }
                 .addOnFailureListener { if (cont.isActive) cont.resume(emptyList()) }
+        }
+    }
+
+    /** Privacy-sensitive scans must distinguish recognition failure from a clean image. */
+    internal suspend fun extractOrThrow(bitmap: Bitmap, script: OcrScript): List<TextBlock> {
+        check(!bitmap.isRecycled) { "Cannot scan a recycled bitmap" }
+        return suspendCancellableCoroutine { cont ->
+            val image = InputImage.fromBitmap(bitmap, 0)
+            recognizer(script).process(image)
+                .addOnSuccessListener { result ->
+                    if (cont.isActive) {
+                        cont.resume(
+                            result.textBlocks.mapNotNull { block ->
+                                val bounds = block.boundingBox ?: return@mapNotNull null
+                                TextBlock(block.text, bounds)
+                            }
+                        )
+                    }
+                }
+                .addOnFailureListener { error ->
+                    if (cont.isActive) cont.resumeWithException(error)
+                }
+                .addOnCanceledListener { if (cont.isActive) cont.cancel() }
         }
     }
 }

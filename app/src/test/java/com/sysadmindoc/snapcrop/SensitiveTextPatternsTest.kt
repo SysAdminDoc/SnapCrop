@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -25,5 +26,27 @@ class SensitiveTextPatternsTest {
     fun passesLuhn_rejectsEmptyOrZeroStrings() {
         assertFalse(SensitiveTextPatterns.passesLuhn(""))
         assertFalse(SensitiveTextPatterns.passesLuhn("0000000000000"))
+    }
+
+    @Test
+    fun typedMatchesRejectDateAndInvalidNetworkLookalikes() {
+        val categories = SensitiveTextPatterns.sensitiveMatches(
+            "qa.fixture@example.test +1 202-555-0100 192.0.2.42 " +
+                "2001:db8::42 02:00:00:00:00:01 GB82 WEST 1234 5698 7654 32"
+        ).map { it.category }.toSet()
+
+        assertEquals(
+            setOf(
+                SensitiveTextCategory.EMAIL,
+                SensitiveTextCategory.PHONE,
+                SensitiveTextCategory.IPV4,
+                SensitiveTextCategory.IPV6,
+                SensitiveTextCategory.MAC_ADDRESS,
+                SensitiveTextCategory.IBAN
+            ),
+            categories
+        )
+        assertFalse(SensitiveTextPatterns.containsSensitivePattern("Build 2026-07-12 at 10:30"))
+        assertFalse(SensitiveTextPatterns.containsSensitivePattern("Invalid host 999.999.999.999"))
     }
 }

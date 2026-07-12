@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Measured sensitive-text redaction gates (v6.38.0).**
+
+- Sensitive-text detections now retain category, source, and OCR-box geometry
+  across email, phone, payment card, IPv4, IPv6, MAC, IBAN, and postal-address
+  paths. Phone matching no longer absorbs date/invalid-IP lookalikes, and IPv4
+  octets are validated.
+- Privacy-sensitive Quick Crop and share scans now honor the selected Latin,
+  Chinese, Japanese, Korean, or Devanagari OCR model and distinguish OCR failure
+  from a clean screenshot instead of silently publishing an unscanned result.
+- Added an 80-case synthetic light/dark × OCR-script × category corpus with only
+  reserved/example values. The local release gate enforces 100% known-secret
+  recall, zero rendered leaks, at least 99% box coverage, category/macro
+  precision floors, and bounded over-redaction before producing an official APK.
+
 **Fail-closed asynchronous screenshot index (v6.37.0).**
 
 - Converted every one-shot Room DAO/index operation to a suspend API, moved

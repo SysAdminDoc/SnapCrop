@@ -437,7 +437,11 @@ class ScreenshotService : Service() {
                     val redactionStyle = RedactionStyle.fromPreference(
                         prefs.getString(ImageRedactor.PREF_REDACTION_STYLE, RedactionStyle.SOLID.preferenceValue)
                     )
-                    val actionResult = ConditionalAutoActions.redactSensitiveText(currentCropped, redactionStyle)
+                    val actionResult = ConditionalAutoActions.redactSensitiveText(
+                        currentCropped,
+                        redactionStyle,
+                        OcrScript.fromContext(this@ScreenshotService)
+                    )
                     redactionCount = actionResult.redactionCount
                     if (actionResult.bitmap !== currentCropped) {
                         currentCropped.recycle()
