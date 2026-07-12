@@ -171,7 +171,10 @@ are blocked behind explicit opt-in and evaluation gates.
 - **Batch rename:** Gallery-selected screenshots can use `%app%`, `%date%`,
   `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates
 - **PDF reports:** Gallery selections can be bundled with title, notes,
-  timestamps, source/dimension metadata, and an optional OCR appendix
+  timestamps, source/dimension metadata, and an optional OCR appendix; choose
+  physical A4, US Letter, or validated custom millimetre dimensions,
+  portrait/landscape, and margins with a proportional preview. Output is
+  standard PDF; PDF/A archival conformance is not generated or claimed
 - **Opt-in network exports:** Settings can enable explicit HTTP, WebDAV/
   Nextcloud, or Imgur upload targets; uploads are never used by default
 - **Share shortcuts:** The Android share sheet can surface the destinations you

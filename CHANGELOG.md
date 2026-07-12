@@ -4,6 +4,23 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Physical PDF page layouts and deterministic pagination (v6.64.0).**
+
+- Fixed the report renderer’s root geometry error: 1240×1754 values were being
+  interpreted as PostScript points, yielding ~17×24-inch pages. Reports now use
+  real A4 (595×842 pt) or US Letter (612×792 pt) dimensions.
+- The report dialog adds A4, Letter, and validated 50–500 mm custom sizes,
+  portrait/landscape orientation, 5–50 mm margins, and an exact aspect/margin
+  preview. Invalid or collapsed content geometry disables creation.
+- One immutable point-based layout now drives cover, image, searchable OCR,
+  appendix, and measured footer placement. Cover notes paginate instead of
+  clipping at 18 lines; over-wide tokens split; appendix headings keep their
+  first line; bounded OCR truncation is labeled; metadata can continue before
+  a full image page when necessary.
+- The UI explicitly creates standard PDF only. PDF/A is not offered or claimed
+  because Android’s renderer cannot control or validate the required XMP, ICC,
+  and font-embedding conformance data.
+
 **Local screenshot notes and one-time reminders (v6.63.0).**
 
 - Gallery screenshots now support bounded multiline notes and one-time reminder
