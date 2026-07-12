@@ -29,7 +29,6 @@ class ScreenshotService : Service() {
 
     companion object {
         const val ACTION_QUICK_SAVE = "com.sysadmindoc.snapcrop.QUICK_SAVE"
-        const val ACTION_SHARE = "com.sysadmindoc.snapcrop.SHARE"
         const val ACTION_DISMISS = "com.sysadmindoc.snapcrop.DISMISS_NOTIF"
         const val ACTION_DELAYED_CAPTURE = "com.sysadmindoc.snapcrop.DELAYED_CAPTURE"
         const val ACTION_RUN_LAST_ACTION = "com.sysadmindoc.snapcrop.RUN_LAST_ACTION"
@@ -39,7 +38,7 @@ class ScreenshotService : Service() {
         const val PREF_LAST_ACTION = "last_action"
         const val PREF_LAST_SEED_URI = "last_seed_uri"
         const val PREF_LAST_SEED_TIME = "last_seed_time"
-        private const val DETECTED_NOTIF_ID = 2
+        internal const val DETECTED_NOTIF_ID = 2
         private const val COUNTDOWN_NOTIF_ID = 3
         @Volatile var isRunning = false
             private set
@@ -106,19 +105,6 @@ class ScreenshotService : Service() {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
                 if (uriStr != null) quickSave(Uri.parse(uriStr))
-                dismissDetectedNotification()
-                return START_STICKY
-            }
-            ACTION_SHARE -> {
-                val uriStr = intent.getStringExtra(EXTRA_URI)
-                if (uriStr != null) {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "image/*"
-                        putExtra(Intent.EXTRA_STREAM, Uri.parse(uriStr))
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    startActivity(Intent.createChooser(shareIntent, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
                 dismissDetectedNotification()
                 return START_STICKY
             }
@@ -578,9 +564,17 @@ class ScreenshotService : Service() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        val shareIntent = PendingIntent.getService(this, 11,
-            Intent(this, ScreenshotService::class.java).apply {
-                action = ACTION_SHARE; putExtra(EXTRA_URI, uri.toString())
+        val shareIntent = PendingIntent.getActivity(this, 11,
+            Intent(this, MainActivity::class.java).apply {
+                putStringArrayListExtra(EXTRA_PRIVACY_SHARE_URIS, arrayListOf(uri.toString()))
+                putExtra(EXTRA_DISMISS_DETECTED_NOTIFICATION, true)
+                clipData = ClipData.newRawUri("Screenshot to share", uri)
+                addFlags(
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
             }, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
         val quickSaveIntent = PendingIntent.getService(this, 12,

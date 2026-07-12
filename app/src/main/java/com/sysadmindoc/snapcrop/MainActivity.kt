@@ -264,6 +264,26 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handlePrivacyShareIntent(intent: Intent): Boolean {
+        val uris = intent.getStringArrayListExtra(EXTRA_PRIVACY_SHARE_URIS)
+            ?.mapNotNull { value -> runCatching { Uri.parse(value) }.getOrNull() }
+            .orEmpty()
+        if (uris.isEmpty()) return false
+        if (intent.getBooleanExtra(EXTRA_DISMISS_DETECTED_NOTIFICATION, false)) {
+            (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                .cancel(ScreenshotService.DETECTED_NOTIF_ID)
+        }
+        intent.removeExtra(EXTRA_PRIVACY_SHARE_URIS)
+        intent.removeExtra(EXTRA_DISMISS_DETECTED_NOTIFICATION)
+        intent.clipData = null
+        intent.data = null
+        intent.action = null
+        window.decorView.post {
+            if (!isFinishing && !isDestroyed) shareImages(uris)
+        }
+        return true
+    }
+
     private fun launchInboundActivity(target: Class<out ComponentActivity>) {
         val uris = inboundShareUris.value
         startActivity(Intent(this, target).apply {
@@ -374,7 +394,7 @@ class MainActivity : ComponentActivity() {
             ?.map(Uri::parse) ?: emptyList()
         pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
         handleAccessibilityIntent(intent)
-        if (!handleSharedUrl(intent)) handleInboundShares(intent)
+        if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
 
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
@@ -1069,7 +1089,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleAccessibilityIntent(intent)
-        if (!handleSharedUrl(intent)) handleInboundShares(intent)
+        if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1806,63 +1826,106 @@ class MainActivity : ComponentActivity() {
 
     private fun shareImages(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        val stripExif = getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("strip_exif", false)
-
-        // Detect content types so mixed image/video selections aren't filtered to image-only handlers.
-        val hasVideo = uris.any { uri ->
-            try { contentResolver.getType(uri)?.startsWith("video/") == true } catch (_: Exception) { false }
-        }
-        val hasImage = uris.any { uri ->
-            try { contentResolver.getType(uri)?.startsWith("image/") != false } catch (_: Exception) { true }
-        }
-        val shareType = when {
-            hasVideo && hasImage -> "*/*"
-            hasVideo -> "video/*"
-            else -> "image/*"
-        }
-
-        if (stripExif && hasImage) {
-            // Re-encode images to strip EXIF metadata. Videos pass through unchanged
-            // (we don't transcode — that would be slow and lossy).
-            lifecycleScope.launch(Dispatchers.IO) {
-                val shareDir = java.io.File(cacheDir, "share_clean")
-                shareDir.mkdirs()
-                shareDir.listFiles()?.forEach { it.delete() } // clean old
-                val (fmt, qual, ext) = getSaveFormat()
-                val isWebp = fmt.isWebpFormat()
-                val cleanUris = mutableListOf<Uri>()
-                for ((i, uri) in uris.withIndex()) {
-                    val mime = try { contentResolver.getType(uri) ?: "" } catch (_: Exception) { "" }
-                    if (mime.startsWith("video/")) { cleanUris.add(uri); continue }
-                    try {
-                        contentResolver.openInputStream(uri)?.use { stream ->
-                            val bmp = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
-                            val outExt = if (isWebp) "webp" else ext
-                            val file = java.io.File(shareDir, "share_${i}.$outExt")
-                            file.outputStream().use { out -> bmp.compress(fmt, qual, out) }
-                            bmp.recycle()
-                            cleanUris.add(androidx.core.content.FileProvider.getUriForFile(
-                                this@MainActivity, "${packageName}.fileprovider", file))
-                        }
-                    } catch (_: Exception) { cleanUris.add(uri) } // fallback to original
+        lifecycleScope.launch(Dispatchers.IO) {
+            var preparedDirectory: java.io.File? = null
+            try {
+                val mimeTypes = uris.associateWith { uri ->
+                    runCatching { contentResolver.getType(uri).orEmpty() }.getOrDefault("")
                 }
-                withContext(Dispatchers.Main) {
-                    val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                        type = shareType
-                        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(cleanUris))
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                val hasVideo = mimeTypes.values.any { it.startsWith("video/") }
+                val imageUris = uris.filter { !mimeTypes.getValue(it).startsWith("video/") }
+                val summaries = imageUris.map { ExifTransfer.inspect(contentResolver, it) }
+                if (summaries.any { it.inspectionFailed }) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.share_metadata_inspection_failed,
+                            Toast.LENGTH_LONG,
+                        ).show()
                     }
-                    startShareChooser(intent)
+                    return@launch
                 }
+                val summary = MetadataSummary(summaries.flatMapTo(linkedSetOf()) { it.categories })
+                val policy = if (summary.hasMetadata) {
+                    chooseShareMetadataPolicy(summary, allowSanitize = !hasVideo)
+                } else {
+                    ShareMetadataPolicy.PRESERVE
+                } ?: return@launch
+
+                val sharedUris = if (policy == ShareMetadataPolicy.PRESERVE) {
+                    uris
+                } else {
+                    val shareRoot = java.io.File(cacheDir, "share_clean").apply { mkdirs() }
+                    shareRoot.listFiles()
+                        ?.filter { it.isDirectory && System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60 * 1000L }
+                        ?.forEach { it.deleteRecursively() }
+                    preparedDirectory = java.io.File(shareRoot, System.nanoTime().toString()).apply {
+                        if (!mkdirs()) throw IOException("Could not create a private share directory")
+                    }
+                    val (format, quality, ext) = getSaveFormat()
+                    imageUris.mapIndexed { index, sourceUri ->
+                        val bitmap = contentResolver.openInputStream(sourceUri)?.use(BitmapFactory::decodeStream)
+                            ?: throw IOException("Could not decode shared image")
+                        try {
+                            val file = java.io.File(preparedDirectory, "share_$index.$ext")
+                            val encoded = file.outputStream().use { bitmap.compress(format, quality, it) }
+                            if (!encoded) throw IOException("Could not encode shared image")
+                            val outputUri = androidx.core.content.FileProvider.getUriForFile(
+                                this@MainActivity,
+                                "${packageName}.fileprovider",
+                                file,
+                            )
+                            if (!ExifTransfer.copyForShare(contentResolver, sourceUri, outputUri, policy)) {
+                                throw IOException("Could not apply selected metadata policy")
+                            }
+                            outputUri
+                        } finally {
+                            bitmap.recycle()
+                        }
+                    }
+                }
+
+                val hasImage = imageUris.isNotEmpty()
+                val shareType = when {
+                    hasVideo && hasImage -> "*/*"
+                    hasVideo -> "video/*"
+                    else -> "image/*"
+                }
+                withContext(Dispatchers.Main) { dispatchShareIntent(sharedUris, shareType) }
+            } catch (cancelled: CancellationException) {
+                preparedDirectory?.deleteRecursively()
+                throw cancelled
+            } catch (_: Exception) {
+                preparedDirectory?.deleteRecursively()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        R.string.share_metadata_export_failed,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun dispatchShareIntent(uris: List<Uri>, shareType: String) {
+        if (uris.isEmpty()) return
+        val intent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = shareType
+                putExtra(Intent.EXTRA_STREAM, uris.single())
             }
         } else {
-            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
                 type = shareType
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startShareChooser(intent)
         }
+        intent.clipData = ClipData.newRawUri("SnapCrop shared media", uris.first()).apply {
+            uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+        }
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        startShareChooser(intent)
     }
 
     private fun startShareChooser(baseIntent: Intent) {

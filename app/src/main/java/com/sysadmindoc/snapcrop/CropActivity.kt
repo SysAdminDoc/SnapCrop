@@ -71,6 +71,7 @@ import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
 import com.sysadmindoc.snapcrop.ui.theme.Black
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -2000,10 +2001,35 @@ class CropActivity : ComponentActivity() {
                 }
                 return@launch
             }
+            val metadataSummary = sourceUri?.let { ExifTransfer.inspect(contentResolver, it) }
+                ?: MetadataSummary(emptySet())
+            if (metadataSummary.inspectionFailed) {
+                Toast.makeText(
+                    this@CropActivity,
+                    R.string.share_metadata_inspection_failed,
+                    Toast.LENGTH_LONG,
+                ).show()
+                cropped.recycle()
+                return@launch
+            }
+            val metadataPolicy = try {
+                if (metadataSummary.hasMetadata) {
+                    chooseShareMetadataPolicy(metadataSummary)
+                } else {
+                    ShareMetadataPolicy.STRIP_ALL
+                }
+            } catch (cancelled: CancellationException) {
+                cropped.recycle()
+                throw cancelled
+            }
+            if (metadataPolicy == null) {
+                cropped.recycle()
+                return@launch
+            }
             val scanEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 .getBoolean("redact_on_share", true)
             if (!scanEnabled) {
-                dispatchShare(cropped, adj)
+                dispatchShare(cropped, adj, metadataPolicy)
                 return@launch
             }
 
@@ -2022,7 +2048,7 @@ class CropActivity : ComponentActivity() {
                 return@launch
             }
             if (detection.rects.isEmpty()) {
-                dispatchShare(cropped, adj)
+                dispatchShare(cropped, adj, metadataPolicy)
                 return@launch
             }
 
@@ -2052,11 +2078,11 @@ class CropActivity : ComponentActivity() {
                     .setView(container)
                     .setPositiveButton(getString(R.string.redact_share_action_redacted)) { _, _ ->
                         if (!cropped.isRecycled) cropped.recycle()
-                        dispatchShare(redacted, adj)
+                        dispatchShare(redacted, adj, metadataPolicy)
                     }
                     .setNeutralButton(getString(R.string.redact_share_action_original)) { _, _ ->
                         if (!redacted.isRecycled) redacted.recycle()
-                        dispatchShare(cropped, adj)
+                        dispatchShare(cropped, adj, metadataPolicy)
                     }
                     .setNegativeButton(getString(R.string.cancel)) { _, _ ->
                         if (!cropped.isRecycled) cropped.recycle()
@@ -2076,7 +2102,7 @@ class CropActivity : ComponentActivity() {
 
     /** Compresses [shareBitmap] per the current format/shape settings and fires the share chooser.
      *  Recycles [shareBitmap] when done. */
-    private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray) {
+    private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray, metadataPolicy: ShareMetadataPolicy) {
         lifecycleScope.launch(Dispatchers.IO) {
             val exportSettings = currentExportSettings()
             val out = applyExportDecorations(shareBitmap, exportSettings)
@@ -2089,23 +2115,40 @@ class CropActivity : ComponentActivity() {
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
             val shareFile = File(shareDir, "${resolveFilename(exportSettings)}.$ext")
             try {
+                if (shareFile.exists() && !shareFile.delete()) {
+                    throw IOException("Could not replace the previous share export")
+                }
                 if (exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG) {
                     val (bytes, _) = ExportPresetRenderer.compressToTarget(out, shareFmt, exportSettings.targetSizeKb)
                     shareFile.writeBytes(bytes)
                 } else {
-                    shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
+                    val encoded = shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
+                    if (!encoded) throw IOException("Could not encode share export")
                 }
                 val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
+                if (metadataPolicy != ShareMetadataPolicy.STRIP_ALL) {
+                    val source = sourceUri
+                    if (source == null || !ExifTransfer.copyForShare(contentResolver, source, shareUri, metadataPolicy)) {
+                        shareFile.delete()
+                        throw IOException("Could not apply selected metadata policy")
+                    }
+                }
                 withContext(Dispatchers.Main) {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                         type = mime
                         putExtra(Intent.EXTRA_STREAM, shareUri)
+                        clipData = ClipData.newRawUri("SnapCrop shared image", shareUri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }, null))
                 }
             } catch (e: Exception) {
+                shareFile.delete()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@CropActivity,
+                        getString(R.string.share_metadata_export_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
                 }
             } finally {
                 if (!out.isRecycled) out.recycle()

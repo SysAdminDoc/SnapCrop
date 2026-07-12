@@ -159,6 +159,9 @@ are blocked behind explicit opt-in and evaluation gates.
   Nextcloud, or Imgur upload targets; uploads are never used by default
 - **Share shortcuts:** The Android share sheet can surface the destinations you
   choose most often
+- **Metadata privacy preflight:** Metadata-bearing image shares list only present
+  categories (never values) and offer Strip all, Keep safe technical fields, or
+  Preserve detected supported fields without modifying the source
 - **Save location:** Pictures, DCIM, or Downloads
 - **Extras:** Export border, watermark overlay, EXIF stripping, and bounded
   editable project sidecars with source fingerprint verification and relinking

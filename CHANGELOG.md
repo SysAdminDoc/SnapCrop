@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Per-share metadata privacy preflight (v6.54.0).**
+
+- Metadata-bearing image shares now show category names without values and offer
+  Strip all, Keep safe technical fields, or Preserve detected supported fields.
+  A choice is remembered only when explicitly requested, and source media is
+  never mutated.
+- Editor, Home/Gallery multi-share, and detected-screenshot notification actions
+  use the same fail-closed policy. Sanitized images are freshly re-encoded; an
+  inspection, encoding, or EXIF-copy failure aborts instead of leaking originals.
+- Exact-tag tests cover all three policies and source immutability. Mixed video
+  selections cannot claim unsupported sanitization, and notification sharing now
+  opens the Activity directly instead of relying on a restricted trampoline.
+
 **Reliable index scheduling and bounded background image cache (v6.53.0).**
 
 - Upgraded WorkManager 2.10.1 to 2.11.2 for current blocked-network,
