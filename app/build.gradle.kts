@@ -42,8 +42,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 80
-        versionName = "6.31.0"
+        versionCode = 81
+        versionName = "6.31.1"
     }
 
     signingConfigs {
@@ -148,7 +148,7 @@ tasks.cyclonedxDirectBom {
 tasks.register("generateReleaseProvenance") {
     group = "distribution"
     description = "Builds stable release artifacts and a machine-readable provenance manifest."
-    dependsOn("assembleRelease", "cyclonedxDirectBom")
+    dependsOn("assembleRelease", "cyclonedxDirectBom", rootProject.tasks.named("verifyWrapperJar"))
 
     val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
     outputs.dir(provenanceDirectory)

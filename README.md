@@ -212,6 +212,9 @@ Stable release artifacts are written to `app/build/outputs/provenance/` as
 `SnapCrop-<version>.apk`, `SnapCrop-<version>-sbom.json`, and
 `SnapCrop-<version>-provenance.json`. The manifest records the exact APK hash,
 certificate fingerprint, version metadata, source commit/state, and build command.
+Gradle also verifies the pinned wrapper distribution/JAR and all resolved plugin,
+test, and release-runtime artifacts by SHA-256 against
+`gradle/verification-metadata.xml`; PGP signer records are retained for audit.
 
 > Requires JDK 17 and the Android SDK. Official releases must show
 > `"sourceState": "clean"` and use the published certificate fingerprint.

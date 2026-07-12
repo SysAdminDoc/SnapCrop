@@ -4,6 +4,15 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Pinned build inputs (v6.31.1).**
+
+- Pinned the Gradle 9.4.1 distribution SHA-256 and added a local task that
+  verifies the wrapper JAR against Gradle's published checksum.
+- Added strict Gradle SHA-256 dependency verification for plugins plus
+  debug-test and release runtime artifacts. PGP signer metadata remains in the
+  catalog for audit, while unavailable public keys fall back to pinned hashes.
+  Release provenance now depends on wrapper verification.
+
 **Destructive redaction by default (v6.31.0).**
 
 - Sensitive-text automation and scan-before-share now replace every selected
