@@ -130,6 +130,50 @@ class SnapCropProjectSidecarTest {
     }
 
     @Test
+    fun arrangedDuplicateOrderAndOffsetsRoundTrip() {
+        val original = DrawPath(
+            points = listOf(PointF(20f, 30f), PointF(80f, 90f)),
+            color = 0xFF00FF00.toInt(),
+            strokeWidth = 5f,
+            shapeType = "rect",
+            transRotation = 15f,
+        )
+        val duplicated = DrawLayerArrangement.duplicate(
+            listOf(original),
+            setOf(0),
+            Rect(10, 20, 500, 900),
+        )
+        val arranged = DrawLayerArrangement.align(
+            duplicated.layers,
+            duplicated.selectedIndices,
+            Rect(10, 20, 500, 900),
+            LayerAlignment.RIGHT,
+        )
+        val project = SnapCropProject(
+            sourceUri = "content://media/external/images/media/8",
+            sourceSha256 = "e".repeat(64),
+            sourceWidth = 1080,
+            sourceHeight = 1920,
+            cropRect = Rect(10, 20, 500, 900),
+            adjustments = floatArrayOf(0f, 1f, 1f),
+            pixelateRects = emptyList(),
+            drawLayers = arranged,
+            exportFormat = "png",
+            exportMimeType = "image/png",
+            exportQuality = 100,
+            exportSavePath = "Pictures/SnapCrop",
+            deleteOriginal = false,
+        )
+
+        val decoded = SnapCropProjectSidecar.decode(SnapCropProjectSidecar.encode(project))
+
+        assertEquals(2, decoded.drawLayers.size)
+        assertEquals(original.transOffsetX, decoded.drawLayers[0].transOffsetX, 0.001f)
+        assertEquals(arranged[1].transOffsetX, decoded.drawLayers[1].transOffsetX, 0.001f)
+        assertEquals(15f, decoded.drawLayers[1].transRotation, 0.001f)
+    }
+
+    @Test
     fun untransformedLayerHasIdentityDefaults() {
         val layer = DrawPath(
             points = listOf(PointF(1f, 1f)),

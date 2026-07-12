@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Precise multi-layer layout commands (v6.56.0).**
+
+- The draw-layer panel now supports persistent multi-selection plus six crop-bound
+  alignment commands, equal visual edge-gap distribution on either axis, and
+  duplicate-with-offset. Hidden selected layers participate without changing
+  visibility; distribute appears for three or more selections.
+- Layout uses transformed source-coordinate visual bounds, including text, emoji,
+  callout, magnifier, measure, arrowhead, neon, and pixel-operation geometry.
+  Scale, rotation, points, styles, and control points remain unchanged.
+- Each command is one undo snapshot. Duplicates are deep-copied immediately above
+  their originals, selected as a group, and rejected atomically at project
+  layer/point limits. Arrangement, pixel resolution, z-order, undo routing, raster/
+  SVG routing, and project transform round trips have host coverage.
+
 **Developer-secret and custom redaction patterns (v6.55.0).**
 
 - Sensitive-text scans now recognize strict bearer/JWT, vendor token, private-key,

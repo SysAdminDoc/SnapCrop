@@ -56,6 +56,8 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Free rotation slider (-45 to +45 degrees)
 - Gradient backgrounds for shape crops (6 presets)
 - Grid overlays (rule of thirds / golden ratio)
+- Multi-select annotation layers to align against crop edges/centers, distribute
+  equal gaps horizontally or vertically, and duplicate with a visible offset
 - Tap dimensions for exact pixel input
 - Before/after swipe comparison
 - Live file size estimate

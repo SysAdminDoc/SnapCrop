@@ -213,6 +213,7 @@ fun CropEditorScreen(
     var calloutCounter by remember { mutableIntStateOf(1) }
     // Index of the committed layer currently in transform mode (move/resize/rotate), or -1.
     var selectedLayerIndex by remember { mutableIntStateOf(-1) }
+    var selectedLayerIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var eyedropperActive by remember { mutableStateOf(false) }
     var samplerColor1 by remember { mutableStateOf<Int?>(null) }
     var samplerColor2 by remember { mutableStateOf<Int?>(null) }
@@ -236,6 +237,13 @@ fun CropEditorScreen(
             drawStrokeWidth = def.strokeWidth
             dashedStroke = def.dashed
             drawTool = def.tool
+        }
+    }
+
+    LaunchedEffect(drawPaths.size) {
+        selectedLayerIndices = selectedLayerIndices.filterTo(linkedSetOf()) { it in drawPaths.indices }
+        if (selectedLayerIndex !in selectedLayerIndices) {
+            selectedLayerIndex = selectedLayerIndices.maxOrNull() ?: -1
         }
     }
 
@@ -380,6 +388,8 @@ fun CropEditorScreen(
         redactions.clear(); redactions.addAll(s.redactions.map { it.copy() })
         selectedRedactionIndex = -1
         drawPaths.clear(); drawPaths.addAll(s.draws)
+        selectedLayerIndex = -1
+        selectedLayerIndices = emptySet()
         ocrBlocks = s.ocrBlocks.map(TextBlock::deepCopy)
         ocrScanCompleted = s.ocrReviewed
         onOcrChanged(ocrBlocks)
@@ -438,6 +448,8 @@ fun CropEditorScreen(
         val layer = drawPaths.removeAt(fromIndex)
         drawPaths.add(toIndex, layer)
         drawRedoStack.clear()
+        selectedLayerIndex = -1
+        selectedLayerIndices = emptySet()
         haptic()
     }
 
@@ -463,11 +475,78 @@ fun CropEditorScreen(
         return true
     }
 
+    fun toggleDrawLayerSelection(index: Int) {
+        if (index !in drawPaths.indices) return
+        selectedLayerIndices = if (index in selectedLayerIndices) {
+            selectedLayerIndices - index
+        } else {
+            selectedLayerIndices + index
+        }
+        selectedLayerIndex = if (index in selectedLayerIndices) index else selectedLayerIndices.maxOrNull() ?: -1
+    }
+
+    fun arrangeDrawLayers(updated: List<DrawPath>) {
+        if (updated == drawPaths.toList()) return
+        pushUndo()
+        drawPaths.clear()
+        drawPaths.addAll(updated)
+        drawRedoStack.clear()
+        haptic()
+    }
+
+    fun alignSelectedLayers(alignment: LayerAlignment) {
+        arrangeDrawLayers(
+            DrawLayerArrangement.align(
+                drawPaths.toList(),
+                selectedLayerIndices,
+                Rect(cropLeft, cropTop, cropRight, cropBottom),
+                alignment,
+            )
+        )
+    }
+
+    fun distributeSelectedLayers(distribution: LayerDistribution) {
+        arrangeDrawLayers(
+            DrawLayerArrangement.distribute(
+                drawPaths.toList(),
+                selectedLayerIndices,
+                Rect(cropLeft, cropTop, cropRight, cropBottom),
+                distribution,
+            )
+        )
+    }
+
+    fun duplicateSelectedLayers() {
+        val duplicated = DrawLayerArrangement.duplicate(
+            drawPaths.toList(),
+            selectedLayerIndices,
+            Rect(cropLeft, cropTop, cropRight, cropBottom),
+        )
+        if (duplicated.layers == drawPaths.toList()) {
+            android.widget.Toast.makeText(
+                context,
+                context.getString(R.string.layer_duplicate_limit),
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        pushUndo()
+        drawPaths.clear()
+        drawPaths.addAll(duplicated.layers)
+        drawRedoStack.clear()
+        selectedLayerIndices = duplicated.selectedIndices
+        selectedLayerIndex = duplicated.selectedIndices.maxOrNull() ?: -1
+        showLayerPanel = true
+        haptic()
+    }
+
     fun deleteDrawLayer(index: Int) {
         if (index !in drawPaths.indices) return
         pushUndo()
         drawPaths.removeAt(index)
         drawRedoStack.clear()
+        selectedLayerIndex = -1
+        selectedLayerIndices = emptySet()
         haptic()
     }
 
@@ -583,6 +662,7 @@ fun CropEditorScreen(
             )
         )
         selectedLayerIndex = drawPaths.lastIndex
+        selectedLayerIndices = setOf(selectedLayerIndex)
         editMode = EditMode.DRAW
         haptic()
         return true
@@ -1358,7 +1438,8 @@ fun CropEditorScreen(
                             onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
                             onDeleteLayer = { index -> deleteDrawLayer(index); selectedLayerIndex = -1 },
                             selectedIndex = selectedLayerIndex,
-                            onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
+                            selectedIndices = selectedLayerIndices,
+                            onSelectLayer = ::toggleDrawLayerSelection,
                             onTransformLayer = { index, dx, dy, sMul, dRot ->
                                 transformDrawLayer(index, dx, dy, sMul, dRot)
                             },
@@ -1366,7 +1447,10 @@ fun CropEditorScreen(
                                 updateDrawLayer(index) {
                                     it.copy(transOffsetX = 0f, transOffsetY = 0f, transScale = 1f, transRotation = 0f)
                                 }
-                            }
+                            },
+                            onAlign = ::alignSelectedLayers,
+                            onDistribute = ::distributeSelectedLayers,
+                            onDuplicate = ::duplicateSelectedLayers,
                         )
                     }
                 }
@@ -2079,7 +2163,8 @@ fun CropEditorScreen(
                     onToggleVisible = { index -> updateDrawLayer(index) { it.copy(visible = !it.visible) } },
                     onDeleteLayer = { index -> deleteDrawLayer(index); selectedLayerIndex = -1 },
                     selectedIndex = selectedLayerIndex,
-                    onSelectLayer = { index -> selectedLayerIndex = if (selectedLayerIndex == index) -1 else index },
+                    selectedIndices = selectedLayerIndices,
+                    onSelectLayer = ::toggleDrawLayerSelection,
                     onTransformLayer = { index, dx, dy, sMul, dRot ->
                         transformDrawLayer(index, dx, dy, sMul, dRot)
                     },
@@ -2087,7 +2172,10 @@ fun CropEditorScreen(
                         updateDrawLayer(index) {
                             it.copy(transOffsetX = 0f, transOffsetY = 0f, transScale = 1f, transRotation = 0f)
                         }
-                    }
+                    },
+                    onAlign = ::alignSelectedLayers,
+                    onDistribute = ::distributeSelectedLayers,
+                    onDuplicate = ::duplicateSelectedLayers,
                 )
             }
             // Emoji picker row

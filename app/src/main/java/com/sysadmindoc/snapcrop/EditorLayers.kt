@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -88,9 +89,13 @@ internal fun DrawLayerPanel(
     onToggleVisible: (index: Int) -> Unit,
     onDeleteLayer: (index: Int) -> Unit,
     selectedIndex: Int = -1,
+    selectedIndices: Set<Int> = if (selectedIndex >= 0) setOf(selectedIndex) else emptySet(),
     onSelectLayer: (index: Int) -> Unit = {},
     onTransformLayer: (index: Int, dx: Float, dy: Float, scaleMul: Float, dRotation: Float) -> Unit = { _, _, _, _, _ -> },
-    onResetTransform: (index: Int) -> Unit = {}
+    onResetTransform: (index: Int) -> Unit = {},
+    onAlign: (LayerAlignment) -> Unit = {},
+    onDistribute: (LayerDistribution) -> Unit = {},
+    onDuplicate: () -> Unit = {},
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
@@ -106,6 +111,35 @@ internal fun DrawLayerPanel(
                 Text("${drawPaths.size}", color = Secondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
 
+            if (selectedIndices.isNotEmpty()) {
+                Text(
+                    stringResource(R.string.layer_selected_count, selectedIndices.size),
+                    color = Secondary,
+                    fontSize = 10.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LayerXfBtn(stringResource(R.string.layer_align_left_short), stringResource(R.string.layer_align_left)) { onAlign(LayerAlignment.LEFT) }
+                    LayerXfBtn(stringResource(R.string.layer_align_center_short), stringResource(R.string.layer_align_center)) { onAlign(LayerAlignment.CENTER) }
+                    LayerXfBtn(stringResource(R.string.layer_align_right_short), stringResource(R.string.layer_align_right)) { onAlign(LayerAlignment.RIGHT) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    LayerXfBtn(stringResource(R.string.layer_align_top_short), stringResource(R.string.layer_align_top)) { onAlign(LayerAlignment.TOP) }
+                    LayerXfBtn(stringResource(R.string.layer_align_middle_short), stringResource(R.string.layer_align_middle)) { onAlign(LayerAlignment.MIDDLE) }
+                    LayerXfBtn(stringResource(R.string.layer_align_bottom_short), stringResource(R.string.layer_align_bottom)) { onAlign(LayerAlignment.BOTTOM) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (selectedIndices.size >= 3) {
+                        LayerXfBtn(stringResource(R.string.layer_distribute_horizontal_short), stringResource(R.string.layer_distribute_horizontal)) {
+                            onDistribute(LayerDistribution.HORIZONTAL)
+                        }
+                        LayerXfBtn(stringResource(R.string.layer_distribute_vertical_short), stringResource(R.string.layer_distribute_vertical)) {
+                            onDistribute(LayerDistribution.VERTICAL)
+                        }
+                    }
+                    LayerXfBtn(stringResource(R.string.layer_duplicate_short), stringResource(R.string.layer_duplicate)) { onDuplicate() }
+                }
+            }
+
             if (drawPaths.isEmpty()) {
                 Text(
                     stringResource(R.string.draw_layers_empty),
@@ -117,7 +151,7 @@ internal fun DrawLayerPanel(
                 drawPaths.asReversed().forEachIndexed { visualIndex, layer ->
                     val actualIndex = drawPaths.lastIndex - visualIndex
                     val title = layerTitle(layer)
-                    val isSelected = actualIndex == selectedIndex
+                    val isSelected = actualIndex in selectedIndices
                     // Resolve a11y descriptions outside the non-composable semantics lambdas.
                     val visibilityCd = if (layer.visible) stringResource(R.string.layer_hide_cd, title)
                     else stringResource(R.string.layer_show_cd, title)
@@ -128,6 +162,7 @@ internal fun DrawLayerPanel(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onSelectLayer(actualIndex) }
+                            .semantics { selected = isSelected }
                             .background(
                                 when {
                                     isSelected -> Secondary.copy(alpha = 0.22f)
