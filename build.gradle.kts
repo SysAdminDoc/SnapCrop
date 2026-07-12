@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.cyclonedx.bom) apply false
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.compose) apply false
+    alias(libs.plugins.room) apply false
 }
 
 tasks.register("verifyWrapperJar") {
@@ -26,5 +27,5 @@ tasks.register("verifyWrapperJar") {
 
 allprojects {
     group = "com.sysadmindoc"
-    version = "6.36.0"
+    version = "6.37.0"
 }

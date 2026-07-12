@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.cyclonedx.bom)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 // Load signing credentials from gitignored keystore.properties (local builds)
@@ -44,8 +45,9 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 87
-        versionName = "6.36.0"
+        versionCode = 88
+        versionName = "6.37.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -60,6 +62,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Keep local instrumentation isolated from an installed production build.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -90,6 +97,10 @@ android {
         }
     }
 
+    sourceSets {
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    }
+
     lint {
         // The Compose BOM 2026.05 lint elevated these opinionated checks to error severity. They
         // flag context.getString()/resources reads inside event handlers (toasts, one-shot status),
@@ -97,6 +108,16 @@ android {
         warning += "LocalContextGetResourceValueCall"
         warning += "LocalContextResourcesRead"
     }
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+ksp {
+    // Keep the processor argument explicit: AGP 9's built-in Kotlin path does not yet
+    // receive the Room plugin's schema location for every KSP task.
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 kotlin {
@@ -138,6 +159,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.json)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.ext.junit)
     debugImplementation(libs.androidx.ui.tooling)
 }
 

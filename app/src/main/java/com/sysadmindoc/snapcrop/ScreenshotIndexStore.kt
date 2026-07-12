@@ -18,6 +18,8 @@ import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class ScreenshotIndexEntry(
     val mediaId: Long,
@@ -142,34 +144,34 @@ internal data class ScreenshotIndexRow(
 @Dao
 internal interface ScreenshotIndexDao {
     @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
-    fun getAll(): List<ScreenshotIndexRow>
+    suspend fun getAll(): List<ScreenshotIndexRow>
 
     @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
     fun observeAll(): Flow<List<ScreenshotIndexRow>>
 
     @Query("SELECT * FROM screenshot_index WHERE media_id = :id LIMIT 1")
-    fun getById(id: Long): ScreenshotIndexRow?
+    suspend fun getById(id: Long): ScreenshotIndexRow?
 
     @Query("SELECT COUNT(*) FROM screenshot_index")
-    fun count(): Int
+    suspend fun count(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsert(row: ScreenshotIndexRow)
+    suspend fun upsert(row: ScreenshotIndexRow)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsertAll(rows: List<ScreenshotIndexRow>)
+    suspend fun upsertAll(rows: List<ScreenshotIndexRow>)
 
     @Query("DELETE FROM screenshot_index")
-    fun deleteAll()
+    suspend fun deleteAll()
 
     @Transaction
-    fun replaceAll(rows: List<ScreenshotIndexRow>) {
+    suspend fun replaceAll(rows: List<ScreenshotIndexRow>) {
         deleteAll()
         upsertAll(rows)
     }
 }
 
-@Database(entities = [ScreenshotIndexRow::class], version = 1, exportSchema = false)
+@Database(entities = [ScreenshotIndexRow::class], version = 1, exportSchema = true)
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
     abstract fun dao(): ScreenshotIndexDao
 }
@@ -177,38 +179,38 @@ internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
 /**
  * Opt-in local screenshot intelligence index. Migrated from a raw [android.database.sqlite.SQLiteOpenHelper]
  * to Room: queries are compile-time verified, the gallery can observe a reactive [Flow], and schema
- * changes go through Room's migration tooling. The index is a derived cache of MediaStore, so a schema
- * mismatch falls back to a destructive rebuild rather than blocking the user.
+ * changes go through Room's migration tooling. Missing migrations fail closed so future user-owned
+ * metadata cannot be silently erased if it is added alongside the derived MediaStore cache.
  */
 class ScreenshotIndexStore(context: Context) {
     private val dao = database(context.applicationContext).dao()
 
-    fun rebuildFromMediaStore(
+    suspend fun rebuildFromMediaStore(
         resolver: ContentResolver,
         screenW: Int,
         screenH: Int,
         favoriteIds: Set<Long>
-    ): Int {
+    ): Int = withContext(Dispatchers.IO) {
         val entries = buildList {
             addAll(queryImages(resolver, screenW, screenH, favoriteIds))
             addAll(queryVideos(resolver, favoriteIds))
         }
         dao.replaceAll(entries.map { it.toRow() })
-        return entries.size
+        entries.size
     }
 
-    fun loadEntryMap(): Map<Long, ScreenshotIndexEntry> =
+    suspend fun loadEntryMap(): Map<Long, ScreenshotIndexEntry> =
         dao.getAll().associate { it.mediaId to it.toEntry() }
 
     /** Emits the full index whenever it changes (rebuild, OCR token capture, purge). */
     fun observeEntries(): Flow<Map<Long, ScreenshotIndexEntry>> =
         dao.observeAll().map { rows -> rows.associate { it.mediaId to it.toEntry() } }
 
-    fun purge() {
+    suspend fun purge() {
         dao.deleteAll()
     }
 
-    fun updateRecognizedText(uri: Uri, text: String, codes: List<String>) {
+    suspend fun updateRecognizedText(uri: Uri, text: String, codes: List<String>) {
         val mediaId = try {
             ContentUris.parseId(uri)
         } catch (_: Exception) {
@@ -229,7 +231,7 @@ class ScreenshotIndexStore(context: Context) {
         dao.upsert(updated.toRow())
     }
 
-    fun count(): Int = dao.count()
+    suspend fun count(): Int = dao.count()
 
     private fun queryImages(
         resolver: ContentResolver,
@@ -381,12 +383,6 @@ class ScreenshotIndexStore(context: Context) {
         private fun database(context: Context): ScreenshotIndexDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, DB_NAME)
-                    // count()/purge() run on the main thread from Settings; the index is a small
-                    // derived cache so main-thread access is acceptable and avoids API churn.
-                    .allowMainThreadQueries()
-                    // The index can always be rebuilt from MediaStore, so prefer a clean rebuild
-                    // over a blocking migration when the schema changes.
-                    .fallbackToDestructiveMigration(true)
                     .build()
                     .also {
                         INSTANCE = it

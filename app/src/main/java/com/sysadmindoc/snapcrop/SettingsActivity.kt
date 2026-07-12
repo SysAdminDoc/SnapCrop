@@ -309,10 +309,18 @@ class SettingsActivity : ComponentActivity() {
                     var screenshotIndexEnabled by remember {
                         mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false))
                     }
-                    val indexCountStr = stringResource(R.string.settings_index_count, ScreenshotIndexStore(this@SettingsActivity).count())
+                    val screenshotIndexStore = remember { ScreenshotIndexStore(this@SettingsActivity) }
                     val indexEnabledStr = stringResource(R.string.settings_index_enabled)
                     val indexDisabledStr = stringResource(R.string.settings_index_disabled)
-                    var screenshotIndexStatus by remember { mutableStateOf(indexCountStr) }
+                    var screenshotIndexStatus by remember {
+                        mutableStateOf(getString(R.string.settings_index_loading))
+                    }
+                    LaunchedEffect(screenshotIndexStore) {
+                        screenshotIndexStatus = getString(
+                            R.string.settings_index_count,
+                            screenshotIndexStore.count()
+                        )
+                    }
                     SettingToggle(
                         title = stringResource(R.string.settings_index_title),
                         subtitle = stringResource(R.string.settings_index_subtitle),
@@ -343,22 +351,19 @@ class SettingsActivity : ComponentActivity() {
                                     Button(
                                         onClick = {
                                             screenshotIndexStatus = rebuildingStr
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                val count = ScreenshotIndexStore(this@SettingsActivity)
-                                                    .rebuildFromMediaStore(
+                                            lifecycleScope.launch {
+                                                val count = screenshotIndexStore.rebuildFromMediaStore(
                                                         contentResolver,
                                                         screenW,
                                                         screenH,
                                                         FavoritesStore.getAllIds(this@SettingsActivity)
                                                     )
-                                                withContext(Dispatchers.Main) {
-                                                    screenshotIndexStatus = getString(R.string.settings_index_count, count)
-                                                    android.widget.Toast.makeText(
-                                                        this@SettingsActivity,
-                                                        getString(R.string.toast_index_rebuilt),
-                                                        android.widget.Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
+                                                screenshotIndexStatus = getString(R.string.settings_index_count, count)
+                                                android.widget.Toast.makeText(
+                                                    this@SettingsActivity,
+                                                    getString(R.string.toast_index_rebuilt),
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary),
@@ -368,17 +373,14 @@ class SettingsActivity : ComponentActivity() {
                                     }
                                     OutlinedButton(
                                         onClick = {
-                                            // Run the DELETE off the main thread to avoid a UI hitch on a large index.
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                ScreenshotIndexStore(this@SettingsActivity).purge()
-                                                withContext(Dispatchers.Main) {
-                                                    screenshotIndexStatus = getString(R.string.settings_index_count, 0)
-                                                    android.widget.Toast.makeText(
-                                                        this@SettingsActivity,
-                                                        getString(R.string.toast_index_purged),
-                                                        android.widget.Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
+                                            lifecycleScope.launch {
+                                                screenshotIndexStore.purge()
+                                                screenshotIndexStatus = getString(R.string.settings_index_count, 0)
+                                                android.widget.Toast.makeText(
+                                                    this@SettingsActivity,
+                                                    getString(R.string.toast_index_purged),
+                                                    android.widget.Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                         },
                                         shape = RoundedCornerShape(8.dp)

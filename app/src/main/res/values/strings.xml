@@ -251,6 +251,7 @@
     <string name="settings_index_disabled">Index disabled.</string>
     <string name="settings_index_controls">Local index controls</string>
     <string name="settings_index_count">Indexed items: %1$d</string>
+    <string name="settings_index_loading">Reading local index…</string>
     <string name="settings_index_rebuilding">Rebuilding index…</string>
     <string name="settings_rebuild">Rebuild</string>
     <string name="settings_purge">Purge</string>

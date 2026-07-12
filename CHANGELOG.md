@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Fail-closed asynchronous screenshot index (v6.37.0).**
+
+- Converted every one-shot Room DAO/index operation to a suspend API, moved
+  MediaStore rescans onto the IO dispatcher inside the store, and removed the
+  Settings composition-time count query. Room main-thread access is no longer
+  enabled.
+- Removed database-wide destructive migration fallback so future user-owned
+  collections, notes, or source metadata cannot be silently erased by a missing
+  migration.
+- Enabled and tracked Room v1 schema export. Added a Room 2.8.4 migration-test
+  harness that opens the exported v1 schema with representative data and tests
+  suspend replace/purge behavior; debug instrumentation uses a separate package
+  so it cannot replace an installed production build.
+
 **Active-window Accessibility capture (v6.36.0).**
 
 - Android 14 and later Long Screenshot and Step Capture sessions now target the
