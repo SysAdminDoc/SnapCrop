@@ -111,6 +111,8 @@ are blocked behind explicit opt-in and evaluation gates.
 - Double-tap a text block to crop directly to it
 
 **Adjust — 13 Sliders + 17 Filters**
+- Android 14+ Ultra HDR screenshots retain their gain map through editing and export
+  as JPEG, including crop, perspective, redaction, annotations, borders, and watermarks.
 - Brightness, Contrast, Saturation, Warmth, Vignette, Sharpen, Highlights, Shadows, Tilt-Shift, Denoise
 - Per-channel RGB curves
 - 17 filters: Mono, Sepia, Cool, Warm, Vivid, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red/Blue/Green Pop, Glitch + Auto-enhance

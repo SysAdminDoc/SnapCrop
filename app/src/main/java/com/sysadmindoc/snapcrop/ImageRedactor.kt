@@ -46,6 +46,7 @@ object ImageRedactor {
                 RedactionStyle.BLUR -> blurInPlace(result, canvas, region.bounds)
             }
         }
+        preserveUltraHdrGainmap(bitmap, result)
         return result
     }
 
@@ -53,6 +54,7 @@ object ImageRedactor {
         if (rects.isEmpty()) return bitmap
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         rects.forEach { rect -> opaqueInPlace(result, rect, color) }
+        preserveUltraHdrGainmap(bitmap, result)
         return result
     }
 
@@ -61,6 +63,7 @@ object ImageRedactor {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
         rects.forEach { rect -> pixelateInPlace(result, canvas, rect) }
+        preserveUltraHdrGainmap(bitmap, result)
         return result
     }
 
@@ -69,6 +72,7 @@ object ImageRedactor {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
         rects.forEach { rect -> blurInPlace(result, canvas, rect) }
+        preserveUltraHdrGainmap(bitmap, result)
         return result
     }
 

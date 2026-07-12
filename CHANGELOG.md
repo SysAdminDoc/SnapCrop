@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Ultra HDR edit/export preservation (v6.45.0).**
+
+- Android 14+ gain-map inputs now retain HDR metadata through redaction, adjustments,
+  annotations, perspective correction, crop/shape masks, gradients, borders, and
+  watermarks. Gain-map geometry is transformed independently from the SDR base image,
+  and metadata is cloned when Canvas-created bitmaps require explicit reattachment.
+- Save, Share, and Clipboard choose JPEG for gain-map outputs so the HDR rendition is
+  not silently flattened by a format without Ultra HDR gain-map encoding support.
+- Added Android 14 Robolectric geometry/metadata coverage and a physical-codec JPEG
+  round-trip instrumentation test. Device execution remains recorded as blocked while
+  no ADB target is connected.
+
 **Manual gallery collections (v6.44.0).**
 
 - Added named manual collections alongside smart albums: create/rename/delete from the

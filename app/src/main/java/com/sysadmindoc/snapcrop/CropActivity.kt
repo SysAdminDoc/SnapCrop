@@ -449,17 +449,20 @@ class CropActivity : ComponentActivity() {
     private fun effectiveDeleteOriginalOnSave(): Boolean =
         getDeletePref() && !projectSidecarsEnabled()
 
-    private fun getSaveFormat(): Pair<Bitmap.CompressFormat, Int> {
-        val resolved = getExportFormat(forcePng = false)
+    private fun getSaveFormat(bitmap: Bitmap? = null): Pair<Bitmap.CompressFormat, Int> {
+        val resolved = getExportFormat(forcePng = false, ultraHdr = bitmap?.hasUltraHdrGainmap() == true)
         return resolved.format to resolved.quality
     }
 
-    private fun getExportFormat(forcePng: Boolean): CropExportFormat {
+    private fun getExportFormat(forcePng: Boolean, ultraHdr: Boolean = false): CropExportFormat {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val quality = prefs.getInt("jpeg_quality", 95)
+        if (ultraHdr) {
+            return CropExportFormat(Bitmap.CompressFormat.JPEG, quality.coerceAtLeast(90), "jpg", "image/jpeg")
+        }
         if (forcePng) {
             return CropExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
         }
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
         return when {
             prefs.getBoolean("use_webp", false) -> {
                 @Suppress("DEPRECATION")
@@ -1391,8 +1394,10 @@ class CropActivity : ComponentActivity() {
         } else redacted
 
         val adjusted = applyAdjustments(rotated, adj)
+        preserveUltraHdrGainmap(rotated, adjusted)
         if (adjusted !== rotated && rotated !== bitmap) rotated.recycle()
         val drawn = applyDraw(adjusted, drawPaths)
+        preserveUltraHdrGainmap(adjusted, drawn)
         if (drawn !== adjusted && adjusted !== bitmap) adjusted.recycle()
 
         // Perspective warp: adj[17..24] = quad TL.x, TL.y, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y
@@ -1412,6 +1417,7 @@ class CropActivity : ComponentActivity() {
             val warped = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
             val warpCanvas = Canvas(warped)
             warpCanvas.drawBitmap(drawn, warpMatrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+            preserveUltraHdrGainmap(drawn, warped, warpMatrix)
             if (drawn !== bitmap) drawn.recycle()
             return warped
         }
@@ -1421,6 +1427,11 @@ class CropActivity : ComponentActivity() {
         val cw = rect.width().coerceAtMost(drawn.width - cl).coerceAtLeast(1)
         val ch = rect.height().coerceAtMost(drawn.height - ct).coerceAtLeast(1)
         val cropped = Bitmap.createBitmap(drawn, cl, ct, cw, ch)
+        preserveUltraHdrGainmap(
+            drawn,
+            cropped,
+            Matrix().apply { postTranslate(-cl.toFloat(), -ct.toFloat()) }
+        )
         if (drawn !== bitmap && drawn !== cropped) drawn.recycle()
 
         // Shape crop masking
@@ -1435,7 +1446,6 @@ class CropActivity : ComponentActivity() {
             c.drawCircle(size / 2f, size / 2f, size / 2f, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 2f) {
             // Rounded rect
@@ -1446,7 +1456,6 @@ class CropActivity : ComponentActivity() {
             c.drawRoundRect(RectF(0f, 0f, cropped.width.toFloat(), cropped.height.toFloat()), radius, radius, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, 0f, 0f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 3f) {
             // Star (5-point)
@@ -1467,7 +1476,6 @@ class CropActivity : ComponentActivity() {
             c.drawPath(starPath, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 4f) {
             // Heart
@@ -1485,7 +1493,6 @@ class CropActivity : ComponentActivity() {
             c.drawPath(heartPath, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 5f) {
             // Triangle (equilateral)
@@ -1501,7 +1508,6 @@ class CropActivity : ComponentActivity() {
             c.drawPath(triPath, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 6f) {
             // Hexagon
@@ -1521,7 +1527,6 @@ class CropActivity : ComponentActivity() {
             c.drawPath(hexPath, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else if (shapeType == 7f) {
             // Diamond (rotated square)
@@ -1540,10 +1545,20 @@ class CropActivity : ComponentActivity() {
             c.drawPath(diaPath, shapePaint)
             shapePaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
             c.drawBitmap(cropped, -(cropped.width - size) / 2f, -(cropped.height - size) / 2f, shapePaint)
-            cropped.recycle()
             s
         } else {
             cropped
+        }
+
+        if (shaped !== cropped) {
+            val shapeTransform = Matrix().apply {
+                postTranslate(
+                    -(cropped.width - shaped.width) / 2f,
+                    -(cropped.height - shaped.height) / 2f
+                )
+            }
+            preserveUltraHdrGainmap(cropped, shaped, shapeTransform)
+            cropped.recycle()
         }
 
         // Gradient background fill for transparent areas (shape crops only)
@@ -1575,6 +1590,7 @@ class CropActivity : ComponentActivity() {
         canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), gradPaint)
         // Draw the shape-cropped image on top (transparent areas show gradient)
         canvas.drawBitmap(bitmap, 0f, 0f, null)
+        preserveUltraHdrGainmap(bitmap, result)
         bitmap.recycle()
         return result
     }
@@ -1835,7 +1851,7 @@ class CropActivity : ComponentActivity() {
                 val annotationSvg = buildAnnotationSvg(rect, redactions, drawPaths)
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-                val exportFormat = getExportFormat(forcePng = hasShapeCrop)
+                val exportFormat = getExportFormat(forcePng = hasShapeCrop, ultraHdr = cropped.hasUltraHdrGainmap())
                 val projectSidecarJson = if (projectSidecarsEnabled()) {
                     buildProjectSidecarJson(rect, redactions, drawPaths, adj, deleteOriginal, exportFormat, savePath)
                 } else {
@@ -1870,8 +1886,11 @@ class CropActivity : ComponentActivity() {
                 cropped = applyExportDecorations(createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj))
                 val clipDir = File(cacheDir, "clipboard")
                 clipDir.mkdirs()
-                val file = File(clipDir, "clip.png")
-                file.outputStream().use { cropped.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                val ultraHdr = cropped.hasUltraHdrGainmap()
+                val file = File(clipDir, if (ultraHdr) "clip.jpg" else "clip.png")
+                file.outputStream().use {
+                    cropped.compress(if (ultraHdr) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG, 100, it)
+                }
                 withContext(Dispatchers.Main) {
                     val clipUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", file)
                     val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
@@ -1978,9 +1997,9 @@ class CropActivity : ComponentActivity() {
     private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             val out = applyExportDecorations(shareBitmap)
-            val (format, quality) = getSaveFormat()
+            val (format, quality) = getSaveFormat(out)
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
-            val (shareFmt, shareQual) = if (hasShapeCrop) Bitmap.CompressFormat.PNG to 100 else format to quality
+            val (shareFmt, shareQual) = if (hasShapeCrop && !out.hasUltraHdrGainmap()) Bitmap.CompressFormat.PNG to 100 else format to quality
             val isWebp = shareFmt.isWebpFormat()
             val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
@@ -2057,6 +2076,11 @@ class CropActivity : ComponentActivity() {
         val canvas = Canvas(result)
         canvas.drawColor(bgColor)
         canvas.drawBitmap(bitmap, borderSize.toFloat(), borderSize.toFloat(), null)
+        preserveUltraHdrGainmap(
+            bitmap,
+            result,
+            Matrix().apply { postTranslate(borderSize.toFloat(), borderSize.toFloat()) }
+        )
         return result
     }
 
@@ -2087,6 +2111,7 @@ class CropActivity : ComponentActivity() {
             y += spacing
         }
         canvas.restore()
+        preserveUltraHdrGainmap(bitmap, result)
         return result
     }
 
@@ -2200,7 +2225,7 @@ class CropActivity : ComponentActivity() {
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val stripExif = prefs.getBoolean("strip_exif", false)
-        val exportFormat = getExportFormat(forcePng)
+        val exportFormat = getExportFormat(forcePng, ultraHdr = bitmap.hasUltraHdrGainmap())
         val format = exportFormat.format
         val quality = exportFormat.quality
         val ext = exportFormat.ext

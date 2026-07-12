@@ -70,6 +70,7 @@
             android:name=".CropActivity"
             android:exported="true"
             android:theme="@style/Theme.SnapCrop"
+            android:colorMode="hdr"
             android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize">
             <intent-filter>
