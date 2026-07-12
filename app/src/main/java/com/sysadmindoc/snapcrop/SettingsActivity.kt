@@ -385,7 +385,7 @@ class SettingsActivity : ComponentActivity() {
                                                         contentResolver,
                                                         screenW,
                                                         screenH,
-                                                        FavoritesStore.getAllIds(this@SettingsActivity)
+                                                        FavoritesStore.getAllKeys(this@SettingsActivity)
                                                     )
                                                 screenshotIndexStatus = getString(R.string.settings_index_count, count)
                                                 android.widget.Toast.makeText(

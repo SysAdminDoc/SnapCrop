@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Structured gallery filters and stable media identity (v6.57.0).**
+
+- Gallery filters now combine media type, creator/source folder, indexed category,
+  relative date, orientation, minimum dimensions, URI-keyed favorite state, and
+  canonical MIME format. Active counts, clear-all, stable sorting, process-restored
+  state, and filtered-result collection seeding share the existing Gallery flow.
+- The local index now uses URI primary identity so equal numeric image/video IDs
+  cannot overwrite each other. Room v3 adds MIME, creator package, video dimensions,
+  orientation, and facet indexes while preserving manual collections.
+- Index rebuilds retain bounded replaceable OCR/category data, URI/date matching
+  prevents recycled MediaStore entries from inheriting stale text, and reactive
+  enrichment no longer reloads the album or clears valid selection.
+
 **Precise multi-layer layout commands (v6.56.0).**
 
 - The draw-layer panel now supports persistent multi-selection plus six crop-bound

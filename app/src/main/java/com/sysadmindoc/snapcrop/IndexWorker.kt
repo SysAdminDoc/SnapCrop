@@ -18,12 +18,12 @@ class IndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
         return try {
             val store = ScreenshotIndexStore(applicationContext)
             val screenSize = getScreenSize(applicationContext)
-            val favIds = FavoritesStore.getAllIds(applicationContext)
+            val favoriteKeys = FavoritesStore.getAllKeys(applicationContext)
             store.rebuildFromMediaStore(
                 applicationContext.contentResolver,
                 screenSize.first,
                 screenSize.second,
-                favIds
+                favoriteKeys
             )
             Result.success()
         } catch (error: Throwable) {

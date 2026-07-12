@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.room.ColumnInfo
 import androidx.room.Dao
@@ -41,8 +42,23 @@ data class ScreenshotIndexEntry(
     val isFavorite: Boolean,
     val categories: Set<String>,
     val searchText: String,
+    val mimeType: String = "",
+    val ownerPackage: String = "",
+    val orientation: String = mediaOrientation(width, height),
     val indexedAt: Long = System.currentTimeMillis()
 )
+
+internal fun mediaOrientation(width: Int, height: Int): String = when {
+    width <= 0 || height <= 0 -> "unknown"
+    width == height -> "square"
+    width > height -> "landscape"
+    else -> "portrait"
+}
+
+private fun normalizeIndexMime(value: String?): String = value.orEmpty()
+    .substringBefore(';')
+    .trim()
+    .lowercase(Locale.ROOT)
 
 internal object ScreenshotIndexClassifier {
     fun buildEntry(
@@ -56,7 +72,9 @@ internal object ScreenshotIndexClassifier {
         size: Long,
         isVideo: Boolean,
         isScreenshot: Boolean,
-        isFavorite: Boolean
+        isFavorite: Boolean,
+        mimeType: String = "",
+        ownerPackage: String = ""
     ): ScreenshotIndexEntry {
         val source = "$name $albumPath".lowercase()
         val categories = linkedSetOf<String>()
@@ -80,6 +98,8 @@ internal object ScreenshotIndexClassifier {
             if (isScreenshot) append("screenshot capture screen ")
             if (isVideo) append("video recording clip ")
             if (isFavorite) append("favorite starred ")
+            append(normalizeIndexMime(mimeType)).append(' ')
+            append(ownerPackage).append(' ')
         }.lowercase()
 
         return ScreenshotIndexEntry(
@@ -95,7 +115,10 @@ internal object ScreenshotIndexClassifier {
             isScreenshot = isScreenshot,
             isFavorite = isFavorite,
             categories = categories,
-            searchText = searchText
+            searchText = searchText,
+            mimeType = normalizeIndexMime(mimeType),
+            ownerPackage = ownerPackage.trim(),
+            orientation = mediaOrientation(width, height)
         )
     }
 
@@ -129,10 +152,23 @@ internal object ScreenshotIndexClassifier {
     )
 }
 
-@Entity(tableName = "screenshot_index")
+@Entity(
+    tableName = "screenshot_index",
+    indices = [
+        Index(value = ["media_id"]),
+        Index(value = ["date_added", "uri"]),
+        Index(value = ["is_video", "date_added"]),
+        Index(value = ["album_path", "date_added"]),
+        Index(value = ["owner_package", "date_added"]),
+        Index(value = ["mime_type", "date_added"]),
+        Index(value = ["orientation", "date_added"]),
+        Index(value = ["is_favorite", "date_added"]),
+        Index(value = ["width", "height"])
+    ]
+)
 internal data class ScreenshotIndexRow(
-    @PrimaryKey @ColumnInfo(name = "media_id") val mediaId: Long,
-    @ColumnInfo(name = "uri") val uri: String,
+    @ColumnInfo(name = "media_id") val mediaId: Long,
+    @PrimaryKey @ColumnInfo(name = "uri") val uri: String,
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "album_path") val albumPath: String,
     @ColumnInfo(name = "width") val width: Int,
@@ -142,9 +178,14 @@ internal data class ScreenshotIndexRow(
     @ColumnInfo(name = "is_video") val isVideo: Boolean,
     @ColumnInfo(name = "is_screenshot") val isScreenshot: Boolean,
     @ColumnInfo(name = "is_favorite") val isFavorite: Boolean,
-    @ColumnInfo(name = "categories") val categories: String,
-    @ColumnInfo(name = "search_text") val searchText: String,
-    @ColumnInfo(name = "indexed_at") val indexedAt: Long
+    @ColumnInfo(name = "base_categories") val baseCategories: String,
+    @ColumnInfo(name = "recognized_categories") val recognizedCategories: String = "",
+    @ColumnInfo(name = "base_search_text") val baseSearchText: String,
+    @ColumnInfo(name = "recognized_text") val recognizedText: String = "",
+    @ColumnInfo(name = "mime_type") val mimeType: String = "",
+    @ColumnInfo(name = "owner_package") val ownerPackage: String = "",
+    @ColumnInfo(name = "orientation") val orientation: String = "unknown",
+    @ColumnInfo(name = "indexed_at") val indexedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(
@@ -202,14 +243,14 @@ internal object ManualCollectionNames {
 
 @Dao
 internal interface ScreenshotIndexDao {
-    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
+    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC, uri DESC")
     suspend fun getAll(): List<ScreenshotIndexRow>
 
-    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC")
+    @Query("SELECT * FROM screenshot_index ORDER BY date_added DESC, uri DESC")
     fun observeAll(): Flow<List<ScreenshotIndexRow>>
 
-    @Query("SELECT * FROM screenshot_index WHERE media_id = :id LIMIT 1")
-    suspend fun getById(id: Long): ScreenshotIndexRow?
+    @Query("SELECT * FROM screenshot_index WHERE uri = :uri LIMIT 1")
+    suspend fun getByUri(uri: String): ScreenshotIndexRow?
 
     @Query("SELECT COUNT(*) FROM screenshot_index")
     suspend fun count(): Int
@@ -225,8 +266,16 @@ internal interface ScreenshotIndexDao {
 
     @Transaction
     suspend fun replaceAll(rows: List<ScreenshotIndexRow>) {
+        val recognizedByUri = getAll().associateBy { it.uri }
         deleteAll()
-        upsertAll(rows)
+        upsertAll(rows.map { row ->
+            recognizedByUri[row.uri]?.takeIf { it.dateAdded == row.dateAdded }?.let { previous ->
+                row.copy(
+                    recognizedCategories = previous.recognizedCategories,
+                    recognizedText = previous.recognizedText
+                )
+            } ?: row
+        })
     }
 
     @Query("""SELECT c.collection_id, c.name, COUNT(i.media_uri) AS item_count,
@@ -269,7 +318,7 @@ internal interface ScreenshotIndexDao {
 
 @Database(
     entities = [ScreenshotIndexRow::class, ManualCollectionRow::class, ManualCollectionItemRow::class],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -301,6 +350,61 @@ internal object ScreenshotIndexMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_manual_collection_item_media_uri_media_date_added` ON `manual_collection_item` (`media_uri`, `media_date_added`)")
         }
     }
+
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `screenshot_index_v3` (
+                    `media_id` INTEGER NOT NULL,
+                    `uri` TEXT NOT NULL,
+                    `name` TEXT NOT NULL,
+                    `album_path` TEXT NOT NULL,
+                    `width` INTEGER NOT NULL,
+                    `height` INTEGER NOT NULL,
+                    `date_added` INTEGER NOT NULL,
+                    `size` INTEGER NOT NULL,
+                    `is_video` INTEGER NOT NULL,
+                    `is_screenshot` INTEGER NOT NULL,
+                    `is_favorite` INTEGER NOT NULL,
+                    `base_categories` TEXT NOT NULL,
+                    `recognized_categories` TEXT NOT NULL,
+                    `base_search_text` TEXT NOT NULL,
+                    `recognized_text` TEXT NOT NULL,
+                    `mime_type` TEXT NOT NULL,
+                    `owner_package` TEXT NOT NULL,
+                    `orientation` TEXT NOT NULL,
+                    `indexed_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`uri`))""".trimIndent()
+            )
+            db.execSQL(
+                """INSERT INTO `screenshot_index_v3` (
+                    `media_id`, `uri`, `name`, `album_path`, `width`, `height`,
+                    `date_added`, `size`, `is_video`, `is_screenshot`, `is_favorite`,
+                    `base_categories`, `recognized_categories`, `base_search_text`,
+                    `recognized_text`, `mime_type`, `owner_package`, `orientation`, `indexed_at`)
+                    SELECT `media_id`, `uri`, `name`, `album_path`, `width`, `height`,
+                    `date_added`, `size`, `is_video`, `is_screenshot`, `is_favorite`,
+                    `categories`, `categories`, `search_text`, SUBSTR(`search_text`, 1, 8192),
+                    '', '', CASE
+                        WHEN `width` <= 0 OR `height` <= 0 THEN 'unknown'
+                        WHEN `width` = `height` THEN 'square'
+                        WHEN `width` > `height` THEN 'landscape'
+                        ELSE 'portrait' END,
+                    `indexed_at` FROM `screenshot_index`""".trimIndent()
+            )
+            db.execSQL("DROP TABLE `screenshot_index`")
+            db.execSQL("ALTER TABLE `screenshot_index_v3` RENAME TO `screenshot_index`")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_media_id` ON `screenshot_index` (`media_id`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_date_added_uri` ON `screenshot_index` (`date_added`, `uri`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_is_video_date_added` ON `screenshot_index` (`is_video`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_album_path_date_added` ON `screenshot_index` (`album_path`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_owner_package_date_added` ON `screenshot_index` (`owner_package`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_mime_type_date_added` ON `screenshot_index` (`mime_type`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_orientation_date_added` ON `screenshot_index` (`orientation`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_is_favorite_date_added` ON `screenshot_index` (`is_favorite`, `date_added`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_width_height` ON `screenshot_index` (`width`, `height`)")
+        }
+    }
 }
 
 /**
@@ -316,46 +420,42 @@ class ScreenshotIndexStore(context: Context) {
         resolver: ContentResolver,
         screenW: Int,
         screenH: Int,
-        favoriteIds: Set<Long>
+        favoriteKeys: Set<String>
     ): Int = withContext(Dispatchers.IO) {
         val entries = buildList {
-            addAll(queryImages(resolver, screenW, screenH, favoriteIds))
-            addAll(queryVideos(resolver, favoriteIds))
+            addAll(queryImages(resolver, screenW, screenH, favoriteKeys))
+            addAll(queryVideos(resolver, favoriteKeys))
         }
         dao.replaceAll(entries.map { it.toRow() })
         entries.size
     }
 
-    suspend fun loadEntryMap(): Map<Long, ScreenshotIndexEntry> =
-        dao.getAll().associate { it.mediaId to it.toEntry() }
+    suspend fun loadEntryMap(): Map<String, ScreenshotIndexEntry> =
+        dao.getAll().associate { it.uri to it.toEntry() }
 
     /** Emits the full index whenever it changes (rebuild, OCR token capture, purge). */
-    fun observeEntries(): Flow<Map<Long, ScreenshotIndexEntry>> =
-        dao.observeAll().map { rows -> rows.associate { it.mediaId to it.toEntry() } }
+    fun observeEntries(): Flow<Map<String, ScreenshotIndexEntry>> =
+        dao.observeAll().map { rows -> rows.associate { it.uri to it.toEntry() } }
 
     suspend fun purge() {
         dao.deleteAll()
     }
 
     suspend fun updateRecognizedText(uri: Uri, text: String, codes: List<String>) {
-        val mediaId = try {
-            ContentUris.parseId(uri)
-        } catch (_: Exception) {
-            return
-        }
-        val existing = dao.getById(mediaId)?.toEntry() ?: return
-        val recognizedText = (listOf(text) + codes).joinToString(" ").trim()
-        if (recognizedText.isBlank()) return
-
-        val categories = existing.categories.toMutableSet()
+        val existing = dao.getByUri(uri.toString()) ?: return
+        val recognizedText = (listOf(text) + codes).joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(MAX_RECOGNIZED_TEXT_CHARS)
+        val categories = linkedSetOf<String>()
         if (codes.isNotEmpty()) categories.add("codes")
         if (SensitiveTextPatterns.containsSensitivePattern(recognizedText)) categories.add("sensitive")
         val updated = existing.copy(
-            categories = categories,
-            searchText = "${existing.searchText} $recognizedText ${categories.joinToString(" ")}".lowercase(),
+            recognizedCategories = categories.joinToString(","),
+            recognizedText = recognizedText.lowercase(Locale.ROOT),
             indexedAt = System.currentTimeMillis()
         )
-        dao.upsert(updated.toRow())
+        dao.upsert(updated)
     }
 
     suspend fun count(): Int = dao.count()
@@ -410,18 +510,21 @@ class ScreenshotIndexStore(context: Context) {
         resolver: ContentResolver,
         screenW: Int,
         screenH: Int,
-        favoriteIds: Set<Long>
+        favoriteKeys: Set<String>
     ): List<ScreenshotIndexEntry> {
         val entries = mutableListOf<ScreenshotIndexEntry>()
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATE_ADDED,
             MediaStore.Images.Media.DISPLAY_NAME,
             MediaStore.Images.Media.SIZE,
             MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT,
-            MediaStore.Images.Media.RELATIVE_PATH
-        )
+            MediaStore.Images.Media.RELATIVE_PATH,
+            MediaStore.Images.Media.MIME_TYPE
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
         resolver.query(
             MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             projection,
@@ -436,6 +539,8 @@ class ScreenshotIndexStore(context: Context) {
             val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
             val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+            val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val name = cursor.getString(nameCol) ?: ""
@@ -454,7 +559,9 @@ class ScreenshotIndexStore(context: Context) {
                         size = cursor.getLong(sizeCol),
                         isVideo = false,
                         isScreenshot = looksLikeScreenshot(width, height, name, screenW, screenH),
-                        isFavorite = id in favoriteIds
+                        isFavorite = FavoritesStore.isFavoriteKey(favoriteKeys, uri, id, isVideo = false),
+                        mimeType = cursor.getString(mimeCol).orEmpty(),
+                        ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else ""
                     )
                 )
             }
@@ -464,17 +571,22 @@ class ScreenshotIndexStore(context: Context) {
 
     private fun queryVideos(
         resolver: ContentResolver,
-        favoriteIds: Set<Long>
+        favoriteKeys: Set<String>
     ): List<ScreenshotIndexEntry> {
         val entries = mutableListOf<ScreenshotIndexEntry>()
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DATE_ADDED,
             MediaStore.Video.Media.DISPLAY_NAME,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.RELATIVE_PATH
-        )
+            MediaStore.Video.Media.RELATIVE_PATH,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
+            MediaStore.Video.Media.MIME_TYPE
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
         resolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             projection,
@@ -487,6 +599,10 @@ class ScreenshotIndexStore(context: Context) {
             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
             val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.RELATIVE_PATH)
+            val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+            val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+            val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val name = cursor.getString(nameCol) ?: ""
@@ -497,13 +613,15 @@ class ScreenshotIndexStore(context: Context) {
                         uri = uri,
                         name = name,
                         albumPath = cursor.getString(pathCol) ?: "",
-                        width = 0,
-                        height = 0,
+                        width = cursor.getInt(widthCol),
+                        height = cursor.getInt(heightCol),
                         dateAdded = cursor.getLong(dateCol),
                         size = cursor.getLong(sizeCol),
                         isVideo = true,
                         isScreenshot = false,
-                        isFavorite = id in favoriteIds
+                        isFavorite = FavoritesStore.isFavoriteKey(favoriteKeys, uri, id, isVideo = true),
+                        mimeType = cursor.getString(mimeCol).orEmpty(),
+                        ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else ""
                     )
                 )
             }
@@ -523,12 +641,19 @@ class ScreenshotIndexStore(context: Context) {
         isVideo = isVideo,
         isScreenshot = isScreenshot,
         isFavorite = isFavorite,
-        categories = categories.joinToString(","),
-        searchText = searchText,
+        baseCategories = categories.joinToString(","),
+        baseSearchText = searchText,
+        mimeType = mimeType,
+        ownerPackage = ownerPackage,
+        orientation = orientation,
         indexedAt = indexedAt
     )
 
-    private fun ScreenshotIndexRow.toEntry(): ScreenshotIndexEntry = ScreenshotIndexEntry(
+    private fun ScreenshotIndexRow.toEntry(): ScreenshotIndexEntry {
+        val categories = (baseCategories.split(',') + recognizedCategories.split(','))
+            .filter { it.isNotBlank() }
+            .toSet()
+        return ScreenshotIndexEntry(
         mediaId = mediaId,
         uri = Uri.parse(uri),
         name = name,
@@ -540,13 +665,18 @@ class ScreenshotIndexStore(context: Context) {
         isVideo = isVideo,
         isScreenshot = isScreenshot,
         isFavorite = isFavorite,
-        categories = categories.split(',').filter { it.isNotBlank() }.toSet(),
-        searchText = searchText,
+        categories = categories,
+        searchText = "$baseSearchText $recognizedText ${categories.joinToString(" ")}".trim().lowercase(Locale.ROOT),
+        mimeType = mimeType,
+        ownerPackage = ownerPackage,
+        orientation = orientation,
         indexedAt = indexedAt
     )
+    }
 
     companion object {
         const val PREF_ENABLED = "screenshot_index_enabled"
+        private const val MAX_RECOGNIZED_TEXT_CHARS = 8192
         private const val DB_NAME = "screenshot_index_room.db"
         private const val LEGACY_DB_NAME = "screenshot_index.db"
 
@@ -556,7 +686,10 @@ class ScreenshotIndexStore(context: Context) {
         private fun database(context: Context): ScreenshotIndexDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, DB_NAME)
-                    .addMigrations(ScreenshotIndexMigrations.MIGRATION_1_2)
+                    .addMigrations(
+                        ScreenshotIndexMigrations.MIGRATION_1_2,
+                        ScreenshotIndexMigrations.MIGRATION_2_3
+                    )
                     .build()
                     .also {
                         INSTANCE = it

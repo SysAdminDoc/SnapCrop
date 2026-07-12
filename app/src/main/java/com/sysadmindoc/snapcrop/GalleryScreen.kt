@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,6 +71,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -102,6 +105,8 @@ data class Photo(
     val width: Int = 0, val height: Int = 0,
     val isScreenshot: Boolean = false,
     val albumPath: String = "",
+    val mimeType: String = "",
+    val ownerPackage: String = "",
     val indexCategories: Set<String> = emptySet(),
     val indexText: String = ""
 )
@@ -229,33 +234,61 @@ private fun smartAlbumRuleFor(path: String): SmartAlbumRule? =
 
 object FavoritesStore {
     private const val PREF_NAME = "snapcrop_favorites"
+    private const val URI_PREFIX = "uri:"
 
-    fun isFavorite(context: Context, id: Long): Boolean =
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).contains(id.toString())
+    private fun uriKey(uri: Uri): String = "$URI_PREFIX$uri"
 
-    fun toggle(context: Context, id: Long): Boolean {
+    internal fun isFavoriteKey(keys: Set<String>, uri: Uri, id: Long, isVideo: Boolean): Boolean =
+        uriKey(uri) in keys || (!isVideo && id.toString() in keys)
+
+    fun isFavorite(context: Context, photo: Photo): Boolean = isFavoriteKey(
+        getAllKeys(context), photo.uri, photo.id, photo.isVideo
+    )
+
+    fun toggle(context: Context, photo: Photo): Boolean {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val isFav = prefs.contains(id.toString())
-        if (isFav) prefs.edit().remove(id.toString()).apply()
-        else prefs.edit().putBoolean(id.toString(), true).apply()
+        val keys = prefs.all.keys
+        val isFav = isFavoriteKey(keys, photo.uri, photo.id, photo.isVideo)
+        prefs.edit().apply {
+            if (isFav) {
+                remove(uriKey(photo.uri))
+                if (!photo.isVideo) remove(photo.id.toString())
+            } else {
+                putBoolean(uriKey(photo.uri), true)
+                if (!photo.isVideo) remove(photo.id.toString())
+            }
+        }.apply()
         return !isFav
     }
 
-    fun getAllIds(context: Context): Set<Long> =
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys.mapNotNull { it.toLongOrNull() }.toSet()
+    fun getAllKeys(context: Context): Set<String> =
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
 
-    fun removeAll(context: Context, ids: Collection<Long>) {
-        if (ids.isEmpty()) return
+    fun favoriteUris(keys: Set<String>, photos: Collection<Photo>): Set<String> =
+        photos.asSequence()
+            .filter { isFavoriteKey(keys, it.uri, it.id, it.isVideo) }
+            .map { it.uri.toString() }
+            .toSet()
+
+    fun removeAll(context: Context, uris: Collection<Uri>) {
+        if (uris.isEmpty()) return
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).edit().apply {
-            ids.forEach { remove(it.toString()) }
+            uris.forEach { uri ->
+                remove(uriKey(uri))
+                if (!uri.toString().contains("/video/")) {
+                    runCatching { ContentUris.parseId(uri) }.getOrNull()?.let { remove(it.toString()) }
+                }
+            }
         }.apply()
     }
 }
 
-private fun Photo.withIndex(entry: ScreenshotIndexEntry?): Photo {
-    if (entry == null) return this
+internal fun Photo.withIndex(entry: ScreenshotIndexEntry?): Photo {
+    if (entry == null || entry.uri != uri || entry.dateAdded != dateAdded) return this
     return copy(
         isScreenshot = entry.isScreenshot,
+        mimeType = entry.mimeType.ifBlank { mimeType },
+        ownerPackage = entry.ownerPackage.ifBlank { ownerPackage },
         indexCategories = entry.categories,
         indexText = entry.searchText
     )
@@ -315,17 +348,20 @@ fun GalleryScreen(
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var manualCollections by remember { mutableStateOf<List<ManualCollectionSummary>>(emptyList()) }
-    var selectedAlbum by remember { mutableStateOf<String?>(null) }
+    var selectedAlbum by rememberSaveable { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
-    var indexEntries by remember { mutableStateOf<Map<Long, ScreenshotIndexEntry>>(emptyMap()) }
+    var indexEntries by remember { mutableStateOf<Map<String, ScreenshotIndexEntry>>(emptyMap()) }
     var indexEnabled by remember { mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) }
     var isLoading by remember { mutableStateOf(true) }
     var viewerIndex by remember { mutableIntStateOf(-1) }
     val selectedUris = remember { mutableStateListOf<String>() }
-    var searchQuery by remember { mutableStateOf("") }
-    var favIds by remember { mutableStateOf(FavoritesStore.getAllIds(context)) }
-    var sortMode by remember { mutableStateOf(SortMode.DATE) }
-    var gridColumns by remember { mutableIntStateOf(3) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var favoriteKeys by remember { mutableStateOf(FavoritesStore.getAllKeys(context)) }
+    var sortMode by rememberSaveable { mutableStateOf(SortMode.DATE) }
+    var gridColumns by rememberSaveable { mutableIntStateOf(3) }
+    var encodedFilters by rememberSaveable { mutableStateOf(GalleryFilterState().encode()) }
+    val galleryFilters = remember(encodedFilters) { GalleryFilterState.decode(encodedFilters) }
+    var showFilters by remember { mutableStateOf(false) }
     var pendingDeleteUris by remember { mutableStateOf<List<Uri>?>(null) }
     var showCollectionPicker by remember { mutableStateOf(false) }
     var collectionEditorId by remember { mutableStateOf<Long?>(null) }
@@ -333,6 +369,7 @@ fun GalleryScreen(
     var collectionError by remember { mutableStateOf<String?>(null) }
     var collectionMutating by remember { mutableStateOf(false) }
     var addSelectionAfterCreate by remember { mutableStateOf(false) }
+    var pendingCollectionSelection by remember { mutableStateOf<CollectionSelection?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
 
     LaunchedEffect(Unit) {
@@ -340,7 +377,7 @@ fun GalleryScreen(
     }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
-    LaunchedEffect(refreshKey, indexEnabled, favIds, canReadImages, canReadVideos) {
+    LaunchedEffect(refreshKey, indexEnabled, favoriteKeys, canReadImages, canReadVideos) {
         val refreshedCollections = withContext(Dispatchers.IO) {
             val index = if (indexEnabled) {
                 val store = ScreenshotIndexStore(context)
@@ -372,25 +409,25 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(selectedAlbum, manualCollections, indexEntries, refreshKey, favIds, canReadImages, canReadVideos) {
+    LaunchedEffect(selectedAlbum, manualCollections, refreshKey, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
             selectedUris.clear()
             val loadedPhotos = withContext(Dispatchers.IO) {
                 when (path) {
-                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries, canReadImages, canReadVideos)
-                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, indexEntries, canReadImages, canReadVideos)
+                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, canReadVideos)
+                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllKeys(context), screenW, screenH, emptyMap(), canReadImages, canReadVideos)
                     else -> if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
                         val collectionId = manualCollectionId(path) ?: return@withContext emptyList()
                         val members = collectionStore.collectionItems(collectionId)
                         filterCollectionPhotos(
-                            loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries, canReadImages, canReadVideos),
+                            loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, canReadVideos),
                             members
                         )
                     } else if (path.startsWith(SMART_ALBUM_PREFIX)) {
-                        loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages)
+                        loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, includeVideos = false)
                     } else {
-                        loadPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages, canReadVideos)
+                        loadPhotos(context.contentResolver, path, screenW, screenH, emptyMap(), canReadImages, canReadVideos)
                     }
                 }
             }
@@ -399,12 +436,39 @@ fun GalleryScreen(
         }
     }
 
-    // Compute sorted photos at the top level so viewer uses same order as grid
-    val viewerPhotos = remember(photos, sortMode, searchQuery, selectedAlbum) {
+    val enrichedPhotos = remember(photos, indexEntries, selectedAlbum, favoriteKeys) {
+        val enriched = photos.map { photo -> photo.withIndex(indexEntries[photo.uri.toString()]) }
+        when (selectedAlbum) {
+            FAVORITES_PATH -> enriched.filter { FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }
+            else -> smartAlbumRuleFor(selectedAlbum.orEmpty())?.let { rule -> enriched.filter(rule::matches) } ?: enriched
+        }
+    }
+    val favoriteUris = remember(favoriteKeys, enrichedPhotos) {
+        FavoritesStore.favoriteUris(favoriteKeys, enrichedPhotos)
+    }
+    val structuredPhotos = remember(enrichedPhotos, galleryFilters, favoriteUris) {
+        applyGalleryFilters(
+            enrichedPhotos,
+            galleryFilters,
+            favoriteUris,
+            System.currentTimeMillis() / 1000L
+        )
+    }
+    val sourceOptions = remember(enrichedPhotos) { buildGallerySourceOptions(context, enrichedPhotos) }
+    val categoryOptions = remember(enrichedPhotos) {
+        enrichedPhotos.flatMap(Photo::indexCategories).map { it.trim().lowercase() }
+            .filter(String::isNotBlank).distinct().sorted()
+    }
+    val formatOptions = remember(enrichedPhotos) {
+        enrichedPhotos.map(Photo::galleryFormat).distinct().sortedBy(GalleryFormat::name)
+    }
+
+    // Compute sorted photos at the top level so viewer uses same order as grid.
+    val viewerPhotos = remember(structuredPhotos, sortMode, searchQuery, selectedAlbum) {
         val sorted = when (sortMode) {
-            SortMode.DATE -> photos
-            SortMode.NAME -> photos.sortedBy { it.name.lowercase() }
-            SortMode.SIZE -> photos.sortedByDescending { it.size }
+            SortMode.DATE -> structuredPhotos.sortedWith(compareByDescending<Photo> { it.dateAdded }.thenByDescending { it.uri.toString() })
+            SortMode.NAME -> structuredPhotos.sortedWith(compareBy<Photo> { it.name.lowercase() }.thenBy { it.uri.toString() })
+            SortMode.SIZE -> structuredPhotos.sortedWith(compareByDescending<Photo> { it.size }.thenByDescending { it.uri.toString() })
         }
         if (selectedAlbum != null && searchQuery.isNotBlank()) {
             sorted.filter { it.matchesGalleryQuery(searchQuery) }
@@ -417,6 +481,32 @@ fun GalleryScreen(
         if (viewerIndex >= viewerPhotos.size) {
             viewerIndex = if (viewerPhotos.isEmpty()) -1 else viewerPhotos.lastIndex
         }
+    }
+
+    LaunchedEffect(viewerPhotos) {
+        val visibleUris = viewerPhotos.mapTo(hashSetOf()) { it.uri.toString() }
+        selectedUris.retainAll(visibleUris)
+    }
+
+    if (showFilters) {
+        val collectionSeed = collectionSelection(enrichedPhotos, viewerPhotos.mapTo(hashSetOf()) { it.uri.toString() })
+        GalleryFilterDialog(
+            state = galleryFilters,
+            sourceOptions = sourceOptions,
+            categoryOptions = categoryOptions,
+            formatOptions = formatOptions,
+            indexEnabled = indexEnabled,
+            resultCount = viewerPhotos.size,
+            eligibleCollectionCount = collectionSeed.media.size,
+            skippedCollectionCount = collectionSeed.skipped,
+            onChange = { encodedFilters = it.encode() },
+            onSeedCollection = {
+                pendingCollectionSelection = collectionSeed
+                showFilters = false
+                showCollectionPicker = true
+            },
+            onDismiss = { showFilters = false }
+        )
     }
 
     pendingDeleteUris?.let { uris ->
@@ -459,7 +549,7 @@ fun GalleryScreen(
         val cleanName = collectionName.trim().replace(Regex("\\s+"), " ")
         val nameValid = cleanName.isNotEmpty() && cleanName.length <= 80 && cleanName.lowercase() !in existingNames
         AlertDialog(
-            onDismissRequest = { if (!collectionMutating) { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false } },
+            onDismissRequest = { if (!collectionMutating) { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false; pendingCollectionSelection = null } },
             title = { Text(stringResource(if (editorId == -1L) R.string.gallery_collection_create else R.string.gallery_collection_rename), color = OnSurface) },
             text = {
                 Column {
@@ -489,10 +579,12 @@ fun GalleryScreen(
                             try {
                                 var resultMessage = context.getString(R.string.gallery_collection_saved)
                                 if (editorId == -1L && addSelectionAfterCreate) {
-                                    val selected = collectionSelection(photos, selectedUris.toSet())
+                                    val selected = pendingCollectionSelection
+                                        ?: collectionSelection(enrichedPhotos, selectedUris.toSet())
                                     val (_, added) = collectionStore.createCollection(cleanName, selected.media)
                                     resultMessage = context.getString(R.string.gallery_collection_added_result, added, selected.skipped)
                                     selectedUris.clear()
+                                    pendingCollectionSelection = null
                                 } else if (editorId == -1L) {
                                     collectionStore.createCollection(cleanName)
                                 } else {
@@ -502,6 +594,7 @@ fun GalleryScreen(
                                 collectionEditorId = null
                                 collectionError = null
                                 addSelectionAfterCreate = false
+                                pendingCollectionSelection = null
                             } catch (error: Exception) {
                                 collectionError = error.message ?: context.getString(R.string.gallery_collection_failed)
                             } finally {
@@ -512,7 +605,7 @@ fun GalleryScreen(
                 ) { Text(stringResource(R.string.save)) }
             },
             dismissButton = {
-                TextButton(onClick = { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false }) {
+                TextButton(onClick = { collectionEditorId = null; collectionError = null; addSelectionAfterCreate = false; pendingCollectionSelection = null }) {
                     Text(stringResource(R.string.cancel))
                 }
             },
@@ -522,7 +615,7 @@ fun GalleryScreen(
 
     if (showCollectionPicker) {
         AlertDialog(
-            onDismissRequest = { showCollectionPicker = false },
+            onDismissRequest = { showCollectionPicker = false; pendingCollectionSelection = null },
             title = { Text(stringResource(R.string.gallery_add_to_collection), color = OnSurface) },
             text = {
                 Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
@@ -533,7 +626,8 @@ fun GalleryScreen(
                                 showCollectionPicker = false
                                 scope.launch {
                                     try {
-                                        val selected = collectionSelection(photos, selectedUris.toSet())
+                                        val selected = pendingCollectionSelection
+                                            ?: collectionSelection(enrichedPhotos, selectedUris.toSet())
                                         val added = collectionStore.addToCollection(collection.id, selected.media)
                                         Toast.makeText(
                                             context,
@@ -541,6 +635,7 @@ fun GalleryScreen(
                                             Toast.LENGTH_SHORT
                                         ).show()
                                         selectedUris.clear()
+                                        pendingCollectionSelection = null
                                     } catch (_: Exception) {
                                         Toast.makeText(context, context.getString(R.string.gallery_collection_failed), Toast.LENGTH_LONG).show()
                                     }
@@ -560,7 +655,7 @@ fun GalleryScreen(
                 }) { Text(stringResource(R.string.gallery_collection_new)) }
             },
             dismissButton = {
-                TextButton(onClick = { showCollectionPicker = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { showCollectionPicker = false; pendingCollectionSelection = null }) { Text(stringResource(R.string.cancel)) }
             },
             containerColor = SurfaceVariant
         )
@@ -578,8 +673,8 @@ fun GalleryScreen(
                 pendingDeleteUris = listOf(photo.uri)
             },
             onToggleFavorite = { photo ->
-                val newState = FavoritesStore.toggle(context, photo.id)
-                favIds = FavoritesStore.getAllIds(context)
+                val newState = FavoritesStore.toggle(context, photo)
+                favoriteKeys = FavoritesStore.getAllKeys(context)
                 newState
             }
         )
@@ -607,7 +702,7 @@ fun GalleryScreen(
                         selectedUris.clear()
                         selectedUris.addAll(viewerPhotos.map { it.uri.toString() })
                     }) { Icon(Icons.Default.SelectAll, stringResource(R.string.gallery_select_all), tint = OnSurface) }
-                    IconButton(onClick = { showCollectionPicker = true }) {
+                    IconButton(onClick = { pendingCollectionSelection = null; showCollectionPicker = true }) {
                         Icon(Icons.Default.PushPin, stringResource(R.string.gallery_add_to_collection), tint = Primary)
                     }
                     manualCollectionId(selectedAlbum)?.let { collectionId ->
@@ -673,6 +768,12 @@ fun GalleryScreen(
                     Text(stringResource(R.string.gallery_photo_count, albums.sumOf { it.count }), color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
                     IconButton(onClick = {
+                        selectedAlbum = ALL_PHOTOS_PATH
+                        showFilters = true
+                    }) {
+                        Icon(Icons.Default.FilterList, stringResource(R.string.gallery_filters_inactive), tint = OnSurfaceVariant)
+                    }
+                    IconButton(onClick = {
                         collectionName = ""
                         collectionError = null
                         addSelectionAfterCreate = false
@@ -706,14 +807,30 @@ fun GalleryScreen(
                     // Photo count
                     Text("${viewerPhotos.size}", color = OnSurfaceVariant, fontSize = 12.sp,
                         modifier = Modifier.padding(end = 4.dp))
+                    val filterDescription = if (galleryFilters.activeCount > 0) {
+                        stringResource(R.string.gallery_filters_active, galleryFilters.activeCount)
+                    } else {
+                        stringResource(R.string.gallery_filters_inactive)
+                    }
+                    IconButton(onClick = { showFilters = true }) {
+                        BadgedBox(
+                            badge = {
+                                if (galleryFilters.activeCount > 0) {
+                                    Badge { Text(galleryFilters.activeCount.toString()) }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.FilterList, filterDescription, tint = OnSurfaceVariant)
+                        }
+                    }
                     // One-tap "select all screenshots" — drops user into selection mode with
                     // every dimension-matching image pre-selected, ready for bulk delete.
-                    val screenshotCount = viewerPhotos.count { it.isScreenshot && it.id !in favIds }
+                    val screenshotCount = viewerPhotos.count { it.isScreenshot && !FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }
                     if (screenshotCount > 0) {
                         TextButton(
                             onClick = {
                             selectedUris.clear()
-                            selectedUris.addAll(viewerPhotos.filter { it.isScreenshot && it.id !in favIds }.map { it.uri.toString() })
+                            selectedUris.addAll(viewerPhotos.filter { it.isScreenshot && !FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }.map { it.uri.toString() })
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
@@ -791,6 +908,24 @@ fun GalleryScreen(
             )
         }
 
+        if (!selectionMode && selectedAlbum != null && galleryFilters.activeCount > 0) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.gallery_filters_active, galleryFilters.activeCount) +
+                        " · " + stringResource(R.string.gallery_filter_result_count, viewerPhotos.size),
+                    modifier = Modifier.weight(1f).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+                    color = OnSurfaceVariant,
+                    fontSize = 12.sp
+                )
+                TextButton(onClick = { encodedFilters = GalleryFilterState().encode() }) {
+                    Text(stringResource(R.string.gallery_filter_clear_all))
+                }
+            }
+        }
+
         val filteredAlbums = if (searchQuery.isBlank()) albums
             else albums.filter { it.name.contains(searchQuery, ignoreCase = true) }
         val filteredSmartAlbums = if (searchQuery.isBlank()) smartAlbums
@@ -827,7 +962,7 @@ fun GalleryScreen(
                 onAlbumClick = { searchQuery = ""; selectedAlbum = it.path },
                 onAllPhotos = { searchQuery = ""; selectedAlbum = ALL_PHOTOS_PATH },
                 onFavorites = { searchQuery = ""; selectedAlbum = FAVORITES_PATH },
-                favCount = favIds.size,
+                favCount = favoriteKeys.size,
                 emptyTitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_title) else stringResource(R.string.gallery_search_empty_title),
                 emptySubtitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_subtitle)
                     else stringResource(R.string.gallery_search_empty_subtitle))
@@ -878,6 +1013,26 @@ private fun GalleryCapabilityBanner(title: String, body: String, action: String,
 private fun toggleSelection(selectedUris: MutableList<String>, uri: String) {
     if (uri in selectedUris) selectedUris.remove(uri) else selectedUris.add(uri)
 }
+
+private fun buildGallerySourceOptions(context: Context, photos: List<Photo>): List<GallerySourceOption> =
+    photos.asSequence()
+        .filter { it.sourceKey.isNotBlank() }
+        .distinctBy(Photo::sourceKey)
+        .map { photo ->
+            val label = if (photo.ownerPackage.isNotBlank()) {
+                @Suppress("DEPRECATION")
+                runCatching {
+                    val info = context.packageManager.getApplicationInfo(photo.ownerPackage, 0)
+                    context.packageManager.getApplicationLabel(info).toString()
+                }.getOrDefault(photo.ownerPackage)
+            } else {
+                photo.albumPath.trimEnd('/', '\\').substringAfterLast('/').substringAfterLast('\\')
+                    .ifBlank { photo.sourceKey }
+            }
+            GallerySourceOption(photo.sourceKey, label)
+        }
+        .sortedBy { it.label.lowercase() }
+        .toList()
 
 @Composable
 private fun GalleryEmptyState(
@@ -1289,13 +1444,13 @@ private fun PhotoViewer(
     var summaryLoading by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
     var isFav by remember { mutableStateOf(
-        FavoritesStore.isFavorite(context, photos.getOrNull(initialIndex)?.id ?: 0)
+        photos.getOrNull(initialIndex)?.let { FavoritesStore.isFavorite(context, it) } ?: false
     ) }
 
     // Update fav state on page change
     LaunchedEffect(pagerState.currentPage) {
         val photo = photos.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
-        isFav = FavoritesStore.isFavorite(context, photo.id)
+        isFav = FavoritesStore.isFavorite(context, photo)
     }
 
     // Load info for current photo
@@ -1594,7 +1749,7 @@ private fun loadSmartAlbums(
     resolver: ContentResolver,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    indexEntries: Map<String, ScreenshotIndexEntry> = emptyMap(),
     includeImages: Boolean = true
 ): List<Album> {
     val screenshots = loadAllPhotos(resolver, screenW, screenH, indexEntries, includeImages, includeVideos = false)
@@ -1620,7 +1775,7 @@ private fun loadSmartAlbumPhotos(
     smartAlbumPath: String,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    indexEntries: Map<String, ScreenshotIndexEntry> = emptyMap(),
     includeImages: Boolean = true
 ): List<Photo> {
     val rule = smartAlbumRuleFor(smartAlbumPath) ?: return emptyList()
@@ -1634,16 +1789,19 @@ private fun loadPhotos(
     albumPath: String,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    indexEntries: Map<String, ScreenshotIndexEntry> = emptyMap(),
     includeImages: Boolean = true,
     includeVideos: Boolean = true
 ): List<Photo> {
     val photos = mutableListOf<Photo>()
 
     // Images
-    val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+    val imgProjection = mutableListOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
-        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT)
+        MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT,
+        MediaStore.Images.Media.MIME_TYPE).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
     (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
@@ -1654,6 +1812,8 @@ private fun loadPhotos(
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.SIZE)
         val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
         val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
+        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+        val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -1661,14 +1821,19 @@ private fun loadPhotos(
             val w = cursor.getInt(wCol); val h = cursor.getInt(hCol)
             val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
-                width = w, height = h, isScreenshot = isShot, albumPath = albumPath)
-                .withIndex(indexEntries[id]))
+                width = w, height = h, isScreenshot = isShot, albumPath = albumPath,
+                mimeType = cursor.getString(mimeCol).orEmpty(),
+                ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else "")
+                .withIndex(indexEntries[uri.toString()]))
         }
     }
 
     // Videos (screenshot detection N/A)
-    val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
-        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
+    val vidProjection = mutableListOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
+        MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION,
+        MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.MIME_TYPE).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
     (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
         "${MediaStore.Video.Media.RELATIVE_PATH} = ?", selectionArgs,
         "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
@@ -1677,12 +1842,19 @@ private fun loadPhotos(
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
         val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+        val wCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+        val hCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+        val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
                 cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol),
-                albumPath = albumPath).withIndex(indexEntries[id]))
+                width = cursor.getInt(wCol), height = cursor.getInt(hCol), albumPath = albumPath,
+                mimeType = cursor.getString(mimeCol).orEmpty(),
+                ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else "")
+                .withIndex(indexEntries[uri.toString()]))
         }
     }
 
@@ -1693,17 +1865,19 @@ private fun loadAllPhotos(
     resolver: ContentResolver,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    indexEntries: Map<String, ScreenshotIndexEntry> = emptyMap(),
     includeImages: Boolean = true,
     includeVideos: Boolean = true
 ): List<Photo> {
     val photos = mutableListOf<Photo>()
 
     // Images
-    val imgProjection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
+    val imgProjection = mutableListOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED,
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
         MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT,
-        MediaStore.Images.Media.RELATIVE_PATH)
+        MediaStore.Images.Media.RELATIVE_PATH, MediaStore.Images.Media.MIME_TYPE).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
     (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
         "${MediaStore.Images.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
@@ -1713,6 +1887,8 @@ private fun loadAllPhotos(
         val wCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
         val hCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
+        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
+        val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
@@ -1721,14 +1897,20 @@ private fun loadAllPhotos(
             val isShot = looksLikeScreenshot(w, h, name, screenW, screenH)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
                 width = w, height = h, isScreenshot = isShot,
-                albumPath = cursor.getString(pathCol) ?: "").withIndex(indexEntries[id]))
+                albumPath = cursor.getString(pathCol) ?: "",
+                mimeType = cursor.getString(mimeCol).orEmpty(),
+                ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else "")
+                .withIndex(indexEntries[uri.toString()]))
         }
     }
 
     // Videos
-    val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
+    val vidProjection = mutableListOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
         MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE,
-        MediaStore.Video.Media.DURATION, MediaStore.Video.Media.RELATIVE_PATH)
+        MediaStore.Video.Media.DURATION, MediaStore.Video.Media.RELATIVE_PATH,
+        MediaStore.Video.Media.WIDTH, MediaStore.Video.Media.HEIGHT, MediaStore.Video.Media.MIME_TYPE).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
     (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
         "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
@@ -1737,12 +1919,20 @@ private fun loadAllPhotos(
         val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
         val durCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.RELATIVE_PATH)
+        val wCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+        val hCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
+        val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
+        val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         while (cursor.moveToNext()) {
             val id = cursor.getLong(idCol)
             val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
             photos.add(Photo(id, uri, cursor.getLong(dateCol), cursor.getString(nameCol) ?: "",
                 cursor.getLong(sizeCol), isVideo = true, duration = cursor.getLong(durCol),
-                albumPath = cursor.getString(pathCol) ?: "").withIndex(indexEntries[id]))
+                width = cursor.getInt(wCol), height = cursor.getInt(hCol),
+                albumPath = cursor.getString(pathCol) ?: "",
+                mimeType = cursor.getString(mimeCol).orEmpty(),
+                ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else "")
+                .withIndex(indexEntries[uri.toString()]))
         }
     }
 
@@ -1751,28 +1941,32 @@ private fun loadAllPhotos(
 
 private fun loadFavoritePhotos(
     resolver: ContentResolver,
-    favIds: Set<Long>,
+    favoriteKeys: Set<String>,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    indexEntries: Map<String, ScreenshotIndexEntry> = emptyMap(),
     includeImages: Boolean = true,
     includeVideos: Boolean = true
 ): List<Photo> {
-    if (favIds.isEmpty()) return emptyList()
+    if (favoriteKeys.isEmpty()) return emptyList()
     val photos = mutableListOf<Photo>()
 
     // Batch queries in chunks of 500 to avoid SQLite bind variable limit (~999)
     fun queryFavs(contentUri: Uri, idsList: List<Long>, isVideo: Boolean) {
-        val projection = if (isVideo) {
-            arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
+        val projection = (if (isVideo) {
+            mutableListOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
-                MediaStore.Video.Media.DURATION, MediaStore.MediaColumns.RELATIVE_PATH)
+                MediaStore.Video.Media.DURATION, MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT,
+                MediaStore.MediaColumns.MIME_TYPE)
         } else {
-            arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
+            mutableListOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
                 MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
                 MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT,
-                MediaStore.MediaColumns.RELATIVE_PATH)
-        }
+                MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.MIME_TYPE)
+        }).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+        }.toTypedArray()
         for (chunk in idsList.chunked(500)) {
             val placeholders = chunk.joinToString(",") { "?" }
             val selection = "${MediaStore.MediaColumns._ID} IN ($placeholders)"
@@ -1783,28 +1977,36 @@ private fun loadFavoritePhotos(
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 val durCol = if (isVideo) cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION) else -1
-                val wCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH) else -1
-                val hCol = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT) else -1
+                val wCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.WIDTH)
+                val hCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.HEIGHT)
                 val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+                val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
+                val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idCol)
                     val uri = ContentUris.withAppendedId(contentUri, id)
                     val name = cursor.getString(nameCol) ?: ""
                     val duration = if (isVideo) cursor.getLong(durCol) else 0L
-                    val w = if (!isVideo) cursor.getInt(wCol) else 0
-                    val h = if (!isVideo) cursor.getInt(hCol) else 0
+                    val w = cursor.getInt(wCol)
+                    val h = cursor.getInt(hCol)
                     val isShot = !isVideo && looksLikeScreenshot(w, h, name, screenW, screenH)
                     photos.add(Photo(id, uri, cursor.getLong(dateCol), name, cursor.getLong(sizeCol),
                         isVideo = isVideo, duration = duration, width = w, height = h,
-                        isScreenshot = isShot, albumPath = cursor.getString(pathCol) ?: "")
-                        .withIndex(indexEntries[id]))
+                        isScreenshot = isShot, albumPath = cursor.getString(pathCol) ?: "",
+                        mimeType = cursor.getString(mimeCol).orEmpty(),
+                        ownerPackage = if (ownerCol >= 0) cursor.getString(ownerCol).orEmpty() else "")
+                        .withIndex(indexEntries[uri.toString()]))
                 }
             }
         }
     }
 
-    val idsList = favIds.toList()
-    if (includeImages) queryFavs(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, idsList, false)
-    if (includeVideos) queryFavs(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, idsList, true)
+    val legacyImageIds = favoriteKeys.mapNotNull { it.toLongOrNull() }
+    val uriIds = favoriteKeys.asSequence().filter { it.startsWith("uri:") }
+        .mapNotNull { key -> runCatching { ContentUris.parseId(Uri.parse(key.removePrefix("uri:"))) }.getOrNull() }
+        .toList()
+    if (includeImages) queryFavs(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, (legacyImageIds + uriIds).distinct(), false)
+    if (includeVideos) queryFavs(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, uriIds.distinct(), true)
+    photos.removeAll { !FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }
     return photos.sortedByDescending { it.dateAdded }
 }

@@ -129,6 +129,9 @@ are blocked behind explicit opt-in and evaluation gates.
 ### Gallery
 - Browse all photos and videos by album
 - Optional local intelligence index powers smart auto-albums for Screenshots, Chats, Games, Sites, Documents, Codes, and Payments without moving files
+- Combine structured chips for media type, creator/source folder, indexed category,
+  date, orientation/minimum dimensions, favorite state, and MIME format; filter
+  state survives recreation and matching screenshots can seed a manual collection
 - Create named manual collections, add screenshots with multi-select, and search/sort them without moving or duplicating media; memberships survive index rebuilds
 - Search screenshot albums by filename, source hints, indexed categories, dimensions, and OCR/barcode text after using OCR in the editor
 - Pinch-to-zoom grid (2-6 columns)

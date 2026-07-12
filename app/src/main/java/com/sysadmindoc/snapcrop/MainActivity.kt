@@ -61,6 +61,8 @@ import androidx.compose.material.icons.filled.ScreenshotMonitor
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -470,7 +472,8 @@ class MainActivity : ComponentActivity() {
                         containerColor = SurfaceVariant
                     )
                 }
-                var selectedTab by remember { mutableIntStateOf(0) }
+                var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+                val tabStateHolder = rememberSaveableStateHolder()
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
                 val credentialStore = remember { NetworkCredentialStore.open(this@MainActivity) }
 
@@ -533,7 +536,8 @@ class MainActivity : ComponentActivity() {
                     }
                 ) { padding ->
                     Box(Modifier.padding(padding)) {
-                        when (selectedTab) {
+                        tabStateHolder.SaveableStateProvider(selectedTab) {
+                            when (selectedTab) {
                             0 -> HomeScreen(
                                 isRunning = serviceRunning.value,
                                 mediaCapabilities = mediaCapabilities.value,
@@ -603,6 +607,7 @@ class MainActivity : ComponentActivity() {
                                 onBatchRename = { uris -> showRenameDialog(uris) },
                                 onBack = { selectedTab = 0 }
                             )
+                            }
                         }
                     }
                 }
@@ -1274,7 +1279,7 @@ class MainActivity : ComponentActivity() {
                         batchProgress.value = getString(R.string.batch_building_report, index + 1, uris.size)
                         batchProgressFraction.floatValue = index.toFloat() / uris.size
                     }
-                    val metadata = loadExportItemMetadata(uri, mediaIdFromUri(uri)?.let { indexEntries[it] })
+                    val metadata = loadExportItemMetadata(uri, indexEntries[uri.toString()])
                     val bitmap = decodeReportBitmap(uri) ?: return@forEachIndexed
                     var ocrBlocks = emptyList<TextBlock>()
                     if (includeOcr) {
@@ -2035,7 +2040,7 @@ class MainActivity : ComponentActivity() {
             mutationStartedAt
         )
         if (succeeded.isNotEmpty()) {
-            FavoritesStore.removeAll(this, succeeded.mapNotNull { runCatching { ContentUris.parseId(it) }.getOrNull() })
+            FavoritesStore.removeAll(this, succeeded)
             galleryRefreshKey.intValue++
             loadRecentCrops()
         }
