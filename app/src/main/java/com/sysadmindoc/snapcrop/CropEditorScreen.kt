@@ -477,6 +477,83 @@ fun CropEditorScreen(
         drawPrefs.getString(ImageRedactor.PREF_REDACTION_STYLE, RedactionStyle.SOLID.preferenceValue)
     )
 
+    fun addRedactionAtCropCenter(): Boolean {
+        val width = (cropRight - cropLeft).coerceAtLeast(RedactionRegions.MIN_REGION_SIZE)
+        val height = (cropBottom - cropTop).coerceAtLeast(RedactionRegions.MIN_REGION_SIZE)
+        val regionWidth = (width / 3).coerceAtLeast(RedactionRegions.MIN_REGION_SIZE)
+        val regionHeight = (height / 8).coerceAtLeast(RedactionRegions.MIN_REGION_SIZE)
+        val centerX = (cropLeft + cropRight) / 2
+        val centerY = (cropTop + cropBottom) / 2
+        val bounds = Rect(
+            (centerX - regionWidth / 2).coerceAtLeast(0),
+            (centerY - regionHeight / 2).coerceAtLeast(0),
+            (centerX + (regionWidth + 1) / 2).coerceAtMost(bitmap.width),
+            (centerY + (regionHeight + 1) / 2).coerceAtMost(bitmap.height)
+        )
+        val incoming = RedactionRegions.manual(bounds, defaultRedactionStyle())
+        val merged = RedactionRegions.merge(redactions, listOf(incoming))
+        if (merged == redactions.toList()) return false
+        replaceRedactions(merged)
+        selectedRedactionIndex = redactions.lastIndex
+        editMode = EditMode.PIXELATE
+        return true
+    }
+
+    fun addAnnotationAtCropCenter(): Boolean {
+        val cx = (cropLeft + cropRight) / 2f
+        val cy = (cropTop + cropBottom) / 2f
+        val extent = (minOf(cropRight - cropLeft, cropBottom - cropTop) * 0.12f).coerceAtLeast(12f)
+        if (drawTool == DrawTool.TEXT) {
+            textPlacePoint = PointF(cx, cy)
+            textDialogValue = ""
+            showTextDialog = true
+            editMode = EditMode.DRAW
+            return true
+        }
+        val points = when (drawTool) {
+            DrawTool.CALLOUT, DrawTool.MAGNIFIER, DrawTool.EMOJI, DrawTool.FILL -> listOf(PointF(cx, cy))
+            DrawTool.RECT, DrawTool.CIRCLE -> listOf(
+                PointF(cx - extent, cy - extent * 0.65f),
+                PointF(cx + extent, cy + extent * 0.65f)
+            )
+            else -> listOf(PointF(cx - extent, cy), PointF(cx + extent, cy))
+        }
+        val shape = when (drawTool) {
+            DrawTool.LINE -> "line"; DrawTool.MEASURE -> "measure"; DrawTool.RECT -> "rect"
+            DrawTool.CIRCLE -> "circle"; DrawTool.HIGHLIGHT -> "highlight"; DrawTool.CALLOUT -> "callout"
+            DrawTool.SPOTLIGHT -> "spotlight"; DrawTool.MAGNIFIER -> "magnifier"; DrawTool.EMOJI -> "emoji"
+            DrawTool.NEON -> "neon"; DrawTool.BLUR -> "blur"; DrawTool.ERASER -> "eraser"
+            DrawTool.FILL -> "fill"; DrawTool.HEAL -> "smart_erase"; else -> null
+        }
+        val text = when (drawTool) {
+            DrawTool.CALLOUT -> "${calloutCounter++}"
+            DrawTool.EMOJI -> selectedEmoji
+            else -> null
+        }
+        val width = when (drawTool) {
+            DrawTool.HIGHLIGHT, DrawTool.ERASER -> drawStrokeWidth * 3f
+            DrawTool.BLUR, DrawTool.HEAL -> drawStrokeWidth * 4f
+            else -> drawStrokeWidth
+        }
+        pushUndo()
+        addDrawLayer(
+            DrawPath(
+                points = points,
+                color = drawColor,
+                strokeWidth = width,
+                isArrow = drawTool == DrawTool.ARROW || drawTool == DrawTool.CURVED_ARROW,
+                shapeType = shape,
+                text = text,
+                filled = shapeFilled && (shape == "rect" || shape == "circle"),
+                dashed = dashedStroke
+            )
+        )
+        selectedLayerIndex = drawPaths.lastIndex
+        editMode = EditMode.DRAW
+        haptic()
+        return true
+    }
+
     fun addDetectedRedactions(incoming: List<RedactionRegion>): Int {
         if (incoming.isEmpty()) return 0
         val merged = RedactionRegions.merge(redactions.toList(), incoming)
@@ -2214,6 +2291,15 @@ fun CropEditorScreen(
                 if (layer.visible) stringResource(R.string.layer_state_visible) else stringResource(R.string.layer_state_hidden)
             )
         } ?: stringResource(R.string.editor_canvas_no_selected_layer)
+        val selectedRedaction = redactions.getOrNull(selectedRedactionIndex)
+        val selectedRedactionState = selectedRedaction?.let { region ->
+            stringResource(
+                R.string.editor_canvas_selected_redaction,
+                selectedRedactionIndex + 1,
+                region.style.preferenceValue,
+                if (region.enabled) stringResource(R.string.redactions_enabled) else stringResource(R.string.redactions_disabled)
+            )
+        } ?: stringResource(R.string.editor_canvas_no_selected_redaction)
         val editorCanvasState = stringResource(
             R.string.editor_canvas_state,
             modeOptions.firstOrNull { it.second == editMode }?.first ?: stringResource(R.string.mode_crop),
@@ -2226,7 +2312,7 @@ fun CropEditorScreen(
             redactions.size,
             drawPaths.size,
             selectedLayerState
-        )
+        ) + ", " + selectedRedactionState
         val nudgeCropLeftLabel = stringResource(R.string.editor_a11y_nudge_crop_left)
         val nudgeCropRightLabel = stringResource(R.string.editor_a11y_nudge_crop_right)
         val nudgeCropUpLabel = stringResource(R.string.editor_a11y_nudge_crop_up)
@@ -2235,6 +2321,19 @@ fun CropEditorScreen(
         val zoomOutLabel = stringResource(R.string.editor_a11y_zoom_out)
         val previewLabel = stringResource(R.string.editor_a11y_toggle_preview)
         val removeRedactionLabel = stringResource(R.string.editor_a11y_remove_last_redaction)
+        val addRedactionLabel = stringResource(R.string.editor_a11y_add_redaction_center)
+        val addAnnotationLabel = stringResource(R.string.editor_a11y_add_annotation_center)
+        val redactionMoveLeftLabel = stringResource(R.string.editor_a11y_redaction_move_left)
+        val redactionMoveRightLabel = stringResource(R.string.editor_a11y_redaction_move_right)
+        val redactionMoveUpLabel = stringResource(R.string.editor_a11y_redaction_move_up)
+        val redactionMoveDownLabel = stringResource(R.string.editor_a11y_redaction_move_down)
+        val redactionGrowLabel = stringResource(R.string.editor_a11y_redaction_grow)
+        val redactionShrinkLabel = stringResource(R.string.editor_a11y_redaction_shrink)
+        val redactionToggleLabel = stringResource(R.string.editor_a11y_redaction_toggle)
+        val redactionDeleteLabel = stringResource(R.string.editor_a11y_redaction_delete)
+        val redactionBarLabel = stringResource(R.string.editor_a11y_redaction_bar)
+        val redactionPixelateLabel = stringResource(R.string.editor_a11y_redaction_pixelate)
+        val redactionBlurLabel = stringResource(R.string.editor_a11y_redaction_blur)
         val layerMoveLeftLabel = stringResource(R.string.layer_move_left)
         val layerMoveRightLabel = stringResource(R.string.layer_move_right)
         val layerMoveUpLabel = stringResource(R.string.layer_move_up_dir)
@@ -2258,6 +2357,8 @@ fun CropEditorScreen(
             add(CustomAccessibilityAction(zoomInLabel) { zoomBy(1.1f); true })
             add(CustomAccessibilityAction(zoomOutLabel) { zoomBy(0.9f); true })
             add(CustomAccessibilityAction(previewLabel) { previewMode = !previewMode; true })
+            add(CustomAccessibilityAction(addRedactionLabel) { addRedactionAtCropCenter() })
+            add(CustomAccessibilityAction(addAnnotationLabel) { addAnnotationAtCropCenter() })
             if (redactions.isNotEmpty()) {
                 add(CustomAccessibilityAction(removeRedactionLabel) {
                     pushUndo()
@@ -2281,6 +2382,35 @@ fun CropEditorScreen(
                 add(CustomAccessibilityAction(layerDeleteLabel) {
                     deleteDrawLayer(selectedLayerIndex)
                     selectedLayerIndex = -1
+                    true
+                })
+            }
+            if (selectedRedaction != null) {
+                add(CustomAccessibilityAction(redactionMoveLeftLabel) { moveRedaction(selectedRedactionIndex, -1, 0); true })
+                add(CustomAccessibilityAction(redactionMoveRightLabel) { moveRedaction(selectedRedactionIndex, 1, 0); true })
+                add(CustomAccessibilityAction(redactionMoveUpLabel) { moveRedaction(selectedRedactionIndex, 0, -1); true })
+                add(CustomAccessibilityAction(redactionMoveDownLabel) { moveRedaction(selectedRedactionIndex, 0, 1); true })
+                add(CustomAccessibilityAction(redactionGrowLabel) { resizeRedaction(selectedRedactionIndex, 1, 1); true })
+                add(CustomAccessibilityAction(redactionShrinkLabel) { resizeRedaction(selectedRedactionIndex, -1, -1); true })
+                add(CustomAccessibilityAction(redactionToggleLabel) {
+                    updateRedaction(selectedRedactionIndex) { it.copy(enabled = !it.enabled) }
+                    true
+                })
+                add(CustomAccessibilityAction(redactionBarLabel) {
+                    updateRedaction(selectedRedactionIndex) { it.copy(style = RedactionStyle.SOLID) }
+                    true
+                })
+                add(CustomAccessibilityAction(redactionPixelateLabel) {
+                    updateRedaction(selectedRedactionIndex) { it.copy(style = RedactionStyle.PIXELATE) }
+                    true
+                })
+                add(CustomAccessibilityAction(redactionBlurLabel) {
+                    updateRedaction(selectedRedactionIndex) { it.copy(style = RedactionStyle.BLUR) }
+                    true
+                })
+                add(CustomAccessibilityAction(redactionDeleteLabel) {
+                    replaceRedactions(redactions.filterIndexed { index, _ -> index != selectedRedactionIndex })
+                    selectedRedactionIndex = -1
                     true
                 })
             }

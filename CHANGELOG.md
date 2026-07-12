@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Non-visual editor placement and redaction control (v6.43.0).**
+
+- Canvas accessibility actions can now create a centered redaction or the current
+  annotation without touch placement, including opening the text editor for Text.
+- Selected redactions are announced with index, style, and enabled state and expose
+  move, resize, Bar/Pixelate/Blur, toggle, and delete actions. Existing selected-layer
+  move/resize/rotate controls remain available in the same canvas action flow.
+- Localized the new redaction review panel labels and preserved deterministic category
+  focus order. Physical TalkBack/Switch Access traversal QA remains recorded as a device
+  blocker because no ADB target is connected.
+
 **Editable redaction regions (v6.42.0).**
 
 - Auto-text now preserves email, phone, payment-card, IP, address, MAC, and IBAN

@@ -87,6 +87,8 @@ Draw annotations also appear in a reorderable Layers panel with per-layer visibi
 Auto-detected and manual redactions remain editable until export: review individual
 email/phone/card/IP/face regions, toggle whole categories, choose safe opaque Bar or
 cosmetic Pixelate/Blur, and move or resize each region before it is flattened once.
+TalkBack and Switch Access users can place the current annotation or a redaction at the
+crop center and adjust selected layers/redactions through canvas accessibility actions.
 Annotated saves include a same-name SVG sidecar for visible vector layers and reversible concealment rectangles.
 Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
 then reopened later to restore the crop, concealment masks, adjustment state, and draw
