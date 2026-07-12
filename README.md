@@ -257,7 +257,10 @@ release/security policy.
   reports are capped at 64 MiB, Imgur images at 50,000,000 bytes each, and
   private temporary PDFs are deleted after success, failure, or cancellation.
 - Android app-data backup is disabled so local paths, favorites, automation
-  toggles, and export preferences are not silently backed up by SnapCrop.
+  toggles, and export preferences are not silently backed up by SnapCrop. The
+  manual Settings backup is a versioned, typed allowlist: it excludes network
+  credentials and transient capture state, migrates supported legacy keys, and
+  reports unknown or invalid entries during restore.
 
 ---
 

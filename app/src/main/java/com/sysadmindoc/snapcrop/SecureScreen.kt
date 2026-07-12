@@ -6,7 +6,7 @@ import android.os.Build
 import android.view.WindowManager
 
 internal object SecurePreviewPolicy {
-    const val PREF_ENABLED = "secure_editor"
+    const val PREF_ENABLED = "secure_previews_enabled"
 
     fun isEnabled(context: Context): Boolean = context
         .getSharedPreferences("snapcrop", Context.MODE_PRIVATE)

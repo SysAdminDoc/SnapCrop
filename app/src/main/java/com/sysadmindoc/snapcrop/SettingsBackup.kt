@@ -5,84 +5,142 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Export/import of SnapCrop's settings, presets, and app-crop profiles to a single JSON document.
- * Because `allowBackup=false` and there are ~120 ungrouped preference keys, a reinstall/new device
- * otherwise loses everything. Network credentials live in a separate encrypted store and are
- * intentionally NOT included — they must be re-entered after a restore.
+ * Export/import of SnapCrop's registered settings, presets, and app-crop profiles.
+ * Network credentials and transient capture state are deliberately outside the registry.
  */
 object SettingsBackup {
     const val SCHEMA = "snapcrop.settings"
-    const val VERSION = 1
+    const val VERSION = 2
+
+    data class ImportReport(
+        val restoredCount: Int,
+        val migratedCount: Int,
+        val ignoredUnknownCount: Int,
+        val ignoredInvalidCount: Int
+    )
 
     fun export(prefs: SharedPreferences): JSONObject {
         val entries = JSONObject()
-        for ((key, value) in prefs.all) {
-            val entry = JSONObject()
-            when (value) {
-                is Boolean -> entry.put("t", "b").put("v", value)
-                is Int -> entry.put("t", "i").put("v", value)
-                is Long -> entry.put("t", "l").put("v", value)
-                is Float -> entry.put("t", "f").put("v", value.toDouble())
-                is String -> entry.put("t", "s").put("v", value)
-                is Set<*> -> entry.put("t", "ss").put("v", JSONArray().apply { value.forEach { put(it.toString()) } })
-                else -> continue
-            }
-            entries.put(key, entry)
+        val values = prefs.all
+        SettingsPreferenceSchema.preferences.forEach { preference ->
+            val value = values[preference.key] ?: return@forEach
+            encode(preference.type, value)?.let { entries.put(preference.key, it) }
         }
         return JSONObject()
             .put("schema", SCHEMA)
             .put("version", VERSION)
+            .put("appVersion", BuildConfig.VERSION_NAME)
+            .put("preferenceSchemaVersion", SettingsPreferenceSchema.VERSION)
+            .put("migrations", SettingsPreferenceSchema.migrationRulesJson())
             .put("entries", entries)
     }
 
-    // Cap restored string/set sizes so a crafted backup can't inject pathological values.
-    private const val MAX_STRING_LEN = 100_000
-    private const val MAX_SET_SIZE = 5_000
+    /** Compatibility wrapper for callers that only need success/failure and a restored count. */
+    fun import(prefs: SharedPreferences, json: JSONObject): Int =
+        importWithReport(prefs, json)?.restoredCount ?: -1
 
-    /** Returns the number of keys restored, or -1 if the document is not a valid backup. */
-    fun import(prefs: SharedPreferences, json: JSONObject): Int {
-        if (json.optString("schema") != SCHEMA) return -1
-        if (json.optInt("version", -1) != VERSION) return -1
-        val entries = json.optJSONObject("entries") ?: return -1
+    /** Returns a detailed report, or null when the document is not a supported valid backup. */
+    fun importWithReport(prefs: SharedPreferences, json: JSONObject): ImportReport? {
+        if (json.optString("schema") != SCHEMA) return null
+        val documentVersion = json.optInt("version", -1)
+        if (documentVersion !in 1..VERSION) return null
+        if (documentVersion >= 2 &&
+            json.optInt("preferenceSchemaVersion", -1) !in 1..SettingsPreferenceSchema.VERSION
+        ) return null
+        val entries = json.optJSONObject("entries") ?: return null
 
-        // Stage all values first; only clear+apply if at least one parsed, so a malformed or empty
-        // backup can never wipe the user's settings.
-        val edits = ArrayList<(SharedPreferences.Editor) -> Unit>()
-        val keys = entries.keys()
-        while (keys.hasNext()) {
-            val key = keys.next()
-            val e = entries.optJSONObject(key) ?: continue
-            when (e.optString("t")) {
-                "b" -> { val v = e.optBoolean("v"); edits.add { it.putBoolean(key, v) } }
-                "i" -> { val v = e.optInt("v"); edits.add { it.putInt(key, v) } }
-                "l" -> { val v = e.optLong("v"); edits.add { it.putLong(key, v) } }
-                "f" -> { val v = e.optDouble("v").toFloat(); edits.add { it.putFloat(key, v) } }
-                "s" -> {
-                    val v = e.optString("v")
-                    if (key == CustomRedactionPatternStore.PREF_KEY &&
-                        CustomRedactionPatternStore.import(v) == null
-                    ) return -1
-                    if (v.length <= MAX_STRING_LEN) edits.add { it.putString(key, v) }
-                }
-                "ss" -> {
-                    val arr = e.optJSONArray("v")
-                    val set = LinkedHashSet<String>()
-                    var i = 0
-                    while (i < (arr?.length() ?: 0) && set.size < MAX_SET_SIZE) {
-                        arr?.optString(i)?.let { if (it.length <= MAX_STRING_LEN) set.add(it) }
-                        i++
-                    }
-                    edits.add { it.putStringSet(key, set) }
-                }
-                else -> continue
-            }
+        val sourceKeys = buildList {
+            val iterator = entries.keys()
+            while (iterator.hasNext()) add(iterator.next())
         }
-        if (edits.isEmpty()) return -1
+        val ignoredUnknown = sourceKeys.count { SettingsPreferenceSchema.resolve(it) == null }
+        var ignoredInvalid = 0
+        var migrated = 0
+        val staged = LinkedHashMap<RegisteredPreference, Any>()
+
+        SettingsPreferenceSchema.preferences.forEach { preference ->
+            val candidates = buildList {
+                if (entries.has(preference.key)) add(preference.key to false)
+                preference.legacyKeys.sorted().forEach { legacyKey ->
+                    if (entries.has(legacyKey)) add(legacyKey to true)
+                }
+            }
+            if (candidates.isEmpty()) return@forEach
+            val (sourceKey, isMigration) = candidates.first()
+            ignoredInvalid += candidates.size - 1
+            val entry = entries.optJSONObject(sourceKey)
+            val value = entry?.let { decode(preference.type, it) }
+            if (value == null || !validate(preference.key, value)) {
+                if (preference.key == CustomRedactionPatternStore.PREF_KEY) return null
+                ignoredInvalid++
+                return@forEach
+            }
+            staged[preference] = value
+            if (isMigration) migrated++
+        }
+
+        // v1 lacked enough metadata to distinguish a legitimate defaults-only backup from a
+        // crafted empty document. Keep its original fail-safe behavior and never clear on empty.
+        if (documentVersion == 1 && staged.isEmpty()) return null
 
         val editor = prefs.edit()
-        editor.clear()
-        edits.forEach { it(editor) }
-        editor.apply()
-        return edits.size
+        SettingsPreferenceSchema.removeRestorableKeys(editor)
+        staged.forEach { (preference, value) ->
+            check(SettingsPreferenceSchema.writeTyped(editor, preference.key, preference.type, value))
+        }
+        if (!editor.commit()) return null
+        return ImportReport(staged.size, migrated, ignoredUnknown, ignoredInvalid)
     }
+
+    private fun encode(type: PreferenceValueType, value: Any): JSONObject? {
+        val encoded = when (type) {
+            PreferenceValueType.BOOLEAN -> value as? Boolean
+            PreferenceValueType.INT -> value as? Int
+            PreferenceValueType.LONG -> value as? Long
+            PreferenceValueType.FLOAT -> (value as? Float)?.toDouble()
+            PreferenceValueType.STRING -> value as? String
+            PreferenceValueType.STRING_SET -> (value as? Set<*>)
+                ?.takeIf { set -> set.all { it is String } }
+                ?.let { set -> JSONArray().apply { set.filterIsInstance<String>().sorted().forEach(::put) } }
+        } ?: return null
+        return JSONObject().put("t", type.tag).put("v", encoded)
+    }
+
+    private fun decode(type: PreferenceValueType, entry: JSONObject): Any? {
+        if (entry.optString("t") != type.tag || !entry.has("v")) return null
+        val raw = entry.opt("v")
+        return when (type) {
+            PreferenceValueType.BOOLEAN -> raw as? Boolean
+            PreferenceValueType.INT -> (raw as? Number)?.toLong()
+                ?.takeIf { it in Int.MIN_VALUE..Int.MAX_VALUE }
+                ?.toInt()
+            PreferenceValueType.LONG -> (raw as? Number)?.toLong()
+            PreferenceValueType.FLOAT -> (raw as? Number)?.toDouble()
+                ?.takeIf(Double::isFinite)
+                ?.toFloat()
+            PreferenceValueType.STRING -> (raw as? String)?.takeIf { it.length <= MAX_STRING_LEN }
+            PreferenceValueType.STRING_SET -> decodeStringSet(raw as? JSONArray)
+        }
+    }
+
+    private fun decodeStringSet(array: JSONArray?): Set<String>? {
+        array ?: return null
+        if (array.length() > MAX_SET_SIZE) return null
+        val values = LinkedHashSet<String>()
+        for (index in 0 until array.length()) {
+            val value = array.opt(index) as? String ?: return null
+            if (value.length > MAX_STRING_LEN) return null
+            values += value
+        }
+        return values
+    }
+
+    private fun validate(key: String, value: Any): Boolean = when (key) {
+        CustomRedactionPatternStore.PREF_KEY ->
+            CustomRedactionPatternStore.import(value as String) != null
+        else -> true
+    }
+
+    private const val MAX_STRING_LEN = 100_000
+    private const val MAX_SET_SIZE = 5_000
 }

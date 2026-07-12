@@ -1606,14 +1606,24 @@ class SettingsActivity : ComponentActivity() {
         try {
             val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                 ?: throw IllegalStateException("no stream")
-            val count = SettingsBackup.import(prefs, org.json.JSONObject(text))
-            if (count < 0) {
+            val report = SettingsBackup.importWithReport(prefs, org.json.JSONObject(text))
+            if (report == null) {
                 Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
             } else {
                 RecentWorkflowStore.clear(
                     getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
                 )
-                Toast.makeText(this, getString(R.string.settings_backup_restored), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    this,
+                    getString(
+                        R.string.settings_backup_restored_report,
+                        report.restoredCount,
+                        report.migratedCount,
+                        report.ignoredUnknownCount,
+                        report.ignoredInvalidCount
+                    ),
+                    Toast.LENGTH_LONG
+                ).show()
                 recreate()
             }
         } catch (_: Exception) {

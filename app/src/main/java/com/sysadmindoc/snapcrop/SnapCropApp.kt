@@ -29,6 +29,9 @@ class SnapCropApp : Application(), SingletonImageLoader.Factory {
             CrashReporter.install(this)
             return
         }
+        SettingsPreferenceSchema.migrateLivePreferences(
+            getSharedPreferences(SettingsPreferenceSchema.PREFS_NAME, MODE_PRIVATE)
+        )
         CrashReporter.install(this)
         try { IndexWorker.schedule(this) } catch (_: Exception) {}
         val manager = getSystemService(NotificationManager::class.java)

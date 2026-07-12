@@ -434,7 +434,7 @@
     <string name="settings_backup_import">Restore</string>
     <string name="settings_backup_done">Settings backed up.</string>
     <string name="settings_backup_failed">Backup failed.</string>
-    <string name="settings_backup_restored">Settings restored.</string>
+    <string name="settings_backup_restored_report">Restored %1$d settings; migrated %2$d and ignored %3$d unknown/%4$d invalid entries.</string>
     <string name="settings_backup_invalid">Not a valid SnapCrop settings backup.</string>
     <string name="settings_section_about">About</string>
     <string name="settings_about_version">SnapCrop v%1$s</string>

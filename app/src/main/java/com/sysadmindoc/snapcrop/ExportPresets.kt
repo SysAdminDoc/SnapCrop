@@ -40,7 +40,7 @@ data class ExportPreset(val id: String, val name: String, val settings: ExportSe
 object ExportPresetStore {
     const val PREF_EDITOR_PRESET_ID = "export_preset_editor"
     const val PREF_QUICK_PRESET_ID = "export_preset_quick"
-    private const val PREF_PRESETS = "export_presets_json"
+    internal const val PREF_PRESETS = "export_presets_json"
     private const val SCHEMA_VERSION = 1
     private const val MAX_PRESETS = 20
     private const val MAX_JSON_CHARS = 256 * 1024

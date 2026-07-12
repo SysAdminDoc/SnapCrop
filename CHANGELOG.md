@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Versioned preference backup schema (v6.62.0).**
+
+- Settings backups now export only registered, typed preferences with the app
+  version, preference-schema version, and explicit legacy-key migration rules.
+  Credentials, transient capture URIs, and unrecognized internal keys are never
+  copied into the backup.
+- Restore accepts v1 and v2 documents, migrates the former `secure_editor` key,
+  reports restored/migrated/unknown/invalid counts, preserves unregistered local
+  state, and atomically rejects malformed custom redaction patterns. Installed
+  secure-preview preferences migrate at startup.
+
 **Exact release-asset update metadata and Obtainium setup (v6.61.0).**
 
 - The update checker now selects only the exact trusted

@@ -163,8 +163,8 @@ internal data class DrawStylePreset(
 }
 
 internal object DrawStylePresetStore {
-    private const val KEY = "draw_style_presets"
-    private const val KEY_DEFAULT = "draw_style_default"
+    internal const val KEY = "draw_style_presets"
+    internal const val KEY_DEFAULT = "draw_style_default"
 
     fun load(prefs: SharedPreferences): List<DrawStylePreset> {
         val json = prefs.getString(KEY, null) ?: return emptyList()
