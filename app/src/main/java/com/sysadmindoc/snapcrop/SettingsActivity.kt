@@ -347,6 +347,7 @@ class SettingsActivity : ComponentActivity() {
                         onCheckedChange = {
                             screenshotIndexEnabled = it
                             prefs.edit().putBoolean(ScreenshotIndexStore.PREF_ENABLED, it).apply()
+                            IndexWorker.sync(this@SettingsActivity, it)
                             screenshotIndexStatus = if (it) indexEnabledStr else indexDisabledStr
                         }
                     )

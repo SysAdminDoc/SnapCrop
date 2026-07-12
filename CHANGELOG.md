@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Reliable index scheduling and bounded background image cache (v6.53.0).**
+
+- Upgraded WorkManager 2.10.1 to 2.11.2 for current blocked-network,
+  SecurityException, and periodic-rescheduling fixes. Dependency verification
+  metadata now covers the runtime and work-testing artifacts.
+- Screenshot-index maintenance now uses one updateable periodic request, cancels
+  immediately when indexing is disabled, removes the unrelated network constraint,
+  completes permission loss safely, and limits other failures to two retries before
+  a terminal failure.
+- SnapCrop now owns Coil's singleton ImageLoader and trims its memory cache to 25%
+  of the initial cap whenever the process is backgrounded. Work-testing and loader
+  policy tests cover unique update/cancel, constraints, retry bounds, and cache setup.
+
 **Single visible editor command path (v6.52.0).**
 
 - Removed all editor key-event interception, including Ctrl+Z/Y/S, arrow-key crop

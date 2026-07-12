@@ -237,7 +237,7 @@ release/security policy.
 | **UI** | Jetpack Compose + Material 3 |
 | **Theme** | AMOLED black with Catppuccin Mocha accents |
 | **ML** | ML Kit (Object Detection, Text Recognition, Face Detection, Barcode Scanning, Subject Segmentation) |
-| **Image Loading** | Coil 3.3 |
+| **Image Loading** | Coil 3.3 with a 25% background memory-cache cap |
 | **Min SDK** | 29 (Android 10) |
 | **Target SDK** | 36 |
 | **Compile SDK** | 36 |

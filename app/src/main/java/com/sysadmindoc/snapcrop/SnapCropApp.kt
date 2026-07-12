@@ -5,12 +5,17 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import android.webkit.WebView
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.annotation.ExperimentalCoilApi
+import coil3.memoryCacheMaxSizePercentWhileInBackground
 
-class SnapCropApp : Application() {
+class SnapCropApp : Application(), SingletonImageLoader.Factory {
     companion object {
         const val CHANNEL_ID = "snapcrop_bg"
         const val CHANNEL_DETECTED = "snapcrop_detected"
         const val CHANNEL_STEP_CAPTURE = "snapcrop_step_capture"
+        const val BACKGROUND_IMAGE_CACHE_PERCENT = 0.25
     }
 
     override fun onCreate() {
@@ -65,4 +70,11 @@ class SnapCropApp : Application() {
             }
         )
     }
+
+    @OptIn(ExperimentalCoilApi::class)
+    override fun newImageLoader(context: android.content.Context): ImageLoader =
+        ImageLoader.Builder(context)
+            .memoryCacheMaxSizePercentWhileInBackground(BACKGROUND_IMAGE_CACHE_PERCENT)
+            .build()
+
 }
