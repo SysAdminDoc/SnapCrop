@@ -44,6 +44,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Survives reboots — auto-starts with your device
 
 ### Smart Auto-Crop
+- **Cut Out / squeeze** — Remove one or more irrelevant horizontal or vertical
+  bands from long screenshots, edit the cuts non-destructively, and preview
+  straight, dashed, or torn seams before save/share/project export.
 - **System bar stripping** — Reads exact status/nav bar heights from Android (works on transparent bars too)
 - **Border detection** — Removes uniform borders from any screenshot, light or dark mode
 - **App crop profiles** — Optional built-in and user-created rules strip app chrome when source hints, OCR keywords, or visual templates match

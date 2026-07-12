@@ -140,13 +140,14 @@ fun CropEditorScreen(
     initialRedactions: List<RedactionRegion> = emptyList(),
     initialDrawPaths: List<DrawPath> = emptyList(),
     initialAdjustments: FloatArray? = null,
+    initialCutout: CutoutEditState = CutoutEditState(),
     initialOcrBlocks: List<TextBlock> = emptyList(),
     initialOcrReviewed: Boolean = false,
     initialExportPresetId: String? = null,
-    onSave: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
-    onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
-    onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
-    onCopyClipboard: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
+    onSave: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit,
+    onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit,
+    onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit,
+    onCopyClipboard: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit,
     hasSourceContext: Boolean = false,
     onEditSourceContext: () -> Unit = {},
     onDiscard: () -> Unit,
@@ -199,11 +200,15 @@ fun CropEditorScreen(
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
+    var cutBands by remember(bitmap) { mutableStateOf(initialCutout.bands) }
+    var cutSeparatorStyle by remember(bitmap) { mutableStateOf(initialCutout.separatorStyle) }
+    var selectedCutBand by remember { mutableIntStateOf(-1) }
     var showHelp by remember { mutableStateOf(false) }
     if (showHelp) {
         LocalHelpDialog(
             onOpenRoute = { route ->
                 if (route == HelpRoute.EDITOR_REDACTION) editMode = EditMode.PIXELATE
+                if (route == HelpRoute.EDITOR_CUTOUT) editMode = EditMode.CUTOUT
             },
             onDismiss = { showHelp = false }
         )
@@ -390,7 +395,8 @@ fun CropEditorScreen(
         ocrBlocks.map(TextBlock::deepCopy),
         ocrScanCompleted,
         curveR, curveG, curveB,
-        if (perspectiveMode) listOf(PointF(quadTL.x, quadTL.y), PointF(quadTR.x, quadTR.y), PointF(quadBR.x, quadBR.y), PointF(quadBL.x, quadBL.y)) else null
+        if (perspectiveMode) listOf(PointF(quadTL.x, quadTL.y), PointF(quadTR.x, quadTR.y), PointF(quadBR.x, quadBR.y), PointF(quadBL.x, quadBL.y)) else null,
+        CutoutEditState(cutBands, cutSeparatorStyle),
     )
 
     fun restoreSnapshot(s: EditorSnapshot) {
@@ -415,6 +421,9 @@ fun CropEditorScreen(
         } else {
             perspectiveMode = false
         }
+        cutBands = s.cutout.bands
+        cutSeparatorStyle = s.cutout.separatorStyle
+        selectedCutBand = -1
     }
 
     val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
@@ -428,6 +437,33 @@ fun CropEditorScreen(
         undoStack.add(captureSnapshot())
         redoStack.clear()
         if (undoStack.size > 30) undoStack.removeAt(0)
+    }
+
+    fun commitCutBands(updated: List<CutBand>) {
+        val canonical = runCatching {
+            val plan = CutoutSqueeze.create(bitmap.width, bitmap.height, updated, cutSeparatorStyle)
+            CutoutSqueeze.createForCrop(
+                bitmap.width,
+                bitmap.height,
+                cropLeft,
+                cropTop,
+                cropRight,
+                cropBottom,
+                plan.bands,
+                cutSeparatorStyle,
+            )
+            plan.bands
+        }.getOrNull() ?: return
+        if (canonical == cutBands) return
+        pushUndo()
+        cutBands = canonical
+        selectedCutBand = selectedCutBand.coerceIn(-1, canonical.lastIndex)
+    }
+
+    fun commitCutSeparatorStyle(style: CutSeparatorStyle) {
+        if (style == cutSeparatorStyle) return
+        pushUndo()
+        cutSeparatorStyle = style
     }
 
     fun replaceOcrBlocks(updated: List<TextBlock>) {
@@ -937,6 +973,56 @@ fun CropEditorScreen(
 
     val cropW = cropRight - cropLeft
     val cropH = cropBottom - cropTop
+    val activeCutPlan = remember(
+        bitmap.width,
+        bitmap.height,
+        cropLeft,
+        cropTop,
+        cropRight,
+        cropBottom,
+        cutBands,
+        cutSeparatorStyle,
+    ) {
+        runCatching {
+            CutoutSqueeze.createForCrop(
+                bitmap.width,
+                bitmap.height,
+                cropLeft,
+                cropTop,
+                cropRight,
+                cropBottom,
+                cutBands,
+                cutSeparatorStyle,
+            )
+        }.getOrNull()
+    }
+    val squeezedWidth = activeCutPlan?.outputWidth ?: cropW
+    val squeezedHeight = activeCutPlan?.outputHeight ?: cropH
+    val cutoutControlActions = CutoutControlActions(
+        onSelectedIndexChange = { selectedCutBand = it },
+        onAddBand = { band -> commitCutBands(cutBands + band) },
+        onUpdateBand = { index, band ->
+            commitCutBands(cutBands.toMutableList().apply { this[index] = band })
+        },
+        onRemoveBand = { index -> commitCutBands(cutBands.filterIndexed { i, _ -> i != index }) },
+        onClearBands = { commitCutBands(emptyList()) },
+        onSeparatorStyleChange = ::commitCutSeparatorStyle,
+    )
+    val modeBannerActions = EditorModeBannerActions(
+        onReviewOcr = {
+            ocrDraftTexts.clear()
+            ocrBlocks.forEachIndexed { index, block -> ocrDraftTexts[index] = block.text }
+            showOcrReview = true
+        },
+        onCopyOcr = {
+            copyText(
+                "SnapCrop OCR",
+                ocrBlocks.joinToString("\n") { it.text },
+                context.getString(R.string.toast_copied),
+            )
+        },
+        onTranslateOcr = { openOcrText(ocrBlocks.joinToString("\n") { it.text }) },
+    )
     val cropPct = if (bitmap.width > 0 && bitmap.height > 0) {
         val origArea = bitmap.width.toLong() * bitmap.height
         val cropArea = cropW.toLong() * cropH
@@ -953,6 +1039,7 @@ fun CropEditorScreen(
 
     val modeOptions = listOf(
         Triple(stringResource(R.string.mode_crop), EditMode.CROP, Primary),
+        Triple(stringResource(R.string.mode_cutout), EditMode.CUTOUT, Primary),
         Triple(stringResource(R.string.mode_pixelate), EditMode.PIXELATE, Tertiary),
         Triple(stringResource(R.string.mode_draw), EditMode.DRAW, Secondary),
         Triple(stringResource(R.string.mode_ocr), EditMode.OCR, OcrAccent),
@@ -993,7 +1080,8 @@ fun CropEditorScreen(
                 drawPaths.toList(),
                 exportAdjustments(),
                 ocrBlocks.map(TextBlock::deepCopy),
-                ocrScanCompleted
+                ocrScanCompleted,
+                CutoutEditState(cutBands, cutSeparatorStyle),
             )
         }
         onDispose { registerStateProvider(null) }
@@ -1263,7 +1351,7 @@ fun CropEditorScreen(
                         range = -45f..45f,
                         color = Primary,
                         valueLabel = stringResource(R.string.crop_straighten_angle, rotationAngle),
-                        onChange = { rotationAngle = it }
+                        onChange = { if (cutBands.isEmpty()) rotationAngle = it }
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FilterChip(
@@ -1278,7 +1366,7 @@ fun CropEditorScreen(
                             ),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        IconButton(onClick = onFlipV, modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
                         }
                     }
@@ -1557,7 +1645,7 @@ fun CropEditorScreen(
                     Spacer(Modifier.width(4.dp))
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("${cropW}x${cropH}", color = OnSurfaceVariant, fontSize = 13.sp, maxLines = 1)
+                    Text("${squeezedWidth}x${squeezedHeight}", color = OnSurfaceVariant, fontSize = 13.sp, maxLines = 1)
                     if (cropPct > 0) {
                         Text("-${cropPct}%", color = Secondary, fontSize = 11.sp)
                     }
@@ -1568,9 +1656,9 @@ fun CropEditorScreen(
                 IconButton(onClick = { showHelp = true }, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurface, modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = onRotate, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(40.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, stringResource(R.string.editor_rotate), tint = OnSurface, modifier = Modifier.size(20.dp)) }
-                IconButton(onClick = onFlipH, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onFlipH, enabled = cutBands.isEmpty(), modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_h), tint = OnSurface, modifier = Modifier.size(20.dp)) }
                 IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(40.dp)) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
@@ -1641,75 +1729,19 @@ fun CropEditorScreen(
                     )
                 }
                 // Transform tools
-                IconButton(onClick = onFlipV, modifier = Modifier.size(36.dp)) {
+                IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f)) }
             }
         }
 
-        // Mode indicator
-        if (editMode != EditMode.CROP) {
-            val pixelateLabel = stringResource(R.string.mode_pixelate).uppercase()
-            val drawLabel = stringResource(R.string.mode_draw).uppercase()
-            val ocrLabel = stringResource(R.string.mode_ocr).uppercase()
-            val adjustLabel = stringResource(R.string.mode_adjust).uppercase()
-            val (bannerBg, bannerColor, bannerText) = when (editMode) {
-                EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, "$pixelateLabel — draw rectangles to redact")
-                EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, "$drawLabel — ${drawTool.label.lowercase()}")
-                EditMode.OCR -> {
-                    val info = if (ocrLoading) stringResource(R.string.ocr_scan).uppercase() + "..." else buildString {
-                        append("$ocrLabel — tap block for copy/translate")
-                        if (ocrBlocks.isNotEmpty()) append(" | ${ocrBlocks.size} text")
-                        if (scannedCodes.isNotEmpty()) append(" | ${scannedCodes.size} code")
-                    }
-                    Triple(OcrAccent.copy(alpha = 0.15f), OcrAccent, info)
-                }
-                EditMode.ADJUST -> Triple(AdjustAccent.copy(alpha = 0.15f), AdjustAccent, "$adjustLabel — brightness, contrast, saturation")
-                else -> Triple(Color.Transparent, Color.Transparent, "")
-            }
-            Row(Modifier.fillMaxWidth().background(bannerBg).padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    if (ocrLoading && editMode == EditMode.OCR) {
-                        CircularProgressIndicator(Modifier.size(12.dp).padding(end = 4.dp), strokeWidth = 1.5.dp, color = bannerColor)
-                        Spacer(Modifier.width(6.dp))
-                    }
-                    Text(bannerText, color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                }
-                if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            onClick = {
-                                ocrDraftTexts.clear()
-                                ocrBlocks.forEachIndexed { index, block -> ocrDraftTexts[index] = block.text }
-                                showOcrReview = true
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) {
-                            Text(stringResource(R.string.ocr_review), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                        TextButton(
-                            onClick = {
-                                val allText = ocrBlocks.joinToString("\n") { it.text }
-                                copyText("SnapCrop OCR", allText, context.getString(R.string.toast_copied))
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) { Text(stringResource(R.string.ocr_copy_all), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
-                        TextButton(
-                            onClick = {
-                                val allText = ocrBlocks.joinToString("\n") { it.text }
-                                openOcrText(allText)
-                            },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                        ) {
-                            Icon(Icons.Default.Translate, null, tint = bannerColor, modifier = Modifier.size(13.dp))
-                            Spacer(Modifier.width(3.dp))
-                            Text(stringResource(R.string.ocr_translate), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
+        EditorModeBanner(
+            editMode = editMode,
+            drawTool = drawTool,
+            ocrLoading = ocrLoading,
+            ocrBlockCount = ocrBlocks.size,
+            scannedCodeCount = scannedCodes.size,
+            actions = modeBannerActions,
+        )
 
         // Aspect ratio chips (only in crop mode)
         if (!isWideLayout && editMode == EditMode.CROP) Row(
@@ -1806,6 +1838,7 @@ fun CropEditorScreen(
             // Perspective crop toggle
             FilterChip(
                 selected = perspectiveMode,
+                enabled = cutBands.isEmpty(),
                 onClick = {
                     pushUndo()
                     perspectiveMode = !perspectiveMode
@@ -1866,7 +1899,7 @@ fun CropEditorScreen(
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text(straightenLabel, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(64.dp))
-                Slider(value = rotationAngle, onValueChange = { rotationAngle = it },
+                Slider(value = rotationAngle, onValueChange = { if (cutBands.isEmpty()) rotationAngle = it }, enabled = cutBands.isEmpty(),
                     valueRange = -45f..45f, modifier = Modifier.weight(1f).semantics { contentDescription = straightenLabel + ", ${String.format("%.1f", rotationAngle)} degrees" },
                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant))
                 Text(stringResource(R.string.crop_straighten_angle, rotationAngle), color = OnSurfaceVariant, fontSize = 11.sp,
@@ -2563,6 +2596,8 @@ fun CropEditorScreen(
                     cropTop = cropTop,
                     cropRight = cropRight,
                     cropBottom = cropBottom,
+                    cutBands = cutBands,
+                    cutSeparatorStyle = cutSeparatorStyle,
                     onDismiss = { previewMode = false }
                 )
             } else {
@@ -2778,7 +2813,7 @@ fun CropEditorScreen(
                                                     currentDrawPoints.clear()
                                                 }
                                                 EditMode.CROP -> {}
-                                                EditMode.OCR, EditMode.ADJUST -> {}
+                                                EditMode.CUTOUT, EditMode.OCR, EditMode.ADJUST -> {}
                                             }
                                         }
                                         activeHandle = DragHandle.NONE
@@ -2958,6 +2993,20 @@ fun CropEditorScreen(
 
                     if (rotationAngle != 0f) {
                         drawContext.canvas.nativeCanvas.restore()
+                    }
+
+                    if (editMode == EditMode.CUTOUT) {
+                        drawCutBandOverlays(
+                            cutBands,
+                            selectedCutBand,
+                            ox,
+                            oy,
+                            drawW,
+                            drawH,
+                            scale,
+                            Primary,
+                            Tertiary,
+                        )
                     }
 
                     val sl = ox + cropLeft * scale; val st = oy + cropTop * scale
@@ -3690,9 +3739,9 @@ fun CropEditorScreen(
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.editor_delete), tint = Tertiary) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.adjust_resize_button), tint = OnSurface) }
-                IconButton(onClick = { onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
                     Icon(Icons.Default.Share, stringResource(R.string.editor_share), tint = OnSurface) }
-                IconButton(onClick = { onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
                     Icon(Icons.Default.ContentCopy, stringResource(R.string.editor_copy), tint = OnSurface) }
                 IconButton(onClick = onEditSourceContext) {
                     Icon(
@@ -3701,12 +3750,12 @@ fun CropEditorScreen(
                         tint = if (hasSourceContext) Primary else OnSurface
                     )
                 }
-                IconButton(onClick = { onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
                     Icon(Icons.Default.Save, stringResource(R.string.crop_save_copy), tint = OnSurface) }
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) },
+            Button(onClick = { onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)
@@ -3714,7 +3763,7 @@ fun CropEditorScreen(
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = OnPrimary)
                 Spacer(Modifier.width(8.dp))
                 // Estimated file size (read prefs once, not every recomposition)
-                val pixels = cropW.toLong() * cropH
+                val pixels = squeezedWidth.toLong() * squeezedHeight
                 val estKb = when (selectedExportSettings.format) {
                     ExportImageFormat.WEBP -> pixels * 0.5f / 1024
                     ExportImageFormat.JPEG -> pixels * 0.8f / 1024
@@ -3733,6 +3782,37 @@ fun CropEditorScreen(
             }
         }
     }
+    }
+
+    if (editMode == EditMode.CUTOUT) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(top = 104.dp, start = 8.dp, end = 8.dp),
+            color = SurfaceContainer,
+            shape = RoundedCornerShape(12.dp),
+            tonalElevation = 6.dp,
+        ) {
+            Column(Modifier.padding(vertical = 8.dp)) {
+                CutoutControls(
+                    sourceWidth = bitmap.width,
+                    sourceHeight = bitmap.height,
+                    cropLeft = cropLeft,
+                    cropTop = cropTop,
+                    cropRight = cropRight,
+                    cropBottom = cropBottom,
+                    bands = cutBands,
+                    separatorStyle = cutSeparatorStyle,
+                    enabled = rotationAngle == 0f && !perspectiveMode,
+                    selectedIndex = selectedCutBand,
+                    actions = cutoutControlActions,
+                )
+                Text(
+                    stringResource(R.string.cutout_preview_dimensions, squeezedWidth, squeezedHeight),
+                    color = OnSurfaceVariant,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+        }
     }
 
     if (showOcrReview) {
@@ -4052,7 +4132,7 @@ fun CropEditorScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showResizeDialog = false; onResize(selectedSize) }) {
+                TextButton(onClick = { showResizeDialog = false; onResize(selectedSize) }, enabled = cutBands.isEmpty()) {
                     Text(stringResource(R.string.resize), color = Primary)
                 }
             },

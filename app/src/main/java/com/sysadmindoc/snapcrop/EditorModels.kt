@@ -103,10 +103,16 @@ data class EditorDraft(
     val draws: List<DrawPath>,
     val adj: FloatArray,
     val ocrBlocks: List<TextBlock> = emptyList(),
-    val ocrReviewed: Boolean = false
+    val ocrReviewed: Boolean = false,
+    val cutout: CutoutEditState = CutoutEditState(),
 )
 
-internal enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
+data class CutoutEditState(
+    val bands: List<CutBand> = emptyList(),
+    val separatorStyle: CutSeparatorStyle = CutSeparatorStyle.STRAIGHT,
+)
+
+internal enum class EditMode { CROP, CUTOUT, PIXELATE, DRAW, OCR, ADJUST }
 
 internal enum class DrawTool(val label: String) {
     PEN("Pen"), ARROW("Arrow"), CURVED_ARROW("Curve"), LINE("Line"), MEASURE("Ruler"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
@@ -272,7 +278,8 @@ internal data class EditorSnapshot(
     val cR: Float = 0f,
     val cG: Float = 0f,
     val cB: Float = 0f,
-    val perspectiveQuad: List<PointF>? = null
+    val perspectiveQuad: List<PointF>? = null,
+    val cutout: CutoutEditState = CutoutEditState(),
 )
 
 internal enum class ImageFilter(val label: String) {

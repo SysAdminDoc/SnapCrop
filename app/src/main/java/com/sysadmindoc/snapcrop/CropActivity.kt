@@ -124,6 +124,7 @@ class CropActivity : ComponentActivity() {
     private val initialRedactions = mutableStateOf<List<RedactionRegion>>(emptyList())
     private val initialDrawPaths = mutableStateOf<List<DrawPath>>(emptyList())
     private val initialAdjustments = mutableStateOf<FloatArray?>(null)
+    private val initialCutout = mutableStateOf(CutoutEditState())
     private val initialOcrBlocks = mutableStateOf<List<TextBlock>>(emptyList())
     private val initialOcrReviewed = mutableStateOf(false)
     private val projectLoadError = mutableStateOf<String?>(null)
@@ -192,6 +193,7 @@ class CropActivity : ComponentActivity() {
         initialRedactions.value = emptyList()
         initialDrawPaths.value = emptyList()
         initialAdjustments.value = null
+        initialCutout.value = CutoutEditState()
         initialOcrBlocks.value = emptyList()
         initialOcrReviewed.value = false
         selectedExportPresetId = getSharedPreferences("snapcrop", MODE_PRIVATE)
@@ -265,6 +267,7 @@ class CropActivity : ComponentActivity() {
                             initialRedactions = initialRedactions.value,
                             initialDrawPaths = initialDrawPaths.value,
                             initialAdjustments = initialAdjustments.value,
+                            initialCutout = initialCutout.value,
                             initialOcrBlocks = initialOcrBlocks.value,
                             onOcrChanged = { initialOcrBlocks.value = it.map(TextBlock::deepCopy) },
                             initialOcrReviewed = initialOcrReviewed.value,
@@ -278,10 +281,10 @@ class CropActivity : ComponentActivity() {
                                 }.apply()
                             },
                             registerStateProvider = { provider -> draftStateProvider = provider },
-                            onSave = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
-                            onSaveCopy = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = false) },
-                            onShare = { rect, redactions, draw, adj -> shareCropped(bmp, rect, redactions, draw, adj) },
-                            onCopyClipboard = { rect, redactions, draw, adj -> copyToClipboard(bmp, rect, redactions, draw, adj) },
+                            onSave = { rect, redactions, draw, adj, cutout -> saveCropped(bmp, rect, redactions, draw, adj, cutout, deleteOriginal = effectiveDeleteOriginalOnSave()) },
+                            onSaveCopy = { rect, redactions, draw, adj, cutout -> saveCropped(bmp, rect, redactions, draw, adj, cutout, deleteOriginal = false) },
+                            onShare = { rect, redactions, draw, adj, cutout -> shareCropped(bmp, rect, redactions, draw, adj, cutout) },
+                            onCopyClipboard = { rect, redactions, draw, adj, cutout -> copyToClipboard(bmp, rect, redactions, draw, adj, cutout) },
                             hasSourceContext = explicitSourceContext.value != null,
                             onEditSourceContext = { showSourceContextEditor.value = true },
                             onDiscard = { finish() },
@@ -652,6 +655,7 @@ class CropActivity : ComponentActivity() {
                 redactions = d.redactions,
                 drawPaths = d.draws,
                 adj = d.adj,
+                cutout = d.cutout,
                 ocrBlocks = d.ocrBlocks,
                 ocrReviewed = d.ocrReviewed,
                 deleteOriginal = effectiveDeleteOriginalOnSave(),
@@ -770,6 +774,7 @@ class CropActivity : ComponentActivity() {
                     initialRedactions.value = project.redactions
                     initialDrawPaths.value = project.drawLayers
                     initialAdjustments.value = project.adjustments
+                    initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)
                     initialOcrBlocks.value = project.ocrBlocks.map(TextBlock::deepCopy)
                     initialOcrReviewed.value = project.ocrReviewed
                 } else {
@@ -1492,12 +1497,20 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+    private fun createCroppedBitmap(
+        bitmap: Bitmap,
+        rect: Rect,
+        redactions: List<RedactionRegion>,
+        drawPaths: List<DrawPath>,
+        adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+        cutout: CutoutEditState = CutoutEditState(),
+    ): Bitmap {
         // Redact source pixels before any geometric transform so rotate/perspective cannot move
         // secrets away from an untransformed mask. Invalid enabled regions abort the export.
         val redacted = applyRedactions(bitmap, redactions)
         // Apply free rotation before adjustments/crop.
         val rotAngle = if (adj.size > 8) adj[8] else 0f
+        require(cutout.bands.isEmpty() || rotAngle == 0f) { "Cut Out cannot be combined with free rotation" }
         val rotated = if (rotAngle != 0f) {
             val matrix = Matrix().apply { postRotate(rotAngle, bitmap.width / 2f, bitmap.height / 2f) }
             Bitmap.createBitmap(redacted, 0, 0, redacted.width, redacted.height, matrix, true)
@@ -1513,6 +1526,7 @@ class CropActivity : ComponentActivity() {
         // Perspective warp: adj[17..24] = quad TL.x, TL.y, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y
         val hasPerspective = adj.size >= 25 && (adj[17] != 0f || adj[18] != 0f || adj[19] != 0f || adj[20] != 0f ||
                 adj[21] != 0f || adj[22] != 0f || adj[23] != 0f || adj[24] != 0f)
+        require(cutout.bands.isEmpty() || !hasPerspective) { "Cut Out cannot be combined with perspective" }
         if (hasPerspective) {
             val srcQuad = floatArrayOf(adj[17], adj[18], adj[19], adj[20], adj[21], adj[22], adj[23], adj[24])
             val topW = kotlin.math.sqrt(((srcQuad[2] - srcQuad[0]) * (srcQuad[2] - srcQuad[0]) + (srcQuad[3] - srcQuad[1]) * (srcQuad[3] - srcQuad[1])).toDouble())
@@ -1536,13 +1550,30 @@ class CropActivity : ComponentActivity() {
         val ct = rect.top.coerceIn(0, drawn.height - 1)
         val cw = rect.width().coerceAtMost(drawn.width - cl).coerceAtLeast(1)
         val ch = rect.height().coerceAtMost(drawn.height - ct).coerceAtLeast(1)
-        val cropped = Bitmap.createBitmap(drawn, cl, ct, cw, ch)
+        val initialCrop = Bitmap.createBitmap(drawn, cl, ct, cw, ch)
         preserveUltraHdrGainmap(
             drawn,
-            cropped,
+            initialCrop,
             Matrix().apply { postTranslate(-cl.toFloat(), -ct.toFloat()) }
         )
-        if (drawn !== bitmap && drawn !== cropped) drawn.recycle()
+        if (drawn !== bitmap && drawn !== initialCrop) drawn.recycle()
+        val cropped = if (cutout.bands.isEmpty()) {
+            initialCrop
+        } else {
+            val plan = CutoutSqueeze.createForCrop(
+                bitmap.width,
+                bitmap.height,
+                cl,
+                ct,
+                cl + cw,
+                ct + ch,
+                cutout.bands,
+                cutout.separatorStyle,
+            )
+            CutoutBitmapRenderer.render(initialCrop, plan).also { squeezed ->
+                if (squeezed !== initialCrop) initialCrop.recycle()
+            }
+        }
 
         // Shape crop masking
         val shapeType = if (adj.size > 3) adj[3] else 0f
@@ -1705,7 +1736,12 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun buildAnnotationSvg(cropRect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>): String? {
+    private fun buildAnnotationSvg(
+        cropRect: Rect,
+        redactions: List<RedactionRegion>,
+        drawPaths: List<DrawPath>,
+        cutout: CutoutEditState = CutoutEditState(),
+    ): String? {
         val width = cropRect.width().coerceAtLeast(1)
         val height = cropRect.height().coerceAtLeast(1)
         val elements = StringBuilder()
@@ -1865,11 +1901,64 @@ class CropActivity : ComponentActivity() {
         }
 
         if (elements.isEmpty()) return null
+        val source = bitmapState.value
+        val cutPlan = if (cutout.bands.isNotEmpty() && source != null) {
+            CutoutSqueeze.createForCrop(
+                source.width,
+                source.height,
+                cropRect.left,
+                cropRect.top,
+                cropRect.right,
+                cropRect.bottom,
+                cutout.bands,
+                cutout.separatorStyle,
+            )
+        } else null
+        val outputWidth = cutPlan?.outputWidth ?: width
+        val outputHeight = cutPlan?.outputHeight ?: height
         return buildString {
             append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
-            append("""<svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height">""").append('\n')
+            append("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="$outputWidth" height="$outputHeight" viewBox="0 0 $outputWidth $outputHeight">""").append('\n')
             append("""  <title>SnapCrop annotation layers</title>""").append('\n')
-            append(elements)
+            if (cutPlan == null) {
+                append(elements)
+            } else {
+                append("  <defs>\n    <g id=\"annotation-layers\">\n")
+                append(elements)
+                append("    </g>\n")
+                cutPlan.retainedSourceRects.forEachIndexed { index, tile ->
+                    val out = tile.outputRect
+                    append("    <clipPath id=\"cut-clip-$index\"><rect x=\"${out.left.svgNum()}\" y=\"${out.top.svgNum()}\" width=\"${out.width.svgNum()}\" height=\"${out.height.svgNum()}\"/></clipPath>\n")
+                }
+                append("  </defs>\n")
+                cutPlan.retainedSourceRects.forEachIndexed { index, tile ->
+                    val dx = tile.outputOffset.x - tile.sourceRect.left
+                    val dy = tile.outputOffset.y - tile.sourceRect.top
+                    append("  <g clip-path=\"url(#cut-clip-$index)\"><use xlink:href=\"#annotation-layers\" transform=\"translate(${dx.svgNum()} ${dy.svgNum()})\"/></g>\n")
+                }
+                cutPlan.separators.forEachIndexed { index, seam ->
+                    val dash = if (seam.style == CutSeparatorStyle.DASHED) " stroke-dasharray=\"14 10\"" else ""
+                    if (seam.style == CutSeparatorStyle.TORN) {
+                        val length = if (seam.axis == CutAxis.HORIZONTAL) outputWidth else outputHeight
+                        val points = buildString {
+                            var cursor = 0
+                            var direction = 1
+                            while (cursor <= length) {
+                                val x = if (seam.axis == CutAxis.HORIZONTAL) cursor else seam.outputPosition + 4 * direction
+                                val y = if (seam.axis == CutAxis.HORIZONTAL) seam.outputPosition + 4 * direction else cursor
+                                append(if (isEmpty()) "M " else " L ").append(x).append(' ').append(y)
+                                cursor += 18
+                                direction = -direction
+                            }
+                        }
+                        append("  <path id=\"cut-seam-$index\" d=\"$points\" fill=\"none\" stroke=\"#FFFFFF\" stroke-width=\"2\"/>\n")
+                    } else if (seam.axis == CutAxis.HORIZONTAL) {
+                        append("  <line id=\"cut-seam-$index\" x1=\"0\" y1=\"${seam.outputPosition}\" x2=\"$outputWidth\" y2=\"${seam.outputPosition}\" stroke=\"#FFFFFF\" stroke-width=\"2\"$dash/>\n")
+                    } else {
+                        append("  <line id=\"cut-seam-$index\" x1=\"${seam.outputPosition}\" y1=\"0\" x2=\"${seam.outputPosition}\" y2=\"$outputHeight\" stroke=\"#FFFFFF\" stroke-width=\"2\"$dash/>\n")
+                    }
+                }
+            }
             append("</svg>\n")
         }
     }
@@ -1879,6 +1968,7 @@ class CropActivity : ComponentActivity() {
         redactions: List<RedactionRegion>,
         drawPaths: List<DrawPath>,
         adj: FloatArray,
+        cutout: CutoutEditState,
         deleteOriginal: Boolean,
         exportFormat: CropExportFormat,
         savePath: String,
@@ -1911,6 +2001,8 @@ class CropActivity : ComponentActivity() {
             sourceHeight = bitmap?.height ?: 0,
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
+            cutBands = cutout.bands,
+            cutSeparatorStyle = cutout.separatorStyle,
             redactions = redactions.take(limits.maxRedactions).map { it.copy() },
             ocrReviewed = ocrReviewed,
             drawLayers = boundedDrawPaths,
@@ -1951,14 +2043,14 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun saveCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
+    private fun saveCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray, cutout: CutoutEditState, deleteOriginal: Boolean) {
         if (isSaving.value) return
         isSaving.value = true
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
                 val exportSettings = currentExportSettings()
-                cropped = createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj)
+                cropped = createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj, cutout)
                 val bordered = ExportPresetRenderer.applyBorder(cropped, exportSettings)
                 if (bordered !== cropped) cropped.recycle()
                 cropped = bordered
@@ -1967,7 +2059,7 @@ class CropActivity : ComponentActivity() {
                 cropped = watermarked
                 val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
                 val name = resolveFilename(exportSettings)
-                val annotationSvg = buildAnnotationSvg(rect, redactions, drawPaths)
+                val annotationSvg = buildAnnotationSvg(rect, redactions, drawPaths, cutout)
                 val savePath = exportSettings.savePath
                 val exportFormat = getExportFormat(
                     forcePng = hasShapeCrop,
@@ -1975,12 +2067,23 @@ class CropActivity : ComponentActivity() {
                     settings = exportSettings
                 )
                 val projectSidecarJson = if (projectSidecarsEnabled()) {
-                    buildProjectSidecarJson(rect, redactions, drawPaths, adj, deleteOriginal, exportFormat, savePath)
+                    buildProjectSidecarJson(rect, redactions, drawPaths, adj, cutout, deleteOriginal, exportFormat, savePath)
                 } else {
                     null
                 }
                 val correctedOcrText = if (ocrTextSidecarsEnabled()) {
-                    ReviewedOcr.plainText(initialOcrBlocks.value)
+                    val retainedBlocks = initialOcrBlocks.value.filter { block ->
+                        block.bounds.left >= rect.left && block.bounds.top >= rect.top &&
+                            block.bounds.right <= rect.right && block.bounds.bottom <= rect.bottom &&
+                            cutout.bands.none { band ->
+                                if (band.axis == CutAxis.HORIZONTAL) {
+                                    block.bounds.top < band.endExclusive && band.start < block.bounds.bottom
+                                } else {
+                                    block.bounds.left < band.endExclusive && band.start < block.bounds.right
+                                }
+                            }
+                    }
+                    ReviewedOcr.plainText(retainedBlocks)
                         .takeIf(String::isNotEmpty)
                 } else {
                     null
@@ -2009,13 +2112,13 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray) {
+    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray, cutout: CutoutEditState) {
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
                 val exportSettings = currentExportSettings()
                 cropped = applyExportDecorations(
-                    createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj),
+                    createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj, cutout),
                     exportSettings
                 )
                 val clipDir = File(cacheDir, "clipboard")
@@ -2042,10 +2145,10 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun shareCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray) {
+    private fun shareCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray, cutout: CutoutEditState) {
         lifecycleScope.launch(Dispatchers.IO) {
             val cropped = try {
-                createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj)
+                createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj, cutout)
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()

@@ -18,6 +18,8 @@ data class SnapCropProject(
     val sourceHeight: Int,
     val cropRect: Rect,
     val adjustments: FloatArray,
+    val cutBands: List<CutBand> = emptyList(),
+    val cutSeparatorStyle: CutSeparatorStyle = CutSeparatorStyle.STRAIGHT,
     val pixelateRects: List<Rect> = emptyList(),
     val redactions: List<RedactionRegion> = pixelateRects.map { bounds ->
         RedactionRegions.manual(bounds, RedactionStyle.PIXELATE)
@@ -41,6 +43,8 @@ data class SnapCropProject(
                 sourceHeight == other.sourceHeight &&
                 cropRect == other.cropRect &&
                 adjustments.contentEquals(other.adjustments) &&
+                cutBands == other.cutBands &&
+                cutSeparatorStyle == other.cutSeparatorStyle &&
                 pixelateRects == other.pixelateRects &&
                 redactions == other.redactions &&
                 ocrReviewed == other.ocrReviewed &&
@@ -61,6 +65,8 @@ data class SnapCropProject(
         result = 31 * result + sourceHeight
         result = 31 * result + cropRect.hashCode()
         result = 31 * result + adjustments.contentHashCode()
+        result = 31 * result + cutBands.hashCode()
+        result = 31 * result + cutSeparatorStyle.hashCode()
         result = 31 * result + pixelateRects.hashCode()
         result = 31 * result + redactions.hashCode()
         result = 31 * result + ocrReviewed.hashCode()
@@ -80,6 +86,7 @@ data class ProjectImportLimits(
     val maxJsonBytes: Int = 8 * 1024 * 1024,
     val maxPixelateRects: Int = 512,
     val maxRedactions: Int = 512,
+    val maxCutBands: Int = CutoutSqueeze.MAX_INPUT_BANDS,
     val maxOcrBlocks: Int = 1_024,
     val maxOcrTextChars: Int = 131_072,
     val maxDrawLayers: Int = 256,
@@ -108,7 +115,7 @@ enum class SourceMatch { MATCH, HASH_MISMATCH, DIMENSION_MISMATCH, MISSING_FINGE
 object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
-    private const val VERSION = 4
+    private const val VERSION = 5
     private const val ADJUSTMENT_COUNT = 25
     val DEFAULT_LIMITS = ProjectImportLimits()
     private val HASH_PATTERN = Regex("^[0-9a-fA-F]{64}$")
@@ -141,6 +148,10 @@ object SnapCropProjectSidecar {
             )
             .put("crop", project.cropRect.toJson())
             .put("adjustments", project.adjustments.toAdjustmentsJson())
+            .put("cutout", JSONObject()
+                .put("separatorStyle", project.cutSeparatorStyle.name)
+                .put("bands", JSONArray().apply { project.cutBands.forEach { put(it.toJson()) } })
+            )
             .put("redactions", JSONArray().apply {
                 project.redactions.forEach { put(it.toJson()) }
             })
@@ -202,6 +213,8 @@ object SnapCropProjectSidecar {
             when {
                 e.message == "schema" -> ProjectDecodeResult.Rejected(ProjectRejectReason.UNSUPPORTED_SCHEMA)
                 e.message == "version" -> ProjectDecodeResult.Rejected(ProjectRejectReason.UNSUPPORTED_VERSION)
+                e.message?.startsWith("cutout") == true ->
+                    ProjectDecodeResult.Rejected(ProjectRejectReason.INVALID_FIELD, e.message)
                 else -> ProjectDecodeResult.Rejected(ProjectRejectReason.MALFORMED)
             }
         } catch (_: Exception) {
@@ -233,6 +246,12 @@ object SnapCropProjectSidecar {
                 packageName = context.optNullableString("packageName")
             )
         } else null
+        val cutout = if (version >= 5) root.optJSONObject("cutout") ?: JSONObject() else JSONObject()
+        val cutSeparatorStyle = if (version >= 5) {
+            runCatching {
+                CutSeparatorStyle.valueOf(cutout.optString("separatorStyle", CutSeparatorStyle.STRAIGHT.name))
+            }.getOrElse { throw IllegalArgumentException("cutout.separatorStyle") }
+        } else CutSeparatorStyle.STRAIGHT
         return SnapCropProject(
             sourceUri = source.optNullableString("uri"),
             sourceSha256 = source.optNullableString("sha256"),
@@ -240,6 +259,8 @@ object SnapCropProjectSidecar {
             sourceHeight = source.optInt("height", 0),
             cropRect = root.optJSONObject("crop")?.toRect() ?: Rect(0, 0, 0, 0),
             adjustments = adjustments,
+            cutBands = if (version >= 5) cutout.optJSONArray("bands").toCutBandList() else emptyList(),
+            cutSeparatorStyle = cutSeparatorStyle,
             pixelateRects = legacyRects,
             redactions = if (version == 1) {
                 legacyRects.map { RedactionRegions.manual(it, RedactionStyle.PIXELATE) }
@@ -298,6 +319,36 @@ object SnapCropProjectSidecar {
             return ProjectDecodeResult.Rejected(ProjectRejectReason.MISSING_FINGERPRINT, "source.sha256")
         }
         if (!project.cropRect.isValidInside(width, height)) return reject("crop")
+        if (project.cutBands.size > limits.maxCutBands) return reject("cutout.bands")
+        for (axis in CutAxis.entries) {
+            val limit = if (axis == CutAxis.HORIZONTAL) height else width
+            val axisBands = project.cutBands.filter { it.axis == axis }.sortedBy(CutBand::start)
+            axisBands.forEach { band ->
+                if (band.start !in 0 until band.endExclusive || band.endExclusive > limit) {
+                    return reject("cutout.bounds")
+                }
+            }
+            if (axisBands.zipWithNext().any { (first, second) -> second.start < first.endExclusive }) {
+                return reject("cutout.overlap")
+            }
+        }
+        if (project.cutBands.isNotEmpty()) {
+            val validPlan = runCatching {
+                CutoutSqueeze.createForCrop(
+                    width,
+                    height,
+                    project.cropRect.left,
+                    project.cropRect.top,
+                    project.cropRect.right,
+                    project.cropRect.bottom,
+                    project.cutBands,
+                    project.cutSeparatorStyle,
+                )
+            }.isSuccess
+            if (!validPlan) return reject("cutout.crop")
+            val hasPerspective = project.adjustments.size >= 25 && project.adjustments.slice(17..24).any { it != 0f }
+            if (project.adjustments.getOrNull(8) != 0f || hasPerspective) return reject("cutout.transform")
+        }
         if (project.pixelateRects.size > limits.maxPixelateRects || project.pixelateRects.any { !it.isValidInside(width, height) }) {
             return reject("pixelateRects")
         }
@@ -382,6 +433,26 @@ object SnapCropProjectSidecar {
         .put("top", top)
         .put("right", right)
         .put("bottom", bottom)
+
+    private fun CutBand.toJson(): JSONObject = JSONObject()
+        .put("axis", axis.name)
+        .put("start", start)
+        .put("endExclusive", endExclusive)
+
+    private fun JSONArray?.toCutBandList(): List<CutBand> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (index in 0 until length()) {
+                val item = optJSONObject(index) ?: throw IllegalArgumentException("cutout.bands")
+                val axis = runCatching { CutAxis.valueOf(item.getString("axis")) }
+                    .getOrElse { throw IllegalArgumentException("cutout.axis") }
+                if (!item.has("start") || !item.has("endExclusive")) {
+                    throw IllegalArgumentException("cutout.bounds")
+                }
+                add(CutBand(axis, item.getInt("start"), item.getInt("endExclusive")))
+            }
+        }
+    }
 
     private fun JSONObject.toRect(): Rect = Rect(
         optInt("left", 0),

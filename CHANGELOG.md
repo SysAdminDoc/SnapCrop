@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Non-destructive Cut Out / squeeze editing (v6.60.0).**
+
+- The editor can remove up to 32 horizontal or vertical source bands, edit or
+  remove them non-destructively, preview the compressed result, and render
+  straight, dashed, or torn seams. Crop-aware retained-tile geometry handles
+  multiple cuts on both axes without duplicating or inventing pixels.
+- Save, Save Copy, clipboard, and share use one raster path that clips and shifts
+  redactions and annotations with retained pixels. Project schema v5 restores
+  bands and seam style; annotation SVG uses retained-tile clips/translations, and
+  corrected OCR text sidecars omit blocks cropped out or intersecting a cut.
+- Cut plans are bounded and fail closed for hostile geometry, incompatible
+  perspective/free rotation, and all-content removal. Undo/redo, process-death
+  drafts, compressed size estimates, searchable help, Ultra HDR-safe SDR fallback,
+  and compact/wide editor entry points share the typed cut state.
+
 **Searchable offline help and private recent workflows (v6.59.0).**
 
 - Home, Settings, and the editor now open task-based offline help covering

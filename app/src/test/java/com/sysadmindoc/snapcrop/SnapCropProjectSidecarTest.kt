@@ -15,7 +15,7 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class SnapCropProjectSidecarTest {
     @Test
-    fun explicitSourceContextRoundTripsInVersionFour() {
+    fun explicitSourceContextRoundTripsInCurrentVersion() {
         val context = ExplicitSourceContext(
             url = "https://example.com/support?id=42",
             label = "Support case",
@@ -27,7 +27,56 @@ class SnapCropProjectSidecarTest {
         val decoded = SnapCropProjectSidecar.decode(encoded)
 
         assertEquals(context, decoded.sourceContext)
-        assertEquals(4, JSONObject(encoded).getInt("version"))
+        assertEquals(5, JSONObject(encoded).getInt("version"))
+    }
+
+    @Test
+    fun cutBandsAndSeparatorRoundTripInVersionFive() {
+        val project = basicProject().copy(
+            cutBands = listOf(
+                CutBand(CutAxis.HORIZONTAL, 20, 40),
+                CutBand(CutAxis.VERTICAL, 50, 70),
+            ),
+            cutSeparatorStyle = CutSeparatorStyle.TORN,
+        )
+
+        val encoded = SnapCropProjectSidecar.encode(project)
+        val decoded = SnapCropProjectSidecar.decode(encoded)
+
+        assertEquals(project.cutBands, decoded.cutBands)
+        assertEquals(CutSeparatorStyle.TORN, decoded.cutSeparatorStyle)
+    }
+
+    @Test
+    fun versionFourDefaultsToNoCutBands() {
+        val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject()))
+            .put("version", 4)
+        encoded.remove("cutout")
+
+        val decoded = SnapCropProjectSidecar.decode(encoded.toString())
+
+        assertTrue(decoded.cutBands.isEmpty())
+        assertEquals(CutSeparatorStyle.STRAIGHT, decoded.cutSeparatorStyle)
+    }
+
+    @Test
+    fun overlappingAndTransformIncompatibleCutsAreRejected() {
+        val overlap = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(
+            cutBands = listOf(
+                CutBand(CutAxis.HORIZONTAL, 10, 30),
+                CutBand(CutAxis.HORIZONTAL, 20, 40),
+            ),
+        )))
+        val transformed = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(
+            cutBands = listOf(CutBand(CutAxis.VERTICAL, 10, 20)),
+            adjustments = basicProject().adjustments.copyOf().also { it[8] = 2f },
+        )))
+
+        val overlapResult = SnapCropProjectSidecar.decodeString(overlap.toString(), ProjectImportOrigin.EXTERNAL)
+        val transformResult = SnapCropProjectSidecar.decodeString(transformed.toString(), ProjectImportOrigin.EXTERNAL)
+
+        assertEquals("cutout.overlap", (overlapResult as ProjectDecodeResult.Rejected).field)
+        assertEquals("cutout.transform", (transformResult as ProjectDecodeResult.Rejected).field)
     }
 
     @Test

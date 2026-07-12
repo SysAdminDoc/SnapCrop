@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -39,21 +40,46 @@ internal fun BeforeAfterPreview(
     cropTop: Int,
     cropRight: Int,
     cropBottom: Int,
+    cutBands: List<CutBand> = emptyList(),
+    cutSeparatorStyle: CutSeparatorStyle = CutSeparatorStyle.STRAIGHT,
     onDismiss: () -> Unit
 ) {
     val cropW = cropRight - cropLeft
     val cropH = cropBottom - cropTop
-    val croppedPreview = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap) {
+    val previewBitmap = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap, cutBands, cutSeparatorStyle) {
         try {
-            Bitmap.createBitmap(
+            val cropped = Bitmap.createBitmap(
                 bitmap,
                 cropLeft.coerceAtLeast(0),
                 cropTop.coerceAtLeast(0),
                 cropW.coerceAtMost(bitmap.width - cropLeft.coerceAtLeast(0)),
                 cropH.coerceAtMost(bitmap.height - cropTop.coerceAtLeast(0))
-            ).asImageBitmap()
+            )
+            if (cutBands.isEmpty()) {
+                cropped
+            } else {
+                val plan = CutoutSqueeze.createForCrop(
+                    bitmap.width,
+                    bitmap.height,
+                    cropLeft,
+                    cropTop,
+                    cropRight,
+                    cropBottom,
+                    cutBands,
+                    cutSeparatorStyle,
+                )
+                CutoutBitmapRenderer.render(cropped, plan).also {
+                    if (it !== cropped) cropped.recycle()
+                }
+            }
         } catch (_: Exception) {
-            imageBitmap
+            bitmap
+        }
+    }
+    val croppedPreview = remember(previewBitmap) { previewBitmap.asImageBitmap() }
+    DisposableEffect(previewBitmap, bitmap) {
+        onDispose {
+            if (previewBitmap !== bitmap && !previewBitmap.isRecycled) previewBitmap.recycle()
         }
     }
     var dividerX by remember { mutableFloatStateOf(0.5f) }

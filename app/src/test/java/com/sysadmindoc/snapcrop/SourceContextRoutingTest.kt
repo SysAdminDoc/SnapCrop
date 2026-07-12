@@ -15,7 +15,7 @@ class SourceContextRoutingTest {
 
         assertTrue(crop.contains("ExplicitSourceContext.fromIntent(incomingIntent, referrer)"))
         assertTrue(crop.contains("sourceContext = explicitSourceContext.value"))
-        assertTrue(project.contains("private const val VERSION = 4"))
+        assertTrue(project.contains("private const val VERSION = 5"))
         assertTrue(gallery.contains("observeSourceContexts().collect"))
         assertTrue(gallery.contains("Intent.CATEGORY_BROWSABLE"))
         assertTrue(main.contains("commonSourceUrl.takeIf { options.includeSourceLink }"))

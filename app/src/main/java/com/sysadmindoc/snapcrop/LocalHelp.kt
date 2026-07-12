@@ -7,6 +7,7 @@ enum class HelpRoute {
     HOME_PERMISSIONS,
     EDITOR_SAVE_ACTIONS,
     EDITOR_REDACTION,
+    EDITOR_CUTOUT,
     HOME_LONG_SCREENSHOT,
     HOME_STEP_CAPTURE,
     HOME_WEB_CAPTURE,
@@ -61,6 +62,13 @@ object LocalHelpCatalog {
             summary = "Use opaque Bar replacement for secrets because it destroys the covered pixels. Pixelate and Blur are cosmetic effects and may be partly reversible.",
             keywords = setOf("redact", "privacy", "secret", "opaque", "bar", "pixelate", "blur", "safe"),
             route = HelpRoute.EDITOR_REDACTION,
+        ),
+        HelpEntry(
+            id = "remove-middle-content",
+            title = "Cut out irrelevant rows or columns",
+            summary = "Use Cut Out before perspective or free rotation. Add horizontal or vertical source bands, edit or remove them non-destructively, choose a straight, dashed, or torn seam, then use Preview to inspect the squeezed output. Retained annotations move with their pixels when exported.",
+            keywords = setOf("cut", "squeeze", "remove", "middle", "band", "seam", "long", "screenshot", "preview"),
+            route = HelpRoute.EDITOR_CUTOUT,
         ),
         HelpEntry(
             id = "troubleshoot-long-screenshot",

@@ -31,6 +31,17 @@ internal fun preserveUltraHdrGainmap(
     UltraHdrApi34.attach(source, target, baseTransform)
 }
 
+/** Reattaches an Ultra HDR gain map after a non-affine base-image transform. */
+internal fun preserveUltraHdrGainmap(
+    source: Bitmap,
+    target: Bitmap,
+    transformContents: (Bitmap) -> Bitmap,
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ||
+        !source.hasGainmap() || target.hasGainmap()) return
+    UltraHdrApi34.attachTransformed(source, target, transformContents)
+}
+
 @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 private object UltraHdrApi34 {
     fun attach(source: Bitmap, target: Bitmap, baseTransform: Matrix) {
@@ -59,6 +70,12 @@ private object UltraHdrApi34 {
             drawColor(Color.GRAY)
             drawBitmap(contents, gainTransform, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         }
+        target.gainmap = cloneMetadata(sourceGainmap, transformedContents)
+    }
+
+    fun attachTransformed(source: Bitmap, target: Bitmap, transformContents: (Bitmap) -> Bitmap) {
+        val sourceGainmap = source.gainmap ?: return
+        val transformedContents = transformContents(sourceGainmap.gainmapContents)
         target.gainmap = cloneMetadata(sourceGainmap, transformedContents)
     }
 

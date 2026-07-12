@@ -1207,4 +1207,20 @@
     <string name="home_recent_workflows_private">Only workflow IDs are stored—never media, names, paths, or recognized text.</string>
     <string name="settings_recent_workflows_title">Recent workflows</string>
     <string name="settings_recent_workflows_subtitle">Show up to six recent workflow shortcuts on Home. Stores only allowlisted workflow IDs and clears history when disabled.</string>
+    <string name="mode_cutout">Cut Out</string>
+    <string name="cutout_help">Remove irrelevant source rows or columns non-destructively. Preview shows the squeezed output and seam.</string>
+    <string name="cutout_incompatible">Clear perspective and straighten rotation before editing cut bands.</string>
+    <string name="cutout_add_horizontal">Add horizontal</string>
+    <string name="cutout_add_vertical">Add vertical</string>
+    <string name="cutout_style_straight">Straight</string>
+    <string name="cutout_style_dashed">Dashed</string>
+    <string name="cutout_style_torn">Torn</string>
+    <string name="cutout_horizontal_band">Horizontal band %1$d, %2$d px removed</string>
+    <string name="cutout_vertical_band">Vertical band %1$d, %2$d px removed</string>
+    <string name="cutout_horizontal_band_short">H%1$d</string>
+    <string name="cutout_vertical_band_short">V%1$d</string>
+    <string name="cutout_clear_all">Clear all cut bands</string>
+    <string name="cutout_remove">Remove band</string>
+    <string name="cutout_mode_banner">CUT OUT — edit source bands, then Preview the squeezed result</string>
+    <string name="cutout_preview_dimensions">Squeezed output: %1$d × %2$d</string>
 </resources>
