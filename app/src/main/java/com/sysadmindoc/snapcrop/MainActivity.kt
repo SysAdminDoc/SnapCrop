@@ -102,6 +102,10 @@ class MainActivity : ComponentActivity() {
         const val KEY_PENDING_MUTATION_REQUESTED = "pending_mutation_requested"
         const val KEY_GALLERY_OPEN_URI = "gallery_open_uri"
         const val KEY_GALLERY_OPEN_DATE = "gallery_open_date"
+        const val SHORTCUT_LAST_ACTION = "com.sysadmindoc.snapcrop.SHORTCUT_LAST_ACTION"
+        const val SHORTCUT_LONG_SCREENSHOT = "com.sysadmindoc.snapcrop.SHORTCUT_LONG_SCREENSHOT"
+        const val SHORTCUT_MONITOR = "com.sysadmindoc.snapcrop.SHORTCUT_MONITOR"
+        const val SHORTCUT_GALLERY = "com.sysadmindoc.snapcrop.SHORTCUT_GALLERY"
     }
 
     private val serviceRunning = mutableStateOf(false)
@@ -118,6 +122,7 @@ class MainActivity : ComponentActivity() {
     private val cropCount = mutableStateOf(0)
     private val pendingAccessibilityDisclosure = mutableStateOf<AccessibilityPurpose?>(null)
     private val galleryOpenRequest = mutableStateOf<GalleryOpenRequest?>(null)
+    private val pendingOpenGallery = mutableStateOf(false)
     private var pendingMutationUris = mutableListOf<Uri>()
     private var pendingMutationSucceeded = mutableListOf<Uri>()
     private var pendingMutationChunk = emptyList<Uri>()
@@ -436,6 +441,7 @@ class MainActivity : ComponentActivity() {
         }
         handleScreenshotReminderIntent(intent)
         handleAccessibilityIntent(intent)
+        handleShortcutIntent(intent)
         if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
 
         window.decorView.setOnDragListener { _, event ->
@@ -520,6 +526,9 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(galleryOpenRequest.value) {
                     if (galleryOpenRequest.value != null) selectedTab = 1
+                }
+                LaunchedEffect(pendingOpenGallery.value) {
+                    if (pendingOpenGallery.value) { selectedTab = 1; pendingOpenGallery.value = false }
                 }
 
                 if (showHelp) {
@@ -1301,7 +1310,44 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleScreenshotReminderIntent(intent)
         handleAccessibilityIntent(intent)
+        handleShortcutIntent(intent)
         if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
+    }
+
+    /** Dispatches a launcher app shortcut (distinct intent action per shortcut) to the existing action. */
+    private fun handleShortcutIntent(intent: Intent) {
+        when (intent.action) {
+            SHORTCUT_GALLERY -> pendingOpenGallery.value = true
+            SHORTCUT_LONG_SCREENSHOT -> requestLongScreenshot()
+            SHORTCUT_MONITOR -> toggleMonitoringFromShortcut()
+            SHORTCUT_LAST_ACTION -> runLastActionFromShortcut()
+            else -> return
+        }
+        intent.action = null
+    }
+
+    private fun toggleMonitoringFromShortcut() {
+        if (ScreenshotService.isRunning) {
+            stopService(Intent(this, ScreenshotService::class.java))
+            Toast.makeText(this, R.string.toast_monitor_stopped, Toast.LENGTH_SHORT).show()
+        } else if (mediaCapabilities.value.canMonitorScreenshots) {
+            startMonitoring()
+        } else {
+            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT), startMonitorAfter = true)
+        }
+    }
+
+    private fun runLastActionFromShortcut() {
+        if (!mediaCapabilities.value.canMonitorScreenshots) {
+            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
+            return
+        }
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, ScreenshotService::class.java).apply {
+                action = ScreenshotService.ACTION_RUN_LAST_ACTION
+            }
+        )
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

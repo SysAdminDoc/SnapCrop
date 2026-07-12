@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="quick_crop_last"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_last_action"
+        android:shortcutShortLabel="@string/shortcut_last_action_short"
+        android:shortcutLongLabel="@string/shortcut_last_action_long">
+        <intent
+            android:action="com.sysadmindoc.snapcrop.SHORTCUT_LAST_ACTION"
+            android:targetPackage="com.sysadmindoc.snapcrop"
+            android:targetClass="com.sysadmindoc.snapcrop.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="long_screenshot"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_long_screenshot"
+        android:shortcutShortLabel="@string/shortcut_long_screenshot_short"
+        android:shortcutLongLabel="@string/shortcut_long_screenshot_long">
+        <intent
+            android:action="com.sysadmindoc.snapcrop.SHORTCUT_LONG_SCREENSHOT"
+            android:targetPackage="com.sysadmindoc.snapcrop"
+            android:targetClass="com.sysadmindoc.snapcrop.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="toggle_monitor"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_monitor"
+        android:shortcutShortLabel="@string/shortcut_monitor_short"
+        android:shortcutLongLabel="@string/shortcut_monitor_long">
+        <intent
+            android:action="com.sysadmindoc.snapcrop.SHORTCUT_MONITOR"
+            android:targetPackage="com.sysadmindoc.snapcrop"
+            android:targetClass="com.sysadmindoc.snapcrop.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_gallery"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_gallery"
+        android:shortcutShortLabel="@string/shortcut_gallery_short"
+        android:shortcutLongLabel="@string/shortcut_gallery_long">
+        <intent
+            android:action="com.sysadmindoc.snapcrop.SHORTCUT_GALLERY"
+            android:targetPackage="com.sysadmindoc.snapcrop"
+            android:targetClass="com.sysadmindoc.snapcrop.MainActivity" />
+    </shortcut>
+</shortcuts>

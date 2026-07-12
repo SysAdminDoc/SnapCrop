@@ -620,6 +620,15 @@
     <string name="duplicate_keep_oldest">Keep oldest</string>
     <string name="duplicate_keep_newest">Keep newest</string>
     <string name="duplicate_not_similar">Not a match</string>
+    <string name="shortcut_last_action_short">Quick Crop</string>
+    <string name="shortcut_last_action_long">Rerun Quick Crop on newest</string>
+    <string name="shortcut_long_screenshot_short">Long shot</string>
+    <string name="shortcut_long_screenshot_long">Capture long screenshot</string>
+    <string name="shortcut_monitor_short">Monitor</string>
+    <string name="shortcut_monitor_long">Toggle screenshot monitoring</string>
+    <string name="shortcut_gallery_short">Gallery</string>
+    <string name="shortcut_gallery_long">Open the gallery</string>
+    <string name="toast_monitor_stopped">Screenshot monitoring stopped</string>
     <string name="duplicate_skip">Next group</string>
     <string name="duplicate_trash_count">Trash %1$d</string>
     <string name="duplicate_none_found">No duplicate screenshots found at this sensitivity.</string>
