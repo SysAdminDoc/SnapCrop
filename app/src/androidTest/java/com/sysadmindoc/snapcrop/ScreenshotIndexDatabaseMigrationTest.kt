@@ -62,7 +62,8 @@ class ScreenshotIndexDatabaseMigrationTest {
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_1_2,
                 ScreenshotIndexMigrations.MIGRATION_2_3,
-                ScreenshotIndexMigrations.MIGRATION_3_4
+                ScreenshotIndexMigrations.MIGRATION_3_4,
+                ScreenshotIndexMigrations.MIGRATION_4_5
             )
             .build()
         try {
@@ -107,7 +108,8 @@ class ScreenshotIndexDatabaseMigrationTest {
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_2_3,
-                ScreenshotIndexMigrations.MIGRATION_3_4
+                ScreenshotIndexMigrations.MIGRATION_3_4,
+                ScreenshotIndexMigrations.MIGRATION_4_5
             )
             .build()
         try {
@@ -142,7 +144,10 @@ class ScreenshotIndexDatabaseMigrationTest {
     fun versionThreeMigrationAddsUserOwnedSourceContextTable() = runBlocking<Unit> {
         helper.createDatabase(TEST_DB, 3).close()
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
-            .addMigrations(ScreenshotIndexMigrations.MIGRATION_3_4)
+            .addMigrations(
+                ScreenshotIndexMigrations.MIGRATION_3_4,
+                ScreenshotIndexMigrations.MIGRATION_4_5
+            )
             .build()
         try {
             val dao = database.dao()
@@ -161,6 +166,38 @@ class ScreenshotIndexDatabaseMigrationTest {
             dao.replaceAll(listOf(sampleRow(9)))
             dao.deleteAll()
             assertEquals(row, dao.getSourceContext(row.mediaUri, row.mediaDateAdded))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun versionFourMigrationAddsDurableNotesAndConditionalReminders() = runBlocking<Unit> {
+        helper.createDatabase(TEST_DB, 4).close()
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_4_5)
+            .build()
+        try {
+            val dao = database.dao()
+            val row = ScreenshotNoteReminderRow(
+                mediaUri = "content://media/external/images/media/12",
+                mediaDateAdded = 123L,
+                note = "Call the clinic",
+                reminderAt = 1_800_000_000_000L,
+                reminderToken = "token-new",
+                createdAt = 100L,
+                updatedAt = 200L
+            )
+            dao.upsertNoteReminder(row)
+            assertEquals(row, dao.getNoteReminder(row.mediaUri, row.mediaDateAdded))
+            assertEquals(null, dao.getNoteReminder(row.mediaUri, row.mediaDateAdded + 1))
+
+            dao.replaceAll(listOf(sampleRow(12)))
+            dao.deleteAll()
+            assertEquals(row, dao.getNoteReminder(row.mediaUri, row.mediaDateAdded))
+            assertEquals(0, dao.clearReminder(row.mediaUri, row.mediaDateAdded, "token-old", 300L))
+            assertEquals(1, dao.clearReminder(row.mediaUri, row.mediaDateAdded, "token-new", 300L))
+            assertEquals(null, dao.getNoteReminder(row.mediaUri, row.mediaDateAdded)?.reminderAt)
         } finally {
             database.close()
         }

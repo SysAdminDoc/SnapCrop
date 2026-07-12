@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Local screenshot notes and one-time reminders (v6.63.0).**
+
+- Gallery screenshots now support bounded multiline notes and one-time reminder
+  presets or a custom date/time. Notes are searchable without enabling the
+  derived screenshot index and are visibly marked in the grid and viewer.
+- Room v5 stores notes/reminders by media URI plus original date in a user-owned
+  table that survives index rebuild/purge and fail-closed migrations. Settings
+  backups continue to exclude this local metadata by design.
+- Token-checked unique WorkManager jobs survive reboot, replace on reschedule,
+  cancel with media deletion, and use generic privacy-safe notifications. Taps
+  reset Gallery filters and open only the exact original media identity; missing
+  or URI-reused screenshots fail closed.
+- Save-and-Replace moves notes and future reminders only after the new media row
+  is durable, while denied trash requests leave metadata on the original.
+
 **Versioned preference backup schema (v6.62.0).**
 
 - Settings backups now export only registered, typed preferences with the app

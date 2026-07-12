@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Accessibility
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
@@ -57,6 +58,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
@@ -109,6 +111,7 @@ data class Photo(
     val mimeType: String = "",
     val ownerPackage: String = "",
     val sourceContext: ExplicitSourceContext? = null,
+    val noteReminder: ScreenshotNoteReminder? = null,
     val indexCategories: Set<String> = emptySet(),
     val indexText: String = ""
 )
@@ -296,14 +299,20 @@ internal fun Photo.withIndex(entry: ScreenshotIndexEntry?): Photo {
     )
 }
 
-private fun Photo.matchesGalleryQuery(query: String): Boolean {
+internal fun Photo.matchesGalleryQuery(query: String): Boolean {
     val normalized = query.trim().lowercase()
     if (normalized.isBlank()) return true
     return name.lowercase().contains(normalized) ||
             albumPath.lowercase().contains(normalized) ||
+            noteReminder?.note?.lowercase()?.contains(normalized) == true ||
             indexText.contains(normalized) ||
             indexCategories.any { it.contains(normalized) }
 }
+
+internal fun exactGalleryTargetIndex(photos: List<Photo>, target: GalleryOpenRequest): Int =
+    photos.indexOfFirst {
+        it.uri.toString() == target.uri.toString() && it.dateAdded == target.dateAdded
+    }
 
 internal fun filterCollectionPhotos(
     photos: List<Photo>,
@@ -338,6 +347,10 @@ fun GalleryScreen(
     videoAccess: MediaAccess = MediaAccess.FULL,
     onRequestImageAccess: () -> Unit = {},
     onRequestVideoAccess: () -> Unit = {},
+    notificationAccess: Boolean = true,
+    onRequestNotificationAccess: () -> Unit = {},
+    openRequest: GalleryOpenRequest? = null,
+    onOpenRequestConsumed: () -> Unit = {},
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
     val canReadImages = imageAccess != MediaAccess.NONE
@@ -351,6 +364,7 @@ fun GalleryScreen(
     var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var manualCollections by remember { mutableStateOf<List<ManualCollectionSummary>>(emptyList()) }
     var sourceContexts by remember { mutableStateOf<Map<Pair<String, Long>, ExplicitSourceContext>>(emptyMap()) }
+    var noteReminders by remember { mutableStateOf<Map<Pair<String, Long>, ScreenshotNoteReminder>>(emptyMap()) }
     var selectedAlbum by rememberSaveable { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var indexEntries by remember { mutableStateOf<Map<String, ScreenshotIndexEntry>>(emptyMap()) }
@@ -374,6 +388,7 @@ fun GalleryScreen(
     var addSelectionAfterCreate by remember { mutableStateOf(false) }
     var pendingCollectionSelection by remember { mutableStateOf<CollectionSelection?>(null) }
     var sourceEditorPhoto by remember { mutableStateOf<Photo?>(null) }
+    var noteEditorPhoto by remember { mutableStateOf<Photo?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
 
     LaunchedEffect(Unit) {
@@ -382,6 +397,20 @@ fun GalleryScreen(
 
     LaunchedEffect(Unit) {
         collectionStore.observeSourceContexts().collect { sourceContexts = it }
+    }
+
+    LaunchedEffect(Unit) {
+        collectionStore.observeNoteReminders().collect { noteReminders = it }
+    }
+
+    LaunchedEffect(openRequest) {
+        if (openRequest != null) {
+            selectedAlbum = ALL_PHOTOS_PATH
+            searchQuery = ""
+            encodedFilters = GalleryFilterState().encode()
+            sortMode = SortMode.DATE
+            viewerIndex = -1
+        }
     }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -444,10 +473,11 @@ fun GalleryScreen(
         }
     }
 
-    val enrichedPhotos = remember(photos, indexEntries, selectedAlbum, favoriteKeys, sourceContexts) {
+    val enrichedPhotos = remember(photos, indexEntries, selectedAlbum, favoriteKeys, sourceContexts, noteReminders) {
         val enriched = photos.map { photo ->
             photo.withIndex(indexEntries[photo.uri.toString()]).copy(
-                sourceContext = sourceContexts[photo.uri.toString() to photo.dateAdded]
+                sourceContext = sourceContexts[photo.uri.toString() to photo.dateAdded],
+                noteReminder = noteReminders[photo.uri.toString() to photo.dateAdded]
             )
         }
         when (selectedAlbum) {
@@ -500,6 +530,19 @@ fun GalleryScreen(
         selectedUris.retainAll(visibleUris)
     }
 
+    LaunchedEffect(openRequest, viewerPhotos, selectedAlbum, isLoading, imageAccess) {
+        val target = openRequest ?: return@LaunchedEffect
+        if (selectedAlbum != ALL_PHOTOS_PATH || isLoading) return@LaunchedEffect
+        val index = exactGalleryTargetIndex(viewerPhotos, target)
+        if (index >= 0) {
+            viewerIndex = index
+            onOpenRequestConsumed()
+        } else if (imageAccess == MediaAccess.FULL) {
+            Toast.makeText(context, R.string.gallery_reminder_missing, Toast.LENGTH_LONG).show()
+            onOpenRequestConsumed()
+        }
+    }
+
     if (showFilters) {
         val collectionSeed = collectionSelection(enrichedPhotos, viewerPhotos.mapTo(hashSetOf()) { it.uri.toString() })
         GalleryFilterDialog(
@@ -537,6 +580,37 @@ fun GalleryScreen(
                 }
             },
             onDismiss = { sourceEditorPhoto = null }
+        )
+    }
+
+    noteEditorPhoto?.let { photo ->
+        NoteReminderDialog(
+            current = noteReminders[photo.uri.toString() to photo.dateAdded],
+            notificationsAvailable = notificationAccess && ScreenshotReminderScheduler.notificationsAvailable(context),
+            onRequestNotifications = onRequestNotificationAccess,
+            onSave = { note, reminderAt ->
+                scope.launch {
+                    var stored: ScreenshotNoteReminder? = null
+                    try {
+                        stored = collectionStore.putNoteReminder(photo.uri, photo.dateAdded, note, reminderAt)
+                        ScreenshotReminderScheduler.cancel(context, photo.uri, photo.dateAdded)
+                        stored?.takeIf { it.reminderAt != null }?.let {
+                            ScreenshotReminderScheduler.schedule(context, it)
+                        }
+                        noteEditorPhoto = null
+                        Toast.makeText(context, R.string.gallery_note_saved, Toast.LENGTH_SHORT).show()
+                    } catch (_: Exception) {
+                        if (stored?.reminderAt != null) {
+                            runCatching {
+                                collectionStore.putNoteReminder(photo.uri, photo.dateAdded, note, null)
+                                ScreenshotReminderScheduler.cancel(context, photo.uri, photo.dateAdded)
+                            }
+                        }
+                        Toast.makeText(context, R.string.gallery_note_save_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = { noteEditorPhoto = null }
         )
     }
 
@@ -701,6 +775,7 @@ fun GalleryScreen(
             onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
             onShare = { onShareUris(listOf(it.uri)) },
             onEditSource = { sourceEditorPhoto = it },
+            onEditNote = { noteEditorPhoto = it },
             onOpenSource = { photo -> openExplicitSource(context, photo.sourceContext) },
             onDelete = { photo ->
                 pendingDeleteUris = listOf(photo.uri)
@@ -1419,10 +1494,14 @@ private fun PhotoItem(
     onPhotoClick: (Photo, Int) -> Unit, onPhotoLongClick: (Photo) -> Unit
 ) {
     val mediaItemLabel = stringResource(R.string.gallery_media_item)
+    val hasNoteLabel = stringResource(R.string.gallery_note_has_note)
+    val hasReminderLabel = stringResource(R.string.gallery_note_has_reminder)
     val photoLabel = buildString {
         append(photo.name.ifBlank { mediaItemLabel })
         if (photo.isVideo) append(", video")
         if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
+        if (!photo.noteReminder?.note.isNullOrEmpty()) append(", $hasNoteLabel")
+        if (photo.noteReminder?.reminderAt != null) append(", $hasReminderLabel")
         if (isSelected) append(", selected")
     }
     Box(Modifier.semantics { contentDescription = photoLabel }) {
@@ -1459,6 +1538,16 @@ private fun PhotoItem(
                     .padding(2.dp),
                 tint = Tertiary)
         }
+        if (photo.noteReminder != null) {
+            Icon(
+                if (photo.noteReminder.reminderAt != null) Icons.Default.Alarm else Icons.AutoMirrored.Filled.StickyNote2,
+                null,
+                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp).size(18.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
+                    .padding(2.dp),
+                tint = Primary
+            )
+        }
         if (isSelected) {
             Icon(Icons.Default.CheckCircle, null,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(20.dp),
@@ -1466,6 +1555,130 @@ private fun PhotoItem(
         }
     }
 }
+
+@Composable
+private fun NoteReminderDialog(
+    current: ScreenshotNoteReminder?,
+    notificationsAvailable: Boolean,
+    onRequestNotifications: () -> Unit,
+    onSave: (String, Long?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val now = System.currentTimeMillis()
+    var note by remember(current?.updatedAt) { mutableStateOf(current?.note.orEmpty()) }
+    var reminderAt by remember(current?.updatedAt) { mutableStateOf(current?.reminderAt) }
+    var reminderError by remember(current?.updatedAt) {
+        mutableStateOf(current?.reminderAt?.let { it <= now } == true)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.gallery_note_title), color = OnSurface) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { if (it.length <= ScreenshotNoteText.MAX_CHARS) note = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text(stringResource(R.string.gallery_note_label)) },
+                    supportingText = {
+                        Text(stringResource(R.string.gallery_note_count, note.length, ScreenshotNoteText.MAX_CHARS))
+                    },
+                    minLines = 3,
+                    maxLines = 8
+                )
+                Text(stringResource(R.string.gallery_note_local_only), color = OnSurfaceVariant, fontSize = 12.sp)
+                Text(stringResource(R.string.gallery_note_reminder_title), color = OnSurface, fontWeight = FontWeight.Medium)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { reminderAt = now + 60 * 60 * 1000L; reminderError = false }) {
+                        Text(stringResource(R.string.gallery_note_in_hour))
+                    }
+                    TextButton(onClick = { reminderAt = now + 24 * 60 * 60 * 1000L; reminderError = false }) {
+                        Text(stringResource(R.string.gallery_note_tomorrow))
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { reminderAt = now + 7 * 24 * 60 * 60 * 1000L; reminderError = false }) {
+                        Text(stringResource(R.string.gallery_note_next_week))
+                    }
+                    TextButton(onClick = {
+                        pickCustomReminder(context, reminderAt ?: now + 60 * 60 * 1000L) { selected ->
+                            reminderError = selected <= System.currentTimeMillis()
+                            if (!reminderError) reminderAt = selected
+                        }
+                    }) { Text(stringResource(R.string.gallery_note_custom_time)) }
+                }
+                reminderAt?.let { value ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Alarm, null, tint = Primary, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(formatReminderTime(value), color = OnSurface, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { reminderAt = null; reminderError = false }) {
+                            Text(stringResource(R.string.gallery_note_cancel_reminder))
+                        }
+                    }
+                }
+                if (reminderError) {
+                    Text(stringResource(R.string.gallery_note_future_required), color = Tertiary, fontSize = 12.sp)
+                }
+                if (reminderAt != null && !notificationsAvailable) {
+                    Text(stringResource(R.string.gallery_note_notifications_required), color = Tertiary, fontSize = 12.sp)
+                    TextButton(onClick = onRequestNotifications) {
+                        Text(stringResource(R.string.gallery_note_allow_notifications))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !reminderError,
+                onClick = {
+                    if (reminderAt != null && !notificationsAvailable) {
+                        onRequestNotifications()
+                    } else {
+                        onSave(note, reminderAt)
+                    }
+                }
+            ) { Text(stringResource(R.string.save)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+        containerColor = SurfaceVariant
+    )
+}
+
+private fun pickCustomReminder(context: Context, initialMillis: Long, onSelected: (Long) -> Unit) {
+    val initial = java.util.Calendar.getInstance().apply { timeInMillis = initialMillis }
+    android.app.DatePickerDialog(
+        context,
+        { _, year, month, day ->
+            android.app.TimePickerDialog(
+                context,
+                { _, hour, minute ->
+                    val selected = java.util.Calendar.getInstance().apply {
+                        set(year, month, day, hour, minute, 0)
+                        set(java.util.Calendar.MILLISECOND, 0)
+                    }
+                    onSelected(selected.timeInMillis)
+                },
+                initial.get(java.util.Calendar.HOUR_OF_DAY),
+                initial.get(java.util.Calendar.MINUTE),
+                android.text.format.DateFormat.is24HourFormat(context)
+            ).show()
+        },
+        initial.get(java.util.Calendar.YEAR),
+        initial.get(java.util.Calendar.MONTH),
+        initial.get(java.util.Calendar.DAY_OF_MONTH)
+    ).apply { datePicker.minDate = System.currentTimeMillis() - 1_000L }.show()
+}
+
+private fun formatReminderTime(value: Long): String = java.text.DateFormat.getDateTimeInstance(
+    java.text.DateFormat.MEDIUM,
+    java.text.DateFormat.SHORT
+).format(java.util.Date(value))
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1476,6 +1689,7 @@ private fun PhotoViewer(
     onEdit: (Photo) -> Unit,
     onShare: (Photo) -> Unit,
     onEditSource: (Photo) -> Unit,
+    onEditNote: (Photo) -> Unit,
     onOpenSource: (Photo) -> Unit,
     onDelete: (Photo) -> Unit,
     onToggleFavorite: (Photo) -> Boolean // returns new state
@@ -1492,6 +1706,10 @@ private fun PhotoViewer(
     var isFav by remember { mutableStateOf(
         photos.getOrNull(initialIndex)?.let { FavoritesStore.isFavorite(context, it) } ?: false
     ) }
+
+    LaunchedEffect(initialIndex, photos) {
+        if (photos.isNotEmpty()) pagerState.scrollToPage(initialIndex.coerceIn(0, photos.lastIndex))
+    }
 
     // Update fav state on page change
     LaunchedEffect(pagerState.currentPage) {
@@ -1645,6 +1863,16 @@ private fun PhotoViewer(
             Text("${pagerState.currentPage + 1} / ${photos.size}",
                 color = Color.White, fontSize = 14.sp)
             Row {
+                val currentPhoto = photos.getOrNull(pagerState.currentPage)
+                if (currentPhoto?.isScreenshot == true && !currentPhoto.isVideo) {
+                    IconButton(onClick = { onEditNote(currentPhoto) }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.StickyNote2,
+                            stringResource(R.string.gallery_note_action),
+                            tint = if (currentPhoto.noteReminder != null) Primary else Color.White
+                        )
+                    }
+                }
                 IconButton(onClick = { showInfo = !showInfo }) {
                     Icon(Icons.Default.Info, stringResource(R.string.gallery_info), tint = if (showInfo) Primary else Color.White)
                 }
@@ -1723,7 +1951,36 @@ private fun PhotoViewer(
                         Text(it, color = OnSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                     currentPhoto?.let { photo ->
+                        photo.noteReminder?.let { metadata ->
+                            if (metadata.note.isNotEmpty()) {
+                                Text(
+                                    metadata.note,
+                                    color = OnSurface,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            metadata.reminderAt?.let { reminderAt ->
+                                Text(
+                                    stringResource(
+                                        R.string.gallery_note_reminder_at,
+                                        formatReminderTime(reminderAt)
+                                    ),
+                                    color = if (reminderAt < System.currentTimeMillis()) Tertiary else Primary,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                         Row {
+                            if (photo.isScreenshot && !photo.isVideo) {
+                                TextButton(onClick = { onEditNote(photo) }) {
+                                    Text(stringResource(
+                                        if (photo.noteReminder == null) R.string.gallery_note_add else R.string.gallery_note_edit
+                                    ))
+                                }
+                            }
                             TextButton(onClick = { onEditSource(photo) }) {
                                 Text(stringResource(if (source == null) R.string.source_context_action_add else R.string.source_context_action_edit))
                             }

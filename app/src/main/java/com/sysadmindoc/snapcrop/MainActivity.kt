@@ -98,6 +98,8 @@ class MainActivity : ComponentActivity() {
         const val KEY_PENDING_MUTATION_SUCCEEDED = "pending_mutation_succeeded"
         const val KEY_PENDING_MUTATION_CHUNK = "pending_mutation_chunk"
         const val KEY_PENDING_MUTATION_REQUESTED = "pending_mutation_requested"
+        const val KEY_GALLERY_OPEN_URI = "gallery_open_uri"
+        const val KEY_GALLERY_OPEN_DATE = "gallery_open_date"
     }
 
     private val serviceRunning = mutableStateOf(false)
@@ -113,6 +115,7 @@ class MainActivity : ComponentActivity() {
     private val recentWorkflowIds = mutableStateOf<List<WorkflowId>>(emptyList())
     private val cropCount = mutableStateOf(0)
     private val pendingAccessibilityDisclosure = mutableStateOf<AccessibilityPurpose?>(null)
+    private val galleryOpenRequest = mutableStateOf<GalleryOpenRequest?>(null)
     private var pendingMutationUris = mutableListOf<Uri>()
     private var pendingMutationSucceeded = mutableListOf<Uri>()
     private var pendingMutationChunk = emptyList<Uri>()
@@ -305,6 +308,13 @@ class MainActivity : ComponentActivity() {
         return true
     }
 
+    private fun handleScreenshotReminderIntent(incoming: Intent?): Boolean {
+        val request = ScreenshotReminderContract.parse(incoming) ?: return false
+        galleryOpenRequest.value = request
+        ScreenshotReminderContract.clear(incoming)
+        return true
+    }
+
     private fun launchInboundActivity(target: Class<out ComponentActivity>) {
         val uris = inboundShareUris.value
         val targetIntent = Intent(this, target).apply {
@@ -417,6 +427,12 @@ class MainActivity : ComponentActivity() {
         pendingMutationChunk = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_CHUNK)
             ?.map(Uri::parse) ?: emptyList()
         pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
+        galleryOpenRequest.value = savedInstanceState?.getString(KEY_GALLERY_OPEN_URI)?.let { rawUri ->
+            val dateAdded = savedInstanceState.getLong(KEY_GALLERY_OPEN_DATE, -1L)
+            runCatching { Uri.parse(rawUri) }.getOrNull()?.takeIf { dateAdded >= 0L }
+                ?.let { GalleryOpenRequest(it, dateAdded) }
+        }
+        handleScreenshotReminderIntent(intent)
         handleAccessibilityIntent(intent)
         if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
 
@@ -499,6 +515,10 @@ class MainActivity : ComponentActivity() {
                 var showHelp by remember { mutableStateOf(false) }
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
                 val credentialStore = remember { NetworkCredentialStore.open(this@MainActivity) }
+
+                LaunchedEffect(galleryOpenRequest.value) {
+                    if (galleryOpenRequest.value != null) selectedTab = 1
+                }
 
                 if (showHelp) {
                     LocalHelpDialog(
@@ -652,6 +672,10 @@ class MainActivity : ComponentActivity() {
                                 videoAccess = mediaCapabilities.value.videoAccess,
                                 onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
                                 onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
+                                notificationAccess = mediaCapabilities.value.notificationAccess,
+                                onRequestNotificationAccess = { requestReminderNotificationAccess() },
+                                openRequest = galleryOpenRequest.value,
+                                onOpenRequestConsumed = { galleryOpenRequest.value = null },
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
@@ -1155,6 +1179,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleScreenshotReminderIntent(intent)
         handleAccessibilityIntent(intent)
         if (!handlePrivacyShareIntent(intent) && !handleSharedUrl(intent)) handleInboundShares(intent)
     }
@@ -1164,6 +1189,10 @@ class MainActivity : ComponentActivity() {
         outState.putStringArrayList(KEY_PENDING_MUTATION_SUCCEEDED, ArrayList(pendingMutationSucceeded.map(Uri::toString)))
         outState.putStringArrayList(KEY_PENDING_MUTATION_CHUNK, ArrayList(pendingMutationChunk.map(Uri::toString)))
         outState.putInt(KEY_PENDING_MUTATION_REQUESTED, pendingMutationRequested)
+        galleryOpenRequest.value?.let { request ->
+            outState.putString(KEY_GALLERY_OPEN_URI, request.uri.toString())
+            outState.putLong(KEY_GALLERY_OPEN_DATE, request.dateAdded)
+        }
         super.onSaveInstanceState(outState)
     }
 
@@ -1175,6 +1204,21 @@ class MainActivity : ComponentActivity() {
         if (permissions.isEmpty()) return
         pendingMonitorStart = startMonitorAfter
         permissionLauncher.launch(permissions)
+    }
+
+    private fun requestReminderNotificationAccess() {
+        val request = MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)
+        if (!mediaCapabilities.value.notificationAccess && request.isNotEmpty()) {
+            requestPermissions(request)
+            return
+        }
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+            })
+        }.onFailure {
+            Toast.makeText(this, R.string.gallery_note_notifications_required, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showResizeDialog(uris: List<Uri>) {
@@ -2133,7 +2177,17 @@ class MainActivity : ComponentActivity() {
         if (succeeded.isNotEmpty()) {
             FavoritesStore.removeAll(this, succeeded)
             lifecycleScope.launch(Dispatchers.IO) {
-                runCatching { ScreenshotIndexStore(this@MainActivity).deleteSourceContexts(succeeded) }
+                val store = ScreenshotIndexStore(this@MainActivity)
+                runCatching { store.deleteSourceContexts(succeeded) }
+                runCatching {
+                    store.deleteNoteReminders(succeeded).forEach { reminder ->
+                        ScreenshotReminderScheduler.cancel(
+                            this@MainActivity,
+                            reminder.uri,
+                            reminder.dateAdded
+                        )
+                    }
+                }
             }
             galleryRefreshKey.intValue++
             loadRecentCrops()

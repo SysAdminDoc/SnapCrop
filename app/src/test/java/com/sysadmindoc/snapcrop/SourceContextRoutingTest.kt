@@ -29,7 +29,7 @@ class SourceContextRoutingTest {
         val hints = source("CropSourceHints.kt")
         val journal = source("OperationJournal.kt")
 
-        val persist = crop.indexOf("putSourceContext(uri, dateAdded, contextValue)")
+        val persist = crop.indexOf("putSourceContext(uri, checkNotNull(savedDateAdded), contextValue)")
         val replace = crop.indexOf("requestSourceTrash(SourceMutationPurpose.REPLACE_AFTER_SAVE")
         assertTrue(persist >= 0 && replace > persist)
         assertTrue(index.contains("tableName = \"media_source_context\""))

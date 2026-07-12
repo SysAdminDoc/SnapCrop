@@ -15,6 +15,7 @@ class SnapCropApp : Application(), SingletonImageLoader.Factory {
         const val CHANNEL_ID = "snapcrop_bg"
         const val CHANNEL_DETECTED = "snapcrop_detected"
         const val CHANNEL_STEP_CAPTURE = "snapcrop_step_capture"
+        const val CHANNEL_REMINDERS = "snapcrop_reminders"
         const val BACKGROUND_IMAGE_CACHE_PERCENT = 0.25
     }
 
@@ -70,6 +71,17 @@ class SnapCropApp : Application(), SingletonImageLoader.Factory {
             ).apply {
                 description = "Active Step Capture status and stop control"
                 setShowBadge(false)
+            }
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_REMINDERS,
+                "Screenshot reminders",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "One-time reminders for screenshots saved in SnapCrop"
+                setShowBadge(true)
             }
         )
     }

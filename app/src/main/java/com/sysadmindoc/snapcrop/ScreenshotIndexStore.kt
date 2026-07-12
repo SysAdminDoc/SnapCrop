@@ -234,6 +234,45 @@ internal data class MediaSourceContextRow(
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
 
+@Entity(
+    tableName = "media_note_reminder",
+    primaryKeys = ["media_uri", "media_date_added"],
+    indices = [Index("media_uri"), Index("reminder_at")]
+)
+internal data class ScreenshotNoteReminderRow(
+    @ColumnInfo(name = "media_uri") val mediaUri: String,
+    @ColumnInfo(name = "media_date_added") val mediaDateAdded: Long,
+    @ColumnInfo(name = "note") val note: String,
+    @ColumnInfo(name = "reminder_at") val reminderAt: Long?,
+    @ColumnInfo(name = "reminder_token") val reminderToken: String?,
+    @ColumnInfo(name = "created_at") val createdAt: Long,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+data class ScreenshotNoteReminder(
+    val uri: Uri,
+    val dateAdded: Long,
+    val note: String,
+    val reminderAt: Long?,
+    internal val reminderToken: String?,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+internal object ScreenshotNoteText {
+    const val MAX_CHARS = 4_096
+
+    fun normalize(value: String): String {
+        val normalized = Normalizer.normalize(value.replace("\r\n", "\n").replace('\r', '\n'), Normalizer.Form.NFKC)
+            .trim()
+        require(normalized.length <= MAX_CHARS) { "Notes are limited to $MAX_CHARS characters" }
+        require(normalized.all { !it.isISOControl() || it == '\n' || it == '\t' }) {
+            "Notes cannot contain control characters"
+        }
+        return normalized
+    }
+}
+
 data class ManualCollectionMedia(val uri: Uri, val dateAdded: Long)
 
 data class ManualCollectionSummary(
@@ -343,6 +382,34 @@ internal interface ScreenshotIndexDao {
 
     @Query("DELETE FROM media_source_context WHERE media_uri IN (:uris)")
     suspend fun deleteSourceContexts(uris: List<String>): Int
+
+    @Query("SELECT * FROM media_note_reminder ORDER BY updated_at DESC")
+    fun observeNoteReminders(): Flow<List<ScreenshotNoteReminderRow>>
+
+    @Query("SELECT * FROM media_note_reminder WHERE media_uri = :uri AND media_date_added = :dateAdded LIMIT 1")
+    suspend fun getNoteReminder(uri: String, dateAdded: Long): ScreenshotNoteReminderRow?
+
+    @Query("SELECT * FROM media_note_reminder WHERE media_uri IN (:uris)")
+    suspend fun getNoteReminders(uris: List<String>): List<ScreenshotNoteReminderRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertNoteReminder(row: ScreenshotNoteReminderRow)
+
+    @Query("DELETE FROM media_note_reminder WHERE media_uri = :uri AND media_date_added = :dateAdded")
+    suspend fun deleteNoteReminder(uri: String, dateAdded: Long): Int
+
+    @Query("DELETE FROM media_note_reminder WHERE media_uri IN (:uris)")
+    suspend fun deleteNoteReminders(uris: List<String>): Int
+
+    @Transaction
+    suspend fun takeNoteReminders(uris: List<String>): List<ScreenshotNoteReminderRow> {
+        val rows = getNoteReminders(uris)
+        deleteNoteReminders(uris)
+        return rows
+    }
+
+    @Query("UPDATE media_note_reminder SET reminder_at = NULL, reminder_token = NULL, updated_at = :updatedAt WHERE media_uri = :uri AND media_date_added = :dateAdded AND reminder_token = :token")
+    suspend fun clearReminder(uri: String, dateAdded: Long, token: String, updatedAt: Long): Int
 }
 
 @Database(
@@ -350,9 +417,10 @@ internal interface ScreenshotIndexDao {
         ScreenshotIndexRow::class,
         ManualCollectionRow::class,
         ManualCollectionItemRow::class,
-        MediaSourceContextRow::class
+        MediaSourceContextRow::class,
+        ScreenshotNoteReminderRow::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -453,6 +521,24 @@ internal object ScreenshotIndexMigrations {
                     PRIMARY KEY(`media_uri`, `media_date_added`))""".trimIndent()
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_source_context_media_uri` ON `media_source_context` (`media_uri`)")
+        }
+    }
+
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `media_note_reminder` (
+                    `media_uri` TEXT NOT NULL,
+                    `media_date_added` INTEGER NOT NULL,
+                    `note` TEXT NOT NULL,
+                    `reminder_at` INTEGER,
+                    `reminder_token` TEXT,
+                    `created_at` INTEGER NOT NULL,
+                    `updated_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`media_uri`, `media_date_added`))""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_note_reminder_media_uri` ON `media_note_reminder` (`media_uri`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_note_reminder_reminder_at` ON `media_note_reminder` (`reminder_at`)")
         }
     }
 }
@@ -593,6 +679,82 @@ class ScreenshotIndexStore(context: Context) {
     suspend fun deleteSourceContexts(uris: Collection<Uri>): Int {
         val values = uris.map(Uri::toString).distinct()
         return if (values.isEmpty()) 0 else dao.deleteSourceContexts(values)
+    }
+
+    fun observeNoteReminders(): Flow<Map<Pair<String, Long>, ScreenshotNoteReminder>> =
+        dao.observeNoteReminders().map { rows ->
+            rows.associate { row ->
+                (row.mediaUri to row.mediaDateAdded) to row.toNoteReminder()
+            }
+        }
+
+    suspend fun noteReminder(uri: Uri, dateAdded: Long): ScreenshotNoteReminder? =
+        dao.getNoteReminder(uri.toString(), dateAdded)?.toNoteReminder()
+
+    suspend fun putNoteReminder(
+        uri: Uri,
+        dateAdded: Long,
+        note: String,
+        reminderAt: Long?
+    ): ScreenshotNoteReminder? {
+        require(uri.scheme.equals("content", ignoreCase = true) && uri.toString().length <= 8_192)
+        require(dateAdded >= 0)
+        val normalizedNote = ScreenshotNoteText.normalize(note)
+        val normalizedReminder = reminderAt?.takeIf { it > System.currentTimeMillis() }
+        val existing = dao.getNoteReminder(uri.toString(), dateAdded)
+        if (normalizedNote.isEmpty() && normalizedReminder == null) {
+            dao.deleteNoteReminder(uri.toString(), dateAdded)
+            return null
+        }
+        val now = System.currentTimeMillis()
+        val token = if (normalizedReminder == null) null else if (
+            existing?.reminderAt == normalizedReminder && existing.reminderToken != null
+        ) existing.reminderToken else java.util.UUID.randomUUID().toString()
+        val row = ScreenshotNoteReminderRow(
+            mediaUri = uri.toString(),
+            mediaDateAdded = dateAdded,
+            note = normalizedNote,
+            reminderAt = normalizedReminder,
+            reminderToken = token,
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now
+        )
+        dao.upsertNoteReminder(row)
+        return row.toNoteReminder()
+    }
+
+    suspend fun completeReminder(uri: Uri, dateAdded: Long, token: String): Boolean {
+        if (dao.clearReminder(uri.toString(), dateAdded, token, System.currentTimeMillis()) != 1) return false
+        val remaining = dao.getNoteReminder(uri.toString(), dateAdded)
+        if (remaining?.note.isNullOrEmpty()) dao.deleteNoteReminder(uri.toString(), dateAdded)
+        return true
+    }
+
+    suspend fun restoreMissedReminder(reminder: ScreenshotNoteReminder): Boolean {
+        val token = reminder.reminderToken ?: return false
+        val reminderAt = reminder.reminderAt ?: return false
+        val existing = dao.getNoteReminder(reminder.uri.toString(), reminder.dateAdded)
+        if (existing?.reminderAt != null) return false
+        val now = System.currentTimeMillis()
+        dao.upsertNoteReminder(
+            ScreenshotNoteReminderRow(
+                mediaUri = reminder.uri.toString(),
+                mediaDateAdded = reminder.dateAdded,
+                note = existing?.note ?: reminder.note,
+                reminderAt = reminderAt,
+                reminderToken = token,
+                createdAt = existing?.createdAt ?: reminder.createdAt,
+                updatedAt = now
+            )
+        )
+        return true
+    }
+
+    suspend fun deleteNoteReminders(uris: Collection<Uri>): List<ScreenshotNoteReminder> {
+        val values = uris.map(Uri::toString).distinct()
+        if (values.isEmpty()) return emptyList()
+        val deleted = dao.takeNoteReminders(values).map { it.toNoteReminder() }
+        return deleted
     }
 
     private fun queryImages(
@@ -763,6 +925,16 @@ class ScreenshotIndexStore(context: Context) {
     )
     }
 
+    private fun ScreenshotNoteReminderRow.toNoteReminder() = ScreenshotNoteReminder(
+        uri = Uri.parse(mediaUri),
+        dateAdded = mediaDateAdded,
+        note = note,
+        reminderAt = reminderAt,
+        reminderToken = reminderToken,
+        createdAt = createdAt,
+        updatedAt = updatedAt
+    )
+
     companion object {
         const val PREF_ENABLED = "screenshot_index_enabled"
         private const val MAX_RECOGNIZED_TEXT_CHARS = 8192
@@ -778,7 +950,8 @@ class ScreenshotIndexStore(context: Context) {
                     .addMigrations(
                         ScreenshotIndexMigrations.MIGRATION_1_2,
                         ScreenshotIndexMigrations.MIGRATION_2_3,
-                        ScreenshotIndexMigrations.MIGRATION_3_4
+                        ScreenshotIndexMigrations.MIGRATION_3_4,
+                        ScreenshotIndexMigrations.MIGRATION_4_5
                     )
                     .build()
                     .also {

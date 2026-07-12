@@ -105,6 +105,9 @@ class CropActivity : ComponentActivity() {
         private const val KEY_HAS_DRAFT = "has_editor_draft"
         private const val KEY_MUTATION_PURPOSE = "source_mutation_purpose"
         private const val KEY_MUTATION_MESSAGE = "source_mutation_message"
+        private const val KEY_REPLACEMENT_URI = "replacement_uri"
+        private const val KEY_REPLACEMENT_DATE = "replacement_date"
+        private const val KEY_REPLACED_SOURCE_DATE = "replaced_source_date"
     }
 
     private var originalBitmap: Bitmap? = null
@@ -132,6 +135,9 @@ class CropActivity : ComponentActivity() {
     private var pendingMutationPurpose: SourceMutationPurpose? = null
     private var pendingMutationStartedAt: Long? = null
     private var pendingExportMessage: String? = null
+    private var pendingReplacementUri: Uri? = null
+    private var pendingReplacementDateAdded: Long = -1L
+    private var pendingReplacedSourceDateAdded: Long = -1L
     private var pendingRelinkProject: SnapCropProject? = null
     private var pendingProjectPolicy = SourceVerificationPolicy.REQUIRE_FINGERPRINT
     private val projectCanRelink = mutableStateOf(false)
@@ -235,6 +241,9 @@ class CropActivity : ComponentActivity() {
         pendingMutationPurpose = savedInstanceState?.getString(KEY_MUTATION_PURPOSE)
             ?.let { runCatching { SourceMutationPurpose.valueOf(it) }.getOrNull() }
         pendingExportMessage = savedInstanceState?.getString(KEY_MUTATION_MESSAGE)
+        pendingReplacementUri = savedInstanceState?.getString(KEY_REPLACEMENT_URI)?.let(Uri::parse)
+        pendingReplacementDateAdded = savedInstanceState?.getLong(KEY_REPLACEMENT_DATE, -1L) ?: -1L
+        pendingReplacedSourceDateAdded = savedInstanceState?.getLong(KEY_REPLACED_SOURCE_DATE, -1L) ?: -1L
         // Restore an in-progress edit checkpointed before a process death; otherwise open the intent.
         val draft = if (savedInstanceState?.getBoolean(KEY_HAS_DRAFT) == true) {
             runCatching { draftFile.takeIf { it.exists() }?.readText() }.getOrNull()
@@ -645,6 +654,9 @@ class CropActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         pendingMutationPurpose?.let { outState.putString(KEY_MUTATION_PURPOSE, it.name) }
         pendingExportMessage?.let { outState.putString(KEY_MUTATION_MESSAGE, it) }
+        pendingReplacementUri?.let { outState.putString(KEY_REPLACEMENT_URI, it.toString()) }
+        outState.putLong(KEY_REPLACEMENT_DATE, pendingReplacementDateAdded)
+        outState.putLong(KEY_REPLACED_SOURCE_DATE, pendingReplacedSourceDateAdded)
         // Checkpoint the in-progress edit as a project draft so a low-memory kill doesn't lose work.
         val provider = draftStateProvider ?: return
         if (sourceUri == null || bitmapState.value == null) return
@@ -2685,10 +2697,16 @@ class CropActivity : ComponentActivity() {
                     else getString(R.string.crop_copy_saved_path, savePath)
             }
 
+            val savedDateAdded = if (explicitSourceContext.value != null || deleteOriginal) {
+                mediaDateAdded(uri) ?: throw IOException("Could not read saved media identity")
+            } else null
             explicitSourceContext.value?.let { contextValue ->
-                val dateAdded = mediaDateAdded(uri)
-                    ?: throw IOException("Could not read saved media identity")
-                ScreenshotIndexStore(this).putSourceContext(uri, dateAdded, contextValue)
+                ScreenshotIndexStore(this).putSourceContext(uri, checkNotNull(savedDateAdded), contextValue)
+            }
+            if (deleteOriginal) {
+                pendingReplacementUri = uri
+                pendingReplacementDateAdded = checkNotNull(savedDateAdded)
+                pendingReplacedSourceDateAdded = sourceUri?.let(::mediaDateAdded) ?: -1L
             }
 
             val svgSaved = annotationSvg == null || saveSvgSidecar(name, savePath, annotationSvg)
@@ -2723,6 +2741,9 @@ class CropActivity : ComponentActivity() {
                 }
             }
         } catch (e: Exception) {
+            pendingReplacementUri = null
+            pendingReplacementDateAdded = -1L
+            pendingReplacedSourceDateAdded = -1L
             OperationJournal.record(
                 this, DiagnosticOperation.EXPORT, DiagnosticStage.SAVE, DiagnosticResult.FAILED,
                 journalStarted, DiagnosticCode.INTERNAL, e
@@ -2787,10 +2808,16 @@ class CropActivity : ComponentActivity() {
         val purpose = pendingMutationPurpose ?: return
         val exportMessage = pendingExportMessage
         val mutationStartedAt = pendingMutationStartedAt
+        val deletedSource = sourceUri
+        val deletedSourceDate = pendingReplacedSourceDateAdded
+        val replacementUri = pendingReplacementUri
+        val replacementDate = pendingReplacementDateAdded
         pendingMutationPurpose = null
         pendingMutationStartedAt = null
         pendingExportMessage = null
-        isSaving.value = false
+        pendingReplacementUri = null
+        pendingReplacementDateAdded = -1L
+        pendingReplacedSourceDateAdded = -1L
         OperationJournal.enqueue(
             this,
             DiagnosticOperation.DELETE,
@@ -2799,13 +2826,57 @@ class CropActivity : ComponentActivity() {
             mutationStartedAt,
             if (succeeded) DiagnosticCode.NONE else DiagnosticCode.PERMISSION_DENIED
         )
-        if (succeeded) {
-            sourceUri?.let { deletedSource ->
-                lifecycleScope.launch(Dispatchers.IO) {
-                    runCatching { ScreenshotIndexStore(this@CropActivity).deleteSourceContexts(listOf(deletedSource)) }
+        if (succeeded && deletedSource != null) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    val store = ScreenshotIndexStore(this@CropActivity)
+                    runCatching { store.deleteSourceContexts(listOf(deletedSource)) }
+                    if (purpose == SourceMutationPurpose.REPLACE_AFTER_SAVE &&
+                        replacementUri != null && replacementDate >= 0L && deletedSourceDate >= 0L
+                    ) {
+                        val previous = runCatching {
+                            store.noteReminder(deletedSource, deletedSourceDate)
+                        }.getOrNull()
+                        val moved = previous?.let { note ->
+                            runCatching {
+                                store.putNoteReminder(
+                                    replacementUri,
+                                    replacementDate,
+                                    note.note,
+                                    note.reminderAt?.takeIf { it > System.currentTimeMillis() }
+                                )
+                            }.getOrNull()
+                        }
+                        // Delete the old metadata only after its durable replacement exists.
+                        if (previous == null || moved != null) {
+                            store.deleteNoteReminders(listOf(deletedSource)).forEach { note ->
+                                ScreenshotReminderScheduler.cancel(this@CropActivity, note.uri, note.dateAdded)
+                            }
+                            moved?.takeIf { it.reminderAt != null }?.let { reminder ->
+                                runCatching { ScreenshotReminderScheduler.schedule(this@CropActivity, reminder) }
+                            }
+                        }
+                    } else {
+                        runCatching {
+                            store.deleteNoteReminders(listOf(deletedSource)).forEach { note ->
+                                ScreenshotReminderScheduler.cancel(this@CropActivity, note.uri, note.dateAdded)
+                            }
+                        }
+                    }
                 }
+                finishSourceMutationUi(purpose, succeeded = true, exportMessage)
             }
+            return
         }
+        finishSourceMutationUi(purpose, succeeded, exportMessage)
+    }
+
+    private fun finishSourceMutationUi(
+        purpose: SourceMutationPurpose,
+        succeeded: Boolean,
+        exportMessage: String?
+    ) {
+        isSaving.value = false
         when (purpose) {
             SourceMutationPurpose.REPLACE_AFTER_SAVE -> {
                 val message = if (succeeded) {

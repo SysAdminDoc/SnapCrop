@@ -139,6 +139,9 @@ are blocked behind explicit opt-in and evaluation gates.
   date, orientation/minimum dimensions, favorite state, and MIME format; filter
   state survives recreation and matching screenshots can seed a manual collection
 - Create named manual collections, add screenshots with multi-select, and search/sort them without moving or duplicating media; memberships survive index rebuilds
+- Add local multiline notes and schedule, change, or cancel one-time reminders;
+  note text participates in Gallery search, reminder notifications reveal no
+  screenshot content, and taps reopen only the exact original media identity
 - Retain an explicit page/app source URL or label through edited copies and project
   reopen; add/edit/open it from the editor or Gallery, and choose per share whether
   the canonical link is included (off by default)
@@ -259,8 +262,8 @@ release/security policy.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop. The
   manual Settings backup is a versioned, typed allowlist: it excludes network
-  credentials and transient capture state, migrates supported legacy keys, and
-  reports unknown or invalid entries during restore.
+  credentials, transient capture state, screenshot notes, and reminders;
+  migrates supported legacy keys; and reports unknown or invalid entries.
 
 ---
 
