@@ -185,6 +185,9 @@ release/security policy.
   uploads run only after the user enables and configures a target. Credentials
   are stored in a versioned AES-256-GCM file whose key remains in Android
   Keystore; decryption failures disable uploads and expose a Settings reset.
+  Uploads are HTTPS-only bounded streams with byte progress and cancellation:
+  reports are capped at 64 MiB, Imgur images at 50,000,000 bytes each, and
+  private temporary PDFs are deleted after success, failure, or cancellation.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop.
 

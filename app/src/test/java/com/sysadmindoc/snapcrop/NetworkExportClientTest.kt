@@ -3,7 +3,11 @@ package com.sysadmindoc.snapcrop
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.io.OutputStream
 
 class NetworkExportClientTest {
     @Test
@@ -21,6 +25,7 @@ class NetworkExportClientTest {
         assertFalse(disabled.isConfigured)
         assertTrue(enabledHttp.isConfigured)
         assertFalse(missingEndpoint.isConfigured)
+        assertFalse(enabledHttp.copy(endpoint = "http://example.test/upload").isConfigured)
     }
 
     @Test
@@ -48,5 +53,148 @@ class NetworkExportClientTest {
             "https://nextcloud.example/remote.php/dav/files/me/SnapCrop/Incident%20Report%2001.pdf",
             result
         )
+    }
+
+    @Test
+    fun webDavFileNameIsInsertedBeforeQueryAndFragment() {
+        assertEquals(
+            "https://nextcloud.example/dav/Incident%20Report.pdf?token=abc#section",
+            NetworkExportClient.appendWebDavFileName(
+                "https://nextcloud.example/dav?token=abc#section",
+                "Incident Report.pdf"
+            )
+        )
+    }
+
+    @Test
+    fun largePayloadStreamsWithFixedBufferAndMonotonicProgress() {
+        val size = 32L * 1024L * 1024L
+        val input = GeneratedInputStream(size)
+        val output = DiscardOutputStream()
+        var previous = 0L
+        var finalProgress = 0L
+
+        val copied = NetworkExportClient.copyBounded(
+            input,
+            output,
+            size,
+            NetworkExportCancellation(),
+            onProgress = { progress ->
+                assertTrue(progress.bytesSent >= previous)
+                previous = progress.bytesSent
+                finalProgress = progress.bytesSent
+            }
+        )
+
+        assertEquals(size, copied)
+        assertEquals(size, output.written)
+        assertEquals(size, finalProgress)
+        assertTrue(input.maximumRequested <= NetworkExportClient.STREAM_BUFFER_BYTES)
+    }
+
+    @Test
+    fun actualOversizeIsRejectedBeforeWritingExcessChunk() {
+        val output = DiscardOutputStream()
+
+        assertThrows(IllegalArgumentException::class.java) {
+            NetworkExportClient.copyBounded(
+                GeneratedInputStream(2048),
+                output,
+                declaredLength = null,
+                cancellation = NetworkExportCancellation(),
+                maximumBytes = 1024
+            )
+        }
+        assertEquals(0, output.written)
+    }
+
+    @Test
+    fun changedDeclaredSizeAndCancellationFailClosed() {
+        assertThrows(IllegalArgumentException::class.java) {
+            NetworkExportClient.copyBounded(
+                GeneratedInputStream(16),
+                DiscardOutputStream(),
+                declaredLength = 32,
+                cancellation = NetworkExportCancellation()
+            )
+        }
+        val cancellation = NetworkExportCancellation().apply { cancel() }
+        assertThrows(UploadCancelledException::class.java) {
+            NetworkExportClient.copyBounded(
+                GeneratedInputStream(16),
+                DiscardOutputStream(),
+                declaredLength = 16,
+                cancellation = cancellation
+            )
+        }
+    }
+
+    @Test
+    fun declaredOversizeIsRejectedBeforeOpeningSourceOrConnection() {
+        var opened = false
+        val settings = NetworkExportSettings(
+            enabled = true,
+            target = NetworkExportTarget.HTTP,
+            endpoint = "https://example.test/upload",
+            authorizationHeader = "",
+            imgurClientId = ""
+        )
+
+        val result = NetworkExportClient.uploadReportPdf(
+            settings,
+            NetworkUploadSource(
+                "oversize.pdf",
+                "application/pdf",
+                NetworkExportClient.MAX_UPLOAD_BYTES + 1
+            ) {
+                opened = true
+                ByteArrayInputStream(byteArrayOf(1))
+            }
+        )
+
+        assertFalse(result.success)
+        assertFalse(opened)
+        assertTrue(result.message.contains("64 MiB"))
+    }
+
+    @Test
+    fun deadlineStopsStreamingWithoutReadingPayload() {
+        assertThrows(UploadTimeoutException::class.java) {
+            NetworkExportClient.copyBounded(
+                GeneratedInputStream(16),
+                DiscardOutputStream(),
+                declaredLength = 16,
+                cancellation = NetworkExportCancellation(timeoutMillis = 0)
+            )
+        }
+    }
+
+    private class GeneratedInputStream(private var remaining: Long) : InputStream() {
+        var maximumRequested = 0
+            private set
+
+        override fun read(): Int = if (remaining-- > 0) 0 else -1
+
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            maximumRequested = maxOf(maximumRequested, length)
+            if (remaining <= 0) return -1
+            val count = minOf(remaining, length.toLong()).toInt()
+            buffer.fill(0, offset, offset + count)
+            remaining -= count
+            return count
+        }
+    }
+
+    private class DiscardOutputStream : OutputStream() {
+        var written = 0L
+            private set
+
+        override fun write(value: Int) {
+            written++
+        }
+
+        override fun write(buffer: ByteArray, offset: Int, length: Int) {
+            written += length
+        }
     }
 }

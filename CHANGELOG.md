@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Bounded streaming network exports (v6.35.0).**
+
+- PDF reports now serialize into a bounded private temp file, stream-copy to
+  MediaStore, reuse that file for HTTP/WebDAV upload, and delete it on every
+  completion path. Cancel stops the report job, disconnects the active request,
+  and prevents partial report publication.
+- HTTP/WebDAV/Imgur uploads now use 64 KiB streaming buffers, declared and actual
+  byte limits, byte progress, response caps, request/batch deadlines, HTTPS-only
+  validated endpoints, sanitized headers, and disabled redirects.
+- Added a 100-image report limit plus Imgur’s 50,000,000-byte image,
+  50-file, and 256 MiB batch guards. Large generated-stream tests verify memory
+  use does not scale with payload size; stale and over-limit temp files are tested.
+
 **Independent media capability gates (v6.34.0).**
 
 - Split image, video, and notification state across Android 29–36. Automatic

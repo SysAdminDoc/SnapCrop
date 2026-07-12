@@ -104,6 +104,8 @@
     <string name="batch_rename_failed_count"> (%1$d need write access or failed)</string>
     <string name="batch_stopped"> (stopped)</string>
     <string name="batch_building_report">Building report %1$d/%2$d…</string>
+    <string name="batch_uploading_file">Uploading %1$d/%2$d · %3$s · %4$s of %5$s</string>
+    <string name="batch_upload_unknown_size">unknown size</string>
 
     <!-- Dialogs - common -->
     <string name="cancel">Cancel</string>
@@ -134,6 +136,8 @@
     <string name="report_network_off">Network upload is off in Settings</string>
     <string name="report_default_title">SnapCrop incident report</string>
     <string name="report_no_images">No images to export</string>
+    <string name="report_too_many_items">A report can contain at most %1$d images.</string>
+    <string name="report_cancelled">Report export cancelled; no partial report was saved.</string>
     <string name="report_saved">PDF report saved to Documents/SnapCrop</string>
     <string name="report_failed">PDF report failed</string>
 
@@ -271,9 +275,9 @@
     <string name="settings_network_subtitle">Off by default. Reports stay local unless you explicitly upload from the report dialog.</string>
     <string name="settings_upload_target">Upload target</string>
     <string name="settings_imgur_label">Imgur client ID</string>
-    <string name="settings_imgur_hint">Imgur uploads selected images, not PDF reports.</string>
-    <string name="settings_webdav_label">WebDAV folder or file URL</string>
-    <string name="settings_http_label">HTTP upload endpoint</string>
+    <string name="settings_imgur_hint">Imgur uploads selected images, not PDF reports. Anyone with a resulting direct link may be able to view the image; do not upload sensitive captures.</string>
+    <string name="settings_webdav_label">HTTPS WebDAV folder or file URL</string>
+    <string name="settings_http_label">HTTPS upload endpoint</string>
     <string name="settings_auth_label">Authorization header value</string>
     <string name="settings_auth_hint">Example: Bearer token or Basic credentials. Leave blank for no auth.</string>
     <string name="settings_credentials_migrated">Existing network credentials were moved to the new Android Keystore-backed store.</string>

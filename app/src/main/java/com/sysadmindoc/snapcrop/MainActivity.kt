@@ -22,6 +22,8 @@ import android.provider.MediaStore
 import android.provider.Settings
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
@@ -75,7 +77,6 @@ import androidx.core.content.ContextCompat
 import androidx.compose.ui.res.stringResource
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,6 +89,7 @@ class MainActivity : ComponentActivity() {
         const val PDF_WIDTH = 1240
         const val PDF_HEIGHT = 1754
         const val PAGE_MARGIN = 72f
+        const val MAX_REPORT_ITEMS = 100
         const val KEY_PENDING_MUTATION_URIS = "pending_mutation_uris"
         const val KEY_PENDING_MUTATION_SUCCEEDED = "pending_mutation_succeeded"
         const val KEY_PENDING_MUTATION_CHUNK = "pending_mutation_chunk"
@@ -189,6 +191,8 @@ class MainActivity : ComponentActivity() {
     private val batchProgress = mutableStateOf("")
     private val batchProgressFraction = mutableFloatStateOf(0f)
     private val batchCancelled = mutableStateOf(false)
+    @Volatile private var activeNetworkCancellation: NetworkExportCancellation? = null
+    @Volatile private var activeReportJob: Job? = null
     private val resizeUris = mutableStateOf<List<Uri>>(emptyList())
     private val showResizeDialogState = mutableStateOf(false)
     private val reportUris = mutableStateOf<List<Uri>>(emptyList())
@@ -405,7 +409,11 @@ class MainActivity : ComponentActivity() {
                                 },
                                 batchProgress = batchProgress.value,
                                 batchFraction = batchProgressFraction.floatValue,
-                                onBatchCancel = { batchCancelled.value = true },
+                                onBatchCancel = {
+                                    batchCancelled.value = true
+                                    activeNetworkCancellation?.cancel()
+                                    activeReportJob?.cancel()
+                                },
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = {
                                     startActivity(Intent(
@@ -934,9 +942,14 @@ class MainActivity : ComponentActivity() {
         uploadAfterSave: Boolean
     ) {
         if (uris.isEmpty()) return
+        if (uris.size > MAX_REPORT_ITEMS) {
+            Toast.makeText(this, getString(R.string.report_too_many_items, MAX_REPORT_ITEMS), Toast.LENGTH_LONG).show()
+            return
+        }
         batchCancelled.value = false
-        lifecycleScope.launch(Dispatchers.IO) {
+        activeReportJob = lifecycleScope.launch(Dispatchers.IO) {
             val doc = PdfDocument()
+            var temporaryPdf: java.io.File? = null
             val createdAt = System.currentTimeMillis()
             val indexEntries = if (getSharedPreferences("snapcrop", MODE_PRIVATE)
                     .getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) {
@@ -984,6 +997,7 @@ class MainActivity : ComponentActivity() {
                     bitmap.recycle()
                 }
 
+                if (batchCancelled.value) return@launch
                 if (imagePages == 0) {
                     withContext(Dispatchers.Main) {
                         batchProgress.value = ""
@@ -995,13 +1009,14 @@ class MainActivity : ComponentActivity() {
                     pageNumber = drawOcrAppendixPages(doc, pageNumber, appendix)
                 }
                 val displayName = "SnapCrop_Report_$createdAt.pdf"
-                val pdfBytes = ByteArrayOutputStream().use { out ->
-                    doc.writeTo(out)
-                    out.toByteArray()
+                temporaryPdf = NetworkExportTempFiles.create(cacheDir, ".pdf")
+                NetworkExportTempFiles.boundedOutput(temporaryPdf).use { output ->
+                    doc.writeTo(output)
                 }
-                val saved = savePdfBytes(displayName, pdfBytes)
+                val pdfFile = requireNotNull(temporaryPdf)
+                val saved = savePdfFile(displayName, pdfFile)
                 val uploadResult = if (saved && uploadAfterSave) {
-                    uploadReportArtifacts(displayName, pdfBytes, uris)
+                    uploadReportArtifacts(displayName, pdfFile, uris)
                 } else {
                     null
                 }
@@ -1014,6 +1029,10 @@ class MainActivity : ComponentActivity() {
                         if (uploadResult != null) Toast.LENGTH_LONG else Toast.LENGTH_SHORT
                     ).show()
                 }
+            } catch (_: CancellationException) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, getString(R.string.report_cancelled), Toast.LENGTH_SHORT).show()
+                }
             } catch (_: Exception) {
                 withContext(Dispatchers.Main) {
                     batchProgress.value = ""
@@ -1021,13 +1040,20 @@ class MainActivity : ComponentActivity() {
                 }
             } finally {
                 doc.close()
+                temporaryPdf?.delete()
+                activeNetworkCancellation = null
+                activeReportJob = null
+                runOnUiThread {
+                    batchProgress.value = ""
+                    batchProgressFraction.floatValue = 0f
+                }
             }
         }
     }
 
     private fun uploadReportArtifacts(
         displayName: String,
-        pdfBytes: ByteArray,
+        pdfFile: java.io.File,
         sourceUris: List<Uri>
     ): NetworkExportResult {
         val settings = NetworkExportSettings.fromPrefs(
@@ -1037,29 +1063,96 @@ class MainActivity : ComponentActivity() {
         if (!settings.isConfigured) {
             return NetworkExportResult(false, settings.target, 0, "Network export is not configured")
         }
+        val cancellation = NetworkExportCancellation(
+            if (settings.target == NetworkExportTarget.IMGUR) 15L * 60L * 1000L else 5L * 60L * 1000L
+        ).also { activeNetworkCancellation = it }
         if (settings.target != NetworkExportTarget.IMGUR) {
-            return NetworkExportClient.uploadReportPdf(settings, displayName, pdfBytes)
+            return NetworkExportClient.uploadReportPdf(
+                settings,
+                NetworkUploadSource(displayName, "application/pdf", pdfFile.length()) { pdfFile.inputStream().buffered() },
+                cancellation,
+                uploadProgressReporter(displayName, 1, 1)
+            )
         }
 
         var uploaded = 0
         var lastFailure: NetworkExportResult? = null
-        sourceUris.forEachIndexed { index, uri ->
-            val metadata = loadExportItemMetadata(uri)
-            val mime = contentResolver.getType(uri) ?: "image/png"
-            if (!mime.startsWith("image/")) return@forEachIndexed
-            val bytes = try {
-                contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            } catch (_: Exception) {
-                null
-            } ?: return@forEachIndexed
-            val name = metadata.displayName.ifBlank { "snapcrop_${index + 1}.png" }
-            val result = NetworkExportClient.uploadImageToImgur(settings, name, mime, bytes)
-            if (result.success) uploaded++ else lastFailure = result
+        val imageUris = sourceUris.filter { uri ->
+            try { contentResolver.getType(uri)?.startsWith("image/") == true } catch (_: Exception) { false }
         }
-        return if (uploaded > 0) {
+        if (imageUris.size > NetworkExportClient.MAX_IMGUR_BATCH_FILES) {
+            return NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "Imgur batch exceeds 50 images")
+        }
+        val prepared = imageUris.mapIndexed { index, uri ->
+            val metadata = loadExportItemMetadata(uri)
+            Triple(uri, metadata, metadata.displayName.ifBlank { "snapcrop_${index + 1}.png" })
+        }
+        val knownBytes = prepared.mapNotNull { it.second.sizeBytes.takeIf { size -> size > 0 } }.sum()
+        if (prepared.any { it.second.sizeBytes > NetworkExportClient.MAX_IMGUR_UPLOAD_BYTES }) {
+            return NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "An Imgur image exceeds the 50,000,000-byte limit")
+        }
+        if (knownBytes > NetworkExportClient.MAX_IMGUR_BATCH_BYTES) {
+            return NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "Imgur batch exceeds the 256 MiB limit")
+        }
+        var completedBytes = 0L
+        prepared.forEachIndexed { index, (uri, metadata, name) ->
+            if (cancellation.isCancelled || batchCancelled.value) return@forEachIndexed
+            val mime = contentResolver.getType(uri) ?: "image/png"
+            var currentBytes = 0L
+            val uiProgress = uploadProgressReporter(name, index + 1, prepared.size)
+            val result = NetworkExportClient.uploadImageToImgur(
+                settings,
+                NetworkUploadSource(name, mime, metadata.sizeBytes.takeIf { it > 0 }) {
+                    contentResolver.openInputStream(uri)?.buffered()
+                        ?: throw IOException("Source stream unavailable")
+                },
+                cancellation,
+                { progress ->
+                    currentBytes = progress.bytesSent
+                    if (completedBytes + currentBytes > NetworkExportClient.MAX_IMGUR_BATCH_BYTES) {
+                        throw IOException("Imgur batch exceeds the 256 MiB limit")
+                    }
+                    uiProgress(progress)
+                }
+            )
+            if (result.success) {
+                uploaded++
+                completedBytes += currentBytes
+            } else {
+                lastFailure = result
+            }
+        }
+        if (cancellation.isCancelled) {
+            return NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "Upload cancelled", cancelled = true)
+        }
+        return if (uploaded == prepared.size && uploaded > 0) {
             NetworkExportResult(true, NetworkExportTarget.IMGUR, 200, "Imgur uploaded $uploaded image(s)")
         } else {
-            lastFailure ?: NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "No images uploaded to Imgur")
+            lastFailure?.copy(message = "Uploaded $uploaded of ${prepared.size}; ${lastFailure.message}")
+                ?: NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "No images uploaded to Imgur")
+        }
+    }
+
+    private fun uploadProgressReporter(fileName: String, item: Int, totalItems: Int): (NetworkUploadProgress) -> Unit {
+        var lastReported = -512L * 1024L
+        return { progress ->
+            if (progress.bytesSent - lastReported >= 512L * 1024L || progress.bytesSent == progress.totalBytes) {
+                lastReported = progress.bytesSent
+                runOnUiThread {
+                    batchProgress.value = getString(
+                        R.string.batch_uploading_file,
+                        item,
+                        totalItems,
+                        fileName,
+                        formatSize(progress.bytesSent),
+                        progress.totalBytes?.let(::formatSize) ?: getString(R.string.batch_upload_unknown_size)
+                    )
+                    batchProgressFraction.floatValue = progress.totalBytes
+                        ?.takeIf { it > 0 }
+                        ?.let { (progress.bytesSent.toFloat() / it).coerceIn(0f, 1f) }
+                        ?: 0f
+                }
+            }
         }
     }
 
@@ -1292,7 +1385,7 @@ class MainActivity : ComponentActivity() {
         return pageNumber + 1
     }
 
-    private fun savePdfBytes(displayName: String, pdfBytes: ByteArray): Boolean {
+    private fun savePdfFile(displayName: String, pdfFile: java.io.File): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
@@ -1308,10 +1401,10 @@ class MainActivity : ComponentActivity() {
                 contentResolver.delete(uri, null, null)
                 return false
             }
-            opened.use { it.write(pdfBytes) }
+            opened.use { output -> pdfFile.inputStream().buffered().use { it.copyTo(output, 64 * 1024) } }
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
+            check(contentResolver.update(uri, values, null, null) == 1) { "Could not publish PDF" }
             true
         } catch (_: Exception) {
             pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
