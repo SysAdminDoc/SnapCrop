@@ -101,7 +101,9 @@ data class EditorDraft(
     val crop: Rect,
     val redactions: List<RedactionRegion>,
     val draws: List<DrawPath>,
-    val adj: FloatArray
+    val adj: FloatArray,
+    val ocrBlocks: List<TextBlock> = emptyList(),
+    val ocrReviewed: Boolean = false
 )
 
 internal enum class EditMode { CROP, PIXELATE, DRAW, OCR, ADJUST }
@@ -265,6 +267,8 @@ internal data class EditorSnapshot(
     val filter: ImageFilter,
     val redactions: List<RedactionRegion>,
     val draws: List<DrawPath>,
+    val ocrBlocks: List<TextBlock> = emptyList(),
+    val ocrReviewed: Boolean = false,
     val cR: Float = 0f,
     val cG: Float = 0f,
     val cB: Float = 0f,

@@ -30,6 +30,11 @@ class SnapCropProjectSidecarTest {
             cropRect = Rect(10, 20, 500, 900),
             adjustments = adjustments,
             pixelateRects = listOf(Rect(50, 60, 120, 140)),
+            ocrReviewed = true,
+            ocrBlocks = listOf(
+                TextBlock("Corrected account number", Rect(130, 150, 420, 210)),
+                TextBlock("Second line", Rect(130, 220, 300, 270))
+            ),
             drawLayers = listOf(
                 DrawPath(
                     points = listOf(PointF(1f, 2f), PointF(3f, 4f)),
@@ -61,6 +66,9 @@ class SnapCropProjectSidecarTest {
         assertRectEquals(project.pixelateRects.first(), decoded.redactions.first().bounds)
         assertEquals(RedactionStyle.PIXELATE, decoded.redactions.first().style)
         assertEquals(setOf(RedactionCategory.MANUAL), decoded.redactions.first().categories)
+        assertEquals(project.ocrBlocks, decoded.ocrBlocks)
+        assertTrue(decoded.ocrReviewed)
+        assertRectEquals(Rect(130, 150, 420, 210), decoded.ocrBlocks.first().bounds)
         assertEquals(1, decoded.drawLayers.size)
         val layer = decoded.drawLayers.first()
         assertEquals(2, layer.points.size)
@@ -161,6 +169,7 @@ class SnapCropProjectSidecarTest {
         assertEquals(1f, decoded.adjustments[2], 0.0001f)
         assertEquals(0f, decoded.adjustments[17], 0.0001f)
         assertTrue(decoded.pixelateRects.isEmpty())
+        assertTrue(decoded.ocrBlocks.isEmpty())
         assertTrue(decoded.drawLayers.isEmpty())
         assertFalse(decoded.deleteOriginal)
     }
@@ -205,6 +214,99 @@ class SnapCropProjectSidecarTest {
         assertEquals(RedactionSource.OCR_REGEX, region.source)
         assertEquals(RedactionStyle.BLUR, region.style)
         assertFalse(region.enabled)
+    }
+
+    @Test
+    fun versionTwoMigratesWithEmptyOcrBlocks() {
+        val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(
+            ocrBlocks = listOf(TextBlock("ignored v3 field", Rect(1, 1, 20, 20)))
+        ))).apply {
+            put("version", 2)
+            remove("ocrBlocks")
+        }.toString()
+
+        val decoded = SnapCropProjectSidecar.decode(encoded)
+
+        assertTrue(decoded.ocrBlocks.isEmpty())
+        assertFalse(decoded.ocrReviewed)
+    }
+
+    @Test
+    fun reviewedEmptyOcrDocumentSurvivesRoundTrip() {
+        val decoded = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(basicProject().copy(ocrReviewed = true, ocrBlocks = emptyList()))
+        )
+
+        assertTrue(decoded.ocrReviewed)
+        assertTrue(decoded.ocrBlocks.isEmpty())
+    }
+
+    @Test
+    fun totalOcrTextIsBounded() {
+        val project = basicProject().copy(
+            ocrBlocks = listOf(
+                TextBlock("1234", Rect(1, 1, 20, 20)),
+                TextBlock("5678", Rect(21, 21, 40, 40))
+            )
+        )
+        val result = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(project).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL,
+            ProjectImportLimits(maxOcrTextChars = 7)
+        )
+
+        assertEquals("ocrBlocks.totalText", (result as ProjectDecodeResult.Rejected).field)
+    }
+
+    @Test
+    fun ocrBlockBoundsMustStayInsideSource() {
+        val project = basicProject().copy(
+            ocrBlocks = listOf(TextBlock("outside", Rect(80, 80, 120, 120)))
+        )
+
+        val result = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(project).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL
+        )
+
+        assertEquals("ocrBlocks.bounds", (result as ProjectDecodeResult.Rejected).field)
+    }
+
+    @Test
+    fun ocrBlockTextMustBeNonBlankAndBounded() {
+        val blank = basicProject().copy(ocrBlocks = listOf(TextBlock("   ", Rect(1, 1, 20, 20))))
+        val tooLong = basicProject().copy(ocrBlocks = listOf(TextBlock("four", Rect(1, 1, 20, 20))))
+
+        val blankResult = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(blank).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL
+        )
+        val longResult = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(tooLong).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL,
+            ProjectImportLimits(maxTextChars = 3)
+        )
+
+        assertEquals("ocrBlocks.text", (blankResult as ProjectDecodeResult.Rejected).field)
+        assertEquals("ocrBlocks.text", (longResult as ProjectDecodeResult.Rejected).field)
+    }
+
+    @Test
+    fun ocrBlockCountIsBounded() {
+        val project = basicProject().copy(
+            ocrBlocks = listOf(
+                TextBlock("one", Rect(1, 1, 20, 20)),
+                TextBlock("two", Rect(21, 21, 40, 40))
+            )
+        )
+
+        val result = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(project).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL,
+            ProjectImportLimits(maxOcrBlocks = 1)
+        )
+
+        assertEquals("ocrBlocks", (result as ProjectDecodeResult.Rejected).field)
     }
 
     @Test

@@ -22,6 +22,8 @@ data class SnapCropProject(
     val redactions: List<RedactionRegion> = pixelateRects.map { bounds ->
         RedactionRegions.manual(bounds, RedactionStyle.PIXELATE)
     },
+    val ocrReviewed: Boolean = false,
+    val ocrBlocks: List<TextBlock> = emptyList(),
     val drawLayers: List<DrawPath>,
     val exportFormat: String?,
     val exportMimeType: String?,
@@ -40,6 +42,8 @@ data class SnapCropProject(
                 adjustments.contentEquals(other.adjustments) &&
                 pixelateRects == other.pixelateRects &&
                 redactions == other.redactions &&
+                ocrReviewed == other.ocrReviewed &&
+                ocrBlocks == other.ocrBlocks &&
                 drawLayers == other.drawLayers &&
                 exportFormat == other.exportFormat &&
                 exportMimeType == other.exportMimeType &&
@@ -57,6 +61,8 @@ data class SnapCropProject(
         result = 31 * result + adjustments.contentHashCode()
         result = 31 * result + pixelateRects.hashCode()
         result = 31 * result + redactions.hashCode()
+        result = 31 * result + ocrReviewed.hashCode()
+        result = 31 * result + ocrBlocks.hashCode()
         result = 31 * result + drawLayers.hashCode()
         result = 31 * result + (exportFormat?.hashCode() ?: 0)
         result = 31 * result + (exportMimeType?.hashCode() ?: 0)
@@ -71,6 +77,8 @@ data class ProjectImportLimits(
     val maxJsonBytes: Int = 8 * 1024 * 1024,
     val maxPixelateRects: Int = 512,
     val maxRedactions: Int = 512,
+    val maxOcrBlocks: Int = 1_024,
+    val maxOcrTextChars: Int = 131_072,
     val maxDrawLayers: Int = 256,
     val maxPointsPerLayer: Int = 16_384,
     val maxTotalPoints: Int = 65_536,
@@ -94,7 +102,7 @@ enum class SourceMatch { MATCH, HASH_MISMATCH, DIMENSION_MISMATCH, MISSING_FINGE
 object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val ADJUSTMENT_COUNT = 25
     val DEFAULT_LIMITS = ProjectImportLimits()
     private val HASH_PATTERN = Regex("^[0-9a-fA-F]{64}$")
@@ -127,6 +135,10 @@ object SnapCropProjectSidecar {
             .put("adjustments", project.adjustments.toAdjustmentsJson())
             .put("redactions", JSONArray().apply {
                 project.redactions.forEach { put(it.toJson()) }
+            })
+            .put("ocrReviewed", project.ocrReviewed)
+            .put("ocrBlocks", JSONArray().apply {
+                project.ocrBlocks.forEach { put(it.toJson()) }
             })
             .put("drawLayers", JSONArray().apply {
                 project.drawLayers.forEach { put(it.toJson()) }
@@ -219,6 +231,8 @@ object SnapCropProjectSidecar {
             } else {
                 root.optJSONArray("redactions").toRedactionList()
             },
+            ocrReviewed = version >= 3 && root.optBoolean("ocrReviewed", false),
+            ocrBlocks = if (version >= 3) root.optJSONArray("ocrBlocks").toTextBlockList() else emptyList(),
             drawLayers = root.optJSONArray("drawLayers").toDrawPathList(),
             exportFormat = export.optNullableString("format"),
             exportMimeType = export.optNullableString("mimeType"),
@@ -269,6 +283,12 @@ object SnapCropProjectSidecar {
         for (region in project.redactions) {
             if (!REDACTION_ID_PATTERN.matches(region.id)) return reject("redactions.id")
             if (!region.bounds.isValidInside(width, height)) return reject("redactions.bounds")
+        }
+        if (project.ocrBlocks.size > limits.maxOcrBlocks) return reject("ocrBlocks")
+        if (project.ocrBlocks.sumOf { it.text.length } > limits.maxOcrTextChars) return reject("ocrBlocks.totalText")
+        for (block in project.ocrBlocks) {
+            if (block.text.isBlank() || block.text.length > limits.maxTextChars) return reject("ocrBlocks.text")
+            if (!block.bounds.isValidInside(width, height)) return reject("ocrBlocks.bounds")
         }
         if (project.drawLayers.size > limits.maxDrawLayers) return reject("drawLayers")
         var totalPoints = 0
@@ -368,6 +388,15 @@ object SnapCropProjectSidecar {
             enabled = optBoolean("enabled", true)
         )
     }
+
+    private fun TextBlock.toJson(): JSONObject = JSONObject()
+        .put("text", text)
+        .put("bounds", bounds.toJson())
+
+    private fun JSONObject.toTextBlock(): TextBlock = TextBlock(
+        text = getString("text"),
+        bounds = getJSONObject("bounds").toRect()
+    )
 
     private fun PointF.toJson(): JSONObject = JSONObject()
         .put("x", x.toDouble())
@@ -490,6 +519,13 @@ object SnapCropProjectSidecar {
         if (this == null) return emptyList()
         return buildList {
             for (i in 0 until length()) add(getJSONObject(i).toRedaction())
+        }
+    }
+
+    private fun JSONArray?.toTextBlockList(): List<TextBlock> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (i in 0 until length()) add(getJSONObject(i).toTextBlock())
         }
     }
 

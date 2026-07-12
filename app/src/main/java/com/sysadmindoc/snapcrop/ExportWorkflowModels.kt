@@ -24,6 +24,18 @@ data class ExportItemMetadata(
         }
 }
 
+object ReviewedOcr {
+    const val MAX_PLAIN_TEXT_CHARS = 131_072
+
+    fun sanitize(blocks: List<TextBlock>): List<TextBlock> = blocks.mapNotNull { block ->
+        block.text.trim().takeIf(String::isNotEmpty)?.let { block.copy(text = it) }
+    }
+
+    fun plainText(blocks: List<TextBlock>): String = sanitize(blocks)
+        .joinToString("\n") { it.text }
+        .take(MAX_PLAIN_TEXT_CHARS)
+}
+
 object BatchRenameTemplate {
     private val invalidFilenameChars = Regex("[<>:\"/\\\\|?*\\u0000-\\u001F]")
     private val whitespace = Regex("\\s+")

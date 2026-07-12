@@ -112,6 +112,8 @@ class CropActivity : ComponentActivity() {
     private val initialRedactions = mutableStateOf<List<RedactionRegion>>(emptyList())
     private val initialDrawPaths = mutableStateOf<List<DrawPath>>(emptyList())
     private val initialAdjustments = mutableStateOf<FloatArray?>(null)
+    private val initialOcrBlocks = mutableStateOf<List<TextBlock>>(emptyList())
+    private val initialOcrReviewed = mutableStateOf(false)
     private val projectLoadError = mutableStateOf<String?>(null)
     private val rotationKey = mutableIntStateOf(0)
     private var pendingMutationPurpose: SourceMutationPurpose? = null
@@ -176,6 +178,8 @@ class CropActivity : ComponentActivity() {
         initialRedactions.value = emptyList()
         initialDrawPaths.value = emptyList()
         initialAdjustments.value = null
+        initialOcrBlocks.value = emptyList()
+        initialOcrReviewed.value = false
         projectLoadError.value = null
         projectCanRelink.value = false
         pendingRelinkProject = null
@@ -238,6 +242,10 @@ class CropActivity : ComponentActivity() {
                             initialRedactions = initialRedactions.value,
                             initialDrawPaths = initialDrawPaths.value,
                             initialAdjustments = initialAdjustments.value,
+                            initialOcrBlocks = initialOcrBlocks.value,
+                            onOcrChanged = { initialOcrBlocks.value = it.map(TextBlock::deepCopy) },
+                            initialOcrReviewed = initialOcrReviewed.value,
+                            onOcrReviewedChanged = { initialOcrReviewed.value = it },
                             registerStateProvider = { provider -> draftStateProvider = provider },
                             onSave = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
                             onSaveCopy = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = false) },
@@ -275,6 +283,7 @@ class CropActivity : ComponentActivity() {
                                 val resized = Bitmap.createScaledBitmap(current, newW, newH, true)
                                 if (current !== originalBitmap) current.recycle()
                                 originalBitmap?.recycle(); originalBitmap = null
+                                invalidateOcrReview()
                                 bitmapState.value = resized
                                 cropRect.value = Rect(0, 0, newW, newH)
                                 cropMethod.value = ""
@@ -286,6 +295,7 @@ class CropActivity : ComponentActivity() {
                                         val old = bitmapState.value
                                         if (old != null && old !== originalBitmap) old.recycle()
                                         originalBitmap = null
+                                        invalidateOcrReview()
                                         bitmapState.value = result.bitmap
                                         cropRect.value = android.graphics.Rect(0, 0, result.bitmap.width, result.bitmap.height)
                                         cropMethod.value = ""
@@ -446,6 +456,14 @@ class CropActivity : ComponentActivity() {
     private fun projectSidecarsEnabled(): Boolean =
         getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("project_sidecars", false)
 
+    private fun ocrTextSidecarsEnabled(): Boolean =
+        getSharedPreferences("snapcrop", MODE_PRIVATE).getBoolean("ocr_text_sidecars", false)
+
+    private fun invalidateOcrReview() {
+        initialOcrBlocks.value = emptyList()
+        initialOcrReviewed.value = false
+    }
+
     private fun effectiveDeleteOriginalOnSave(): Boolean =
         getDeletePref() && !projectSidecarsEnabled()
 
@@ -549,6 +567,8 @@ class CropActivity : ComponentActivity() {
                 redactions = d.redactions,
                 drawPaths = d.draws,
                 adj = d.adj,
+                ocrBlocks = d.ocrBlocks,
+                ocrReviewed = d.ocrReviewed,
                 deleteOriginal = effectiveDeleteOriginalOnSave(),
                 exportFormat = getExportFormat(forcePng = false),
                 savePath = getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop",
@@ -664,6 +684,8 @@ class CropActivity : ComponentActivity() {
                     initialRedactions.value = project.redactions
                     initialDrawPaths.value = project.drawLayers
                     initialAdjustments.value = project.adjustments
+                    initialOcrBlocks.value = project.ocrBlocks.map(TextBlock::deepCopy)
+                    initialOcrReviewed.value = project.ocrReviewed
                 } else {
                     val statusBarPx = SystemBars.statusBarHeight(resources)
                     val navBarPx = SystemBars.navigationBarHeight(resources)
@@ -720,6 +742,7 @@ class CropActivity : ComponentActivity() {
             originalBitmap?.recycle()
         }
         originalBitmap = null
+        invalidateOcrReview()
         bitmapState.value = rotated
         cropRect.value = Rect(0, 0, rotated.width, rotated.height)
         cropMethod.value = ""
@@ -735,6 +758,7 @@ class CropActivity : ComponentActivity() {
             originalBitmap?.recycle()
         }
         originalBitmap = null
+        invalidateOcrReview()
         bitmapState.value = flipped
     }
 
@@ -1772,6 +1796,8 @@ class CropActivity : ComponentActivity() {
         deleteOriginal: Boolean,
         exportFormat: CropExportFormat,
         savePath: String,
+        ocrBlocks: List<TextBlock> = initialOcrBlocks.value,
+        ocrReviewed: Boolean = initialOcrReviewed.value,
         computeHash: Boolean = true
     ): String {
         val source = sourceUri
@@ -1800,7 +1826,12 @@ class CropActivity : ComponentActivity() {
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
             redactions = redactions.take(limits.maxRedactions).map { it.copy() },
+            ocrReviewed = ocrReviewed,
             drawLayers = boundedDrawPaths,
+            ocrBlocks = ocrBlocks
+                .filterNot { it.text.isBlank() }
+                .take(limits.maxOcrBlocks)
+                .map(TextBlock::deepCopy),
             exportFormat = exportFormat.ext,
             exportMimeType = exportFormat.mime,
             exportQuality = exportFormat.quality,
@@ -1857,13 +1888,20 @@ class CropActivity : ComponentActivity() {
                 } else {
                     null
                 }
+                val correctedOcrText = if (ocrTextSidecarsEnabled()) {
+                    ReviewedOcr.plainText(initialOcrBlocks.value)
+                        .takeIf(String::isNotEmpty)
+                } else {
+                    null
+                }
                 saveToGallery(
                     bitmap = cropped,
                     name = name,
                     deleteOriginal = deleteOriginal,
                     forcePng = hasShapeCrop,
                     annotationSvg = annotationSvg,
-                    projectSidecarJson = projectSidecarJson
+                    projectSidecarJson = projectSidecarJson,
+                    correctedOcrText = correctedOcrText
                 )
             } catch (e: Exception) {
                 android.util.Log.e("SnapCrop", "saveCropped failed", e)
@@ -2215,13 +2253,41 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun saveOcrTextSidecar(name: String, savePath: String, text: String): Boolean {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.txt")
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = try {
+            contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+        } catch (_: Exception) { null } ?: return false
+        return try {
+            val bytes = text.take(ReviewedOcr.MAX_PLAIN_TEXT_CHARS).toByteArray(Charsets.UTF_8)
+            if (bytes.isEmpty()) throw IOException("OCR text sidecar is empty")
+            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                ?: throw IOException("Failed to open OCR text output stream")
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            if (contentResolver.update(uri, values, null, null) != 1) {
+                throw IOException("Failed to publish OCR text sidecar")
+            }
+            true
+        } catch (_: Exception) {
+            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            false
+        }
+    }
+
     private fun saveToGallery(
         bitmap: Bitmap,
         name: String,
         deleteOriginal: Boolean,
         forcePng: Boolean = false,
         annotationSvg: String? = null,
-        projectSidecarJson: String? = null
+        projectSidecarJson: String? = null,
+        correctedOcrText: String? = null
     ) {
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val stripExif = prefs.getBoolean("strip_exif", false)
@@ -2281,10 +2347,12 @@ class CropActivity : ComponentActivity() {
 
             val svgSaved = annotationSvg == null || saveSvgSidecar(name, savePath, annotationSvg)
             val projectSaved = projectSidecarJson == null || saveProjectSidecar(name, savePath, projectSidecarJson)
-            val requestedSidecarsSaved = svgSaved && projectSaved
+            val ocrTextSaved = correctedOcrText == null || saveOcrTextSidecar(name, savePath, correctedOcrText)
+            val requestedSidecarsSaved = svgSaved && projectSaved && ocrTextSaved
             val detailMessage = baseMessage +
                 (if (annotationSvg != null && svgSaved) " + SVG" else "") +
-                (if (projectSidecarJson != null && projectSaved) " + Project" else "")
+                (if (projectSidecarJson != null && projectSaved) " + Project" else "") +
+                (if (correctedOcrText != null && ocrTextSaved) " + OCR text" else "")
 
             runOnUiThread {
                 when {

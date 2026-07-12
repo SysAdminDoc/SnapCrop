@@ -104,6 +104,10 @@ are blocked behind explicit opt-in and evaluation gates.
 
 **OCR**
 - Tap any text block to copy it or translate it on-device
+- Review OCR blocks before export: correct text, merge related blocks, or delete
+  false detections without changing the screenshot pixels
+- Searchable PDF reports use explicitly reviewed text for the PDF layer and appendix;
+  Settings can also save an opt-in UTF-8 `.txt` companion (which may contain sensitive text)
 - Translate recognized text with ML Kit language detection and downloadable offline translation models
 - Translation shows model-download and retry guidance when Play Services needs
   Wi-Fi, storage, or an update

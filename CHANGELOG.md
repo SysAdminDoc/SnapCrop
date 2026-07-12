@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Editable OCR correction and export sidecars (v6.46.0).**
+
+- OCR blocks can now be reviewed, corrected, deleted, and merged without changing
+  image pixels. Corrections participate in undo/redo, process-death drafts, and v3
+  editable project sidecars; older v1/v2 projects remain compatible.
+- Searchable PDF reports require an explicit OCR review pass and use the reviewed
+  blocks for both the invisible text layer and appendix instead of rerunning OCR.
+- Added an opt-in UTF-8 `.txt` companion export with shared-storage privacy copy,
+  bounded text/block validation, deliberate delete-all persistence, and stale-geometry
+  invalidation after bitmap resize, rotate, flip, or background replacement.
+
 **Ultra HDR edit/export preservation (v6.45.0).**
 
 - Android 14+ gain-map inputs now retain HDR metadata through redaction, adjustments,

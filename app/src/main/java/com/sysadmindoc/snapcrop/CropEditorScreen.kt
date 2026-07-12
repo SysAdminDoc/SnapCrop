@@ -147,6 +147,8 @@ fun CropEditorScreen(
     initialRedactions: List<RedactionRegion> = emptyList(),
     initialDrawPaths: List<DrawPath> = emptyList(),
     initialAdjustments: FloatArray? = null,
+    initialOcrBlocks: List<TextBlock> = emptyList(),
+    initialOcrReviewed: Boolean = false,
     onSave: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
@@ -161,6 +163,8 @@ fun CropEditorScreen(
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
     onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
+    onOcrChanged: (List<TextBlock>) -> Unit = {},
+    onOcrReviewedChanged: (Boolean) -> Unit = {},
     registerStateProvider: ((() -> EditorDraft)?) -> Unit = {},
     replaceOriginalOnSave: Boolean
 ) {
@@ -246,10 +250,16 @@ fun CropEditorScreen(
 
     var showPalette by remember { mutableStateOf(false) }
     var showResizeDialog by remember { mutableStateOf(false) }
-    var ocrBlocks by remember { mutableStateOf<List<TextBlock>>(emptyList()) }
+    var ocrBlocks by remember(bitmap) { mutableStateOf(initialOcrBlocks.map(TextBlock::deepCopy)) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
     var selectedOcrText by remember { mutableStateOf<String?>(null) }
+    var showOcrReview by remember { mutableStateOf(false) }
+    val selectedOcrBlocks = remember { mutableStateListOf<Int>() }
+    val ocrDraftTexts = remember { mutableStateMapOf<Int, String>() }
+    var ocrScanCompleted by remember(bitmap) {
+        mutableStateOf(initialOcrReviewed || initialOcrBlocks.isNotEmpty())
+    }
     var translateTarget by remember { mutableStateOf(TextTranslator.defaultTarget) }
     var translation by remember { mutableStateOf<TextTranslation?>(null) }
     var translationError by remember { mutableStateOf<String?>(null) }
@@ -358,6 +368,8 @@ fun CropEditorScreen(
         selectedFilter,
         redactions.map { it.copy() },
         drawPaths.toList(),
+        ocrBlocks.map(TextBlock::deepCopy),
+        ocrScanCompleted,
         curveR, curveG, curveB,
         if (perspectiveMode) listOf(PointF(quadTL.x, quadTL.y), PointF(quadTR.x, quadTR.y), PointF(quadBR.x, quadBR.y), PointF(quadBL.x, quadBL.y)) else null
     )
@@ -370,6 +382,10 @@ fun CropEditorScreen(
         redactions.clear(); redactions.addAll(s.redactions.map { it.copy() })
         selectedRedactionIndex = -1
         drawPaths.clear(); drawPaths.addAll(s.draws)
+        ocrBlocks = s.ocrBlocks.map(TextBlock::deepCopy)
+        ocrScanCompleted = s.ocrReviewed
+        onOcrChanged(ocrBlocks)
+        onOcrReviewedChanged(ocrScanCompleted)
         curveR = s.cR; curveG = s.cG; curveB = s.cB
         if (s.perspectiveQuad != null && s.perspectiveQuad.size == 4) {
             perspectiveMode = true
@@ -391,6 +407,26 @@ fun CropEditorScreen(
         undoStack.add(captureSnapshot())
         redoStack.clear()
         if (undoStack.size > 30) undoStack.removeAt(0)
+    }
+
+    fun replaceOcrBlocks(updated: List<TextBlock>) {
+        if (updated == ocrBlocks) return
+        pushUndo()
+        ocrBlocks = updated.map(TextBlock::deepCopy)
+        selectedOcrBlocks.removeAll { it !in ocrBlocks.indices }
+        onOcrChanged(ocrBlocks)
+        ocrScanCompleted = true
+        onOcrReviewedChanged(true)
+    }
+
+    fun commitOcrDrafts(): List<TextBlock> {
+        val committed = ocrBlocks.mapIndexedNotNull { index, block ->
+            val text = (ocrDraftTexts[index] ?: block.text).trim()
+            text.takeIf(String::isNotEmpty)?.let { block.copy(text = it) }
+        }
+        replaceOcrBlocks(committed)
+        ocrDraftTexts.clear()
+        return committed
     }
 
     fun addDrawLayer(path: DrawPath) {
@@ -858,7 +894,14 @@ fun CropEditorScreen(
     // Let the host pull the live editor state to checkpoint a draft across process death.
     DisposableEffect(Unit) {
         registerStateProvider {
-            EditorDraft(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), exportAdjustments())
+            EditorDraft(
+                currentCropRect(),
+                redactions.map { it.copy() },
+                drawPaths.toList(),
+                exportAdjustments(),
+                ocrBlocks.map(TextBlock::deepCopy),
+                ocrScanCompleted
+            )
         }
         onDispose { registerStateProvider(null) }
     }
@@ -901,14 +944,18 @@ fun CropEditorScreen(
             return
         }
         editMode = mode
-        if (mode == EditMode.OCR && ocrBlocks.isEmpty() && scannedCodes.isEmpty() && !ocrLoading) {
+        if (mode == EditMode.OCR && !ocrScanCompleted && !ocrLoading) {
             ocrLoading = true
             scope.launch {
                 val ocrScript = OcrScript.fromContext(context)
                 val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap, ocrScript) }
                 val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
-                ocrBlocks = textDeferred.await()
+                pushUndo()
+                ocrBlocks = textDeferred.await().map(TextBlock::deepCopy)
                 scannedCodes = codeDeferred.await()
+                ocrScanCompleted = true
+                onOcrChanged(ocrBlocks)
+                onOcrReviewedChanged(true)
                 if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
                     onOcrIndexed(
                         ocrBlocks.joinToString("\n") { it.text },
@@ -1585,6 +1632,16 @@ fun CropEditorScreen(
                 }
                 if (editMode == EditMode.OCR && ocrBlocks.isNotEmpty()) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = {
+                                ocrDraftTexts.clear()
+                                ocrBlocks.forEachIndexed { index, block -> ocrDraftTexts[index] = block.text }
+                                showOcrReview = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text(stringResource(R.string.ocr_review), color = bannerColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                         TextButton(
                             onClick = {
                                 val allText = ocrBlocks.joinToString("\n") { it.text }
@@ -3597,6 +3654,125 @@ fun CropEditorScreen(
             }
         }
     }
+    }
+
+    if (showOcrReview) {
+        AlertDialog(
+            onDismissRequest = {
+                commitOcrDrafts()
+                showOcrReview = false
+                selectedOcrBlocks.clear()
+            },
+            title = { Text(stringResource(R.string.ocr_review_title), color = OnSurface) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.ocr_review_help),
+                        color = OnSurfaceVariant,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                    ocrBlocks.forEachIndexed { index, block ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(SurfaceContainer, RoundedCornerShape(8.dp))
+                                .padding(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = index in selectedOcrBlocks,
+                                onCheckedChange = { checked ->
+                                    if (checked) {
+                                        if (index !in selectedOcrBlocks) selectedOcrBlocks.add(index)
+                                    } else {
+                                        selectedOcrBlocks.remove(index)
+                                    }
+                                },
+                                colors = CheckboxDefaults.colors(checkedColor = OcrAccent)
+                            )
+                            OutlinedTextField(
+                                value = ocrDraftTexts[index] ?: block.text,
+                                onValueChange = { value ->
+                                    ocrDraftTexts[index] = value
+                                },
+                                modifier = Modifier.weight(1f),
+                                minLines = 1,
+                                maxLines = 4,
+                                label = { Text(stringResource(R.string.ocr_block_number, index + 1)) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = OcrAccent,
+                                    unfocusedBorderColor = Outline,
+                                    focusedTextColor = OnSurface,
+                                    unfocusedTextColor = OnSurface,
+                                    cursorColor = OcrAccent
+                                )
+                            )
+                            IconButton(
+                                onClick = {
+                                    val drafted = ocrBlocks.mapIndexed { draftIndex, current ->
+                                        current.copy(text = ocrDraftTexts[draftIndex] ?: current.text)
+                                    }
+                                    replaceOcrBlocks(
+                                        drafted.filterIndexed { draftIndex, current ->
+                                            draftIndex != index && current.text.isNotBlank()
+                                        }
+                                    )
+                                    ocrDraftTexts.clear()
+                                    ocrBlocks.forEachIndexed { draftIndex, current ->
+                                        ocrDraftTexts[draftIndex] = current.text
+                                    }
+                                    selectedOcrBlocks.clear()
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    stringResource(R.string.ocr_delete_block, index + 1),
+                                    tint = Tertiary
+                                )
+                            }
+                        }
+                    }
+                    if (ocrBlocks.isEmpty()) {
+                        Text(stringResource(R.string.ocr_no_text), color = OnSurfaceVariant, fontSize = 13.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            val drafted = ocrBlocks.mapIndexed { index, block ->
+                                block.copy(text = ocrDraftTexts[index] ?: block.text)
+                            }
+                            replaceOcrBlocks(
+                                OcrBlockEdits.merge(drafted, selectedOcrBlocks.toSet())
+                                    .filterNot { it.text.isBlank() }
+                            )
+                            ocrDraftTexts.clear()
+                            ocrBlocks.forEachIndexed { index, block -> ocrDraftTexts[index] = block.text }
+                            selectedOcrBlocks.clear()
+                        },
+                        enabled = selectedOcrBlocks.size >= 2
+                    ) { Text(stringResource(R.string.ocr_merge_selected), color = if (selectedOcrBlocks.size >= 2) OcrAccent else Outline) }
+                    Button(
+                        onClick = {
+                            commitOcrDrafts()
+                            showOcrReview = false
+                            selectedOcrBlocks.clear()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = OcrAccent)
+                    ) { Text(stringResource(R.string.done), color = OnPrimary) }
+                }
+            },
+            containerColor = SurfaceVariant
+        )
     }
 
     if (selectedOcrText != null) {

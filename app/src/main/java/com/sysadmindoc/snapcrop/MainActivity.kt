@@ -680,6 +680,9 @@ class MainActivity : ComponentActivity() {
                     var reportTitle by remember(reportUris.value) { mutableStateOf(reportDefaultTitle) }
                     var notes by remember(reportUris.value) { mutableStateOf("") }
                     var includeOcr by remember(reportUris.value) { mutableStateOf(false) }
+                    var reviewedOcr by remember(reportUris.value) { mutableStateOf<Map<String, List<TextBlock>>?>(null) }
+                    var showOcrReview by remember(reportUris.value) { mutableStateOf(false) }
+                    var preparingOcr by remember(reportUris.value) { mutableStateOf(false) }
                     var uploadAfterSave by remember(reportUris.value, networkSettings) { mutableStateOf(false) }
                     AlertDialog(
                         onDismissRequest = { showReportDialogState.value = false },
@@ -743,6 +746,58 @@ class MainActivity : ComponentActivity() {
                                         fontSize = 13.sp
                                     )
                                 }
+                                if (includeOcr) {
+                                    TextButton(
+                                        onClick = {
+                                            if (preparingOcr) return@TextButton
+                                            preparingOcr = true
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                val prepared = linkedMapOf<String, List<TextBlock>>()
+                                                reportUris.value.forEach { uri ->
+                                                    val reportBitmap = decodeReportBitmap(uri)
+                                                    prepared[uri.toString()] = if (reportBitmap == null) {
+                                                        emptyList()
+                                                    } else {
+                                                        try {
+                                                            TextExtractor.extract(reportBitmap, OcrScript.fromContext(this@MainActivity))
+                                                                .map(TextBlock::deepCopy)
+                                                        } catch (_: Exception) {
+                                                            emptyList()
+                                                        } finally {
+                                                            reportBitmap.recycle()
+                                                        }
+                                                    }
+                                                }
+                                                withContext(Dispatchers.Main) {
+                                                    reviewedOcr = prepared
+                                                    preparingOcr = false
+                                                    showOcrReview = true
+                                                }
+                                            }
+                                        },
+                                        enabled = !preparingOcr
+                                    ) {
+                                        if (preparingOcr) {
+                                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Primary)
+                                            Spacer(Modifier.width(6.dp))
+                                        }
+                                        Text(
+                                            stringResource(
+                                                if (reviewedOcr == null) R.string.report_scan_review_ocr
+                                                else R.string.report_review_ocr_again
+                                            ),
+                                            color = Primary
+                                        )
+                                    }
+                                    Text(
+                                        stringResource(
+                                            if (reviewedOcr == null) R.string.report_ocr_review_required
+                                            else R.string.report_ocr_review_ready
+                                        ),
+                                        color = if (reviewedOcr == null) OnSurfaceVariant else Secondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
                                 Spacer(Modifier.height(8.dp))
                                 if (networkSettings.enabled) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -784,8 +839,9 @@ class MainActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     showReportDialogState.value = false
-                                    exportPdfReport(reportUris.value, reportTitle, notes, includeOcr, uploadAfterSave)
+                                    exportPdfReport(reportUris.value, reportTitle, notes, includeOcr, uploadAfterSave, reviewedOcr)
                                 },
+                                enabled = !includeOcr || reviewedOcr != null,
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
                             ) { Text(stringResource(R.string.create)) }
                         },
@@ -798,6 +854,90 @@ class MainActivity : ComponentActivity() {
                         containerColor = SurfaceVariant,
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    if (showOcrReview && reviewedOcr != null) {
+                        AlertDialog(
+                            onDismissRequest = { showOcrReview = false },
+                            title = { Text(stringResource(R.string.report_review_ocr_title), color = OnSurface) },
+                            text = {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 440.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        stringResource(R.string.report_review_ocr_help),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 12.sp
+                                    )
+                                    reportUris.value.forEachIndexed { imageIndex, uri ->
+                                        val key = uri.toString()
+                                        val blocks = reviewedOcr.orEmpty()[key].orEmpty()
+                                        Text(
+                                            stringResource(R.string.report_ocr_image, imageIndex + 1),
+                                            color = Primary,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 13.sp
+                                        )
+                                        if (blocks.isEmpty()) {
+                                            Text(stringResource(R.string.ocr_no_text), color = OnSurfaceVariant, fontSize = 12.sp)
+                                        }
+                                        blocks.forEachIndexed { blockIndex, block ->
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                OutlinedTextField(
+                                                    value = block.text,
+                                                    onValueChange = { value ->
+                                                        val updatedBlocks = blocks.toMutableList().apply {
+                                                            this[blockIndex] = block.copy(text = value)
+                                                        }
+                                                        reviewedOcr = reviewedOcr.orEmpty().toMutableMap().apply {
+                                                            this[key] = updatedBlocks
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    minLines = 1,
+                                                    maxLines = 3,
+                                                    label = { Text(stringResource(R.string.ocr_block_number, blockIndex + 1)) },
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedBorderColor = OcrAccent,
+                                                        unfocusedBorderColor = Outline,
+                                                        focusedTextColor = OnSurface,
+                                                        unfocusedTextColor = OnSurface,
+                                                        cursorColor = OcrAccent
+                                                    )
+                                                )
+                                                IconButton(onClick = {
+                                                    reviewedOcr = reviewedOcr.orEmpty().toMutableMap().apply {
+                                                        this[key] = blocks.filterIndexed { index, _ -> index != blockIndex }
+                                                    }
+                                                }) {
+                                                    Icon(
+                                                        Icons.Default.Delete,
+                                                        stringResource(R.string.ocr_delete_block, blockIndex + 1),
+                                                        tint = Tertiary
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        reviewedOcr = reviewedOcr.orEmpty().mapValues { (_, blocks) ->
+                                            ReviewedOcr.sanitize(blocks)
+                                        }
+                                        showOcrReview = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = OcrAccent)
+                                ) { Text(stringResource(R.string.done), color = OnPrimary) }
+                            },
+                            containerColor = SurfaceVariant
+                        )
+                    }
                 }
 
                 if (showRenameDialogState.value) {
@@ -1056,7 +1196,8 @@ class MainActivity : ComponentActivity() {
         title: String,
         notes: String,
         includeOcr: Boolean,
-        uploadAfterSave: Boolean
+        uploadAfterSave: Boolean,
+        reviewedOcr: Map<String, List<TextBlock>>? = null
     ) {
         if (uris.isEmpty()) return
         if (uris.size > MAX_REPORT_ITEMS) {
@@ -1097,16 +1238,10 @@ class MainActivity : ComponentActivity() {
                     val bitmap = decodeReportBitmap(uri) ?: return@forEachIndexed
                     var ocrBlocks = emptyList<TextBlock>()
                     if (includeOcr) {
-                        val ocrScript = OcrScript.fromContext(this@MainActivity)
-                        ocrBlocks = try {
-                            TextExtractor.extract(bitmap, ocrScript)
-                        } catch (_: Exception) {
-                            emptyList()
-                        }
-                        val extractedText = ocrBlocks.joinToString("\n") { it.text.trim() }.trim()
-                        val appendixText = extractedText.ifBlank { metadata.recognizedText }.trim()
-                        if (appendixText.isNotBlank()) {
-                            appendix.add(metadata to appendixText)
+                        ocrBlocks = ReviewedOcr.sanitize(reviewedOcr?.get(uri.toString()).orEmpty())
+                        val extractedText = ReviewedOcr.plainText(ocrBlocks)
+                        if (extractedText.isNotBlank()) {
+                            appendix.add(metadata to extractedText)
                         }
                     }
                     pageNumber = drawReportImagePage(doc, pageNumber, index + 1, uris.size, bitmap, metadata, ocrBlocks)
@@ -1446,8 +1581,13 @@ class MainActivity : ComponentActivity() {
                 val bw = b.width() * scale
                 val bh = b.height() * scale
                 if (bw < 1f || bh < 1f) continue
-                invisPaint.textSize = (bh * 0.85f).coerceIn(1f, 40f)
-                canvas.drawText(block.text, bx, by + bh * 0.8f, invisPaint)
+                val lines = block.text.lines().filter(String::isNotBlank)
+                if (lines.isEmpty()) continue
+                val lineHeight = bh / lines.size
+                invisPaint.textSize = (lineHeight * 0.85f).coerceIn(1f, 40f)
+                lines.forEachIndexed { lineIndex, line ->
+                    canvas.drawText(line, bx, by + lineHeight * (lineIndex + 0.8f), invisPaint)
+                }
             }
         }
         drawPdfFooter(canvas, pageNumber)

@@ -246,6 +246,17 @@ class SettingsActivity : ComponentActivity() {
                         }
                     )
 
+                    var ocrTextSidecars by remember { mutableStateOf(prefs.getBoolean("ocr_text_sidecars", false)) }
+                    SettingToggle(
+                        title = stringResource(R.string.settings_ocr_text_sidecar_title),
+                        subtitle = stringResource(R.string.settings_ocr_text_sidecar_subtitle),
+                        checked = ocrTextSidecars,
+                        onCheckedChange = {
+                            ocrTextSidecars = it
+                            prefs.edit().putBoolean("ocr_text_sidecars", it).apply()
+                        }
+                    )
+
                     var appCropProfiles by remember { mutableStateOf(prefs.getBoolean("app_crop_profiles", true)) }
                     SettingToggle(
                         title = stringResource(R.string.settings_profiles_title),
