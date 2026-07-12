@@ -14,6 +14,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Extracted PDF report pagination/rendering from `MainActivity` and the raster
   crop/redaction/draw/filter pipeline from `CropActivity` into focused renderers,
   keeping activities responsible for workflow coordination and lifecycle state.
+- Replaced duplicate review's all-pairs candidate scan with lossless logarithmic
+  dimension buckets, luma buckets, and Hamming-safe hash-prefix bands. Complete-link
+  group membership remains byte-for-byte compatible with the brute-force rules.
 
 **Premium interface system and workflow-focused Home (v6.67.0).**
 

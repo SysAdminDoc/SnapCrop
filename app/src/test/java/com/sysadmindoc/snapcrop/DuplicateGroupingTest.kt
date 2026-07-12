@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.Random
 
 @RunWith(RobolectricTestRunner::class)
 class DuplicateGroupingTest {
@@ -131,6 +132,132 @@ class DuplicateGroupingTest {
         val b = candidate(2, hash = 1L)
         val group = DuplicateGrouping.group(listOf(a, b), DuplicateSensitivity.STRICT, emptySet()).single()
         assertTrue(DuplicateGrouping.dismissalsForCandidate(group, "content://missing\u00000").isEmpty())
+    }
+
+    @Test
+    fun bucketBoundariesDoNotDropValidDimensionLumaOrHashMatches() {
+        val first = candidate(1, hash = 0L, luma = 100, width = 1_000).copy(height = 2_400)
+        val atBalancedBoundary = candidate(
+            2,
+            hash = 0b11_1111L,
+            luma = 118,
+            width = 1_063,
+        ).copy(height = 2_550)
+
+        val group = DuplicateGrouping.group(
+            listOf(first, atBalancedBoundary),
+            DuplicateSensitivity.BALANCED,
+            emptySet(),
+        ).single()
+
+        assertEquals(listOf(first, atBalancedBoundary), group.candidates)
+    }
+
+    @Test
+    fun indexedCandidateGenerationAvoidsQuadraticSimilarityChecks() {
+        val random = Random(7)
+        val candidates = (1L..3_000L).map { id ->
+            candidate(
+                id = id,
+                hash = random.nextLong(),
+                luma = (id % 256).toInt(),
+                width = 900 + (id % 900).toInt(),
+            ).copy(height = 1_800 + (id % 1_800).toInt())
+        }
+        val metrics = DuplicateGroupingMetrics()
+
+        DuplicateGrouping.group(candidates, DuplicateSensitivity.BALANCED, emptySet(), metrics)
+
+        assertTrue(
+            "Expected indexed grouping to stay below 150 checks per candidate, got ${metrics.similarityChecks}",
+            metrics.similarityChecks < candidates.size * 150L,
+        )
+    }
+
+    @Test
+    fun indexedGroupingMatchesBruteForceCompleteLinkSemantics() {
+        val random = Random(19)
+        val candidates = (1L..120L).map { id ->
+            candidate(
+                id = id,
+                sha = if (id % 30 in 0L..1L) "${id / 30}".repeat(64) else null,
+                hash = random.nextInt(1 shl 12).toLong(),
+                luma = 90 + random.nextInt(50),
+                width = 1_000 + random.nextInt(120),
+            ).copy(height = 2_300 + random.nextInt(220))
+        }
+        val dismissals = setOf(
+            DuplicateDismissal.of(candidates[4].fingerprintKey, candidates[5].fingerprintKey),
+            DuplicateDismissal.of(candidates[30].fingerprintKey, candidates[31].fingerprintKey),
+        )
+
+        DuplicateSensitivity.entries.forEach { sensitivity ->
+            val actual = DuplicateGrouping.group(candidates, sensitivity, dismissals).signatures()
+            assertEquals(bruteForceSignatures(candidates, sensitivity, dismissals), actual)
+        }
+    }
+
+    private fun List<DuplicateGroup>.signatures(): Set<Pair<DuplicateMatchKind, Set<String>>> =
+        mapTo(mutableSetOf()) { group -> group.kind to group.candidates.mapTo(mutableSetOf(), DuplicateCandidate::identity) }
+
+    private fun bruteForceSignatures(
+        candidates: List<DuplicateCandidate>,
+        sensitivity: DuplicateSensitivity,
+        dismissals: Set<DuplicateDismissal>,
+    ): Set<Pair<DuplicateMatchKind, Set<String>>> {
+        val usable = candidates.asSequence()
+            .filter { it.width > 0 && it.height > 0 }
+            .distinctBy(DuplicateCandidate::identity)
+            .sortedWith(compareBy<DuplicateCandidate> { it.dateAdded }.thenBy { it.uri.toString() })
+            .toList()
+        val assigned = mutableSetOf<String>()
+        val groups = mutableListOf<Pair<DuplicateMatchKind, Set<String>>>()
+        val exactGroups = usable.filter { !it.exactSha256.isNullOrBlank() }
+            .groupBy(DuplicateCandidate::exactSha256)
+            .values
+            .filter { it.size >= 2 }
+        exactGroups.flatten().forEach { assigned += it.identity }
+        exactGroups.forEach { exact ->
+            val cluster = exact.toMutableList()
+            usable.filter { it.identity !in assigned }.forEach { candidate ->
+                if (cluster.all { bruteSimilar(it, candidate, sensitivity, dismissals) }) {
+                    cluster += candidate
+                    assigned += candidate.identity
+                }
+            }
+            groups += (if (cluster.size == exact.size) DuplicateMatchKind.EXACT else DuplicateMatchKind.SIMILAR) to
+                cluster.mapTo(mutableSetOf(), DuplicateCandidate::identity)
+        }
+        usable.filter { it.identity !in assigned }.forEach { seed ->
+            if (seed.identity in assigned) return@forEach
+            val cluster = mutableListOf(seed)
+            usable.filter { it.identity !in assigned && it.identity != seed.identity }.forEach { candidate ->
+                if (cluster.all { bruteSimilar(it, candidate, sensitivity, dismissals) }) cluster += candidate
+            }
+            if (cluster.size >= 2) {
+                cluster.forEach { assigned += it.identity }
+                val exact = cluster.all { !it.exactSha256.isNullOrBlank() } &&
+                    cluster.mapNotNull(DuplicateCandidate::exactSha256).distinct().size == 1
+                groups += (if (exact) DuplicateMatchKind.EXACT else DuplicateMatchKind.SIMILAR) to
+                    cluster.mapTo(mutableSetOf(), DuplicateCandidate::identity)
+            }
+        }
+        return groups.toSet()
+    }
+
+    private fun bruteSimilar(
+        first: DuplicateCandidate,
+        second: DuplicateCandidate,
+        sensitivity: DuplicateSensitivity,
+        dismissals: Set<DuplicateDismissal>,
+    ): Boolean {
+        if (!first.exactSha256.isNullOrBlank() && first.exactSha256 == second.exactSha256) return true
+        if (DuplicateDismissal.of(first.fingerprintKey, second.fingerprintKey) in dismissals) return false
+        val widthDelta = kotlin.math.abs(first.width - second.width).toFloat() / maxOf(first.width, second.width)
+        val heightDelta = kotlin.math.abs(first.height - second.height).toFloat() / maxOf(first.height, second.height)
+        return maxOf(widthDelta, heightDelta) <= sensitivity.maxDimensionDelta &&
+            kotlin.math.abs(first.averageLuma - second.averageLuma) <= sensitivity.maxLumaDelta &&
+            java.lang.Long.bitCount(first.differenceHash xor second.differenceHash) <= sensitivity.maxHamming
     }
 
     private fun candidate(
