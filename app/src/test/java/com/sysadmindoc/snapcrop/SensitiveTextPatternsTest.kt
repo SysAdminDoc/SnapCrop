@@ -49,4 +49,37 @@ class SensitiveTextPatternsTest {
         assertFalse(SensitiveTextPatterns.containsSensitivePattern("Build 2026-07-12 at 10:30"))
         assertFalse(SensitiveTextPatterns.containsSensitivePattern("Invalid host 999.999.999.999"))
     }
+
+    @Test
+    fun developerSecretsRequireStrictShapesOrHighSignalAssignments() {
+        val positives = listOf(
+            "Authorization: Bearer abcdefghijklmnop1234567890",
+            "token = Abcd1234Efgh5678",
+            "password=P@ssw0rd!",
+            "AKIA" + "IOSFODNN7EXAMPLE",
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signature12345678",
+            "-----BEGIN PRIVATE KEY-----",
+            "postgresql://user:S3cure!Pass@db.example.test/app",
+        )
+        positives.forEach { assertTrue(it, SensitiveTextPatterns.containsSensitivePattern(it)) }
+
+        val negatives = listOf(
+            "token = enabled",
+            "password=password",
+            "Bearer short",
+            "AKIAIOSFODNN7EXAMPL",
+            "eyJ.not-a-complete-token",
+            "Build secret feature flag",
+            "postgresql://db.example.test/app",
+            "-----BEGIN PUBLIC KEY-----",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "0123456789abcdef0123456789abcdef01234567",
+        )
+        negatives.forEach { assertFalse(it, SensitiveTextPatterns.containsSensitivePattern(it)) }
+
+        val privateKey = "-----BEGIN PRIVATE KEY-----\nsynthetic-payload\n-----END PRIVATE KEY-----"
+        val keyMatch = SensitiveTextPatterns.sensitiveMatches(privateKey)
+            .single { it.category == SensitiveTextCategory.DEVELOPER_SECRET }
+        assertEquals(privateKey.indices, keyMatch.range)
+    }
 }

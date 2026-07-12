@@ -12,6 +12,21 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class RedactionModelsTest {
     @Test
+    fun developerAndCustomMatchesRemainTypedAndIndividuallyEditable() {
+        val regions = RedactionRegions.fromSensitiveDetections(
+            listOf(
+                detection(SensitiveTextCategory.DEVELOPER_SECRET, Rect(0, 0, 40, 20)),
+                detection(SensitiveTextCategory.CUSTOM, Rect(50, 0, 90, 20), SensitiveTextDetectionSource.CUSTOM),
+            )
+        )
+
+        assertEquals(2, regions.size)
+        assertEquals(setOf(RedactionCategory.DEVELOPER_SECRET), regions[0].categories)
+        assertEquals(setOf(RedactionCategory.CUSTOM), regions[1].categories)
+        assertEquals(RedactionSource.OCR_REGEX, regions[1].source)
+    }
+
+    @Test
     fun sensitiveFactoryGroupsSameBoundsAndPreservesConservativeEvidence() {
         val bounds = Rect(10, 20, 80, 55)
         val regions = RedactionRegions.fromSensitiveDetections(

@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Developer-secret and custom redaction patterns (v6.55.0).**
+
+- Sensitive-text scans now recognize strict bearer/JWT, vendor token, private-key,
+  credential URL, and high-signal secret-assignment shapes with entropy and
+  placeholder guards. The release privacy corpus covers developer secrets across
+  every OCR script and light/dark fixture.
+- Settings can create, test, enable, edit, delete, copy-export, and import up to 20
+  local custom patterns. RE2/J provides linear-time matching; expression/input,
+  match-count, payload, and monotonic time limits are enforced, invalid restores
+  are rejected atomically, and corrupt configured storage makes scans fail closed.
+- Privacy OCR now maps matches to element geometry so multiple secrets in one code
+  block remain separate editable regions. Direct shares expose numbered per-region
+  checkboxes and a live preview without displaying matched values; editor, share,
+  and Quick Crop routes all load the same local pattern set.
+
 **Per-share metadata privacy preflight (v6.54.0).**
 
 - Metadata-bearing image shares now show category names without values and offer

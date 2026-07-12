@@ -462,7 +462,8 @@ class ScreenshotService : Service() {
                     val actionResult = ConditionalAutoActions.redactSensitiveText(
                         currentCropped,
                         redactionStyle,
-                        OcrScript.fromContext(this@ScreenshotService)
+                        OcrScript.fromContext(this@ScreenshotService),
+                        CustomRedactionPatternStore.load(prefs),
                     )
                     redactionCount = actionResult.redactionCount
                     if (actionResult.bitmap !== currentCropped) {

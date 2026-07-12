@@ -56,4 +56,21 @@ class SettingsBackupTest {
         assertFalse(dst.contains("stale_key"))
         assertEquals("new", dst.getString("fresh_key", ""))
     }
+
+    @Test
+    fun customPatternJsonRoundTripsAndMalformedValueRejectsWholeRestore() {
+        val src = context.getSharedPreferences("pattern_source", Context.MODE_PRIVATE)
+        val patterns = listOf(CustomRedactionPattern("ticket", "Ticket", "TKT-[0-9]{6}"))
+        assertTrue(CustomRedactionPatternStore.save(src, patterns))
+        val valid = SettingsBackup.export(src)
+        val dst = context.getSharedPreferences("pattern_target", Context.MODE_PRIVATE)
+        assertTrue(SettingsBackup.import(dst, valid) > 0)
+        assertEquals(patterns, CustomRedactionPatternStore.load(dst))
+
+        val entries = valid.getJSONObject("entries")
+        entries.getJSONObject(CustomRedactionPatternStore.PREF_KEY).put("v", "not-json")
+        dst.edit().putString("sentinel", "keep").commit()
+        assertEquals(-1, SettingsBackup.import(dst, valid))
+        assertEquals("keep", dst.getString("sentinel", null))
+    }
 }

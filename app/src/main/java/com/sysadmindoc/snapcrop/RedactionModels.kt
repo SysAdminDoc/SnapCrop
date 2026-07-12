@@ -13,6 +13,8 @@ enum class RedactionCategory {
     MAC_ADDRESS,
     IBAN,
     POSTAL_ADDRESS,
+    DEVELOPER_SECRET,
+    CUSTOM,
     FACE,
     MANUAL
 }
@@ -101,7 +103,7 @@ object RedactionRegions {
         .map { (_, matches) ->
             val bounds = matches.first().bounds
             val categories = matches.mapTo(linkedSetOf()) { it.category.toRedactionCategory() }
-            val source = if (matches.any { it.source == SensitiveTextDetectionSource.REGEX }) {
+            val source = if (matches.any { it.source != SensitiveTextDetectionSource.ENTITY }) {
                 RedactionSource.OCR_REGEX
             } else {
                 RedactionSource.ENTITY
@@ -271,6 +273,8 @@ object RedactionRegions {
         SensitiveTextCategory.MAC_ADDRESS -> RedactionCategory.MAC_ADDRESS
         SensitiveTextCategory.IBAN -> RedactionCategory.IBAN
         SensitiveTextCategory.POSTAL_ADDRESS -> RedactionCategory.POSTAL_ADDRESS
+        SensitiveTextCategory.DEVELOPER_SECRET -> RedactionCategory.DEVELOPER_SECRET
+        SensitiveTextCategory.CUSTOM -> RedactionCategory.CUSTOM
     }
 
     private fun Rect.geometryKey(): String = "$left:$top:$right:$bottom"

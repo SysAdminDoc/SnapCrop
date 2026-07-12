@@ -59,6 +59,9 @@ object SettingsBackup {
                 "f" -> { val v = e.optDouble("v").toFloat(); edits.add { it.putFloat(key, v) } }
                 "s" -> {
                     val v = e.optString("v")
+                    if (key == CustomRedactionPatternStore.PREF_KEY &&
+                        CustomRedactionPatternStore.import(v) == null
+                    ) return -1
                     if (v.length <= MAX_STRING_LEN) edits.add { it.putString(key, v) }
                 }
                 "ss" -> {

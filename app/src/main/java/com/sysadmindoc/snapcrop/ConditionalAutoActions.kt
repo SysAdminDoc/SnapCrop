@@ -80,14 +80,20 @@ object ConditionalAutoActions {
         return "${base.trimEnd('/')}/${rule.albumName}"
     }
 
-    suspend fun redactSensitiveText(
+    internal suspend fun redactSensitiveText(
         bitmap: Bitmap,
         style: RedactionStyle = RedactionStyle.SOLID,
-        script: OcrScript = OcrScript.LATIN
+        script: OcrScript = OcrScript.LATIN,
+        customPatterns: List<CustomRedactionPattern> = emptyList(),
     ): AutoActionResult {
         // A rule that requests sensitive-text replacement fails closed: detection errors propagate
         // so Quick Crop cannot silently publish an unredacted image.
-        val result = SensitiveTextDetector.detect(bitmap, script, failOnOcrError = true)
+        val result = SensitiveTextDetector.detect(
+            bitmap,
+            script,
+            failOnOcrError = true,
+            customPatterns = customPatterns,
+        )
         if (result.rects.isEmpty()) return AutoActionResult(bitmap, 0)
         return AutoActionResult(ImageRedactor.redact(bitmap, result.rects, style), result.rects.size)
     }

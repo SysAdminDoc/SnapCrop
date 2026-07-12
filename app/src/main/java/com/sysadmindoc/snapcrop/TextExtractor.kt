@@ -16,23 +16,24 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /** OCR text and source-image geometry with a defensive boundary around mutable [Rect]. */
-class TextBlock(val text: String, bounds: Rect) {
+class TextBlock(val text: String, bounds: Rect, internal val separatorAfter: Char = '\n') {
     private val storedBounds = Rect(bounds)
 
     val bounds: Rect
         get() = Rect(storedBounds)
 
-    fun deepCopy(): TextBlock = TextBlock(text, storedBounds)
+    fun deepCopy(): TextBlock = TextBlock(text, storedBounds, separatorAfter)
 
     fun copy(text: String = this.text, bounds: Rect = this.bounds): TextBlock =
-        TextBlock(text, bounds)
+        TextBlock(text, bounds, separatorAfter)
 
     override fun equals(other: Any?): Boolean =
-        other is TextBlock && text == other.text && storedBounds == other.storedBounds
+        other is TextBlock && text == other.text && storedBounds == other.storedBounds &&
+            separatorAfter == other.separatorAfter
 
-    override fun hashCode(): Int = 31 * text.hashCode() + storedBounds.hashCode()
+    override fun hashCode(): Int = 31 * (31 * text.hashCode() + storedBounds.hashCode()) + separatorAfter.hashCode()
 
-    override fun toString(): String = "TextBlock(text=$text, bounds=$storedBounds)"
+    override fun toString(): String = "TextBlock(text=$text, bounds=$storedBounds, separatorAfter=$separatorAfter)"
 }
 
 /** Pure OCR correction operations used by editor state, undo snapshots, and persisted projects. */
@@ -150,6 +151,58 @@ object TextExtractor {
                 }
                 .addOnFailureListener { error ->
                     if (cont.isActive) cont.resumeWithException(error)
+                }
+                .addOnCanceledListener { if (cont.isActive) cont.cancel() }
+        }
+    }
+
+    /**
+     * Returns the smallest OCR elements with geometry so separate secrets in one terminal/code
+     * block remain independently reviewable. Lines and blocks are retained only as fallbacks for
+     * OCR engines that do not expose element boxes.
+     */
+    internal suspend fun extractRedactionSpans(
+        bitmap: Bitmap,
+        script: OcrScript,
+        failOnError: Boolean,
+    ): List<TextBlock> {
+        if (bitmap.isRecycled) {
+            if (failOnError) error("Cannot scan a recycled bitmap")
+            return emptyList()
+        }
+        return suspendCancellableCoroutine { cont ->
+            val image = InputImage.fromBitmap(bitmap, 0)
+            recognizer(script).process(image)
+                .addOnSuccessListener { result ->
+                    if (cont.isActive) {
+                        cont.resume(
+                            result.textBlocks.flatMap { block ->
+                                val elements = block.lines.flatMap { line ->
+                                    val boxed = line.elements.mapNotNull { element ->
+                                        element.boundingBox?.let { element.text to it }
+                                    }
+                                    boxed.mapIndexed { index, (text, bounds) ->
+                                        TextBlock(text, bounds, if (index == boxed.lastIndex) '\n' else ' ')
+                                    }
+                                }
+                                if (elements.isNotEmpty()) {
+                                    elements
+                                } else {
+                                    val lines = block.lines.mapNotNull { line ->
+                                        line.boundingBox?.let { TextBlock(line.text, it) }
+                                    }
+                                    if (lines.isNotEmpty()) lines else listOfNotNull(
+                                        block.boundingBox?.let { TextBlock(block.text, it) }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+                .addOnFailureListener { error ->
+                    if (cont.isActive) {
+                        if (failOnError) cont.resumeWithException(error) else cont.resume(emptyList())
+                    }
                 }
                 .addOnCanceledListener { if (cont.isActive) cont.cancel() }
         }

@@ -61,7 +61,10 @@ class RedactionQualityGateTest {
 
         assertEquals(OcrScript.entries.toSet(), fixtures().map { it.script }.toSet())
         assertEquals(Theme.entries.toSet(), fixtures().map { it.theme }.toSet())
-        assertEquals(SensitiveTextCategory.entries.toSet(), fixtures().map { it.category }.toSet())
+        assertEquals(
+            SensitiveTextCategory.entries.toSet() - SensitiveTextCategory.CUSTOM,
+            fixtures().map { it.category }.toSet(),
+        )
         assertTrue(report.summary(), report.passes)
     }
 
@@ -97,6 +100,7 @@ class RedactionQualityGateTest {
         assertTrue(byCategory.getValue(SensitiveTextCategory.IPV6).secret.startsWith("2001:db8:"))
         assertTrue(byCategory.getValue(SensitiveTextCategory.MAC_ADDRESS).secret.startsWith("02:"))
         assertTrue(byCategory.getValue(SensitiveTextCategory.POSTAL_ADDRESS).secret.contains("Example"))
+        assertTrue(byCategory.getValue(SensitiveTextCategory.DEVELOPER_SECRET).secret.startsWith("AKIA"))
     }
 
     private fun fixtures(): List<Fixture> = buildList {
@@ -183,7 +187,8 @@ class RedactionQualityGateTest {
             SensitiveTextCategory.IPV6 to "2001:db8::42",
             SensitiveTextCategory.MAC_ADDRESS to "02:00:00:00:00:01",
             SensitiveTextCategory.IBAN to "GB82 WEST 1234 5698 7654 32",
-            SensitiveTextCategory.POSTAL_ADDRESS to "123 Example Street, Testville"
+            SensitiveTextCategory.POSTAL_ADDRESS to "123 Example Street, Testville",
+            SensitiveTextCategory.DEVELOPER_SECRET to ("AKIA" + "IOSFODNN7EXAMPLE"),
         )
     }
 }

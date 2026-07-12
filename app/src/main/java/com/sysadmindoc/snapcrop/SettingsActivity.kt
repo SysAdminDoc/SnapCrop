@@ -79,6 +79,15 @@ class SettingsActivity : ComponentActivity() {
                 }
                 val lossyFormat = useJpeg || useWebp
                 var userAppProfiles by remember { mutableStateOf(UserAppProfileStore.load(prefs)) }
+                val initialCustomPatterns = remember {
+                    runCatching { CustomRedactionPatternStore.load(prefs) }
+                }
+                var customPatterns by remember {
+                    mutableStateOf(initialCustomPatterns.getOrDefault(emptyList()))
+                }
+                var customPatternsCorrupt by remember {
+                    mutableStateOf(initialCustomPatterns.isFailure)
+                }
                 var appRuleImportText by remember { mutableStateOf("") }
                 val testDefaultStr = stringResource(R.string.rules_test_default)
                 val testTestingStr = stringResource(R.string.rules_test_testing)
@@ -1147,6 +1156,34 @@ class SettingsActivity : ComponentActivity() {
                             redactOnShare = it
                             prefs.edit().putBoolean("redact_on_share", it).apply()
                         }
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+                    CustomRedactionPatternsPanel(
+                        patterns = customPatterns,
+                        storageError = customPatternsCorrupt,
+                        onSavePatterns = { updated ->
+                            val saved = CustomRedactionPatternStore.save(prefs, updated)
+                            if (saved) {
+                                customPatterns = updated
+                                customPatternsCorrupt = false
+                            }
+                            saved
+                        },
+                        onExport = { serialized ->
+                            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText(
+                                    getString(R.string.settings_custom_patterns_title),
+                                    serialized,
+                                )
+                            )
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                R.string.settings_custom_patterns_copied,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        },
                     )
 
                     var redactionStyle by remember {

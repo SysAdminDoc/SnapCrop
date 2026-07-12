@@ -18,6 +18,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -28,6 +29,8 @@ import android.provider.MediaStore
 import kotlin.math.roundToInt
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.ScrollView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.IntentSenderRequest
@@ -73,6 +76,7 @@ import com.sysadmindoc.snapcrop.ui.theme.Black
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -88,6 +92,11 @@ private data class CropExportFormat(
 )
 
 private enum class SourceMutationPurpose { REPLACE_AFTER_SAVE, DELETE_FROM_EDITOR }
+
+private data class ShareRedactionCandidate(
+    val bounds: Rect,
+    val categories: Set<SensitiveTextCategory>,
+)
 
 class CropActivity : ComponentActivity() {
 
@@ -2037,7 +2046,10 @@ class CropActivity : ComponentActivity() {
                 SensitiveTextDetector.detect(
                     cropped,
                     OcrScript.fromContext(this@CropActivity),
-                    failOnOcrError = true
+                    failOnOcrError = true,
+                    customPatterns = CustomRedactionPatternStore.load(
+                        getSharedPreferences("snapcrop", MODE_PRIVATE)
+                    ),
                 )
             } catch (e: Exception) {
                 android.util.Log.w("SnapCrop", "Sensitive-text share scan failed", e)
@@ -2052,15 +2064,26 @@ class CropActivity : ComponentActivity() {
                 return@launch
             }
 
-            // Build a redacted copy and a downscaled preview off the main thread.
             val redactionStyle = RedactionStyle.fromPreference(
                 getSharedPreferences("snapcrop", MODE_PRIVATE).getString(
                     ImageRedactor.PREF_REDACTION_STYLE,
                     RedactionStyle.SOLID.preferenceValue
                 )
             )
-            val redacted = ImageRedactor.redact(cropped, detection.rects, redactionStyle)
-            val preview = scaledPreview(redacted, 720)
+            val candidates = detection.detections
+                .groupBy { with(it.bounds) { "$left:$top:$right:$bottom" } }
+                .values
+                .map { matches ->
+                    ShareRedactionCandidate(
+                        Rect(matches.first().bounds),
+                        matches.mapTo(linkedSetOf()) { it.category },
+                    )
+                }
+            val preview = buildShareRedactionReviewPreview(
+                cropped,
+                candidates.mapIndexed { index, candidate -> (index + 1) to candidate.bounds },
+                redactionStyle,
+            )
             withContext(Dispatchers.Main) {
                 val previewView = ImageView(this@CropActivity).apply {
                     setImageBitmap(preview)
@@ -2072,30 +2095,119 @@ class CropActivity : ComponentActivity() {
                     orientation = LinearLayout.VERTICAL
                     addView(previewView)
                 }
-                android.app.AlertDialog.Builder(this@CropActivity)
+                val checks = candidates.mapIndexed { index, candidate ->
+                    android.widget.CheckBox(this@CropActivity).apply {
+                        isChecked = true
+                        text = getString(
+                            R.string.redact_share_candidate,
+                            index + 1,
+                            candidate.categories.joinToString(", ") { sensitiveCategoryLabel(it) },
+                        )
+                    }
+                }
+                val checkList = LinearLayout(this@CropActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    checks.forEach(::addView)
+                }
+                container.addView(TextView(this@CropActivity).apply {
+                    text = getString(R.string.redact_share_review_hint)
+                    val pad = (16 * resources.displayMetrics.density).toInt()
+                    setPadding(pad, 0, pad, 0)
+                })
+                container.addView(ScrollView(this@CropActivity).apply {
+                    addView(checkList)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        (220 * resources.displayMetrics.density).toInt(),
+                    )
+                })
+                var activePreview = preview
+                var previewGeneration = 0
+                var previewJob: Job? = null
+                lateinit var dialog: android.app.AlertDialog
+                fun refreshPreview() {
+                    val generation = ++previewGeneration
+                    val selected = candidates.mapIndexedNotNull { index, candidate ->
+                        ((index + 1) to candidate.bounds).takeIf { checks[index].isChecked }
+                    }
+                    previewJob?.cancel()
+                    previewJob = lifecycleScope.launch(Dispatchers.IO) {
+                        val updated = buildShareRedactionReviewPreview(cropped, selected, redactionStyle)
+                        withContext(Dispatchers.Main) {
+                            if (generation == previewGeneration && dialog.isShowing) {
+                                val old = activePreview
+                                activePreview = updated
+                                previewView.setImageBitmap(updated)
+                                if (!old.isRecycled) old.recycle()
+                            } else if (!updated.isRecycled) {
+                                updated.recycle()
+                            }
+                        }
+                    }
+                }
+                checks.forEach { check ->
+                    check.setOnCheckedChangeListener { _, _ ->
+                        dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)?.isEnabled = checks.any { it.isChecked }
+                        refreshPreview()
+                    }
+                }
+                dialog = android.app.AlertDialog.Builder(this@CropActivity)
                     .setTitle(getString(R.string.redact_share_dialog_title))
-                    .setMessage(getString(R.string.redact_share_dialog_message, detection.rects.size))
+                    .setMessage(getString(R.string.redact_share_dialog_message, candidates.size))
                     .setView(container)
                     .setPositiveButton(getString(R.string.redact_share_action_redacted)) { _, _ ->
-                        if (!cropped.isRecycled) cropped.recycle()
-                        dispatchShare(redacted, adj, metadataPolicy)
+                        val selected = candidates.filterIndexed { index, _ -> checks[index].isChecked }
+                            .map { it.bounds }
+                        val pendingPreview = previewJob
+                        pendingPreview?.cancel()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            pendingPreview?.join()
+                            try {
+                                val reviewed = if (selected.isEmpty()) cropped else {
+                                    ImageRedactor.redact(cropped, selected, redactionStyle).also {
+                                        if (!cropped.isRecycled) cropped.recycle()
+                                    }
+                                }
+                                dispatchShare(reviewed, adj, metadataPolicy)
+                            } catch (_: Exception) {
+                                if (!cropped.isRecycled) cropped.recycle()
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(this@CropActivity, R.string.toast_share_failed, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                     }
                     .setNeutralButton(getString(R.string.redact_share_action_original)) { _, _ ->
-                        if (!redacted.isRecycled) redacted.recycle()
-                        dispatchShare(cropped, adj, metadataPolicy)
+                        val pendingPreview = previewJob
+                        pendingPreview?.cancel()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            pendingPreview?.join()
+                            dispatchShare(cropped, adj, metadataPolicy)
+                        }
                     }
                     .setNegativeButton(getString(R.string.cancel)) { _, _ ->
-                        if (!cropped.isRecycled) cropped.recycle()
-                        if (!redacted.isRecycled) redacted.recycle()
+                        val pendingPreview = previewJob
+                        pendingPreview?.cancel()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            pendingPreview?.join()
+                            if (!cropped.isRecycled) cropped.recycle()
+                        }
                     }
                     .setOnCancelListener {
-                        if (!cropped.isRecycled) cropped.recycle()
-                        if (!redacted.isRecycled) redacted.recycle()
+                        val pendingPreview = previewJob
+                        pendingPreview?.cancel()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            pendingPreview?.join()
+                            if (!cropped.isRecycled) cropped.recycle()
+                        }
                     }
                     .setOnDismissListener {
-                        if (!preview.isRecycled) preview.recycle()
+                        previewGeneration++
+                        if (!activePreview.isRecycled) activePreview.recycle()
                     }
-                    .show()
+                    .create()
+                dialog.show()
+                dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).isEnabled = checks.any { it.isChecked }
             }
         }
     }
@@ -2168,6 +2280,45 @@ class CropActivity : ComponentActivity() {
             true
         )
     }
+
+    private fun buildShareRedactionReviewPreview(
+        source: Bitmap,
+        selected: List<Pair<Int, Rect>>,
+        style: RedactionStyle,
+    ): Bitmap {
+        if (selected.isEmpty()) return scaledPreview(source, 720)
+        val redacted = ImageRedactor.redact(source, selected.map { it.second }, style)
+        val canvas = Canvas(redacted)
+        val radius = (redacted.width.coerceAtMost(redacted.height) * 0.018f).coerceIn(12f, 30f)
+        val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.BLACK }
+        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textAlign = Paint.Align.CENTER
+            textSize = radius * 1.15f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        selected.forEach { (index, rect) ->
+            val x = (rect.left + radius).coerceIn(radius, redacted.width - radius)
+            val y = (rect.top + radius).coerceIn(radius, redacted.height - radius)
+            canvas.drawCircle(x, y, radius, badge)
+            canvas.drawText(index.toString(), x, y - (label.ascent() + label.descent()) / 2f, label)
+        }
+        return scaledPreview(redacted, 720).also { redacted.recycle() }
+    }
+
+    private fun sensitiveCategoryLabel(category: SensitiveTextCategory): String = getString(
+        when (category) {
+            SensitiveTextCategory.EMAIL -> R.string.redaction_category_email
+            SensitiveTextCategory.PHONE -> R.string.redaction_category_phone
+            SensitiveTextCategory.PAYMENT_CARD -> R.string.redaction_category_payment_card
+            SensitiveTextCategory.IPV4, SensitiveTextCategory.IPV6 -> R.string.redaction_category_ip
+            SensitiveTextCategory.MAC_ADDRESS -> R.string.redaction_category_mac
+            SensitiveTextCategory.IBAN -> R.string.redaction_category_iban
+            SensitiveTextCategory.POSTAL_ADDRESS -> R.string.redaction_category_address
+            SensitiveTextCategory.DEVELOPER_SECRET -> R.string.redaction_category_developer_secret
+            SensitiveTextCategory.CUSTOM -> R.string.redaction_category_custom
+        }
+    )
 
     /** When the user opts in, marks the editor window secure so the un-redacted image can't be
      *  captured by other screenshot tools and doesn't leak into the Recents thumbnail. */

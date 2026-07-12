@@ -8,8 +8,10 @@ import com.google.mlkit.nl.entityextraction.EntityExtraction
 import com.google.mlkit.nl.entityextraction.EntityExtractionParams
 import com.google.mlkit.nl.entityextraction.EntityExtractorOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Base64
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.ln
 
 internal data class SensitiveTextResult(
     val rects: List<Rect>,
@@ -19,10 +21,11 @@ internal data class SensitiveTextResult(
 )
 
 internal enum class SensitiveTextCategory {
-    EMAIL, PHONE, PAYMENT_CARD, IPV4, IPV6, MAC_ADDRESS, IBAN, POSTAL_ADDRESS
+    EMAIL, PHONE, PAYMENT_CARD, IPV4, IPV6, MAC_ADDRESS, IBAN, POSTAL_ADDRESS,
+    DEVELOPER_SECRET, CUSTOM
 }
 
-internal enum class SensitiveTextDetectionSource { REGEX, ENTITY }
+internal enum class SensitiveTextDetectionSource { REGEX, ENTITY, CUSTOM }
 
 internal data class SensitiveTextMatch(
     val category: SensitiveTextCategory,
@@ -46,18 +49,15 @@ internal object SensitiveTextDetector {
     suspend fun detect(
         bitmap: Bitmap,
         script: OcrScript = OcrScript.LATIN,
-        failOnOcrError: Boolean = false
+        failOnOcrError: Boolean = false,
+        customPatterns: List<CustomRedactionPattern> = emptyList(),
     ): SensitiveTextResult {
-        val blocks = if (failOnOcrError) {
-            TextExtractor.extractOrThrow(bitmap, script)
-        } else {
-            TextExtractor.extract(bitmap, script)
-        }
+        val blocks = TextExtractor.extractRedactionSpans(bitmap, script, failOnOcrError)
         if (blocks.isEmpty()) return SensitiveTextResult(emptyList(), 0, 0, emptyList())
 
         val joined = joinBlocks(blocks)
         val entityMatches = extractSensitiveEntityMatches(joined.text)
-        return detectBlocks(blocks, bitmap.width, bitmap.height, entityMatches)
+        return detectBlocks(blocks, bitmap.width, bitmap.height, entityMatches, customPatterns)
     }
 
     /** Deterministic OCR-box stage shared by production and the privacy regression corpus. */
@@ -65,13 +65,16 @@ internal object SensitiveTextDetector {
         blocks: List<TextBlock>,
         imageWidth: Int,
         imageHeight: Int,
-        entityMatches: List<SensitiveTextMatch> = emptyList()
+        entityMatches: List<SensitiveTextMatch> = emptyList(),
+        customPatterns: List<CustomRedactionPattern> = emptyList(),
     ): SensitiveTextResult {
         if (blocks.isEmpty()) return SensitiveTextResult(emptyList(), 0, 0, emptyList())
 
         val joined = joinBlocks(blocks)
         val regexMatches = SensitiveTextPatterns.sensitiveMatches(joined.text)
-        val detections = (regexMatches + entityMatches).flatMap { match ->
+        val customScan = CustomRedactionPatternStore.scan(joined.text, customPatterns)
+        if (customScan.timedOut) throw CustomPatternTimeoutException()
+        val detections = (regexMatches + customScan.matches + entityMatches).flatMap { match ->
             joined.ranges
                 .asSequence()
                 .filter { (range, _) -> match.range.overlaps(range) }
@@ -94,7 +97,7 @@ internal object SensitiveTextDetector {
 
         return SensitiveTextResult(
             rects = rects,
-            regexCount = detections.count { it.source == SensitiveTextDetectionSource.REGEX },
+            regexCount = detections.count { it.source != SensitiveTextDetectionSource.ENTITY },
             entityCount = detections.count { it.source == SensitiveTextDetectionSource.ENTITY },
             detections = detections
         )
@@ -112,7 +115,7 @@ internal object SensitiveTextDetector {
                 val start = length
                 append(block.text)
                 blockRanges.add((start until length) to block)
-                if (index != blocks.lastIndex) append('\n')
+                if (index != blocks.lastIndex) append(block.separatorAfter)
             }
         }
         return JoinedBlocks(joined, blockRanges)
@@ -153,8 +156,33 @@ internal object SensitiveTextPatterns {
     private val sensitivePatterns = listOf(
         CategorizedPattern(SensitiveTextCategory.EMAIL, Regex("[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", RegexOption.IGNORE_CASE)),
         CategorizedPattern(SensitiveTextCategory.MAC_ADDRESS, Regex("\\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\\b", RegexOption.IGNORE_CASE)),
-        CategorizedPattern(SensitiveTextCategory.IBAN, Regex("\\b[A-Z]{2}\\d{2}(?:[ ]?[A-Z0-9]){11,30}\\b", RegexOption.IGNORE_CASE))
+        CategorizedPattern(SensitiveTextCategory.IBAN, Regex("\\b[A-Z]{2}\\d{2}(?:[ ]?[A-Z0-9]){11,30}\\b", RegexOption.IGNORE_CASE)),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\b(?:AKIA|ASIA)[A-Z0-9]{16}\\b")),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\bAIza[0-9A-Za-z_-]{35}\\b")),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\bgh[pousr]_[A-Za-z0-9]{36,255}\\b")),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\bgithub_pat_[A-Za-z0-9_]{22,255}\\b")),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\bxox[baprs]-[A-Za-z0-9-]{20,255}\\b")),
+        CategorizedPattern(SensitiveTextCategory.DEVELOPER_SECRET, Regex("\\bsk_(?:live|test)_[A-Za-z0-9]{16,255}\\b")),
+        CategorizedPattern(
+            SensitiveTextCategory.DEVELOPER_SECRET,
+            Regex("\\b(?:postgres(?:ql)?|mysql|mongodb(?:\\+srv)?|redis|amqps?)://[^\\s:/@]{1,64}:[^\\s@]{6,256}@", RegexOption.IGNORE_CASE),
+        ),
     )
+
+    private val assignedSecretCandidate = Regex(
+        "\\b(api[_ -]?key|access[_ -]?token|auth[_ -]?token|token|client[_ -]?secret|password|passwd|pwd|secret)" +
+            "\\b\\s*[:=]\\s*[\\\"']?([A-Za-z0-9_./+~$@!#%^&*=-]{6,256})",
+        RegexOption.IGNORE_CASE,
+    )
+    private val bearerCandidate = Regex(
+        "\\bBearer\\s+([A-Za-z0-9._~+/=-]{16,255})\\b",
+        RegexOption.IGNORE_CASE,
+    )
+    private val jwtCandidate = Regex(
+        "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\b",
+    )
+    private val privateKeyBegin = Regex("-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")
+    private val privateKeyEnd = Regex("-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----")
 
     private val phoneCandidate = Regex(
         "(?<!\\d)(?:\\+\\d{1,3}[\\s.-]?)?(?:\\(\\d{2,4}\\)|\\d{2,4})[\\s.-]\\d{3,4}[\\s.-]\\d{3,4}(?!\\d)"
@@ -182,6 +210,36 @@ internal object SensitiveTextPatterns {
             pattern.regex.findAll(text).forEach {
                 matches.add(SensitiveTextMatch(pattern.category, it.range, SensitiveTextDetectionSource.REGEX))
             }
+        }
+        assignedSecretCandidate.findAll(text).forEach { match ->
+            val key = match.groups[1]?.value.orEmpty()
+            val value = match.groups[2]?.value.orEmpty()
+            if (looksLikeAssignedSecret(key, value)) {
+                matches.add(
+                    SensitiveTextMatch(
+                        SensitiveTextCategory.DEVELOPER_SECRET,
+                        match.range,
+                        SensitiveTextDetectionSource.REGEX,
+                    )
+                )
+            }
+        }
+        bearerCandidate.findAll(text).forEach { match ->
+            if (looksLikeToken(match.groups[1]?.value.orEmpty())) {
+                matches.add(SensitiveTextMatch(SensitiveTextCategory.DEVELOPER_SECRET, match.range, SensitiveTextDetectionSource.REGEX))
+            }
+        }
+        jwtCandidate.findAll(text).forEach { match ->
+            if (isStructuredJwt(match.value)) {
+                matches.add(SensitiveTextMatch(SensitiveTextCategory.DEVELOPER_SECRET, match.range, SensitiveTextDetectionSource.REGEX))
+            }
+        }
+        privateKeyBegin.findAll(text).forEach { begin ->
+            val searchEnd = (begin.range.last + 1 + 8_192).coerceAtMost(text.length)
+            val end = privateKeyEnd.find(text, begin.range.last + 1)
+                ?.takeIf { it.range.last < searchEnd }
+            val range = if (end == null) begin.range else begin.range.first..end.range.last
+            matches.add(SensitiveTextMatch(SensitiveTextCategory.DEVELOPER_SECRET, range, SensitiveTextDetectionSource.REGEX))
         }
         ipv4Candidate.findAll(text).forEach { match ->
             if (match.value.split('.').all { it.toIntOrNull() in 0..255 }) {
@@ -250,7 +308,57 @@ internal object SensitiveTextPatterns {
         }
         return sum > 0 && sum % 10 == 0
     }
+
+    private fun looksLikeAssignedSecret(key: String, value: String): Boolean {
+        if (isPlaceholder(value)) return false
+        if (key.equals("password", true) || key.equals("passwd", true) || key.equals("pwd", true)) {
+            return value.length >= 6 && characterClasses(value) >= 2 && shannonEntropy(value) >= 2.0
+        }
+        return looksLikeToken(value)
+    }
+
+    private fun looksLikeToken(value: String): Boolean {
+        if (value.length < 16 || isPlaceholder(value)) return false
+        return characterClasses(value) >= 2 && shannonEntropy(value) >= 3.0
+    }
+
+    private fun characterClasses(value: String): Int = listOf(
+        value.any(Char::isLowerCase),
+        value.any(Char::isUpperCase),
+        value.any(Char::isDigit),
+        value.any { !it.isLetterOrDigit() },
+    ).count { it }
+
+    private fun shannonEntropy(value: String): Double = value.groupingBy { it }.eachCount().values.sumOf { count ->
+        val probability = count.toDouble() / value.length
+        -probability * (ln(probability) / ln(2.0))
+    }
+
+    private fun isPlaceholder(value: String): Boolean {
+        val normalized = value.lowercase().trim('*', '•', '-', '_')
+        if (normalized.isBlank() || normalized.toSet().size <= 3) return true
+        return listOf("example", "changeme", "placeholder", "yourkey", "your-key", "password").any {
+            normalized.contains(it)
+        }
+    }
+
+    private fun isStructuredJwt(value: String): Boolean = try {
+        val parts = value.split('.')
+        if (parts.size != 3) return false
+        fun decode(segment: String): String {
+            val padded = segment + "=".repeat((4 - segment.length % 4) % 4)
+            return String(Base64.getUrlDecoder().decode(padded), Charsets.UTF_8)
+        }
+        val header = decode(parts[0]).trim()
+        val payload = decode(parts[1]).trim()
+        header.startsWith('{') && header.endsWith('}') && header.contains("\"alg\"") &&
+            payload.startsWith('{') && payload.endsWith('}')
+    } catch (_: Exception) {
+        false
+    }
 }
+
+internal class CustomPatternTimeoutException : RuntimeException("Custom redaction pattern timed out")
 
 private fun IntRange.overlaps(other: IntRange): Boolean =
     first <= other.last && other.first <= last

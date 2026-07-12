@@ -45,8 +45,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 106
-        versionName = "6.54.0"
+        versionCode = 107
+        versionName = "6.55.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -152,6 +152,7 @@ dependencies {
     implementation(libs.mlkit.entity.extraction)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.re2j)
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)

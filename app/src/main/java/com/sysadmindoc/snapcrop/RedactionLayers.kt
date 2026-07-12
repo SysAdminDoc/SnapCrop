@@ -247,6 +247,8 @@ private fun redactionCategoryLabel(category: RedactionCategory): String = string
     RedactionCategory.MAC_ADDRESS -> R.string.redaction_category_mac
     RedactionCategory.IBAN -> R.string.redaction_category_iban
     RedactionCategory.POSTAL_ADDRESS -> R.string.redaction_category_address
+    RedactionCategory.DEVELOPER_SECRET -> R.string.redaction_category_developer_secret
+    RedactionCategory.CUSTOM -> R.string.redaction_category_custom
     RedactionCategory.FACE -> R.string.redaction_category_face
     RedactionCategory.MANUAL -> R.string.redaction_category_manual
 })

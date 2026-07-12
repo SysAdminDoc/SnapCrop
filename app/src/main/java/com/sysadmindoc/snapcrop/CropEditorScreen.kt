@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.Rect
@@ -625,7 +626,10 @@ fun CropEditorScreen(
                     SensitiveTextDetector.detect(
                         bitmap,
                         OcrScript.fromContext(context),
-                        failOnOcrError = true
+                        failOnOcrError = true,
+                        customPatterns = CustomRedactionPatternStore.load(
+                            context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
+                        ),
                     )
                 }
                 val detected = RedactionRegions.fromSensitiveDetections(
