@@ -69,10 +69,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -478,7 +482,7 @@ class MainActivity : ComponentActivity() {
                                 if (inboundShareFailures.value.isNotEmpty()) {
                                     Text(
                                         inboundShareFailures.value.joinToString("\n"),
-                                        color = Tertiary,
+                                        color = Danger,
                                         fontSize = 12.sp
                                     )
                                 }
@@ -583,34 +587,10 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     containerColor = Black,
                     bottomBar = {
-                        NavigationBar(containerColor = SurfaceVariant) {
-                            NavigationBarItem(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                icon = { Icon(Icons.Default.Home, stringResource(R.string.nav_home)) },
-                                label = { Text(stringResource(R.string.nav_home)) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Primary,
-                                    selectedTextColor = Primary,
-                                    unselectedIconColor = OnSurfaceVariant,
-                                    unselectedTextColor = OnSurfaceVariant,
-                                    indicatorColor = Color.Transparent
-                                )
-                            )
-                            NavigationBarItem(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                icon = { Icon(Icons.Default.Photo, stringResource(R.string.nav_gallery)) },
-                                label = { Text(stringResource(R.string.nav_gallery)) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Primary,
-                                    selectedTextColor = Primary,
-                                    unselectedIconColor = OnSurfaceVariant,
-                                    unselectedTextColor = OnSurfaceVariant,
-                                    indicatorColor = Color.Transparent
-                                )
-                            )
-                        }
+                        SnapCropBottomBar(
+                            selectedTab = selectedTab,
+                            onSelectTab = { selectedTab = it }
+                        )
                     }
                 ) { padding ->
                     Box(Modifier.padding(padding)) {
@@ -671,6 +651,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenHelp = { showHelp = true },
+                                onViewAll = { selectedTab = 1 },
                                 onOpenCrop = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
@@ -940,7 +921,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 if (reportLayout == null) {
-                                    Text(stringResource(R.string.report_page_invalid), color = Tertiary, fontSize = 12.sp)
+                                    Text(stringResource(R.string.report_page_invalid), color = Danger, fontSize = 12.sp)
                                 } else {
                                     Box(
                                         modifier = Modifier.fillMaxWidth().height(112.dp)
@@ -1174,7 +1155,7 @@ class MainActivity : ComponentActivity() {
                                                     Icon(
                                                         Icons.Default.Delete,
                                                         stringResource(R.string.ocr_delete_block, blockIndex + 1),
-                                                        tint = Tertiary
+                                                        tint = Danger
                                                     )
                                                 }
                                             }
@@ -2613,6 +2594,69 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun SnapCropBottomBar(selectedTab: Int, onSelectTab: (Int) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SurfaceContainer)
+            .navigationBarsPadding()
+    ) {
+        HorizontalDivider(color = Outline.copy(alpha = 0.72f))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SnapCropBottomBarItem(
+                selected = selectedTab == 0,
+                icon = Icons.Default.Home,
+                label = stringResource(R.string.nav_home),
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectTab(0) }
+            )
+            SnapCropBottomBarItem(
+                selected = selectedTab == 1,
+                icon = Icons.Default.Photo,
+                label = stringResource(R.string.nav_gallery),
+                modifier = Modifier.weight(1f),
+                onClick = { onSelectTab(1) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SnapCropBottomBarItem(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val contentColor = if (selected) Primary else OnSurfaceVariant
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) PrimaryContainer.copy(alpha = 0.72f) else Color.Transparent)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics {
+                this.selected = selected
+                role = Role.Button
+            }
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = contentColor, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.height(2.dp))
+        Text(label, color = contentColor, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
 private fun CapabilityCard(title: String, body: String, action: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -2620,7 +2664,7 @@ private fun CapabilityCard(title: String, body: String, action: String, onClick:
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Info, null, tint = Warning, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = OnSurface, fontWeight = FontWeight.Medium)
@@ -2664,6 +2708,7 @@ private fun HomeScreen(
     onRequestOverlay: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenHelp: () -> Unit,
+    onViewAll: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onCopyCrop: (Uri) -> Unit,
     onDeleteCrop: (Uri) -> Unit
@@ -2674,44 +2719,60 @@ private fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Black)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Black, Surface.copy(alpha = 0.72f), Black)
+                )
+            )
             .safeDrawingPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp)
+            .padding(horizontal = 20.dp)
     ) {
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(20.dp))
 
         // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                Icons.Default.CropOriginal,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = Primary
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(stringResource(R.string.app_name), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = OnSurface)
-                Text(
-                    stringResource(R.string.home_subtitle, BuildConfig.VERSION_NAME),
-                    fontSize = 13.sp,
-                    color = OnSurfaceVariant,
-                    lineHeight = 18.sp
+            Surface(
+                color = SurfaceContainer,
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    Icons.Default.CropOriginal,
+                    contentDescription = null,
+                    modifier = Modifier.padding(10.dp),
+                    tint = Primary
                 )
             }
-            IconButton(onClick = onOpenHelp) {
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = OnSurface
+                )
+                Text(
+                    stringResource(R.string.home_subtitle, BuildConfig.VERSION_NAME),
+                    color = OnSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onOpenHelp, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurfaceVariant)
             }
-            IconButton(onClick = onOpenSettings) {
+            IconButton(onClick = onOpenSettings, modifier = Modifier.size(44.dp)) {
                 Icon(Icons.Default.Settings, stringResource(R.string.home_settings), tint = OnSurfaceVariant)
             }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(20.dp))
 
         // Permission warning
         if (!mediaCapabilities.canMonitorScreenshots) {
@@ -2777,83 +2838,89 @@ private fun HomeScreen(
         val monitorStatusLabel = if (isRunning) stringResource(R.string.home_monitor_status_active) else stringResource(R.string.home_monitor_status_paused)
         val monitorCd = stringResource(R.string.home_monitor_cd, monitorStatusLabel)
         val monitorSwitchCd = stringResource(R.string.home_monitor_switch_cd, monitorStatusLabel)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isRunning) PrimaryContainer else SurfaceVariant
-            ),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-                    .semantics(mergeDescendants = true) {
-                        contentDescription = monitorCd
-                    },
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(
-                        stringResource(R.string.home_monitor_title),
-                        color = OnSurface,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        if (isRunning) stringResource(R.string.home_monitor_active) else stringResource(R.string.home_monitor_paused),
-                        color = OnSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-                Surface(
-                    color = if (isRunning) Secondary.copy(alpha = 0.16f) else SurfaceElevated,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        stringResource(if (isRunning) R.string.home_monitor_status_active else R.string.home_monitor_status_paused),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = if (isRunning) Secondary else OnSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = isRunning,
-                    onCheckedChange = { onToggleService() },
-                    modifier = Modifier.semantics {
-                        contentDescription = monitorSwitchCd
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = OnPrimary,
-                        checkedTrackColor = Primary,
-                        uncheckedThumbColor = OnSurfaceVariant,
-                        uncheckedTrackColor = SurfaceVariant
-                    )
-                )
-            }
-        }
+        MonitorHeroCard(
+            isRunning = isRunning,
+            statusLabel = monitorStatusLabel,
+            body = if (isRunning) stringResource(R.string.home_monitor_active) else stringResource(R.string.home_monitor_paused),
+            contentDescription = monitorCd,
+            switchContentDescription = monitorSwitchCd,
+            onToggle = onToggleService
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        PrimaryGradientAction(
+            icon = Icons.Default.CropOriginal,
+            label = stringResource(R.string.home_edit_image),
+            onClick = onPickImage
+        )
 
         Spacer(Modifier.height(20.dp))
 
-        Text(stringResource(R.string.home_workflows), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+        HomeSectionHeader(title = stringResource(R.string.home_quick_actions))
         Spacer(Modifier.height(8.dp))
 
-        RecentWorkflowRow(recentWorkflows) { workflow ->
-            when (workflow) {
-                WorkflowId.EDIT_IMAGE -> onPickImage()
-                WorkflowId.WEB_CAPTURE -> onWebCapture()
-                WorkflowId.BATCH_CROP -> onBatchCrop()
-                WorkflowId.DELAYED_CAPTURE -> showDelayPicker = true
-                WorkflowId.LONG_SCREENSHOT -> onLongScreenshot()
-                WorkflowId.STITCH -> onStitch()
-                WorkflowId.COLLAGE -> onCollage()
-                WorkflowId.DEVICE_FRAME -> onDeviceFrame()
-                WorkflowId.VIDEO_CLIP -> onVideoClip()
-                else -> Unit
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            HomeQuickAction(
+                icon = Icons.Default.Timer,
+                label = stringResource(R.string.home_capture_short),
+                modifier = Modifier.weight(1f),
+                accent = Warning,
+                onClick = { showDelayPicker = !showDelayPicker }
+            )
+            HomeQuickAction(
+                icon = Icons.Default.ScreenshotMonitor,
+                label = stringResource(R.string.home_long_short),
+                modifier = Modifier.weight(1f),
+                accent = if (longScreenshotReady) Secondary else OcrAccent,
+                onClick = onLongScreenshot
+            )
+            HomeQuickAction(
+                icon = Icons.Default.Language,
+                label = stringResource(R.string.home_web_short),
+                modifier = Modifier.weight(1f),
+                accent = Primary,
+                onClick = onWebCapture
+            )
+        }
+
+        if (showDelayPicker) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.home_delay_choose),
+                        color = OnSurface,
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        stringResource(R.string.home_delay_body),
+                        color = OnSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(3, 5, 10).forEach { sec ->
+                            FilledTonalButton(
+                                onClick = { onDelayedCapture(sec); showDelayPicker = false },
+                                modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
+                            ) {
+                                Text(stringResource(R.string.home_delay_seconds, sec), color = Primary)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2881,7 +2948,7 @@ private fun HomeScreen(
                         OutlinedButton(
                             onClick = onBatchCancel,
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Tertiary),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                         ) { Text(stringResource(R.string.home_cancel_batch), fontSize = 12.sp) }
                     }
@@ -2889,22 +2956,8 @@ private fun HomeScreen(
             }
         }
 
-        HomeActionTile(
-            icon = Icons.Default.PhotoLibrary,
-            title = stringResource(R.string.home_crop_one_title),
-            subtitle = stringResource(R.string.home_crop_one_subtitle),
-            onClick = onPickImage
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        HomeActionTile(
-            icon = Icons.Default.Language,
-            title = stringResource(R.string.home_web_capture_title),
-            subtitle = stringResource(R.string.home_web_capture_subtitle),
-            onClick = onWebCapture
-        )
-
+        Spacer(Modifier.height(20.dp))
+        HomeSectionHeader(title = stringResource(R.string.home_your_tools))
         Spacer(Modifier.height(8.dp))
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2917,62 +2970,16 @@ private fun HomeScreen(
                 onClick = onBatchCrop
             )
             HomeActionTile(
-                icon = Icons.Default.Timer,
-                title = stringResource(R.string.home_delay_title),
-                subtitle = stringResource(R.string.home_delay_subtitle),
-                modifier = Modifier.weight(1f),
-                onClick = { showDelayPicker = !showDelayPicker }
-            )
-        }
-
-        if (showDelayPicker) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(stringResource(R.string.home_delay_choose), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text(stringResource(R.string.home_delay_body),
-                        color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(3, 5, 10).forEach { sec ->
-                            FilledTonalButton(
-                                onClick = { onDelayedCapture(sec); showDelayPicker = false },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = PrimaryContainer)
-                            ) { Text(stringResource(R.string.home_delay_seconds, sec), color = Primary, fontSize = 13.sp) }
-                        }
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        HomeActionTile(
-            icon = Icons.Default.ScreenshotMonitor,
-            title = stringResource(R.string.home_long_title),
-            subtitle = if (longScreenshotReady) {
-                stringResource(R.string.home_long_subtitle_ready)
-            } else {
-                stringResource(R.string.home_long_subtitle_setup)
-            },
-            onClick = onLongScreenshot
-        )
-
-        Spacer(Modifier.height(8.dp))
-
-        // Stitch + Collage row
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HomeActionTile(
                 icon = Icons.AutoMirrored.Filled.MergeType,
                 title = stringResource(R.string.home_stitch_title),
                 subtitle = stringResource(R.string.home_stitch_subtitle),
                 modifier = Modifier.weight(1f),
                 onClick = onStitch
             )
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
                 icon = Icons.Default.GridView,
                 title = stringResource(R.string.home_collage_title),
@@ -2980,11 +2987,6 @@ private fun HomeScreen(
                 modifier = Modifier.weight(1f),
                 onClick = onCollage
             )
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HomeActionTile(
                 icon = Icons.Default.PhoneAndroid,
                 title = stringResource(R.string.home_mockup_title),
@@ -2992,35 +2994,53 @@ private fun HomeScreen(
                 modifier = Modifier.weight(1f),
                 onClick = onDeviceFrame
             )
-            HomeActionTile(
-                icon = Icons.Default.PlayCircle,
-                title = stringResource(R.string.home_video_title),
-                subtitle = stringResource(R.string.home_video_subtitle),
-                modifier = Modifier.weight(1f),
-                onClick = onVideoClip
-            )
         }
 
-        // Stats
-        if (cropCount > 0) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(R.string.home_crop_count, cropCount),
-                color = OnSurfaceVariant,
-                fontSize = 13.sp
-            )
+        Spacer(Modifier.height(8.dp))
+
+        HomeActionTile(
+            icon = Icons.Default.PlayCircle,
+            title = stringResource(R.string.home_video_title),
+            subtitle = stringResource(R.string.home_video_subtitle),
+            onClick = onVideoClip
+        )
+
+        if (recentWorkflows.isNotEmpty()) {
+            Spacer(Modifier.height(20.dp))
+            HomeSectionHeader(title = stringResource(R.string.home_recent_workflows))
+            Spacer(Modifier.height(8.dp))
+            RecentWorkflowRow(recentWorkflows) { workflow ->
+                when (workflow) {
+                    WorkflowId.EDIT_IMAGE -> onPickImage()
+                    WorkflowId.WEB_CAPTURE -> onWebCapture()
+                    WorkflowId.BATCH_CROP -> onBatchCrop()
+                    WorkflowId.DELAYED_CAPTURE -> showDelayPicker = true
+                    WorkflowId.LONG_SCREENSHOT -> onLongScreenshot()
+                    WorkflowId.STITCH -> onStitch()
+                    WorkflowId.COLLAGE -> onCollage()
+                    WorkflowId.DEVICE_FRAME -> onDeviceFrame()
+                    WorkflowId.VIDEO_CLIP -> onVideoClip()
+                    else -> Unit
+                }
+            }
         }
 
         // Recent crops gallery
+        Spacer(Modifier.height(20.dp))
+        HomeSectionHeader(
+            title = stringResource(R.string.home_recent),
+            actionLabel = stringResource(R.string.home_view_all),
+            onAction = onViewAll
+        )
         if (recentCrops.isNotEmpty()) {
-            Spacer(Modifier.height(12.dp))
-            Text(
-                stringResource(R.string.home_recent),
-                color = OnSurface,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Spacer(Modifier.height(8.dp))
+            if (cropCount > 0) {
+                Text(
+                    stringResource(R.string.home_crop_count, cropCount),
+                    color = OnSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -3033,15 +3053,41 @@ private fun HomeScreen(
                     )
                 }
             }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, tint = Primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.home_recent_empty_title),
+                            color = OnSurface,
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            stringResource(R.string.home_recent_empty_body),
+                            color = OnSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(24.dp))
 
         Text(
             stringResource(R.string.home_footer),
             color = OnSurfaceVariant,
-            fontSize = 12.sp,
-            lineHeight = 18.sp
+            style = MaterialTheme.typography.bodySmall
         )
 
         Spacer(Modifier.height(16.dp))
@@ -3069,7 +3115,7 @@ private fun HomeScreen(
                         cropPendingDelete = null
                         onDeleteCrop(pendingDelete.uri)
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Tertiary)
+                    colors = ButtonDefaults.textButtonColors(contentColor = Danger)
                 ) {
                     Text(stringResource(
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
@@ -3085,6 +3131,169 @@ private fun HomeScreen(
             containerColor = SurfaceVariant,
             shape = RoundedCornerShape(12.dp)
         )
+    }
+}
+
+@Composable
+private fun MonitorHeroCard(
+    isRunning: Boolean,
+    statusLabel: String,
+    body: String,
+    contentDescription: String,
+    switchContentDescription: String,
+    onToggle: () -> Unit
+) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = if (isRunning) {
+                        listOf(PrimaryContainer, SurfaceContainer, OcrAccent.copy(alpha = 0.22f))
+                    } else {
+                        listOf(SurfaceContainer, SurfaceElevated)
+                    }
+                )
+            )
+            .border(1.dp, if (isRunning) Primary.copy(alpha = 0.45f) else Outline, shape)
+            .clickable(role = Role.Button, onClick = onToggle)
+            .semantics(mergeDescendants = true) { this.contentDescription = contentDescription }
+            .padding(20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(if (isRunning) Secondary else OnSurfaceVariant, RoundedCornerShape(4.dp))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    statusLabel,
+                    color = if (isRunning) Secondary else OnSurfaceVariant,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                stringResource(if (isRunning) R.string.home_monitoring_on else R.string.home_monitoring_off),
+                color = OnSurface,
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                body,
+                color = OnSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.widthIn(max = 240.dp)
+            )
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Surface(
+                color = if (isRunning) Primary.copy(alpha = 0.14f) else SurfaceElevated,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.size(64.dp)
+            ) {
+                Icon(
+                    Icons.Default.CropOriginal,
+                    contentDescription = null,
+                    tint = if (isRunning) Primary else OnSurfaceVariant,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Switch(
+                checked = isRunning,
+                onCheckedChange = { onToggle() },
+                modifier = Modifier.semantics { this.contentDescription = switchContentDescription },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = OnPrimary,
+                    checkedTrackColor = Secondary,
+                    uncheckedThumbColor = OnSurfaceVariant,
+                    uncheckedTrackColor = SurfaceVariant
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrimaryGradientAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(Warning, Tertiary, OcrAccent)))
+            .border(1.dp, Color.White.copy(alpha = 0.28f), shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { role = Role.Button }
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun HomeSectionHeader(
+    title: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, color = OnSurface, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction, modifier = Modifier.heightIn(min = 40.dp)) {
+                Text(actionLabel, color = Primary, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeQuickAction(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier = Modifier,
+    accent: Color = Primary,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .heightIn(min = 92.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(
+                label,
+                color = OnSurface,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -3133,7 +3342,7 @@ private fun RecentCropTile(
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = stringResource(R.string.home_delete_crop_cd),
-                    tint = Tertiary,
+                    tint = Danger,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -3154,16 +3363,17 @@ private fun HomeActionTile(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .defaultMinSize(minHeight = 84.dp)
+            .defaultMinSize(minHeight = 96.dp)
             .semantics(mergeDescendants = true) {
                 contentDescription = "$title. $subtitle"
             }
-            .clickable(enabled = enabled, onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-        shape = RoundedCornerShape(12.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+        shape = RoundedCornerShape(10.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
@@ -3173,25 +3383,23 @@ private fun HomeActionTile(
                 Icon(
                     icon,
                     contentDescription = null,
-                    modifier = Modifier.padding(8.dp).size(18.dp),
+                    modifier = Modifier.padding(9.dp).size(20.dp),
                     tint = Primary.copy(alpha = contentAlpha)
                 )
             }
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     title,
                     color = OnSurface.copy(alpha = contentAlpha),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     subtitle,
                     color = OnSurfaceVariant.copy(alpha = contentAlpha),
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp,
+                    style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

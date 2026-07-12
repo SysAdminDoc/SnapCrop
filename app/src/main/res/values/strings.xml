@@ -40,7 +40,7 @@
     <string name="nav_gallery">Gallery</string>
 
     <!-- Home screen -->
-    <string name="home_subtitle">Clean, redact, and export screenshots - v%1$s</string>
+    <string name="home_subtitle">Private screenshot studio · v%1$s</string>
     <string name="home_settings">Settings</string>
     <string name="home_permission_images_title">Automatic screenshot access off</string>
     <string name="home_permission_images_body">Full photo access is used only to find new screenshots automatically. Pick Image, Batch Crop, and images shared into SnapCrop still work through Android’s picker.</string>
@@ -61,13 +61,21 @@
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
     <string name="home_monitor_title">Screenshot Monitor</string>
-    <string name="home_monitor_active">Active - new screenshots open in the editor</string>
-    <string name="home_monitor_paused">Paused - turn on to catch screenshots automatically</string>
+    <string name="home_monitor_active">Private and ready for your next screenshot</string>
+    <string name="home_monitor_paused">Turn on monitoring to catch new screenshots</string>
+    <string name="home_monitoring_on">Monitoring on</string>
+    <string name="home_monitoring_off">Monitoring off</string>
     <string name="home_monitor_status_active">Active</string>
     <string name="home_monitor_status_paused">Paused</string>
     <string name="home_monitor_cd">Screenshot Monitor, %1$s</string>
     <string name="home_monitor_switch_cd">Screenshot Monitor switch, %1$s</string>
     <string name="home_workflows">Workflows</string>
+    <string name="home_edit_image">Edit image</string>
+    <string name="home_quick_actions">Quick actions</string>
+    <string name="home_your_tools">Your tools</string>
+    <string name="home_capture_short">Capture</string>
+    <string name="home_long_short">Long shot</string>
+    <string name="home_web_short">Web page</string>
     <string name="home_cancel_batch">Cancel batch</string>
     <string name="home_crop_one_title">Crop one image</string>
     <string name="home_web_capture_title">Capture a web page</string>
@@ -93,6 +101,9 @@
     <string name="home_video_subtitle">Trim recordings or grab a frame to edit.</string>
     <string name="home_crop_count">%1$d screenshots cropped</string>
     <string name="home_recent">Recent</string>
+    <string name="home_view_all">View all</string>
+    <string name="home_recent_empty_title">Your exports will appear here</string>
+    <string name="home_recent_empty_body">Edit an image or open Gallery to get started.</string>
     <string name="home_footer">Screenshots are detected automatically when the monitor is active. Exports follow your format and location settings.</string>
     <string name="home_delete_crop_title">Delete recent crop?</string>
     <string name="home_delete_crop_body">Android will move this exported crop to Trash. The source screenshot is not touched.</string>
