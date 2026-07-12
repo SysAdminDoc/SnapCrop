@@ -21,6 +21,9 @@ val OnPrimary: Color get() = if (_isDark.value) Color(0xFF000000) else Color(0xF
 val Secondary: Color get() = if (_isDark.value) Color(0xFFA6E3A1) else Color(0xFF2E7D1C)
 val Tertiary: Color get() = if (_isDark.value) Color(0xFFF38BA8) else Color(0xFFD20F39)
 val Warning: Color get() = if (_isDark.value) Color(0xFFFAB387) else Color(0xFFC44200)
+val Success: Color get() = if (_isDark.value) Color(0xFFA6E3A1) else Color(0xFF2E7D1C)
+val Danger: Color get() = if (_isDark.value) Color(0xFFFF7B88) else Color(0xFFB42335)
+val Favorite: Color get() = if (_isDark.value) Color(0xFFF38BA8) else Color(0xFFD20F39)
 // Editor mode accents — Catppuccin Mocha (dark) / Latte (light) so they adapt across themes.
 val OcrAccent: Color get() = if (_isDark.value) Color(0xFFCBA6F7) else Color(0xFF8839EF) // lavender / mauve
 val AdjustAccent: Color get() = if (_isDark.value) Color(0xFFFAB387) else Color(0xFFFE640B) // peach
