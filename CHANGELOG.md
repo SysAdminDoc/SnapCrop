@@ -4,6 +4,28 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Premium interface system and workflow-focused Home (v6.67.0).**
+
+- Rebuilt Home around a calm monitoring hero, one dominant Edit image action,
+  compact capture shortcuts, a structured tool grid, actionable Recent state,
+  and a rectangular high-contrast bottom navigation surface. The generated
+  visual direction is retained in `docs/mockups/snapcrop-home-v6.67.png`.
+- Added complete light/dark Material color roles, semantic danger/success/favorite
+  accents, a shared 4–12dp shape scale, and a readable typography hierarchy so
+  default cards, dialogs, controls, and disabled states remain consistent.
+- Reduced the compact editor app bar to close, undo, redo, preview, and More;
+  history, transforms, and Help now live in an accessible overflow menu. Draw
+  swatches have 44dp targets, explicit selected semantics, and check indicators.
+- Settings section hierarchy and export summary are clearer, and each settings
+  toggle is now a full-row Switch target. Gallery permission and empty states use
+  consistent surfaces and offer direct clear-search/filter recovery actions.
+- Separated destructive red from the pink favorite/mode accent across editor,
+  Gallery, duplicate review, long-screenshot review, Stitch, and Settings.
+- Localized editor mode guidance, allowed OCR status copy to wrap, and moved OCR
+  actions into a scroll-safe 40dp action row instead of clipping on compact widths.
+- Aligned the app and Room migration-test serialization runtime on 1.8.1, fixing
+  the binary-incompatible 1.8.1 JSON / 1.7.3 core split found by connected tests.
+
 **HDR-safe PNG export, per-image duplicate correction, and launcher shortcuts (v6.66.0).**
 
 - On Android 16 the PNG codec carries HDR gain maps, so HDR screenshots saved,

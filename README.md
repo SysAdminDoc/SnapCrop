@@ -30,6 +30,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Dark, Light, and System themes cover the editor, Gallery, crop, stitch, collage,
   device-frame, video, launch, and system-bar surfaces; media previews retain a
   neutral black canvas with dedicated high-contrast controls.
+- The status-led Home keeps monitoring state, the primary Edit image action,
+  capture shortcuts, secondary tools, and recent exports visually distinct,
+  with consistent accessible targets in both light and dark themes.
 - Share one image into SnapCrop to edit it, or share multiple images to choose
   Batch auto-crop, Stitch, Collage, or PDF report. Each item is validated and
   failures are reported individually instead of dropping unsupported inputs.

@@ -45,8 +45,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 118
-        versionName = "6.66.0"
+        versionCode = 119
+        versionName = "6.67.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -156,6 +156,7 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(platform(libs.kotlinx.serialization.bom))
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
