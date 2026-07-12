@@ -118,6 +118,7 @@ class CropActivity : ComponentActivity() {
     private val projectLoadError = mutableStateOf<String?>(null)
     private val rotationKey = mutableIntStateOf(0)
     private var pendingMutationPurpose: SourceMutationPurpose? = null
+    private var pendingMutationStartedAt: Long? = null
     private var pendingExportMessage: String? = null
     private var pendingRelinkProject: SnapCropProject? = null
     private var pendingProjectPolicy = SourceVerificationPolicy.REQUIRE_FINGERPRINT
@@ -301,7 +302,15 @@ class CropActivity : ComponentActivity() {
                             },
                             onRemoveBg = { onDone ->
                                 lifecycleScope.launch {
+                                    val journalStarted = OperationJournal.start()
                                     val result = BackgroundRemover.removeWithStatus(this@CropActivity, bmp)
+                                    OperationJournal.enqueue(
+                                        this@CropActivity,
+                                        DiagnosticOperation.MODEL,
+                                        DiagnosticStage.PROCESS,
+                                        if (result.changed) DiagnosticResult.SUCCESS else DiagnosticResult.FAILED,
+                                        journalStarted
+                                    )
                                     if (result.changed && result.bitmap !== bmp) {
                                         val old = bitmapState.value
                                         if (old != null && old !== originalBitmap) old.recycle()
@@ -2247,6 +2256,7 @@ class CropActivity : ComponentActivity() {
         correctedOcrText: String? = null,
         exportSettings: ExportSettings = currentExportSettings()
     ) {
+        val journalStarted = OperationJournal.start()
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
         val stripExif = prefs.getBoolean("strip_exif", false)
         val exportFormat = getExportFormat(
@@ -2275,6 +2285,10 @@ class CropActivity : ComponentActivity() {
 
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
+            OperationJournal.record(
+                this, DiagnosticOperation.EXPORT, DiagnosticStage.SAVE, DiagnosticResult.FAILED,
+                journalStarted, DiagnosticCode.PUBLISH_FAILURE
+            )
             runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             return
         }
@@ -2316,6 +2330,11 @@ class CropActivity : ComponentActivity() {
                 (if (projectSidecarJson != null && projectSaved) " + Project" else "") +
                 (if (correctedOcrText != null && ocrTextSaved) " + OCR text" else "")
 
+            OperationJournal.record(
+                this, DiagnosticOperation.EXPORT, DiagnosticStage.COMPLETE, DiagnosticResult.SUCCESS,
+                journalStarted
+            )
+
             runOnUiThread {
                 when {
                     deleteOriginal && requestedSidecarsSaved -> {
@@ -2334,6 +2353,10 @@ class CropActivity : ComponentActivity() {
                 }
             }
         } catch (e: Exception) {
+            OperationJournal.record(
+                this, DiagnosticOperation.EXPORT, DiagnosticStage.SAVE, DiagnosticResult.FAILED,
+                journalStarted, DiagnosticCode.INTERNAL, e
+            )
             android.util.Log.e("SnapCrop", "saveToGallery failed", e)
             runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed) + ": " + (e.message ?: e.javaClass.simpleName), Toast.LENGTH_LONG).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
@@ -2346,6 +2369,7 @@ class CropActivity : ComponentActivity() {
     ) {
         if (pendingMutationPurpose != null) return
         pendingMutationPurpose = purpose
+        pendingMutationStartedAt = OperationJournal.start()
         pendingExportMessage = exportMessage
         isSaving.value = true
         val uri = sourceUri
@@ -2391,9 +2415,19 @@ class CropActivity : ComponentActivity() {
     private fun completeSourceMutation(succeeded: Boolean) {
         val purpose = pendingMutationPurpose ?: return
         val exportMessage = pendingExportMessage
+        val mutationStartedAt = pendingMutationStartedAt
         pendingMutationPurpose = null
+        pendingMutationStartedAt = null
         pendingExportMessage = null
         isSaving.value = false
+        OperationJournal.enqueue(
+            this,
+            DiagnosticOperation.DELETE,
+            DiagnosticStage.COMPLETE,
+            if (succeeded) DiagnosticResult.SUCCESS else DiagnosticResult.FAILED,
+            mutationStartedAt,
+            if (succeeded) DiagnosticCode.NONE else DiagnosticCode.PERMISSION_DENIED
+        )
         when (purpose) {
             SourceMutationPurpose.REPLACE_AFTER_SAVE -> {
                 val message = if (succeeded) {

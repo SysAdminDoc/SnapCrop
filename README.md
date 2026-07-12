@@ -208,6 +208,11 @@ release/security policy.
   original is explicitly retained.
 - The screenshot intelligence index is opt-in, local-only, and can be rebuilt
   or purged from Settings.
+- The bounded local operation journal keeps only typed workflow stage/result,
+  duration, and sanitized error-class data (up to 200 events for 14 days). It
+  never stores paths, URIs, image/OCR content, credentials, messages, or stack
+  traces; Settings can disable and purge it or explicitly view, copy, or attach
+  the redacted snapshot.
 - Network exports are opt-in. HTTP/WebDAV report uploads and Imgur image
   uploads run only after the user enables and configures a target. Credentials
   are stored in a versioned AES-256-GCM file whose key remains in Android

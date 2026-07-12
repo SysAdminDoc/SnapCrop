@@ -399,6 +399,15 @@
     <string name="settings_crash_share">Share</string>
     <string name="settings_crash_clear">Clear</string>
     <string name="settings_crash_none">No crash log to share.</string>
+    <string name="settings_journal_title">Local operation journal</string>
+    <string name="settings_journal_subtitle">Keep up to 200 redacted workflow results for 14 days. Paths, URIs, image/OCR content, credentials, messages, and stack traces are never recorded.</string>
+    <string name="settings_journal_count">%1$d redacted event(s) stored locally.</string>
+    <string name="settings_journal_view">View</string>
+    <string name="settings_journal_copy">Copy</string>
+    <string name="settings_journal_share">Attach</string>
+    <string name="settings_journal_clear">Purge</string>
+    <string name="settings_journal_empty">No operation events to export.</string>
+    <string name="settings_journal_copied">Redacted operation journal copied.</string>
     <string name="settings_update_check">Check for updates</string>
     <string name="settings_update_checking">Checking…</string>
     <string name="settings_update_current">You\'re on the latest version.</string>

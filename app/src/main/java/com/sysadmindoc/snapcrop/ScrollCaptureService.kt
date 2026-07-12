@@ -88,6 +88,7 @@ class ScrollCaptureService : AccessibilityService() {
             val timeLimitMsg = getString(R.string.long_screenshot_time_limit)
             var stopReason = captureLimitMsg
             var captureFailed = false
+            var failureCode = DiagnosticCode.NONE
 
             try {
                 val startMessage = if (startDelayMs >= 1000L) {
@@ -105,6 +106,7 @@ class ScrollCaptureService : AccessibilityService() {
                 val targetWindowId = if (Build.VERSION.SDK_INT >= 34) currentActiveWindowTarget()?.id else null
                 if (Build.VERSION.SDK_INT >= 34 && targetWindowId == null) {
                     captureFailed = true
+                    failureCode = DiagnosticCode.WINDOW_UNAVAILABLE
                     stopReason = captureFailureMessage(AccessibilityScreenshotFailure.WINDOW_UNAVAILABLE)
                     Toast.makeText(this@ScrollCaptureService, stopReason, Toast.LENGTH_SHORT).show()
                     return@launch
@@ -118,6 +120,7 @@ class ScrollCaptureService : AccessibilityService() {
                     val frame = captureCleanFrame(targetWindowId)
                     if (frame == null) {
                         captureFailed = true
+                        failureCode = diagnosticCode(lastCaptureFailure)
                         stopReason = captureFailureMessage(lastCaptureFailure)
                         Toast.makeText(
                             this@ScrollCaptureService,
@@ -167,14 +170,54 @@ class ScrollCaptureService : AccessibilityService() {
                 }
 
                 when {
-                    frames.size >= 2 -> reviewLongScreenshot(frames, stopReason)
-                    frames.size == 1 -> Toast.makeText(
+                    frames.size >= 2 -> {
+                        val successful = reviewLongScreenshot(frames, stopReason)
+                        OperationJournal.record(
+                            this@ScrollCaptureService,
+                            DiagnosticOperation.LONG_SCREENSHOT,
+                            DiagnosticStage.COMPLETE,
+                            if (successful) DiagnosticResult.SUCCESS else DiagnosticResult.FAILED,
+                            startedAt,
+                            if (successful) DiagnosticCode.NONE else DiagnosticCode.STORAGE_FAILURE
+                        )
+                    }
+                    frames.size == 1 -> {
+                        Toast.makeText(
+                            this@ScrollCaptureService,
+                            if (captureFailed) stopReason else getString(R.string.long_screenshot_no_content),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        OperationJournal.record(
+                            this@ScrollCaptureService,
+                            DiagnosticOperation.LONG_SCREENSHOT,
+                            DiagnosticStage.CAPTURE,
+                            if (captureFailed) DiagnosticResult.FAILED else DiagnosticResult.BLOCKED,
+                            startedAt,
+                            if (captureFailed) failureCode else DiagnosticCode.NO_SOURCE
+                        )
+                    }
+                    else -> OperationJournal.record(
                         this@ScrollCaptureService,
-                        if (captureFailed) stopReason else getString(R.string.long_screenshot_no_content),
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    else -> Unit
+                        DiagnosticOperation.LONG_SCREENSHOT,
+                        DiagnosticStage.CAPTURE,
+                        DiagnosticResult.FAILED,
+                        startedAt,
+                        failureCode.takeUnless { it == DiagnosticCode.NONE } ?: DiagnosticCode.NO_SOURCE
+                    )
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                OperationJournal.record(
+                    this@ScrollCaptureService, DiagnosticOperation.LONG_SCREENSHOT,
+                    DiagnosticStage.CAPTURE, DiagnosticResult.CANCELLED, startedAt,
+                    DiagnosticCode.USER_CANCELLED
+                )
+                throw cancelled
+            } catch (error: Throwable) {
+                OperationJournal.record(
+                    this@ScrollCaptureService, DiagnosticOperation.LONG_SCREENSHOT,
+                    DiagnosticStage.PROCESS, DiagnosticResult.FAILED, startedAt,
+                    DiagnosticCode.INTERNAL, error
+                )
             } finally {
                 frames.forEach { if (!it.isRecycled) it.recycle() }
                 isCapturing = false
@@ -220,6 +263,17 @@ class ScrollCaptureService : AccessibilityService() {
         }
     )
 
+    private fun diagnosticCode(reason: AccessibilityScreenshotFailure): DiagnosticCode = when (reason) {
+        AccessibilityScreenshotFailure.SECURE_WINDOW -> DiagnosticCode.SECURE_WINDOW
+        AccessibilityScreenshotFailure.INVALID_WINDOW -> DiagnosticCode.INVALID_WINDOW
+        AccessibilityScreenshotFailure.WINDOW_LOST -> DiagnosticCode.WINDOW_LOST
+        AccessibilityScreenshotFailure.WINDOW_UNAVAILABLE -> DiagnosticCode.WINDOW_UNAVAILABLE
+        AccessibilityScreenshotFailure.THROTTLED -> DiagnosticCode.THROTTLED
+        AccessibilityScreenshotFailure.ACCESS_REVOKED -> DiagnosticCode.ACCESS_REVOKED
+        AccessibilityScreenshotFailure.INVALID_DISPLAY -> DiagnosticCode.INVALID_DISPLAY
+        AccessibilityScreenshotFailure.INTERNAL -> DiagnosticCode.INTERNAL
+    }
+
     private fun scrollForward(targetWindowId: Int?): ScrollForwardResult {
         val root = rootInActiveWindow
             ?: return if (targetWindowId != null) ScrollForwardResult.WINDOW_LOST else ScrollForwardResult.END
@@ -259,7 +313,7 @@ class ScrollCaptureService : AccessibilityService() {
         return false
     }
 
-    private suspend fun reviewLongScreenshot(frames: List<Bitmap>, stopReason: String) {
+    private suspend fun reviewLongScreenshot(frames: List<Bitmap>, stopReason: String): Boolean {
         val (plan, stitched) = try {
             withContext(Dispatchers.Default) {
                 val detectedPlan = ScrollStitcher.createPlan(frames)
@@ -267,15 +321,17 @@ class ScrollCaptureService : AccessibilityService() {
             }
         } catch (_: Exception) {
             Toast.makeText(this, getString(R.string.long_screenshot_stitch_failed), Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
 
+        var successful = false
         try {
             val reviewFile = withContext(Dispatchers.IO) {
                 LongScreenshotStore.writeReviewFile(this@ScrollCaptureService, stitched, frames, plan)
             }
             if (reviewFile != null) {
                 if (openReview(reviewFile, frames.size, stopReason)) {
+                    successful = true
                     Toast.makeText(
                         this,
                         getString(R.string.long_screenshot_review_body),
@@ -288,6 +344,7 @@ class ScrollCaptureService : AccessibilityService() {
                         LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                     }
                     if (fallbackUri != null) {
+                        successful = true
                         Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
                         openEditor(fallbackUri)
                     } else {
@@ -299,6 +356,7 @@ class ScrollCaptureService : AccessibilityService() {
                     LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                 }
                 if (fallbackUri != null) {
+                    successful = true
                     Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
                     openEditor(fallbackUri)
                 } else {
@@ -308,6 +366,7 @@ class ScrollCaptureService : AccessibilityService() {
         } finally {
             stitched.recycle()
         }
+        return successful
     }
 
     private fun openReview(reviewFile: LongScreenshotReviewFile, frameCount: Int, stopReason: String): Boolean =

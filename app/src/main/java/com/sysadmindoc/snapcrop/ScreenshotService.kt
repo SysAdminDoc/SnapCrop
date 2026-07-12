@@ -163,6 +163,7 @@ class ScreenshotService : Service() {
     }
 
     private fun registerObserver(): Boolean {
+        val journalStarted = OperationJournal.start()
         observer?.let { runCatching { contentResolver.unregisterContentObserver(it) } }
 
         observer = object : ContentObserver(handler) {
@@ -178,8 +179,16 @@ class ScreenshotService : Service() {
                 true,
                 observer!!
             )
+            OperationJournal.enqueue(
+                this, DiagnosticOperation.SCREENSHOT_MONITOR, DiagnosticStage.OBSERVE,
+                DiagnosticResult.SUCCESS, journalStarted
+            )
             true
-        } catch (_: SecurityException) {
+        } catch (error: SecurityException) {
+            OperationJournal.enqueue(
+                this, DiagnosticOperation.SCREENSHOT_MONITOR, DiagnosticStage.OBSERVE,
+                DiagnosticResult.BLOCKED, journalStarted, DiagnosticCode.PERMISSION_DENIED, error
+            )
             observer = null
             isRunning = false
             false
@@ -380,12 +389,19 @@ class ScreenshotService : Service() {
 
     private fun quickSave(uri: Uri, stopWhenDone: Boolean = false) {
         serviceScope.launch {
+            val journalStarted = OperationJournal.start()
             var bitmap: Bitmap? = null
             var cropped: Bitmap? = null
             try {
                 bitmap = contentResolver.openInputStream(uri)?.use { stream ->
                     BitmapFactory.decodeStream(stream)
-                } ?: return@launch
+                } ?: run {
+                    OperationJournal.record(
+                        this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.PROCESS,
+                        DiagnosticResult.FAILED, journalStarted, DiagnosticCode.DECODE_FAILURE
+                    )
+                    return@launch
+                }
 
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val presetId = prefs.getString(ExportPresetStore.PREF_QUICK_PRESET_ID, null)
@@ -422,6 +438,10 @@ class ScreenshotService : Service() {
                         cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
                 if (isFullImage && actionRule == null) {
+                    OperationJournal.record(
+                        this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.PROCESS,
+                        DiagnosticResult.BLOCKED, journalStarted, DiagnosticCode.NO_SOURCE
+                    )
                     handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_no_borders), Toast.LENGTH_SHORT).show() }
                     return@launch
                 }
@@ -506,11 +526,28 @@ class ScreenshotService : Service() {
                                     (exportPresetName?.let { ", $it preset" } ?: "")
                         }
                         handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show() }
+                        OperationJournal.record(
+                            this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.COMPLETE,
+                            DiagnosticResult.SUCCESS, journalStarted
+                        )
                     } catch (e: IOException) {
-                        contentResolver.delete(savedUri, null, null)
+                        OperationJournal.record(
+                            this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.SAVE,
+                            DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE, e
+                        )
+                        runCatching { contentResolver.delete(savedUri, null, null) }
                     }
+                } else {
+                    OperationJournal.record(
+                        this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.SAVE,
+                        DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE
+                    )
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                OperationJournal.record(
+                    this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.PROCESS,
+                    DiagnosticResult.FAILED, journalStarted, DiagnosticCode.INTERNAL, error
+                )
                 handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_quick_save_failed), Toast.LENGTH_SHORT).show() }
             } finally {
                 cropped?.recycle()

@@ -1374,6 +1374,86 @@ class SettingsActivity : ComponentActivity() {
                             lineHeight = 15.sp)
                     }
 
+                    var journalEnabled by remember { mutableStateOf(OperationJournal.isEnabled(this@SettingsActivity)) }
+                    var journalEvents by remember { mutableStateOf(OperationJournal.events(this@SettingsActivity)) }
+                    var journalViewText by remember { mutableStateOf<String?>(null) }
+                    Spacer(Modifier.height(12.dp))
+                    SettingToggle(
+                        title = stringResource(R.string.settings_journal_title),
+                        subtitle = stringResource(R.string.settings_journal_subtitle),
+                        checked = journalEnabled,
+                        onCheckedChange = { enabled ->
+                            OperationJournal.setEnabled(this@SettingsActivity, enabled)
+                            journalEnabled = OperationJournal.isEnabled(this@SettingsActivity)
+                            journalEvents = OperationJournal.events(this@SettingsActivity)
+                            journalViewText = null
+                        }
+                    )
+                    if (journalEnabled) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(16.dp)) {
+                                Text(
+                                    stringResource(R.string.settings_journal_count, journalEvents.size),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(
+                                        enabled = journalEvents.isNotEmpty(),
+                                        onClick = { journalViewText = OperationJournal.format(journalEvents) }
+                                    ) { Text(stringResource(R.string.settings_journal_view), color = Primary, fontSize = 13.sp) }
+                                    TextButton(
+                                        enabled = journalEvents.isNotEmpty(),
+                                        onClick = {
+                                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(
+                                                ClipData.newPlainText("SnapCrop operation journal", OperationJournal.format(journalEvents))
+                                            )
+                                            Toast.makeText(this@SettingsActivity, R.string.settings_journal_copied, Toast.LENGTH_SHORT).show()
+                                        }
+                                    ) { Text(stringResource(R.string.settings_journal_copy), color = Primary, fontSize = 13.sp) }
+                                    TextButton(
+                                        enabled = journalEvents.isNotEmpty(),
+                                        onClick = ::shareOperationJournal
+                                    ) { Text(stringResource(R.string.settings_journal_share), color = Primary, fontSize = 13.sp) }
+                                    TextButton(
+                                        enabled = journalEvents.isNotEmpty(),
+                                        onClick = {
+                                            OperationJournal.clear(this@SettingsActivity)
+                                            journalEvents = emptyList()
+                                            journalViewText = null
+                                        }
+                                    ) { Text(stringResource(R.string.settings_journal_clear), color = Tertiary, fontSize = 13.sp) }
+                                }
+                            }
+                        }
+                    }
+                    journalViewText?.let { text ->
+                        AlertDialog(
+                            onDismissRequest = { journalViewText = null },
+                            confirmButton = {
+                                TextButton(onClick = { journalViewText = null }) { Text(stringResource(R.string.close), color = Primary) }
+                            },
+                            title = { Text(stringResource(R.string.settings_journal_title), color = OnSurface) },
+                            text = {
+                                Text(
+                                    text,
+                                    color = OnSurfaceVariant,
+                                    fontSize = 10.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    lineHeight = 13.sp,
+                                    modifier = Modifier.verticalScroll(rememberScrollState())
+                                )
+                            },
+                            containerColor = SurfaceVariant
+                        )
+                    }
+
                     // Crash diagnostics — local only, nothing leaves the device unless shared.
                     var crashFiles by remember { mutableStateOf(CrashReporter.crashLogs(this@SettingsActivity)) }
                     var crashViewText by remember { mutableStateOf<String?>(null) }
@@ -1470,6 +1550,27 @@ class SettingsActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }, null))
         } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareOperationJournal() {
+        val file = OperationJournal.snapshotFile(this)
+        if (file == null) {
+            Toast.makeText(this, R.string.settings_journal_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "SnapCrop operation journal")
+                clipData = ClipData.newRawUri("SnapCrop operation journal", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }, null))
+        } catch (_: Exception) {
+            file.delete()
             Toast.makeText(this, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
         }
     }

@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
     private var pendingMutationSucceeded = mutableListOf<Uri>()
     private var pendingMutationChunk = emptyList<Uri>()
     private var pendingMutationRequested = 0
+    private var pendingMutationStartedAt: Long? = null
 
     private val mediaMutationLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -1902,6 +1903,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         pendingMutationRequested = pendingMutationUris.size
+        pendingMutationStartedAt = OperationJournal.start()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) launchNextTrashChunk()
         else deleteLegacyMutationUris()
     }
@@ -1950,10 +1952,23 @@ class MainActivity : ComponentActivity() {
     private fun completeMediaMutation() {
         val succeeded = pendingMutationSucceeded.toList()
         val outcome = MediaMutationOutcome(pendingMutationRequested, succeeded.size)
+        val mutationStartedAt = pendingMutationStartedAt
         pendingMutationUris.clear()
         pendingMutationChunk = emptyList()
         pendingMutationSucceeded.clear()
         pendingMutationRequested = 0
+        pendingMutationStartedAt = null
+        OperationJournal.enqueue(
+            this,
+            DiagnosticOperation.DELETE,
+            DiagnosticStage.COMPLETE,
+            when (outcome.result) {
+                MediaMutationResult.SUCCESS -> DiagnosticResult.SUCCESS
+                MediaMutationResult.PARTIAL -> DiagnosticResult.RETRY
+                MediaMutationResult.RETAINED -> DiagnosticResult.FAILED
+            },
+            mutationStartedAt
+        )
         if (succeeded.isNotEmpty()) {
             FavoritesStore.removeAll(this, succeeded.mapNotNull { runCatching { ContentUris.parseId(it) }.getOrNull() })
             galleryRefreshKey.intValue++

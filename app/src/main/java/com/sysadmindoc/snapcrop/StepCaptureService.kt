@@ -154,7 +154,11 @@ class StepCaptureService : AccessibilityService() {
         if (state != SessionState.IDLE) return
         try {
             store.startSession()
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            OperationJournal.enqueue(
+                this, DiagnosticOperation.STEP_CAPTURE, DiagnosticStage.START,
+                DiagnosticResult.FAILED, code = DiagnosticCode.STORAGE_FAILURE, error = error
+            )
             Toast.makeText(this, getString(R.string.step_capture_storage_failed), Toast.LENGTH_LONG).show()
             return
         }
@@ -196,6 +200,14 @@ class StepCaptureService : AccessibilityService() {
                 getString(if (reason == StepCaptureStopReason.STORAGE_FAILURE) R.string.step_capture_storage_failed else R.string.step_capture_none),
                 Toast.LENGTH_SHORT
             ).show()
+            OperationJournal.enqueue(
+                this,
+                DiagnosticOperation.STEP_CAPTURE,
+                DiagnosticStage.COMPLETE,
+                if (reason == StepCaptureStopReason.MANUAL) DiagnosticResult.CANCELLED else DiagnosticResult.FAILED,
+                sessionStartedAt,
+                diagnosticCode(reason)
+            )
             requestTileUpdate()
             return
         }
@@ -208,6 +220,15 @@ class StepCaptureService : AccessibilityService() {
                     withContext(Dispatchers.Default) { StepGuideAssembler.assemble(captured) }
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
+                    OperationJournal.record(
+                        this@StepCaptureService,
+                        DiagnosticOperation.STEP_CAPTURE,
+                        DiagnosticStage.ASSEMBLE,
+                        DiagnosticResult.FAILED,
+                        sessionStartedAt,
+                        if (e is OutOfMemoryError) DiagnosticCode.MEMORY_LIMIT else DiagnosticCode.INTERNAL,
+                        e
+                    )
                     null
                 }
                 if (guide == null) {
@@ -222,9 +243,24 @@ class StepCaptureService : AccessibilityService() {
                         guide.recycle()
                     }
                     if (uri != null) {
+                        OperationJournal.record(
+                            this@StepCaptureService,
+                            DiagnosticOperation.STEP_CAPTURE,
+                            DiagnosticStage.COMPLETE,
+                            DiagnosticResult.SUCCESS,
+                            sessionStartedAt
+                        )
                         Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_saved), Toast.LENGTH_SHORT).show()
                         openEditor(uri)
                     } else {
+                        OperationJournal.record(
+                            this@StepCaptureService,
+                            DiagnosticOperation.STEP_CAPTURE,
+                            DiagnosticStage.SAVE,
+                            DiagnosticResult.FAILED,
+                            sessionStartedAt,
+                            DiagnosticCode.STORAGE_FAILURE
+                        )
                         Toast.makeText(this@StepCaptureService, getString(R.string.step_capture_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -320,6 +356,18 @@ class StepCaptureService : AccessibilityService() {
             AccessibilityScreenshotFailure.INTERNAL -> R.string.step_capture_missed
         }
     )
+
+    private fun diagnosticCode(reason: StepCaptureStopReason): DiagnosticCode = when (reason) {
+        StepCaptureStopReason.MANUAL -> DiagnosticCode.USER_CANCELLED
+        StepCaptureStopReason.FRAME_LIMIT -> DiagnosticCode.FRAME_LIMIT
+        StepCaptureStopReason.PIXEL_LIMIT -> DiagnosticCode.PIXEL_LIMIT
+        StepCaptureStopReason.MEMORY_LIMIT -> DiagnosticCode.MEMORY_LIMIT
+        StepCaptureStopReason.CACHE_LIMIT -> DiagnosticCode.CACHE_LIMIT
+        StepCaptureStopReason.DURATION -> DiagnosticCode.TIME_LIMIT
+        StepCaptureStopReason.INACTIVITY -> DiagnosticCode.INACTIVITY_TIMEOUT
+        StepCaptureStopReason.STORAGE_FAILURE -> DiagnosticCode.STORAGE_FAILURE
+        StepCaptureStopReason.SCREENSHOT_ACCESS -> DiagnosticCode.ACCESS_REVOKED
+    }
 
     private fun saveGuide(bitmap: Bitmap): Uri? {
         val prefs = getSharedPreferences("snapcrop", Context.MODE_PRIVATE)

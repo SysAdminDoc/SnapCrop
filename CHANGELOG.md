@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Bounded local operation journal (v6.50.0).**
+
+- Settings now exposes a local-only diagnostic ring with enable/disable, view,
+  copy, attach, and purge controls. Disabling purges immediately and prevents
+  queued cross-process writes from recreating the journal.
+- Up to 200 typed workflow results are retained for 14 days in an atomic 64 KiB
+  store. The API cannot accept paths, URIs, image/OCR content, credentials,
+  exception messages, or stack traces; only bounded timing, enums, and a sanitized
+  exception class are persisted.
+- Screenshot monitoring, Quick Crop, long/step capture, image export, media deletion,
+  and background removal now emit one actionable terminal result. Storage failures
+  are swallowed, UI writes use a bounded background queue, and corruption, retention,
+  concurrency, privacy, clock, disable, and failure behavior have host tests.
+
 **Isolated static web-page capture (v6.49.0).**
 
 - Home and Android text sharing can open an explicit public HTTPS URL, fetch one
