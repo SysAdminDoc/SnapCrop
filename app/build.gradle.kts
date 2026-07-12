@@ -45,8 +45,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 90
-        versionName = "6.39.0"
+        versionCode = 91
+        versionName = "6.40.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -177,14 +177,18 @@ tasks.register("generateReleaseProvenance") {
     dependsOn("assembleRelease", "cyclonedxDirectBom", rootProject.tasks.named("verifyWrapperJar"))
 
     val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
+    val releaseApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+    val releaseSbom = layout.buildDirectory.file("reports/cyclonedx-direct/bom.json")
+    inputs.file(releaseApk)
+    inputs.file(releaseSbom)
     outputs.dir(provenanceDirectory)
 
     doLast {
         val versionName = android.defaultConfig.versionName
             ?: error("versionName is required for release provenance")
         val versionCode = android.defaultConfig.versionCode
-        val sourceApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
-        val sourceSbom = layout.buildDirectory.file("reports/cyclonedx-direct/bom.json").get().asFile
+        val sourceApk = releaseApk.get().asFile
+        val sourceSbom = releaseSbom.get().asFile
         require(sourceApk.isFile) { "Release APK was not produced: $sourceApk" }
         require(sourceSbom.isFile) { "CycloneDX JSON SBOM was not produced: $sourceSbom" }
 

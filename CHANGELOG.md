@@ -4,6 +4,22 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Safe inbound multi-image shares (v6.40.0).**
+
+- Added `ACTION_SEND_MULTIPLE` plus stable-order extraction across stream extras,
+  `ClipData`, and data URIs without silently truncating duplicates or overflow.
+  Single images still open the editor; validated multi-image shares open an
+  action chooser for batch crop, stitch, collage, or PDF report.
+- Shared items are preflighted off the main thread for content URI access,
+  declared/unknown-length 64 MiB limits, decodable image bounds, and a 48 MP
+  pixel ceiling. Every rejected item remains visible by item number/reason; a
+  lone valid survivor opens normally.
+- Forwarded grants now include `ClipData`; Stitch/Collage reuse inbound images
+  without launching a picker, Collage selects a fitting layout and explicitly
+  disables sets above 25, and multi-item drag/drop uses the same router.
+- Release provenance now declares the built APK and SBOM as task inputs, so a
+  changed same-version artifact cannot reuse a stale stable copy.
+
 **Theme-aware media surfaces (v6.39.0).**
 
 - Editor, Gallery, crop recovery, stitch, collage, device-frame, and video roots

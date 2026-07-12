@@ -30,6 +30,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Dark, Light, and System themes cover the editor, Gallery, crop, stitch, collage,
   device-frame, video, launch, and system-bar surfaces; media previews retain a
   neutral black canvas with dedicated high-contrast controls.
+- Share one image into SnapCrop to edit it, or share multiple images to choose
+  Batch auto-crop, Stitch, Collage, or PDF report. Each item is validated and
+  failures are reported individually instead of dropping unsupported inputs.
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, review, retry if needed, save, then continue editing
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums

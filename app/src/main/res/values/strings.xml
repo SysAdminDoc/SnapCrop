@@ -202,6 +202,16 @@
     <string name="toast_redacted_faces">Cosmetically blurred %1$d face(s)</string>
     <string name="toast_redacted_text_blocks">Cosmetically concealed %1$d text block(s)</string>
     <string name="toast_share_failed">Share failed</string>
+    <string name="inbound_share_title">Choose a multi-image action</string>
+    <string name="inbound_share_count">%1$d valid shared images</string>
+    <string name="inbound_share_batch_crop">Batch auto-crop</string>
+    <string name="inbound_share_stitch">Stitch images</string>
+    <string name="inbound_share_collage">Create collage</string>
+    <string name="inbound_share_report">Create PDF report</string>
+    <string name="inbound_share_rejected">Skipped %1$d shared item(s): %2$s</string>
+    <string name="inbound_share_not_enough">Fewer than two valid shared images remain.</string>
+    <string name="inbound_share_item_failure">Item %1$d: %2$s</string>
+    <string name="inbound_share_collage_limit">Collage supports at most 25 shared images; use Stitch, Batch auto-crop, or PDF instead.</string>
     <string name="toast_no_borders">No borders detected</string>
     <string name="toast_autocropped_saved">Autocropped, saved &amp; copied</string>
     <string name="toast_quick_save_failed">Quick save failed</string>

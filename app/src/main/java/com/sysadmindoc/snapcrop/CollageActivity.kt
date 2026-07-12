@@ -136,6 +136,14 @@ class CollageActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        @Suppress("DEPRECATION")
+        intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
+            ?.distinctBy(Uri::toString)
+            ?.take(MAX_INBOUND_ITEMS)
+            ?.let { incoming ->
+                selectedLayout.value = layouts.firstOrNull { it.slots >= incoming.size } ?: layouts.maxBy { it.slots }
+                imageUris.addAll(incoming)
+            }
 
         setContent {
             SnapCropTheme {
@@ -165,7 +173,7 @@ class CollageActivity : ComponentActivity() {
 
         // First launch: pick replaces (list is empty anyway).
         nextPickReplaces = true
-        pickImagesLauncher.launch(arrayOf("image/*"))
+        if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
     }
 
     private fun buildAndSave() {
@@ -222,6 +230,10 @@ class CollageActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    companion object {
+        const val MAX_INBOUND_ITEMS = 25
     }
 
     private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {

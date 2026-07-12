@@ -199,6 +199,67 @@ class MainActivity : ComponentActivity() {
     private val showReportDialogState = mutableStateOf(false)
     private val renameUris = mutableStateOf<List<Uri>>(emptyList())
     private val showRenameDialogState = mutableStateOf(false)
+    private val inboundShareUris = mutableStateOf<List<Uri>>(emptyList())
+    private val inboundShareFailures = mutableStateOf<List<String>>(emptyList())
+    private val showInboundShareDialog = mutableStateOf(false)
+
+    @Suppress("DEPRECATION")
+    private fun handleInboundShares(intent: Intent) {
+        val forwarded = intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS).orEmpty()
+        val raw = if (forwarded.isNotEmpty()) forwarded else InboundShareContract.extractUris(intent)
+        if (raw.size <= 1) return
+        intent.removeExtra(InboundShareContract.EXTRA_URIS)
+        intent.removeExtra(Intent.EXTRA_STREAM)
+        intent.clipData = null
+        intent.data = null
+        intent.action = null
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = InboundShareContract.validateImages(contentResolver, raw)
+            withContext(Dispatchers.Main) {
+                inboundShareFailures.value = result.rejected.map {
+                    getString(R.string.inbound_share_item_failure, it.itemIndex + 1, it.reason)
+                }
+                if (result.rejected.isNotEmpty()) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        getString(
+                            R.string.inbound_share_rejected,
+                            result.rejected.size,
+                            result.rejected.joinToString { it.reason }.take(160)
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+                if (result.accepted.size >= 2) {
+                    inboundShareUris.value = result.accepted
+                    showInboundShareDialog.value = true
+                } else if (result.accepted.size == 1) {
+                    val uri = result.accepted.single()
+                    startActivity(Intent(this@MainActivity, CropActivity::class.java).apply {
+                        data = uri
+                        clipData = ClipData.newRawUri("Shared image", uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    })
+                } else {
+                    Toast.makeText(this@MainActivity, R.string.inbound_share_not_enough, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun launchInboundActivity(target: Class<out ComponentActivity>) {
+        val uris = inboundShareUris.value
+        startActivity(Intent(this, target).apply {
+            putParcelableArrayListExtra(InboundShareContract.EXTRA_URIS, ArrayList(uris))
+            uris.firstOrNull()?.let { first ->
+                clipData = ClipData.newRawUri("Shared images", first).apply {
+                    uris.drop(1).forEach { addItem(ClipData.Item(it)) }
+                }
+            }
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        })
+        showInboundShareDialog.value = false
+    }
 
     private fun batchAutocrop(uris: List<Uri>) {
         batchCancelled.value = false
@@ -217,8 +278,10 @@ class MainActivity : ComponentActivity() {
                     batchProgressFraction.floatValue = done.toFloat() / total
                 }
                 try {
-                    contentResolver.openInputStream(uri)?.use { stream ->
-                        val bitmap = android.graphics.BitmapFactory.decodeStream(stream) ?: return@use
+                    val input = contentResolver.openInputStream(uri) ?: throw IOException("Shared image is unreadable")
+                    input.use { stream ->
+                        val bitmap = android.graphics.BitmapFactory.decodeStream(stream)
+                            ?: throw IOException("Shared image could not be decoded")
                         val cropRect = AutoCrop.detect(
                             bitmap = bitmap,
                             statusBarPx = statusBarPx,
@@ -293,6 +356,7 @@ class MainActivity : ComponentActivity() {
             ?.map(Uri::parse) ?: emptyList()
         pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
         handleAccessibilityIntent(intent)
+        handleInboundShares(intent)
 
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
@@ -300,12 +364,9 @@ class MainActivity : ComponentActivity() {
                     event.clipDescription?.hasMimeType(ClipDescription.MIMETYPE_TEXT_INTENT) == true ||
                     event.clipDescription?.hasMimeType("image/*") == true
                 DragEvent.ACTION_DROP -> {
-                    val uri = event.clipData?.getItemAt(0)?.uri ?: return@setOnDragListener false
+                    val clip = event.clipData ?: return@setOnDragListener false
                     requestDragAndDropPermissions(event)
-                    startActivity(Intent(this, CropActivity::class.java).apply {
-                        data = uri
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    })
+                    handleInboundShares(Intent(Intent.ACTION_SEND_MULTIPLE).apply { clipData = clip })
                     true
                 }
                 DragEvent.ACTION_DRAG_ENTERED, DragEvent.ACTION_DRAG_LOCATION,
@@ -318,6 +379,59 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SnapCropTheme {
+                if (showInboundShareDialog.value) {
+                    AlertDialog(
+                        onDismissRequest = { showInboundShareDialog.value = false },
+                        title = { Text(stringResource(R.string.inbound_share_title), color = OnSurface) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    stringResource(R.string.inbound_share_count, inboundShareUris.value.size),
+                                    color = OnSurfaceVariant
+                                )
+                                if (inboundShareFailures.value.isNotEmpty()) {
+                                    Text(
+                                        inboundShareFailures.value.joinToString("\n"),
+                                        color = Tertiary,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    val uris = inboundShareUris.value
+                                    showInboundShareDialog.value = false
+                                    batchAutocrop(uris)
+                                }) { Text(stringResource(R.string.inbound_share_batch_crop)) }
+                                TextButton(onClick = { launchInboundActivity(StitchActivity::class.java) }) {
+                                    Text(stringResource(R.string.inbound_share_stitch))
+                                }
+                                TextButton(
+                                    enabled = inboundShareUris.value.size <= CollageActivity.MAX_INBOUND_ITEMS,
+                                    onClick = { launchInboundActivity(CollageActivity::class.java) }
+                                ) {
+                                    Text(stringResource(R.string.inbound_share_collage))
+                                }
+                                if (inboundShareUris.value.size > CollageActivity.MAX_INBOUND_ITEMS) {
+                                    Text(
+                                        stringResource(R.string.inbound_share_collage_limit),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                                TextButton(onClick = {
+                                    showInboundShareDialog.value = false
+                                    showReportDialog(inboundShareUris.value)
+                                }) { Text(stringResource(R.string.inbound_share_report)) }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            TextButton(onClick = { showInboundShareDialog.value = false }) {
+                                Text(stringResource(R.string.cancel))
+                            }
+                        },
+                        containerColor = SurfaceVariant
+                    )
+                }
                 var selectedTab by remember { mutableIntStateOf(0) }
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
                 val credentialStore = remember { NetworkCredentialStore.open(this@MainActivity) }
@@ -795,6 +909,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleAccessibilityIntent(intent)
+        handleInboundShares(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -841,8 +956,10 @@ class MainActivity : ComponentActivity() {
                     batchProgressFraction.floatValue = done.toFloat() / uris.size
                 }
                 try {
-                    contentResolver.openInputStream(uri)?.use { stream ->
-                        val bmp = BitmapFactory.decodeStream(stream) ?: return@use
+                    val input = contentResolver.openInputStream(uri) ?: throw IOException("Shared image is unreadable")
+                    input.use { stream ->
+                        val bmp = BitmapFactory.decodeStream(stream)
+                            ?: throw IOException("Shared image could not be decoded")
                         if (bmp.width <= maxDim && bmp.height <= maxDim) { bmp.recycle(); return@use }
                         val scale = maxDim.toFloat() / maxOf(bmp.width, bmp.height)
                         val newW = (bmp.width * scale).toInt()

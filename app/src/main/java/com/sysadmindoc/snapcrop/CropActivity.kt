@@ -148,11 +148,21 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun handleIntent(incomingIntent: Intent) {
+        val sharedUris = InboundShareContract.extractUris(incomingIntent)
+        if (sharedUris.size > 1) {
+            startActivity(Intent(this, MainActivity::class.java).apply {
+                putParcelableArrayListExtra(InboundShareContract.EXTRA_URIS, ArrayList(sharedUris))
+                clipData = ClipData.newRawUri("Shared images", sharedUris.first()).apply {
+                    sharedUris.drop(1).forEach { addItem(ClipData.Item(it)) }
+                }
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            })
+            finish()
+            return
+        }
         val newUri = when {
             incomingIntent.data != null -> incomingIntent.data
-            incomingIntent.action == Intent.ACTION_SEND ->
-                @Suppress("DEPRECATION")
-                incomingIntent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            sharedUris.size == 1 -> sharedUris.single()
             else -> null
         }
         if (newUri == null) { finish(); return }

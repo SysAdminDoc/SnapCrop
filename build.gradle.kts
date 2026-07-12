@@ -27,5 +27,5 @@ tasks.register("verifyWrapperJar") {
 
 allprojects {
     group = "com.sysadmindoc"
-    version = "6.39.0"
+    version = "6.40.0"
 }

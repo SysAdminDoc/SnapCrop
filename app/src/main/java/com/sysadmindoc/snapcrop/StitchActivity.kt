@@ -68,6 +68,10 @@ class StitchActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        @Suppress("DEPRECATION")
+        intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
+            ?.distinctBy(Uri::toString)
+            ?.let(imageUris::addAll)
 
         setContent {
             SnapCropTheme {
@@ -87,7 +91,7 @@ class StitchActivity : ComponentActivity() {
         }
 
         // Auto-open picker on launch
-        pickImagesLauncher.launch(arrayOf("image/*"))
+        if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
     }
 
     private fun stitchAndSave() {
