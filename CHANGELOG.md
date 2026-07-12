@@ -4,7 +4,7 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
-**Transform-safe pixel layers (v6.41.0).**
+**Transform-safe pixel layers (v6.41.1).**
 
 - Blur, fill, smart-erase, and heal layers now resolve their transformed image-space
   points before sampling or replacing pixels during export. Brush scaling follows the
