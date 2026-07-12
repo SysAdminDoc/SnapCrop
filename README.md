@@ -161,10 +161,12 @@ export path. Optional upload targets are off by default and must be configured
 in Settings. See [SECURITY.md](SECURITY.md) for the permission matrix and
 release/security policy.
 
-- Media permissions let SnapCrop find screenshots, show the gallery, and edit
-  user-selected images and videos.
-- Notifications keep the screenshot monitor visible and expose Edit, Share, and
-  Quick Crop actions.
+- Image, video, and notification grants are independent. Full image access alone
+  enables automatic monitoring; selected media remains browsable, and video
+  denial hides only library videos. Android pickers remain usable in every state.
+- Notification denial hides detected-screenshot, countdown, Edit, Share, and
+  Quick Crop drawer actions without blocking Android’s foreground-service Task
+  Manager entry or image/video access.
 - Display-over-apps is optional. Without it, screenshots still produce a
   notification that opens the editor.
 - Long Screenshot and Step Capture use Accessibility only after the user starts

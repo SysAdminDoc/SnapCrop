@@ -1,6 +1,5 @@
 package com.sysadmindoc.snapcrop
 
-import android.Manifest
 import android.app.PendingIntent
 import android.app.RecoverableSecurityException
 import android.content.ClipData
@@ -11,7 +10,6 @@ import android.content.ComponentName
 import android.content.ClipDescription
 import android.content.Intent
 import android.view.DragEvent
-import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Paint
 import android.graphics.RectF
@@ -97,8 +95,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private val serviceRunning = mutableStateOf(false)
-    private val hasPermissions = mutableStateOf(false)
-    private val hasPartialMedia = mutableStateOf(false)
+    private val mediaCapabilities = mutableStateOf(
+        MediaCapabilities(MediaAccess.NONE, MediaAccess.NONE, notificationAccess = Build.VERSION.SDK_INT < 33)
+    )
+    private var pendingMonitorStart = false
+    private var pendingDelayedCaptureSeconds: Int? = null
     private val hasOverlayPermission = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
@@ -130,9 +131,19 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        hasPermissions.value = results.values.all { it }
-        if (hasPermissions.value) startMonitoring()
+    ) {
+        checkPermissions()
+        if (pendingMonitorStart && mediaCapabilities.value.canMonitorScreenshots) {
+            pendingMonitorStart = false
+            startMonitoring()
+            getSharedPreferences("snapcrop", MODE_PRIVATE).edit().putBoolean("auto_start", true).apply()
+        } else {
+            pendingMonitorStart = false
+        }
+        pendingDelayedCaptureSeconds?.let { seconds ->
+            pendingDelayedCaptureSeconds = null
+            if (mediaCapabilities.value.canMonitorScreenshots) startDelayedCapture(seconds)
+        }
     }
 
     private val pickImageLauncher = registerForActivityResult(
@@ -369,12 +380,13 @@ class MainActivity : ComponentActivity() {
                         when (selectedTab) {
                             0 -> HomeScreen(
                                 isRunning = serviceRunning.value,
-                                hasPermissions = hasPermissions.value,
-                                partialMedia = hasPartialMedia.value,
+                                mediaCapabilities = mediaCapabilities.value,
                                 recentCrops = recentCrops.value,
                                 cropCount = cropCount.value,
                                 onToggleService = { toggleService() },
-                                onRequestPermissions = { requestPermissions() },
+                                onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
+                                onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
+                                onRequestNotificationAccess = { requestPermissions(MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)) },
                                 onPickImage = { pickImageLauncher.launch("image/*") },
                                 onBatchCrop = { batchPickLauncher.launch(arrayOf("image/*")) },
                                 onStitch = { startActivity(Intent(this@MainActivity, StitchActivity::class.java)) },
@@ -384,12 +396,12 @@ class MainActivity : ComponentActivity() {
                                 longScreenshotReady = longScreenshotReady.value,
                                 onLongScreenshot = { requestLongScreenshot() },
                                 onDelayedCapture = { seconds ->
-                                    val intent = Intent(this@MainActivity, ScreenshotService::class.java).apply {
-                                        action = ScreenshotService.ACTION_DELAYED_CAPTURE
-                                        putExtra(ScreenshotService.EXTRA_DELAY_SECONDS, seconds)
+                                    if (mediaCapabilities.value.canMonitorScreenshots) {
+                                        startDelayedCapture(seconds)
+                                    } else {
+                                        pendingDelayedCaptureSeconds = seconds
+                                        requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
                                     }
-                                    startService(intent)
-                                    Toast.makeText(this@MainActivity, getString(R.string.toast_capturing_in, seconds), Toast.LENGTH_SHORT).show()
                                 },
                                 batchProgress = batchProgress.value,
                                 batchFraction = batchProgressFraction.floatValue,
@@ -410,6 +422,10 @@ class MainActivity : ComponentActivity() {
                             )
                             1 -> GalleryScreen(
                                 refreshKey = galleryRefreshKey.intValue,
+                                imageAccess = mediaCapabilities.value.imageAccess,
+                                videoAccess = mediaCapabilities.value.videoAccess,
+                                onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
+                                onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
                                 onOpenEditor = { uri ->
                                     startActivity(Intent(this@MainActivity, CropActivity::class.java).apply { data = uri })
                                 },
@@ -758,12 +774,12 @@ class MainActivity : ComponentActivity() {
 
         val shouldRun = getSharedPreferences("snapcrop", MODE_PRIVATE)
             .getBoolean("auto_start", false)
-        if (shouldRun && hasPermissions.value && !ScreenshotService.isRunning) {
+        if (shouldRun && mediaCapabilities.value.canMonitorScreenshots && !ScreenshotService.isRunning) {
             startMonitoring()
         }
         serviceRunning.value = ScreenshotService.isRunning
 
-        if (hasPermissions.value) loadRecentCrops()
+        if (mediaCapabilities.value.canQueryImages) loadRecentCrops()
         galleryRefreshKey.intValue++
     }
 
@@ -782,36 +798,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkPermissions() {
-        val needed = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= 33) {
-            needed.add(Manifest.permission.READ_MEDIA_IMAGES)
-            needed.add(Manifest.permission.READ_MEDIA_VIDEO)
-            needed.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        hasPermissions.value = needed.all {
-            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-        }
-        // Android 14+ "Select photos" grants VISUAL_USER_SELECTED without full image read — the
-        // screenshot monitor can't see new screenshots in that state. Detect it purely from the
-        // image grants, independent of the unrelated video/notification permissions.
-        hasPartialMedia.value =
-            Build.VERSION.SDK_INT >= 34 &&
-            ContextCompat.checkSelfPermission(this, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED
+        mediaCapabilities.value = MediaCapabilityResolver.current(this)
     }
 
-    private fun requestPermissions() {
-        val needed = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= 33) {
-            needed.add(Manifest.permission.READ_MEDIA_IMAGES)
-            needed.add(Manifest.permission.READ_MEDIA_VIDEO)
-            needed.add(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            needed.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        permissionLauncher.launch(needed.toTypedArray())
+    private fun requestPermissions(permissions: Array<String>, startMonitorAfter: Boolean = false) {
+        if (permissions.isEmpty()) return
+        pendingMonitorStart = startMonitorAfter
+        permissionLauncher.launch(permissions)
     }
 
     private fun showResizeDialog(uris: List<Uri>) {
@@ -1614,8 +1607,8 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", false).apply()
         } else {
-            if (!hasPermissions.value) {
-                requestPermissions()
+            if (!mediaCapabilities.value.canMonitorScreenshots) {
+                requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT), startMonitorAfter = true)
                 return
             }
             startMonitoring()
@@ -1628,6 +1621,17 @@ class MainActivity : ComponentActivity() {
         val intent = Intent(this, ScreenshotService::class.java)
         ContextCompat.startForegroundService(this, intent)
         serviceRunning.value = true
+    }
+
+    private fun startDelayedCapture(seconds: Int) {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, ScreenshotService::class.java).apply {
+                action = ScreenshotService.ACTION_DELAYED_CAPTURE
+                putExtra(ScreenshotService.EXTRA_DELAY_SECONDS, seconds)
+            }
+        )
+        Toast.makeText(this, getString(R.string.toast_capturing_in, seconds), Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshLongScreenshotState() {
@@ -1766,14 +1770,39 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+private fun CapabilityCard(title: String, body: String, action: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = OnSurface, fontWeight = FontWeight.Medium)
+                Text(body, color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+            }
+        }
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Primary),
+            shape = RoundedCornerShape(12.dp)
+        ) { Text(action, color = OnPrimary) }
+    }
+}
+
+@Composable
 private fun HomeScreen(
     isRunning: Boolean,
-    hasPermissions: Boolean,
-    partialMedia: Boolean = false,
+    mediaCapabilities: MediaCapabilities,
     recentCrops: List<RecentCrop>,
     cropCount: Int,
     onToggleService: () -> Unit,
-    onRequestPermissions: () -> Unit,
+    onRequestImageAccess: () -> Unit,
+    onRequestVideoAccess: () -> Unit,
+    onRequestNotificationAccess: () -> Unit,
     onPickImage: () -> Unit,
     onBatchCrop: () -> Unit,
     onStitch: () -> Unit,
@@ -1835,52 +1864,42 @@ private fun HomeScreen(
         Spacer(Modifier.height(24.dp))
 
         // Permission warning
-        AnimatedVisibility(visible = !hasPermissions) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Info, null, tint = Tertiary, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            stringResource(if (partialMedia) R.string.home_permission_partial_title else R.string.home_permission_title),
-                            color = OnSurface, fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            stringResource(if (partialMedia) R.string.home_permission_partial_body else R.string.home_permission_body),
-                            color = OnSurfaceVariant,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                }
-                Button(
-                    onClick = onRequestPermissions,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(
-                        stringResource(if (partialMedia) R.string.home_permission_partial_grant else R.string.home_permission_grant),
-                        color = OnPrimary
-                    )
-                }
-            }
+        if (!mediaCapabilities.canMonitorScreenshots) {
+            CapabilityCard(
+                title = stringResource(
+                    if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_title
+                    else R.string.home_permission_images_title
+                ),
+                body = stringResource(
+                    if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_body
+                    else R.string.home_permission_images_body
+                ),
+                action = stringResource(
+                    if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_grant
+                    else R.string.home_permission_images_grant
+                ),
+                onClick = onRequestImageAccess
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 33 && mediaCapabilities.videoAccess != MediaAccess.FULL) {
+            CapabilityCard(
+                title = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_title else R.string.home_permission_video_title),
+                body = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_body else R.string.home_permission_video_body),
+                action = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_grant else R.string.home_permission_video_grant),
+                onClick = onRequestVideoAccess
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 33 && !mediaCapabilities.notificationAccess) {
+            CapabilityCard(
+                title = stringResource(R.string.home_permission_notification_title),
+                body = stringResource(R.string.home_permission_notification_body),
+                action = stringResource(R.string.home_permission_notification_grant),
+                onClick = onRequestNotificationAccess
+            )
         }
 
         // Overlay permission (optional on Android 12+; notifications remain the fallback)
-        if (hasPermissions && !hasOverlayPermission && Build.VERSION.SDK_INT >= 31) {
+        if (mediaCapabilities.canMonitorScreenshots && !hasOverlayPermission && Build.VERSION.SDK_INT >= 31) {
             Card(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),

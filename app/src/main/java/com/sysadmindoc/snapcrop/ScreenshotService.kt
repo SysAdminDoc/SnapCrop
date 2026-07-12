@@ -81,7 +81,15 @@ class ScreenshotService : Service() {
             }
             throw e
         }
-        when (intent?.action) {
+        val action = intent?.action
+        if ((action == null || action == ACTION_DELAYED_CAPTURE || action == ACTION_RUN_LAST_ACTION) &&
+            !MediaCapabilityResolver.current(this).canMonitorScreenshots
+        ) {
+            isRunning = false
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        when (action) {
             ACTION_QUICK_SAVE -> {
                 val uriStr = intent.getStringExtra(EXTRA_URI)
                 if (uriStr != null) quickSave(Uri.parse(uriStr))
@@ -109,7 +117,10 @@ class ScreenshotService : Service() {
                 val delaySec = intent.getIntExtra(EXTRA_DELAY_SECONDS, 3).coerceIn(1, 30)
                 // Register the observer so the live capture path is available if the user
                 // happens to take a screenshot before the post-countdown poll fires.
-                registerObserver()
+                if (!registerObserver()) {
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 isRunning = true
                 startDelayedCapture(delaySec)
                 return START_STICKY
@@ -120,7 +131,10 @@ class ScreenshotService : Service() {
             }
         }
 
-        registerObserver()
+        if (!registerObserver()) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         isRunning = true
         return START_STICKY
     }
@@ -148,8 +162,8 @@ class ScreenshotService : Service() {
         return builder.build()
     }
 
-    private fun registerObserver() {
-        observer?.let { contentResolver.unregisterContentObserver(it) }
+    private fun registerObserver(): Boolean {
+        observer?.let { runCatching { contentResolver.unregisterContentObserver(it) } }
 
         observer = object : ContentObserver(handler) {
             override fun onChange(selfChange: Boolean, uri: Uri?) {
@@ -158,11 +172,18 @@ class ScreenshotService : Service() {
             }
         }
 
-        contentResolver.registerContentObserver(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            true,
-            observer!!
-        )
+        return try {
+            contentResolver.registerContentObserver(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                observer!!
+            )
+            true
+        } catch (_: SecurityException) {
+            observer = null
+            isRunning = false
+            false
+        }
     }
 
     private fun onMediaStoreChanged() {

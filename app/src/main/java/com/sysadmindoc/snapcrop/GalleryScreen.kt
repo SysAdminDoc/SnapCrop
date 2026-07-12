@@ -269,8 +269,14 @@ fun GalleryScreen(
     onBatchResize: (List<Uri>) -> Unit,
     onBatchRename: (List<Uri>) -> Unit,
     onBack: () -> Unit,
+    imageAccess: MediaAccess = MediaAccess.FULL,
+    videoAccess: MediaAccess = MediaAccess.FULL,
+    onRequestImageAccess: () -> Unit = {},
+    onRequestVideoAccess: () -> Unit = {},
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
+    val canReadImages = imageAccess != MediaAccess.NONE
+    val canReadVideos = videoAccess != MediaAccess.NONE
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE) }
@@ -292,7 +298,7 @@ fun GalleryScreen(
     val selectionMode = selectedIds.isNotEmpty()
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
-    LaunchedEffect(refreshKey, indexEnabled, favIds) {
+    LaunchedEffect(refreshKey, indexEnabled, favIds, canReadImages, canReadVideos) {
         val refreshedCollections = withContext(Dispatchers.IO) {
             val index = if (indexEnabled) {
                 val store = ScreenshotIndexStore(context)
@@ -301,8 +307,8 @@ fun GalleryScreen(
                 emptyMap()
             }
             Triple(
-                loadAlbums(context.contentResolver),
-                loadSmartAlbums(context.contentResolver, screenW, screenH, index),
+                loadAlbums(context.contentResolver, canReadImages, canReadVideos),
+                loadSmartAlbums(context.contentResolver, screenW, screenH, index, canReadImages),
                 index
             )
         }
@@ -324,18 +330,18 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(selectedAlbum, indexEntries, refreshKey, favIds) {
+    LaunchedEffect(selectedAlbum, indexEntries, refreshKey, favIds, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
             selectedIds.clear()
             val loadedPhotos = withContext(Dispatchers.IO) {
                 when (path) {
-                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries)
-                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, indexEntries)
+                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, indexEntries, canReadImages, canReadVideos)
+                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllIds(context), screenW, screenH, indexEntries, canReadImages, canReadVideos)
                     else -> if (path.startsWith(SMART_ALBUM_PREFIX)) {
-                        loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH, indexEntries)
+                        loadSmartAlbumPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages)
                     } else {
-                        loadPhotos(context.contentResolver, path, screenW, screenH, indexEntries)
+                        loadPhotos(context.contentResolver, path, screenW, screenH, indexEntries, canReadImages, canReadVideos)
                     }
                 }
             }
@@ -528,6 +534,27 @@ fun GalleryScreen(
             }
         }
 
+        if (!selectionMode && (imageAccess != MediaAccess.FULL || videoAccess != MediaAccess.FULL)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                if (imageAccess != MediaAccess.FULL) {
+                    GalleryCapabilityBanner(
+                        title = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_images_partial_title else R.string.gallery_images_denied_title),
+                        body = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_images_partial_body else R.string.gallery_images_denied_body),
+                        action = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_images),
+                        onClick = onRequestImageAccess
+                    )
+                }
+                if (videoAccess != MediaAccess.FULL) {
+                    GalleryCapabilityBanner(
+                        title = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_videos_partial_title else R.string.gallery_videos_denied_title),
+                        body = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_videos_partial_body else R.string.gallery_videos_denied_body),
+                        action = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_videos),
+                        onClick = onRequestVideoAccess
+                    )
+                }
+            }
+        }
+
         // Search bar
         if (!selectionMode && ((selectedAlbum == null && (albums.isNotEmpty() || smartAlbums.isNotEmpty())) || selectedAlbum != null)) {
             OutlinedTextField(
@@ -598,6 +625,26 @@ fun GalleryScreen(
                     else if (zoom > 1.2f) gridColumns = (gridColumns - 1).coerceAtLeast(2)
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun GalleryCapabilityBanner(title: String, body: String, action: String, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text(body, color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+            TextButton(onClick = onClick) { Text(action, color = Primary, fontSize = 12.sp) }
         }
     }
 }
@@ -1234,13 +1281,13 @@ private fun PhotoViewer(
     }
 }
 
-private fun loadAlbums(resolver: ContentResolver): List<Album> {
+private fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includeVideos: Boolean): List<Album> {
     val albumMap = mutableMapOf<String, MutableList<Pair<Long, Boolean>>>() // id to isVideo
     val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH)
     val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
     // Images
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+    (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder) else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
         while (cursor.moveToNext()) {
@@ -1250,7 +1297,7 @@ private fun loadAlbums(resolver: ContentResolver): List<Album> {
         }
     }
     // Videos
-    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)?.use { cursor ->
+    (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder) else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
         while (cursor.moveToNext()) {
@@ -1274,9 +1321,10 @@ private fun loadSmartAlbums(
     resolver: ContentResolver,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap()
+    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    includeImages: Boolean = true
 ): List<Album> {
-    val screenshots = loadAllPhotos(resolver, screenW, screenH, indexEntries)
+    val screenshots = loadAllPhotos(resolver, screenW, screenH, indexEntries, includeImages, includeVideos = false)
         .filter { !it.isVideo && it.isScreenshot }
     if (screenshots.isEmpty()) return emptyList()
 
@@ -1299,10 +1347,11 @@ private fun loadSmartAlbumPhotos(
     smartAlbumPath: String,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap()
+    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    includeImages: Boolean = true
 ): List<Photo> {
     val rule = smartAlbumRuleFor(smartAlbumPath) ?: return emptyList()
-    return loadAllPhotos(resolver, screenW, screenH, indexEntries)
+    return loadAllPhotos(resolver, screenW, screenH, indexEntries, includeImages, includeVideos = false)
         .filter { rule.matches(it) }
         .sortedByDescending { it.dateAdded }
 }
@@ -1312,7 +1361,9 @@ private fun loadPhotos(
     albumPath: String,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap()
+    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    includeImages: Boolean = true,
+    includeVideos: Boolean = true
 ): List<Photo> {
     val photos = mutableListOf<Photo>()
 
@@ -1322,8 +1373,8 @@ private fun loadPhotos(
         MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT)
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
-        "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
+    (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
+        "${MediaStore.Images.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -1345,9 +1396,9 @@ private fun loadPhotos(
     // Videos (screenshot detection N/A)
     val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
         MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.DURATION)
-    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
+    (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
         "${MediaStore.Video.Media.RELATIVE_PATH} = ?", selectionArgs,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+        "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -1369,7 +1420,9 @@ private fun loadAllPhotos(
     resolver: ContentResolver,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap()
+    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    includeImages: Boolean = true,
+    includeVideos: Boolean = true
 ): List<Photo> {
     val photos = mutableListOf<Photo>()
 
@@ -1378,8 +1431,8 @@ private fun loadAllPhotos(
         MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.SIZE,
         MediaStore.Images.Media.WIDTH, MediaStore.Images.Media.HEIGHT,
         MediaStore.Images.Media.RELATIVE_PATH)
-    resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
-        "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
+    (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
+        "${MediaStore.Images.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -1403,8 +1456,8 @@ private fun loadAllPhotos(
     val vidProjection = arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DATE_ADDED,
         MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.SIZE,
         MediaStore.Video.Media.DURATION, MediaStore.Video.Media.RELATIVE_PATH)
-    resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC")?.use { cursor ->
+    (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
+        "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -1428,7 +1481,9 @@ private fun loadFavoritePhotos(
     favIds: Set<Long>,
     screenW: Int,
     screenH: Int,
-    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap()
+    indexEntries: Map<Long, ScreenshotIndexEntry> = emptyMap(),
+    includeImages: Boolean = true,
+    includeVideos: Boolean = true
 ): List<Photo> {
     if (favIds.isEmpty()) return emptyList()
     val photos = mutableListOf<Photo>()
@@ -1476,7 +1531,7 @@ private fun loadFavoritePhotos(
     }
 
     val idsList = favIds.toList()
-    queryFavs(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, idsList, false)
-    queryFavs(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, idsList, true)
+    if (includeImages) queryFavs(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, idsList, false)
+    if (includeVideos) queryFavs(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, idsList, true)
     return photos.sortedByDescending { it.dateAdded }
 }

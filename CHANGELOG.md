@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Independent media capability gates (v6.34.0).**
+
+- Split image, video, and notification state across Android 29–36. Automatic
+  monitoring now depends only on full image access; video and notification
+  denial no longer block it, boot resume, or unrelated picker workflows.
+- Android 14 selected image/video access now includes the reselection permission,
+  queries only authorized Gallery collections, and displays exact Manage/Allow
+  recovery cards. SAF image, batch, and video pickers remain available in every
+  denied or partial state.
+- Added defensive image-access checks to delayed capture, boot, monitor and
+  last-action tiles, and MediaStore observer registration. Notification denial
+  preserves the foreground service’s Task Manager visibility while explaining
+  that drawer actions are unavailable.
+
 **Bounded Step Capture pipeline (v6.33.0).**
 
 - Step Capture now normalizes frames to at most 720 px, stores at most 10
