@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Theme-aware media surfaces (v6.39.0).**
+
+- Editor, Gallery, crop recovery, stitch, collage, device-frame, and video roots
+  now use the active Dark/Light/System background instead of hardcoded black.
+  Image/video viewers retain a neutral black backdrop through dedicated media
+  tokens with guaranteed contrasting placeholder text and controls.
+- Light/System mode now updates status/navigation icon appearance at runtime and
+  uses paired day/night launch resources. Adjusted light secondary/warning tokens
+  meet WCAG normal-text contrast against their app surfaces.
+- Added deterministic Dark/Light/System resolution, token-contrast, system-bar,
+  and full-screen hardcoded-surface guards. Physical portrait/landscape,
+  large-font, and live system-bar QA remains recorded as a device blocker.
+
 **Measured sensitive-text redaction gates (v6.38.0).**
 
 - Sensitive-text detections now retain category, source, and OCR-box geometry

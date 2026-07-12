@@ -60,6 +60,8 @@ import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.Secondary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.MediaSurface
+import com.sysadmindoc.snapcrop.ui.theme.OnMediaSurfaceVariant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -271,11 +273,11 @@ private fun LongScreenshotReviewScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color.Black),
+                    .background(MediaSurface),
                 contentAlignment = Alignment.Center
             ) {
                 if (uri == null) {
-                    Text(stringResource(R.string.long_screenshot_preview_unavailable), color = OnSurfaceVariant)
+                    Text(stringResource(R.string.long_screenshot_preview_unavailable), color = OnMediaSurfaceVariant)
                 } else {
                     AsyncImage(
                         model = uri,

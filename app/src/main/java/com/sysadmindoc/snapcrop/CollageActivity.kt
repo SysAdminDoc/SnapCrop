@@ -318,7 +318,7 @@ private fun CollageScreen(
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(Black).safeDrawingPadding().imePadding()) {
         // Top bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -474,7 +474,7 @@ private fun CollageScreen(
                                 Box(
                                     Modifier.weight(1f).fillMaxHeight()
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .background(if (occupied) MediaSurface else SurfaceVariant)
                                         .semantics {
                                             contentDescription = cellCd
                                         }
@@ -498,7 +498,7 @@ private fun CollageScreen(
                                                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                                         ) {
                                             Icon(Icons.Default.Close, removeCellDescription,
-                                                tint = OnSurface, modifier = Modifier.size(18.dp))
+                                                tint = OnMediaSurface, modifier = Modifier.size(18.dp))
                                         }
                                     } else {
                                         Text("+", color = OnSurfaceVariant, fontSize = 24.sp)

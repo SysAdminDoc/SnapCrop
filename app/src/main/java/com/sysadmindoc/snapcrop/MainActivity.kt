@@ -2340,7 +2340,7 @@ private fun RecentCropTile(
                 Icon(
                     Icons.Default.ContentCopy,
                     contentDescription = stringResource(R.string.home_copy_crop_cd),
-                    tint = OnSurface,
+                    tint = OnMediaSurface,
                     modifier = Modifier.size(18.dp)
                 )
             }

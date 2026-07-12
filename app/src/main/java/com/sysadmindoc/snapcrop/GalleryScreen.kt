@@ -425,7 +425,7 @@ fun GalleryScreen(
         return
     }
 
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
+    Column(Modifier.fillMaxSize().background(Black)) {
         // Top bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -848,9 +848,9 @@ private fun AlbumGrid(
                     Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
                         .background(Color.Black.copy(alpha = 0.6f)).padding(8.dp)) {
                         Column {
-                            Text(album.name, color = OnSurface, fontSize = 13.sp,
+                            Text(album.name, color = OnMediaSurface, fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("${album.count}", color = OnSurfaceVariant, fontSize = 11.sp)
+                            Text("${album.count}", color = OnMediaSurfaceVariant, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1065,7 +1065,7 @@ private fun PhotoViewer(
     val zoomStates = remember { mutableStateMapOf<Int, Triple<Float, Float, Float>>() }
     val currentZoom = zoomStates[pagerState.currentPage]?.first ?: 1f
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(Modifier.fillMaxSize().background(MediaSurface)) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -1219,7 +1219,7 @@ private fun PhotoViewer(
                 Icon(
                     Icons.Default.Accessibility,
                     stringResource(R.string.gallery_describe),
-                    tint = if (summaryLoading) OnSurfaceVariant else Color.White
+                    tint = if (summaryLoading) OnMediaSurfaceVariant else OnMediaSurface
                 )
             }
             IconButton(onClick = { photos.getOrNull(pagerState.currentPage)?.let { onEdit(it) } }) {

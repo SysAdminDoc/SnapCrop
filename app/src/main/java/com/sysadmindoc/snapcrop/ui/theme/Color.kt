@@ -14,13 +14,13 @@ val SurfaceVariant: Color get() = if (_isDark.value) Color(0xFF1A1A1A) else Colo
 val SurfaceContainer: Color get() = if (_isDark.value) Color(0xFF141414) else Color(0xFFEFF1F5)
 val SurfaceElevated: Color get() = if (_isDark.value) Color(0xFF202020) else Color(0xFFDCE0E8)
 val OnSurface: Color get() = if (_isDark.value) Color(0xFFE0E0E0) else Color(0xFF4C4F69)
-val OnSurfaceVariant: Color get() = if (_isDark.value) Color(0xFF9E9E9E) else Color(0xFF6C6F85)
+val OnSurfaceVariant: Color get() = if (_isDark.value) Color(0xFF9E9E9E) else Color(0xFF5C5F77)
 val Primary: Color get() = if (_isDark.value) Color(0xFF89B4FA) else Color(0xFF1E66F5)
 val PrimaryContainer: Color get() = if (_isDark.value) Color(0xFF1E3A5F) else Color(0xFFD5E2FA)
 val OnPrimary: Color get() = if (_isDark.value) Color(0xFF000000) else Color(0xFFFFFFFF)
-val Secondary: Color get() = if (_isDark.value) Color(0xFFA6E3A1) else Color(0xFF40A02B)
+val Secondary: Color get() = if (_isDark.value) Color(0xFFA6E3A1) else Color(0xFF2E7D1C)
 val Tertiary: Color get() = if (_isDark.value) Color(0xFFF38BA8) else Color(0xFFD20F39)
-val Warning: Color get() = if (_isDark.value) Color(0xFFFAB387) else Color(0xFFFE640B)
+val Warning: Color get() = if (_isDark.value) Color(0xFFFAB387) else Color(0xFFC44200)
 // Editor mode accents — Catppuccin Mocha (dark) / Latte (light) so they adapt across themes.
 val OcrAccent: Color get() = if (_isDark.value) Color(0xFFCBA6F7) else Color(0xFF8839EF) // lavender / mauve
 val AdjustAccent: Color get() = if (_isDark.value) Color(0xFFFAB387) else Color(0xFFFE640B) // peach
@@ -32,3 +32,7 @@ val Outline: Color get() = if (_isDark.value) Color(0xFF333333) else Color(0xFFC
 val CropHandle: Color get() = if (_isDark.value) Color(0xFF89B4FA) else Color(0xFF1E66F5)
 val CropBorder: Color get() = if (_isDark.value) Color(0xFFCDD6F4) else Color(0xFF4C4F69)
 val DimOverlay: Color get() = Color(0xAA000000)
+// Image/video preview backdrops stay neutral in both app themes; pair them only with OnMediaSurface.
+val MediaSurface: Color get() = Color(0xFF000000)
+val OnMediaSurface: Color get() = Color(0xFFEDEDF2)
+val OnMediaSurfaceVariant: Color get() = Color(0xFFB8B8C2)

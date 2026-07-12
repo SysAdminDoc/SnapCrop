@@ -814,7 +814,7 @@ fun CropEditorScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Black)
             .safeDrawingPadding()
             .imePadding()
             .focusRequester(editorFocusRequester)
@@ -2255,7 +2255,7 @@ fun CropEditorScreen(
                 ) {
                     Text("${String.format("%.1f", zoomLevel)}x",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        color = OnMediaSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
             }
 

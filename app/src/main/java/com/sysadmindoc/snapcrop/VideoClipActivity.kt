@@ -215,7 +215,7 @@ private fun VideoClipScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Black)
             .safeDrawingPadding()
             .imePadding()
             .verticalScroll(rememberScrollState())
@@ -251,7 +251,7 @@ private fun VideoClipScreen(
             shape = RoundedCornerShape(12.dp)
         ) {
             Box(
-                modifier = Modifier.fillMaxWidth().aspectRatio(9f / 16f).background(Color.Black),
+                modifier = Modifier.fillMaxWidth().aspectRatio(9f / 16f).background(MediaSurface),
                 contentAlignment = Alignment.Center
             ) {
                 val image = preview
@@ -263,7 +263,7 @@ private fun VideoClipScreen(
                         contentScale = ContentScale.Fit
                     )
                 } else {
-                    Text(stringResource(R.string.video_scrubber_hint), color = OnSurfaceVariant, fontSize = 13.sp)
+                    Text(stringResource(R.string.video_scrubber_hint), color = OnMediaSurfaceVariant, fontSize = 13.sp)
                 }
             }
         }

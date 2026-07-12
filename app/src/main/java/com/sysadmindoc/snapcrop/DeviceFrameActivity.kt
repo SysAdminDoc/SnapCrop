@@ -249,7 +249,7 @@ private fun FrameScreen(
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()) {
+    Column(Modifier.fillMaxSize().background(Black).safeDrawingPadding().imePadding()) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically

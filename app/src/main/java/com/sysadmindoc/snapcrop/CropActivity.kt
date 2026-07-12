@@ -69,6 +69,7 @@ import com.sysadmindoc.snapcrop.ui.theme.Primary
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import com.sysadmindoc.snapcrop.ui.theme.SurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Tertiary
+import com.sysadmindoc.snapcrop.ui.theme.Black
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -211,7 +212,7 @@ class CropActivity : ComponentActivity() {
             SnapCropTheme {
                 val showDeleteConfirm = remember { mutableStateOf(false) }
                 val replaceOriginalOnSave = remember { effectiveDeleteOriginalOnSave() }
-                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                Box(Modifier.fillMaxSize().background(Black)) {
                     if (isLoading.value) {
                         CircularProgressIndicator(
                             modifier = Modifier.align(Alignment.Center),
@@ -304,7 +305,7 @@ class CropActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color.Black)
+                                .background(Black)
                                 .padding(24.dp),
                             contentAlignment = Alignment.Center
                         ) {

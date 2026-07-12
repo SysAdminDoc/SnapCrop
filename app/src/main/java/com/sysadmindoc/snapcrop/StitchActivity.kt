@@ -244,7 +244,7 @@ private fun StitchScreen(
     onClose: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()
+        Modifier.fillMaxSize().background(Black).safeDrawingPadding().imePadding()
     ) {
         // Top bar
         Row(
@@ -345,7 +345,7 @@ private fun StitchScreen(
                                     onClick = { onMoveUp(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.stitch_move_up_cd, index + 1), tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.stitch_move_up_cd, index + 1), tint = OnMediaSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             if (index < uris.size - 1) {
@@ -353,7 +353,7 @@ private fun StitchScreen(
                                     onClick = { onMoveDown(index) },
                                     modifier = Modifier.size(36.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                                ) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.stitch_move_down_cd, index + 1), tint = OnSurface, modifier = Modifier.size(18.dp)) }
+                                ) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.stitch_move_down_cd, index + 1), tint = OnMediaSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
@@ -448,10 +448,10 @@ private fun StitchScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.Save, null, Modifier.size(18.dp),
-                        tint = if (canSave) Color.Black else OnSurfaceVariant)
+                        tint = if (canSave) OnPrimary else OnSurfaceVariant)
                     Spacer(Modifier.width(8.dp))
                     Text(if (canSave) stringResource(R.string.stitch_save_button) else stringResource(R.string.stitch_one_title),
-                        color = if (canSave) Color.Black else OnSurfaceVariant,
+                        color = if (canSave) OnPrimary else OnSurfaceVariant,
                         fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 }
             }
