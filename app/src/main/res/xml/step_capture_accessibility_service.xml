@@ -6,4 +6,6 @@
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
     android:description="@string/step_capture_service_description"
+    android:isAccessibilityTool="false"
+    android:tileService=".StepCaptureTileService"
     android:notificationTimeout="100" />

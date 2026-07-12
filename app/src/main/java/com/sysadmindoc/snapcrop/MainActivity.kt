@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
     private val galleryRefreshKey = mutableIntStateOf(0)
     private val recentCrops = mutableStateOf<List<RecentCrop>>(emptyList())
     private val cropCount = mutableStateOf(0)
-    private val showAccessibilityDisclosure = mutableStateOf(false)
+    private val pendingAccessibilityDisclosure = mutableStateOf<AccessibilityPurpose?>(null)
     private var pendingMutationUris = mutableListOf<Uri>()
     private var pendingMutationSucceeded = mutableListOf<Uri>()
     private var pendingMutationChunk = emptyList<Uri>()
@@ -277,6 +277,7 @@ class MainActivity : ComponentActivity() {
         pendingMutationChunk = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_CHUNK)
             ?.map(Uri::parse) ?: emptyList()
         pendingMutationRequested = savedInstanceState?.getInt(KEY_PENDING_MUTATION_REQUESTED) ?: 0
+        handleAccessibilityIntent(intent)
 
         window.decorView.setOnDragListener { _, event ->
             when (event.action) {
@@ -429,32 +430,56 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                if (showAccessibilityDisclosure.value) {
+                pendingAccessibilityDisclosure.value?.let { purpose ->
                     AlertDialog(
-                        onDismissRequest = { showAccessibilityDisclosure.value = false },
-                        title = { Text(stringResource(R.string.accessibility_dialog_title), color = OnSurface) },
-                        text = {
+                        onDismissRequest = { pendingAccessibilityDisclosure.value = null },
+                        title = {
                             Text(
-                                stringResource(R.string.accessibility_dialog_body),
-                                color = OnSurfaceVariant,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp
+                                stringResource(
+                                    if (purpose == AccessibilityPurpose.LONG_SCREENSHOT) {
+                                        R.string.accessibility_long_title
+                                    } else {
+                                        R.string.accessibility_step_title
+                                    }
+                                ),
+                                color = OnSurface
                             )
+                        },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Text(
+                                    stringResource(
+                                        if (purpose == AccessibilityPurpose.LONG_SCREENSHOT) {
+                                            R.string.accessibility_long_body
+                                        } else {
+                                            R.string.accessibility_step_body
+                                        }
+                                    ),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp
+                                )
+                            }
                         },
                         confirmButton = {
                             TextButton(
                                 onClick = {
-                                    showAccessibilityDisclosure.value = false
-                                    openAccessibilitySettings()
+                                    AccessibilityDisclosure.recordConsent(this@MainActivity, purpose)
+                                    pendingAccessibilityDisclosure.value = null
+                                    if (isAccessibilityPurposeReady(purpose)) {
+                                        executeAccessibilityPurpose(purpose)
+                                    } else {
+                                        openAccessibilitySettings(purpose)
+                                    }
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Primary)
                             ) {
-                                Text(stringResource(R.string.accessibility_open_settings))
+                                Text(stringResource(R.string.accessibility_agree_continue))
                             }
                         },
                         dismissButton = {
                             TextButton(
-                                onClick = { showAccessibilityDisclosure.value = false },
+                                onClick = { pendingAccessibilityDisclosure.value = null },
                                 colors = ButtonDefaults.textButtonColors(contentColor = OnSurfaceVariant)
                             ) {
                                 Text(stringResource(R.string.accessibility_not_now))
@@ -740,6 +765,12 @@ class MainActivity : ComponentActivity() {
 
         if (hasPermissions.value) loadRecentCrops()
         galleryRefreshKey.intValue++
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAccessibilityIntent(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1610,21 +1641,59 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        if (!ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 2500L)) {
-            showAccessibilityDisclosure.value = true
-            return
-        }
-
-        moveTaskToBack(true)
+        requestAccessibilityPurpose(AccessibilityPurpose.LONG_SCREENSHOT)
     }
 
-    private fun openAccessibilitySettings() {
+    private fun handleAccessibilityIntent(incoming: Intent?) {
+        val purpose = AccessibilityDisclosure.purpose(incoming) ?: return
+        incoming?.removeExtra(AccessibilityDisclosure.EXTRA_PURPOSE)
+        requestAccessibilityPurpose(purpose)
+    }
+
+    private fun requestAccessibilityPurpose(purpose: AccessibilityPurpose) {
+        val action = AccessibilityDisclosure.route(
+            purpose = purpose,
+            serviceReady = isAccessibilityPurposeReady(purpose),
+            stepCaptureActive = StepCaptureService.isCapturing(),
+            hasCurrentConsent = AccessibilityDisclosure.hasCurrentConsent(this, purpose)
+        )
+        when (action) {
+            AccessibilityAction.SHOW_DISCLOSURE -> pendingAccessibilityDisclosure.value = purpose
+            AccessibilityAction.OPEN_SETTINGS -> openAccessibilitySettings(purpose)
+            AccessibilityAction.START, AccessibilityAction.STOP -> executeAccessibilityPurpose(purpose)
+        }
+    }
+
+    private fun executeAccessibilityPurpose(purpose: AccessibilityPurpose) {
+        val started = when (purpose) {
+            AccessibilityPurpose.LONG_SCREENSHOT ->
+                ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 2500L)
+            AccessibilityPurpose.STEP_CAPTURE -> StepCaptureService.toggleCapture(this)
+        }
+        if (started) moveTaskToBack(true) else openAccessibilitySettings(purpose)
+    }
+
+    private fun isAccessibilityPurposeReady(purpose: AccessibilityPurpose): Boolean = when (purpose) {
+        AccessibilityPurpose.LONG_SCREENSHOT -> ScrollCaptureService.isReady()
+        AccessibilityPurpose.STEP_CAPTURE -> StepCaptureService.isReady()
+    }
+
+    private fun openAccessibilitySettings(purpose: AccessibilityPurpose) {
         Toast.makeText(
             this,
-            getString(R.string.toast_enable_accessibility),
+            getString(
+                if (purpose == AccessibilityPurpose.LONG_SCREENSHOT) {
+                    R.string.toast_enable_long_accessibility
+                } else {
+                    R.string.toast_enable_step_accessibility
+                }
+            ),
             Toast.LENGTH_LONG
         ).show()
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            .onFailure {
+                Toast.makeText(this, R.string.toast_accessibility_settings_unavailable, Toast.LENGTH_LONG).show()
+            }
     }
 
     private fun isScrollCaptureEnabled(): Boolean {

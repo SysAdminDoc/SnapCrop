@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
@@ -25,16 +24,18 @@ class StepCaptureTileService : TileService() {
             return
         }
 
-        if (StepCaptureService.toggleCapture(this)) {
-            updateTile()
-            return
+        val purpose = AccessibilityPurpose.STEP_CAPTURE
+        val action = AccessibilityDisclosure.route(
+            purpose = purpose,
+            serviceReady = StepCaptureService.isReady(),
+            stepCaptureActive = StepCaptureService.isCapturing(),
+            hasCurrentConsent = AccessibilityDisclosure.hasCurrentConsent(this, purpose)
+        )
+        if (action == AccessibilityAction.START || action == AccessibilityAction.STOP) {
+            StepCaptureService.toggleCapture(this)
+        } else {
+            startActivityAndCollapseCompat(AccessibilityDisclosure.intent(this, purpose), requestCode = 21)
         }
-
-        Toast.makeText(this, getString(R.string.toast_enable_accessibility), Toast.LENGTH_LONG).show()
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivityAndCollapseCompat(intent, requestCode = 21)
         updateTile()
     }
 

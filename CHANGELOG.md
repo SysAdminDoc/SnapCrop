@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Purpose-specific Accessibility consent (v6.29.0).**
+
+- Long Screenshot and Step Capture now have separate, versioned consent records
+  and prominent disclosures describing the exact events, window data, visible
+  screenshots, gestures, temporary frames, local retention, and no-upload
+  behavior used by each workflow.
+- Home and both Quick Settings tiles now route first use through the matching
+  disclosure instead of opening Android Accessibility settings directly. Cancel
+  records nothing; an active Step Capture session can still be stopped at once.
+- Accessibility service metadata now identifies both services as non-tool
+  workflows, links their tiles on supported Android versions, and uses
+  purpose-specific labels/descriptions.
+
 **Verifiable local release artifacts (v6.28.1).**
 
 - Added `:app:generateReleaseProvenance`, which produces a stable versioned APK,

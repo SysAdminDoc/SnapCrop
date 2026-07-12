@@ -7,4 +7,6 @@
     android:canRetrieveWindowContent="true"
     android:canTakeScreenshot="true"
     android:description="@string/scroll_capture_service_description"
+    android:isAccessibilityTool="false"
+    android:tileService=".LongScreenshotTileService"
     android:notificationTimeout="100" />

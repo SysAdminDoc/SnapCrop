@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">SnapCrop</string>
     <string name="scroll_capture_service_label">SnapCrop Long screenshot</string>
-    <string name="scroll_capture_service_description">Captures the visible screen, scrolls forward, and stitches the frames into one long screenshot when you start the Long screenshot action.</string>
+    <string name="scroll_capture_service_description">When you start Long screenshot, SnapCrop reads the active window structure, performs scroll gestures, captures visible frames, and stitches them locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
     <string name="step_capture_service_label">SnapCrop Step capture</string>
-    <string name="step_capture_service_description">While a step-capture session is active, captures the screen each time you tap and marks where you tapped, then assembles a numbered guide. Nothing is captured unless you start a session from the Step capture tile.</string>
+    <string name="step_capture_service_description">During a Step capture session, SnapCrop observes click and long-click events, reads control bounds, captures the visible screen after each step, and assembles a numbered guide locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
     <string name="step_capture_started">Step capture started — tap through your steps, then tap the tile again to finish.</string>
     <string name="step_capture_step">Captured step %1$d</string>
     <string name="step_capture_building">Building guide from %1$d steps…</string>
@@ -135,11 +135,19 @@
     <string name="accessibility_dialog_body">Long Screenshot uses Android Accessibility only after you start the action. It captures the visible screen, reads window structure enough to scroll, and performs scroll gestures to stitch frames. Frames stay on this device and are saved to your SnapCrop folder; SnapCrop does not upload or share Accessibility data. You can skip this and still use manual crop, stitch, gallery, and editor tools.</string>
     <string name="accessibility_open_settings">Open settings</string>
     <string name="accessibility_not_now">Not now</string>
+    <string name="accessibility_long_title">Allow Long screenshot Accessibility access?</string>
+    <string name="accessibility_long_body">Long screenshot uses Android Accessibility only when you start this workflow. It reads the active window structure, performs scroll gestures, and captures visible screen frames to stitch one image. Temporary frames and the finished image stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. You can cancel and continue using manual crop, stitch, Gallery, and editor tools.</string>
+    <string name="accessibility_step_title">Allow Step capture Accessibility access?</string>
+    <string name="accessibility_step_body">Step capture uses Android Accessibility only during a session you start. It observes click and long-click events, reads the selected control’s screen bounds, and captures the visible screen after each step to assemble a numbered guide. Temporary frames and the guide stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. Tap the Step capture tile again to stop a session, or cancel now without enabling Accessibility.</string>
+    <string name="accessibility_agree_continue">Agree and continue</string>
 
     <!-- Toasts -->
     <string name="toast_capturing_in">Capturing in %1$ds…</string>
     <string name="toast_long_requires_11">Long screenshot requires Android 11 or newer</string>
     <string name="toast_enable_accessibility">Enable SnapCrop Long screenshot, then add its Quick Settings tile.</string>
+    <string name="toast_enable_long_accessibility">Enable SnapCrop Long screenshot in Accessibility settings.</string>
+    <string name="toast_enable_step_accessibility">Enable SnapCrop Step capture in Accessibility settings.</string>
+    <string name="toast_accessibility_settings_unavailable">Accessibility settings could not be opened on this device.</string>
     <string name="toast_deleted">Deleted</string>
     <string name="toast_deleted_count">Deleted %1$d photos</string>
     <string name="toast_delete_failed">Delete failed: %1$s</string>

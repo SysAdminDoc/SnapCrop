@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
-import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.widget.Toast
@@ -24,16 +23,18 @@ class LongScreenshotTileService : TileService() {
             return
         }
 
-        if (ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 900L)) {
-            updateTile()
-            return
+        val purpose = AccessibilityPurpose.LONG_SCREENSHOT
+        val action = AccessibilityDisclosure.route(
+            purpose = purpose,
+            serviceReady = ScrollCaptureService.isReady(),
+            stepCaptureActive = false,
+            hasCurrentConsent = AccessibilityDisclosure.hasCurrentConsent(this, purpose)
+        )
+        if (action == AccessibilityAction.START) {
+            ScrollCaptureService.requestLongScreenshot(this, startDelayMs = 900L)
+        } else {
+            startActivityAndCollapseCompat(AccessibilityDisclosure.intent(this, purpose), requestCode = 20)
         }
-
-        Toast.makeText(this, getString(R.string.toast_enable_accessibility), Toast.LENGTH_LONG).show()
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivityAndCollapseCompat(intent, requestCode = 20)
         updateTile()
     }
 

@@ -133,7 +133,7 @@
             android:name=".StepCaptureTileService"
             android:exported="true"
             android:icon="@drawable/ic_crop"
-            android:label="Step capture"
+            android:label="@string/tile_step_label"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
@@ -155,7 +155,7 @@
             android:name=".LongScreenshotTileService"
             android:exported="true"
             android:icon="@drawable/ic_crop"
-            android:label="Long screenshot"
+            android:label="@string/tile_long_label"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
