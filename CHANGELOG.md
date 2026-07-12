@@ -11,6 +11,9 @@ All notable changes to SnapCrop will be documented in this file.
   pixels, so Protect media previews cannot leak screenshot thumbnails.
 - Shared the validated newest-screenshot resolver between the widget and Quick
   Crop, including readable-image checks and exclusion of SnapCrop/automated outputs.
+- Extracted PDF report pagination/rendering from `MainActivity` and the raster
+  crop/redaction/draw/filter pipeline from `CropActivity` into focused renderers,
+  keeping activities responsible for workflow coordination and lifecycle state.
 
 **Premium interface system and workflow-focused Home (v6.67.0).**
 

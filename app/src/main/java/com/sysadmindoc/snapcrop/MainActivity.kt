@@ -11,9 +11,6 @@ import android.content.ClipDescription
 import android.content.Intent
 import android.view.DragEvent
 import android.graphics.BitmapFactory
-import android.graphics.Paint
-import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
@@ -87,8 +84,6 @@ import androidx.compose.ui.res.stringResource
 import com.sysadmindoc.snapcrop.BuildConfig
 import com.sysadmindoc.snapcrop.ui.theme.*
 import java.io.IOException
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
@@ -98,8 +93,6 @@ class MainActivity : ComponentActivity() {
         const val MAX_REPORT_ITEMS = 100
         const val MAX_REPORT_TITLE_CHARS = 160
         const val MAX_REPORT_NOTES_CHARS = 4_000
-        const val MAX_OCR_APPENDIX_CHARS = 4_000
-        const val MIN_REPORT_IMAGE_POINTS = 72f
         const val KEY_PENDING_MUTATION_URIS = "pending_mutation_uris"
         const val KEY_PENDING_MUTATION_SUCCEEDED = "pending_mutation_succeeded"
         const val KEY_PENDING_MUTATION_CHUNK = "pending_mutation_chunk"
@@ -127,6 +120,7 @@ class MainActivity : ComponentActivity() {
     private val cropCount = mutableStateOf(0)
     private val pendingAccessibilityDisclosure = mutableStateOf<AccessibilityPurpose?>(null)
     private val galleryOpenRequest = mutableStateOf<GalleryOpenRequest?>(null)
+    private val pdfReportRenderer by lazy { PdfReportRenderer(applicationContext) }
     private val pendingOpenGallery = mutableStateOf(false)
     private var pendingMutationUris = mutableListOf<Uri>()
     private var pendingMutationSucceeded = mutableListOf<Uri>()
@@ -1579,7 +1573,7 @@ class MainActivity : ComponentActivity() {
             var pageNumber = 1
             var imagePages = 0
             try {
-                pageNumber = drawReportCoverPage(
+                pageNumber = pdfReportRenderer.drawCoverPage(
                     doc = doc,
                     pageNumber = pageNumber,
                     title = title.take(MAX_REPORT_TITLE_CHARS).ifBlank { getString(R.string.report_default_title) },
@@ -1605,7 +1599,9 @@ class MainActivity : ComponentActivity() {
                             appendix.add(metadata to extractedText)
                         }
                     }
-                    pageNumber = drawReportImagePage(doc, pageNumber, imagePages + 1, renderableUris.size, bitmap, metadata, ocrBlocks, layout)
+                    pageNumber = pdfReportRenderer.drawImagePage(
+                        doc, pageNumber, imagePages + 1, renderableUris.size, bitmap, metadata, ocrBlocks, layout
+                    )
                     imagePages++
                     bitmap.recycle()
                 }
@@ -1619,7 +1615,7 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
                 if (includeOcr && appendix.isNotEmpty()) {
-                    pageNumber = drawOcrAppendixPages(doc, pageNumber, appendix, layout)
+                    pageNumber = pdfReportRenderer.drawOcrAppendixPages(doc, pageNumber, appendix, layout)
                 }
                 val displayName = "SnapCrop_Report_$createdAt.pdf"
                 temporaryPdf = NetworkExportTempFiles.create(cacheDir, ".pdf")
@@ -1757,8 +1753,8 @@ class MainActivity : ComponentActivity() {
                         item,
                         totalItems,
                         fileName,
-                        formatSize(progress.bytesSent),
-                        progress.totalBytes?.let(::formatSize) ?: getString(R.string.batch_upload_unknown_size)
+                        formatExportSize(progress.bytesSent),
+                        progress.totalBytes?.let(::formatExportSize) ?: getString(R.string.batch_upload_unknown_size)
                     )
                     batchProgressFraction.floatValue = progress.totalBytes
                         ?.takeIf { it > 0 }
@@ -1851,207 +1847,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun drawReportCoverPage(
-        doc: PdfDocument,
-        pageNumber: Int,
-        title: String,
-        notes: String,
-        itemCount: Int,
-        createdAt: Long,
-        includeOcr: Boolean,
-        layout: PdfReportLayout
-    ): Int {
-        data class CoverLine(val text: String?, val paint: Paint?, val height: Float)
-
-        val lines = mutableListOf<CoverLine>()
-        wrapPdfTextLines(title, titlePaint(), layout.contentWidth).forEach {
-            lines += CoverLine(it, titlePaint(), 34f)
-        }
-        lines += CoverLine(null, null, 18f)
-        val summaryLines = listOf(
-            getString(R.string.pdf_created, formatTimestamp(createdAt)),
-            getString(R.string.pdf_image_count, itemCount),
-            getString(if (includeOcr) R.string.pdf_ocr_enabled else R.string.pdf_ocr_off)
-        ).joinToString("\n")
-        wrapPdfTextLines(summaryLines, bodyPaint(), layout.contentWidth).forEach {
-            lines += CoverLine(it, bodyPaint(), 17f)
-        }
-        if (notes.isNotBlank()) {
-            lines += CoverLine(null, null, 22f)
-            wrapPdfTextLines(getString(R.string.pdf_notes), sectionPaint(), layout.contentWidth).forEach {
-                lines += CoverLine(it, sectionPaint(), 22f)
-            }
-            lines += CoverLine(null, null, 6f)
-            wrapPdfTextLines(notes, bodyPaint(), layout.contentWidth).forEach {
-                lines += CoverLine(it, bodyPaint(), 17f)
-            }
-        }
-
-        var currentPageNumber = pageNumber
-        val startY = layout.marginPoints + 38f
-        paginatePdfLines(lines.map(CoverLine::height), startY, layout.contentBottom).forEach { indices ->
-            val page = doc.startPage(
-                PdfDocument.PageInfo.Builder(layout.widthPoints, layout.heightPoints, currentPageNumber).create()
-            )
-            val canvas = page.canvas
-            canvas.drawColor(android.graphics.Color.WHITE)
-            var y = startY
-            indices.forEach { index ->
-                val line = lines[index]
-                line.text?.let { canvas.drawText(it, layout.marginPoints, y, checkNotNull(line.paint)) }
-                y += line.height
-            }
-            drawPdfFooter(canvas, currentPageNumber, layout)
-            doc.finishPage(page)
-            currentPageNumber++
-        }
-        return currentPageNumber
-    }
-
-    private fun drawReportImagePage(
-        doc: PdfDocument,
-        pageNumber: Int,
-        itemNumber: Int,
-        totalItems: Int,
-        bitmap: android.graphics.Bitmap,
-        metadata: ExportItemMetadata,
-        ocrBlocks: List<TextBlock> = emptyList(),
-        layout: PdfReportLayout
-    ): Int {
-        var currentPageNumber = pageNumber
-        var page = doc.startPage(PdfDocument.PageInfo.Builder(layout.widthPoints, layout.heightPoints, currentPageNumber).create())
-        var canvas = page.canvas
-        canvas.drawColor(android.graphics.Color.WHITE)
-        var y = layout.marginPoints + 24f
-        y = drawWrappedText(
-            canvas,
-            getString(R.string.pdf_image_of, itemNumber, totalItems),
-            layout.marginPoints,
-            y,
-            layout.contentWidth,
-            sectionPaint(),
-            20f
-        )
-        val metaText = buildString {
-            append(metadata.displayName)
-            if (metadata.sourceHint.isNotBlank()) append("\n").append(getString(R.string.pdf_source, metadata.sourceHint))
-            if (metadata.relativePath.isNotBlank()) append("\n").append(getString(R.string.pdf_album, metadata.relativePath))
-            append("\n").append(getString(R.string.pdf_dimensions, metadata.width.takeIf { it > 0 } ?: bitmap.width, metadata.height.takeIf { it > 0 } ?: bitmap.height))
-            if (metadata.sizeBytes > 0) append("\n").append(getString(R.string.pdf_size, formatSize(metadata.sizeBytes)))
-            if (metadata.dateAddedSeconds > 0) append("\n").append(getString(R.string.pdf_date_added, formatTimestamp(metadata.dateAddedSeconds * 1000)))
-            if (metadata.categories.isNotEmpty()) append("\n").append(getString(R.string.pdf_tags, metadata.categories.joinToString(", ")))
-        }
-        y = drawWrappedText(canvas, metaText, layout.marginPoints, y + 6f, layout.contentWidth, smallPaint(), 13f)
-        var imageTop = y + 24f
-        var fitted = layout.fitImage(bitmap.width, bitmap.height, imageTop)
-        if (fitted == null || fitted.height < MIN_REPORT_IMAGE_POINTS) {
-            drawPdfFooter(canvas, currentPageNumber, layout)
-            doc.finishPage(page)
-            currentPageNumber++
-            page = doc.startPage(PdfDocument.PageInfo.Builder(layout.widthPoints, layout.heightPoints, currentPageNumber).create())
-            canvas = page.canvas
-            canvas.drawColor(android.graphics.Color.WHITE)
-            val headingBottom = drawWrappedText(
-                canvas,
-                getString(R.string.pdf_image_of, itemNumber, totalItems),
-                layout.marginPoints,
-                layout.marginPoints + 24f,
-                layout.contentWidth,
-                sectionPaint(),
-                20f
-            )
-            imageTop = headingBottom + 12f
-            fitted = checkNotNull(layout.fitImage(bitmap.width, bitmap.height, imageTop))
-        }
-        val placement = checkNotNull(fitted)
-        val scale = placement.width / bitmap.width
-        val left = placement.left
-        val top = placement.top
-        val dst = RectF(placement.left, placement.top, placement.right, placement.bottom)
-        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.rgb(210, 218, 226)
-            style = Paint.Style.STROKE
-            strokeWidth = 2f
-        }
-        canvas.drawBitmap(bitmap, null, dst, null)
-        canvas.drawRect(dst, border)
-        if (ocrBlocks.isNotEmpty()) {
-            val invisPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = android.graphics.Color.TRANSPARENT
-                textSize = 1f
-            }
-            for (block in ocrBlocks) {
-                val b = block.bounds
-                val bx = left + b.left * scale
-                val by = top + b.top * scale
-                val bw = b.width() * scale
-                val bh = b.height() * scale
-                if (bw < 1f || bh < 1f) continue
-                val lines = block.text.lines().filter(String::isNotBlank)
-                if (lines.isEmpty()) continue
-                val lineHeight = bh / lines.size
-                invisPaint.textSize = (lineHeight * 0.85f).coerceIn(1f, 40f)
-                lines.forEachIndexed { lineIndex, line ->
-                    canvas.drawText(line, bx, by + lineHeight * (lineIndex + 0.8f), invisPaint)
-                }
-            }
-        }
-        drawPdfFooter(canvas, currentPageNumber, layout)
-        doc.finishPage(page)
-        return currentPageNumber + 1
-    }
-
-    private fun drawOcrAppendixPages(
-        doc: PdfDocument,
-        startPageNumber: Int,
-        entries: List<Pair<ExportItemMetadata, String>>,
-        layout: PdfReportLayout
-    ): Int {
-        var pageNumber = startPageNumber
-        var page = doc.startPage(PdfDocument.PageInfo.Builder(layout.widthPoints, layout.heightPoints, pageNumber).create())
-        var canvas = page.canvas
-        canvas.drawColor(android.graphics.Color.WHITE)
-        var y = layout.marginPoints + 24f
-        val ocrAppendixLabel = getString(R.string.pdf_ocr_appendix)
-        y = drawWrappedText(canvas, ocrAppendixLabel, layout.marginPoints, y, layout.contentWidth, sectionPaint(), 24f)
-        val textPaint = smallPaint()
-        val maxWidth = layout.contentWidth
-        val bottom = layout.contentBottom
-
-        fun nextPage() {
-            drawPdfFooter(canvas, pageNumber, layout)
-            doc.finishPage(page)
-            pageNumber++
-            page = doc.startPage(PdfDocument.PageInfo.Builder(layout.widthPoints, layout.heightPoints, pageNumber).create())
-            canvas = page.canvas
-            canvas.drawColor(android.graphics.Color.WHITE)
-            y = layout.marginPoints + 24f
-            y = drawWrappedText(canvas, ocrAppendixLabel, layout.marginPoints, y, maxWidth, sectionPaint(), 24f)
-        }
-
-        entries.forEach { (metadata, text) ->
-            val headingLines = wrapPdfTextLines(metadata.displayName, sectionPaint(), maxWidth)
-            val boundedText = if (text.length > MAX_OCR_APPENDIX_CHARS) {
-                text.take(MAX_OCR_APPENDIX_CHARS) + "\n" + getString(R.string.pdf_text_truncated)
-            } else text
-            val lines = wrapPdfTextLines(boundedText, textPaint, maxWidth)
-            if (y + headingLines.size * 20f + minOf(1, lines.size) * 13f > bottom) nextPage()
-            headingLines.forEach { line ->
-                canvas.drawText(line, layout.marginPoints, y, sectionPaint())
-                y += 20f
-            }
-            lines.forEach { line ->
-                if (y + 13f > bottom) nextPage()
-                canvas.drawText(line, layout.marginPoints, y, textPaint)
-                y += 13f
-            }
-            y += 13f
-        }
-        drawPdfFooter(canvas, pageNumber, layout)
-        doc.finishPage(page)
-        return pageNumber + 1
-    }
-
     private fun savePdfFile(displayName: String, pdfFile: java.io.File): Boolean {
         val values = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
@@ -2077,71 +1872,6 @@ class MainActivity : ComponentActivity() {
             pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
             false
         }
-    }
-
-    private fun drawWrappedText(
-        canvas: android.graphics.Canvas,
-        text: String,
-        x: Float,
-        startY: Float,
-        maxWidth: Float,
-        paint: Paint,
-        lineHeight: Float,
-        maxLines: Int = Int.MAX_VALUE
-    ): Float {
-        var y = startY
-        var linesDrawn = 0
-        for (line in wrapPdfTextLines(text, paint, maxWidth)) {
-            if (linesDrawn >= maxLines) break
-            canvas.drawText(line, x, y, paint)
-            y += lineHeight
-            linesDrawn++
-        }
-        return y
-    }
-
-    private fun drawPdfFooter(canvas: android.graphics.Canvas, pageNumber: Int, layout: PdfReportLayout) {
-        val paint = smallPaint().apply { color = android.graphics.Color.rgb(92, 103, 115) }
-        val pageLabel = getString(R.string.pdf_page, pageNumber)
-        canvas.drawText(getString(R.string.pdf_footer), layout.marginPoints, layout.footerBaseline, paint)
-        canvas.drawText(
-            pageLabel,
-            layout.widthPoints - layout.marginPoints - paint.measureText(pageLabel),
-            layout.footerBaseline,
-            paint
-        )
-    }
-
-    private fun titlePaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(20, 29, 39)
-        textSize = 26f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    }
-
-    private fun sectionPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(25, 94, 145)
-        textSize = 16f
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-    }
-
-    private fun bodyPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(34, 44, 55)
-        textSize = 11f
-    }
-
-    private fun smallPaint() = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(56, 68, 80)
-        textSize = 9f
-    }
-
-
-    private fun formatTimestamp(millis: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(millis))
-
-    private fun formatSize(bytes: Long): String = when {
-        bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
-        bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
-        else -> "$bytes B"
     }
 
     private fun mediaIdFromUri(uri: Uri): Long? = try {

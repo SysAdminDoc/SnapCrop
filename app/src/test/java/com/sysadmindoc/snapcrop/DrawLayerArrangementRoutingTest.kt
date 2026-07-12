@@ -8,7 +8,7 @@ class DrawLayerArrangementRoutingTest {
     @Test
     fun layoutCommandsShareUndoPreviewRasterSvgAndProjectTransformPaths() {
         val editor = source("CropEditorScreen.kt")
-        val export = source("CropActivity.kt")
+        val export = source("CropActivity.kt") + source("CropImageRenderer.kt")
         val sidecar = source("SnapCropProjectSidecar.kt")
 
         assertTrue(editor.contains("fun arrangeDrawLayers"))

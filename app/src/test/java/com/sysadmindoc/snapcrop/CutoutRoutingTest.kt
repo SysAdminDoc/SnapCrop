@@ -9,13 +9,14 @@ class CutoutRoutingTest {
     fun everyFlatteningAndRecoveryPathCarriesTypedCutoutState() {
         val editor = source("CropEditorScreen.kt")
         val activity = source("CropActivity.kt")
+        val renderer = source("CropImageRenderer.kt")
         val project = source("SnapCropProjectSidecar.kt")
         val preview = source("EditorPreview.kt")
 
         assertTrue(editor.contains("CutoutEditState(cutBands, cutSeparatorStyle)"))
         assertTrue(activity.contains("cutout = d.cutout"))
         assertTrue(activity.contains("initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)"))
-        assertTrue(activity.contains("createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj, cutout)"))
+        assertTrue(activity.contains("CropImageRenderer.render(bitmap, rect, redactions, drawPaths, adj, cutout)"))
         assertTrue(activity.contains("buildAnnotationSvg(rect, redactions, drawPaths, cutout)"))
         assertTrue(activity.contains("buildProjectSidecarJson(rect, redactions, drawPaths, adj, cutout"))
         assertTrue(project.contains("private const val VERSION = 5"))
@@ -25,11 +26,11 @@ class CutoutRoutingTest {
 
     @Test
     fun incompatibleTransformsFailClosedInsteadOfIgnoringCuts() {
-        val activity = source("CropActivity.kt")
+        val renderer = source("CropImageRenderer.kt")
         val editor = source("CropEditorScreen.kt")
 
-        assertTrue(activity.contains("Cut Out cannot be combined with free rotation"))
-        assertTrue(activity.contains("Cut Out cannot be combined with perspective"))
+        assertTrue(renderer.contains("Cut Out cannot be combined with free rotation"))
+        assertTrue(renderer.contains("Cut Out cannot be combined with perspective"))
         assertTrue(editor.contains("enabled = cutBands.isEmpty()"))
     }
 

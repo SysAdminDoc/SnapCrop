@@ -24,6 +24,12 @@ data class ExportItemMetadata(
         }
 }
 
+internal fun formatExportSize(bytes: Long): String = when {
+    bytes >= 1_000_000 -> String.format(Locale.US, "%.1f MB", bytes / 1_000_000.0)
+    bytes >= 1_000 -> String.format(Locale.US, "%.1f KB", bytes / 1_000.0)
+    else -> "$bytes B"
+}
+
 object ReviewedOcr {
     const val MAX_PLAIN_TEXT_CHARS = 131_072
 
