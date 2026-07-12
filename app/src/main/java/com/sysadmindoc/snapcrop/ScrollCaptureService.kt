@@ -1,15 +1,12 @@
 package com.sysadmindoc.snapcrop
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityService.ScreenshotResult
-import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.Build
-import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -21,12 +18,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
-import kotlin.coroutines.resume
 
 class ScrollCaptureService : AccessibilityService() {
+
+    private enum class ScrollForwardResult { SCROLLED, END, WINDOW_LOST }
 
     companion object {
         private const val MAX_FRAMES = 10
@@ -59,6 +56,7 @@ class ScrollCaptureService : AccessibilityService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var isCapturing = false
+    private var lastCaptureFailure = AccessibilityScreenshotFailure.INTERNAL
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -86,10 +84,10 @@ class ScrollCaptureService : AccessibilityService() {
             isCapturing = true
             val frames = mutableListOf<Bitmap>()
             val startedAt = android.os.SystemClock.elapsedRealtime()
-            val captureFailedMsg = getString(R.string.long_screenshot_capture_failed)
             val captureLimitMsg = getString(R.string.scroll_capture_limit)
             val timeLimitMsg = getString(R.string.long_screenshot_time_limit)
             var stopReason = captureLimitMsg
+            var captureFailed = false
 
             try {
                 val startMessage = if (startDelayMs >= 1000L) {
@@ -104,18 +102,26 @@ class ScrollCaptureService : AccessibilityService() {
                     Toast.LENGTH_SHORT
                 ).show()
                 delay(startDelayMs.coerceAtLeast(0L))
+                val targetWindowId = if (Build.VERSION.SDK_INT >= 34) currentActiveWindowTarget()?.id else null
+                if (Build.VERSION.SDK_INT >= 34 && targetWindowId == null) {
+                    captureFailed = true
+                    stopReason = captureFailureMessage(AccessibilityScreenshotFailure.WINDOW_UNAVAILABLE)
+                    Toast.makeText(this@ScrollCaptureService, stopReason, Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
 
                 while (
                     isActive &&
                     frames.size < MAX_FRAMES &&
                     android.os.SystemClock.elapsedRealtime() - startedAt < MAX_CAPTURE_DURATION_MS
                 ) {
-                    val frame = captureCleanFrame()
+                    val frame = captureCleanFrame(targetWindowId)
                     if (frame == null) {
-                        stopReason = captureFailedMsg
+                        captureFailed = true
+                        stopReason = captureFailureMessage(lastCaptureFailure)
                         Toast.makeText(
                             this@ScrollCaptureService,
-                            captureFailedMsg,
+                            stopReason,
                             Toast.LENGTH_SHORT
                         ).show()
                         break
@@ -137,9 +143,17 @@ class ScrollCaptureService : AccessibilityService() {
                         stopReason = timeLimitMsg
                         break
                     }
-                    if (!scrollForward()) {
-                        stopReason = getString(R.string.long_screenshot_end_scroll)
-                        break
+                    when (scrollForward(targetWindowId)) {
+                        ScrollForwardResult.SCROLLED -> Unit
+                        ScrollForwardResult.END -> {
+                            stopReason = getString(R.string.long_screenshot_end_scroll)
+                            break
+                        }
+                        ScrollForwardResult.WINDOW_LOST -> {
+                            captureFailed = true
+                            stopReason = captureFailureMessage(AccessibilityScreenshotFailure.WINDOW_LOST)
+                            break
+                        }
                     }
 
                     delay(SCREENSHOT_INTERVAL_MS)
@@ -156,7 +170,7 @@ class ScrollCaptureService : AccessibilityService() {
                     frames.size >= 2 -> reviewLongScreenshot(frames, stopReason)
                     frames.size == 1 -> Toast.makeText(
                         this@ScrollCaptureService,
-                        if (stopReason == captureFailedMsg) stopReason else getString(R.string.long_screenshot_no_content),
+                        if (captureFailed) stopReason else getString(R.string.long_screenshot_no_content),
                         Toast.LENGTH_SHORT
                     ).show()
                     else -> Unit
@@ -169,8 +183,15 @@ class ScrollCaptureService : AccessibilityService() {
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
-    private suspend fun captureCleanFrame(): Bitmap? {
-        val raw = captureScreen() ?: return null
+    private suspend fun captureCleanFrame(targetWindowId: Int?): Bitmap? {
+        val capture = captureAccessibilityScreenshot(targetWindowId)
+        if (capture is AccessibilityScreenshotResult.Failure) {
+            lastCaptureFailure = capture.reason
+            return null
+        }
+        val success = capture as AccessibilityScreenshotResult.Success
+        val raw = success.bitmap
+        if (!AccessibilityScreenshotPolicy.shouldCropSystemInsets(success.windowScoped)) return raw
         val topInset = SystemBars.statusBarHeight(resources)
             .coerceIn(0, raw.height / 4)
         val bottomInset = SystemBars.navigationBarHeight(resources)
@@ -186,49 +207,30 @@ class ScrollCaptureService : AccessibilityService() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private suspend fun captureScreen(): Bitmap? =
-        suspendCancellableCoroutine { continuation ->
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        val bitmap = try {
-                            val hardwareBuffer = screenshot.hardwareBuffer
-                            try {
-                                val hardwareBitmap = Bitmap.wrapHardwareBuffer(
-                                    hardwareBuffer,
-                                    screenshot.colorSpace
-                                )
-                                val copy = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
-                                hardwareBitmap?.recycle()
-                                copy
-                            } finally {
-                                hardwareBuffer.close()
-                            }
-                        } catch (_: Exception) {
-                            null
-                        }
-
-                        if (continuation.isActive) {
-                            continuation.resume(bitmap)
-                        } else {
-                            bitmap?.recycle()
-                        }
-                    }
-
-                    override fun onFailure(errorCode: Int) {
-                        if (continuation.isActive) continuation.resume(null)
-                    }
-                }
-            )
+    private fun captureFailureMessage(reason: AccessibilityScreenshotFailure): String = getString(
+        when (reason) {
+            AccessibilityScreenshotFailure.SECURE_WINDOW -> R.string.accessibility_capture_secure
+            AccessibilityScreenshotFailure.INVALID_WINDOW -> R.string.accessibility_capture_invalid_window
+            AccessibilityScreenshotFailure.WINDOW_LOST -> R.string.accessibility_capture_window_lost
+            AccessibilityScreenshotFailure.WINDOW_UNAVAILABLE -> R.string.accessibility_capture_window_unavailable
+            AccessibilityScreenshotFailure.THROTTLED -> R.string.accessibility_capture_throttled
+            AccessibilityScreenshotFailure.ACCESS_REVOKED -> R.string.accessibility_capture_access_revoked
+            AccessibilityScreenshotFailure.INVALID_DISPLAY -> R.string.accessibility_capture_invalid_display
+            AccessibilityScreenshotFailure.INTERNAL -> R.string.long_screenshot_capture_failed
         }
+    )
 
-    private fun scrollForward(): Boolean {
-        val root = rootInActiveWindow ?: return false
+    private fun scrollForward(targetWindowId: Int?): ScrollForwardResult {
+        val root = rootInActiveWindow
+            ?: return if (targetWindowId != null) ScrollForwardResult.WINDOW_LOST else ScrollForwardResult.END
         return try {
-            performScrollForward(root)
+            if (targetWindowId != null && root.windowId != targetWindowId) {
+                ScrollForwardResult.WINDOW_LOST
+            } else if (performScrollForward(root)) {
+                ScrollForwardResult.SCROLLED
+            } else {
+                ScrollForwardResult.END
+            }
         } finally {
             try {
                 root.recycle()

@@ -26,7 +26,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 ### Instant Screenshot Detection
 - Background service monitors for new screenshots and opens the editor automatically
 - Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions
-- Quick Settings tiles for monitoring, long screenshot capture, bounded step-by-step guide capture, and rerunning the last Quick Crop action. Step Capture keeps at most 10 normalized 720 px frames in private temporary storage, stops after 10 minutes or 2 minutes idle, and exposes Stop in its ongoing notification.
+- Quick Settings tiles for monitoring, long screenshot capture, bounded step-by-step guide capture, and rerunning the last Quick Crop action. On Android 14+, Long Screenshot and Step Capture target only the active app window so overlays and system UI do not contaminate captures; Android 11–13 use a visible-display fallback. Step Capture keeps at most 10 normalized 720 px frames in private temporary storage, stops after 10 minutes or 2 minutes idle, and exposes Stop in its ongoing notification.
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, review, retry if needed, save, then continue editing
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums
@@ -173,6 +173,8 @@ release/security policy.
   the matching workflow. Home and each tile show a separate disclosure before
   opening Android settings; consent for one purpose never enables the other.
   Their Accessibility services keep temporary frames local and never upload data.
+  Android 14+ captures only the active application window; Android 11–13 captures
+  the visible display and removes system bars before processing.
   Step Capture deletes its private cached frames after incremental assembly and
   enforces 12M-pixel, 48 MiB decoded, and 64 MiB cache budgets.
 - SnapCrop does not request all-files access. On Android 11+, removals use

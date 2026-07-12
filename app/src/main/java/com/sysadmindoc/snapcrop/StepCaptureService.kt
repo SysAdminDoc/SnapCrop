@@ -1,8 +1,6 @@
 package com.sysadmindoc.snapcrop
 
 import android.accessibilityservice.AccessibilityService
-import android.accessibilityservice.AccessibilityService.ScreenshotResult
-import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -18,7 +16,6 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.service.quicksettings.TileService
-import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -32,10 +29,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.lang.ref.WeakReference
-import kotlin.coroutines.resume
 
 /**
  * Snagit-style step capture. While active (toggled on by the user), each tap captures the current
@@ -253,15 +248,33 @@ class StepCaptureService : AccessibilityService() {
             try {
                 delay(POST_CLICK_DELAY_MS)
                 if (!capturing || captureGeneration != generation) return@launch
-                raw = captureScreen()
-                val source = raw
-                if (source == null) {
-                    showCaptureNotification(frames.size, getString(R.string.step_capture_missed))
-                    return@launch
+                var windowBounds: AccessibilityWindowBounds? = null
+                when (val capture = captureAccessibilityScreenshot()) {
+                    is AccessibilityScreenshotResult.Success -> {
+                        raw = capture.bitmap
+                        windowBounds = capture.windowBounds
+                    }
+                    is AccessibilityScreenshotResult.Failure -> {
+                        val message = captureFailureMessage(capture.reason)
+                        showCaptureNotification(frames.size, message)
+                        if (!getSystemService(NotificationManager::class.java).areNotificationsEnabled()) {
+                            Toast.makeText(this@StepCaptureService, message, Toast.LENGTH_LONG).show()
+                        }
+                        if (capture.reason == AccessibilityScreenshotFailure.ACCESS_REVOKED) {
+                            stopCapture(StepCaptureStopReason.SCREENSHOT_ACCESS)
+                        }
+                        return@launch
+                    }
                 }
+                val source = checkNotNull(raw)
                 if (!capturing || captureGeneration != generation) return@launch
-                val tapX = if (clickX >= 0) clickX.toFloat() / source.width else Float.NaN
-                val tapY = if (clickY >= 0) clickY.toFloat() / source.height else Float.NaN
+                val (tapX, tapY) = AccessibilityScreenshotPolicy.tapFractions(
+                    clickX,
+                    clickY,
+                    source.width,
+                    source.height,
+                    windowBounds
+                )
                 val normalizedFrame = withContext(Dispatchers.Default) { StepCapturePolicy.normalizedBitmap(source) }
                 normalized = normalizedFrame
                 val candidate = withContext(Dispatchers.IO) { store.persist(normalizedFrame, tapX, tapY) }
@@ -295,37 +308,18 @@ class StepCaptureService : AccessibilityService() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.R)
-    private suspend fun captureScreen(): Bitmap? =
-        suspendCancellableCoroutine { continuation ->
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        val bitmap = try {
-                            val hardwareBuffer = screenshot.hardwareBuffer
-                            try {
-                                val hardwareBitmap = Bitmap.wrapHardwareBuffer(hardwareBuffer, screenshot.colorSpace)
-                                val copy = hardwareBitmap?.copy(Bitmap.Config.ARGB_8888, false)
-                                hardwareBitmap?.recycle()
-                                copy
-                            } finally {
-                                hardwareBuffer.close()
-                            }
-                        } catch (_: Exception) {
-                            null
-                        }
-                        if (continuation.isActive) continuation.resume(bitmap)
-                        else bitmap?.recycle()
-                    }
-
-                    override fun onFailure(errorCode: Int) {
-                        if (continuation.isActive) continuation.resume(null)
-                    }
-                }
-            )
+    private fun captureFailureMessage(reason: AccessibilityScreenshotFailure): String = getString(
+        when (reason) {
+            AccessibilityScreenshotFailure.SECURE_WINDOW -> R.string.accessibility_capture_secure
+            AccessibilityScreenshotFailure.INVALID_WINDOW -> R.string.accessibility_capture_invalid_window
+            AccessibilityScreenshotFailure.WINDOW_LOST -> R.string.accessibility_capture_window_lost
+            AccessibilityScreenshotFailure.WINDOW_UNAVAILABLE -> R.string.accessibility_capture_window_unavailable
+            AccessibilityScreenshotFailure.THROTTLED -> R.string.accessibility_capture_throttled
+            AccessibilityScreenshotFailure.ACCESS_REVOKED -> R.string.accessibility_capture_access_revoked
+            AccessibilityScreenshotFailure.INVALID_DISPLAY -> R.string.accessibility_capture_invalid_display
+            AccessibilityScreenshotFailure.INTERNAL -> R.string.step_capture_missed
         }
+    )
 
     private fun saveGuide(bitmap: Bitmap): Uri? {
         val prefs = getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
@@ -374,6 +368,7 @@ class StepCaptureService : AccessibilityService() {
         StepCaptureStopReason.DURATION -> getString(R.string.step_capture_limit_duration)
         StepCaptureStopReason.INACTIVITY -> getString(R.string.step_capture_limit_inactivity)
         StepCaptureStopReason.STORAGE_FAILURE -> getString(R.string.step_capture_storage_failed)
+        StepCaptureStopReason.SCREENSHOT_ACCESS -> getString(R.string.accessibility_capture_access_revoked)
     }
 
     private fun showCaptureNotification(count: Int, message: String = getString(R.string.step_capture_notification_active, count, StepCapturePolicy.MAX_FRAMES)) {

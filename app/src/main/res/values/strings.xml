@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">SnapCrop</string>
     <string name="scroll_capture_service_label">SnapCrop Long screenshot</string>
-    <string name="scroll_capture_service_description">When you start Long screenshot, SnapCrop reads the active window structure, performs scroll gestures, captures visible frames, and stitches them locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
+    <string name="scroll_capture_service_description">When you start Long screenshot, SnapCrop reads the active window structure, performs scroll gestures, and stitches frames locally. Android 14 and later capture only the active app window; Android 11–13 capture the visible display. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
     <string name="step_capture_service_label">SnapCrop Step capture</string>
-    <string name="step_capture_service_description">During a Step capture session, SnapCrop observes click and long-click events, reads control bounds, captures the visible screen after each step, and assembles a numbered guide locally. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
+    <string name="step_capture_service_description">During a Step capture session, SnapCrop observes click and long-click events, reads control bounds, and assembles a numbered guide locally. Android 14 and later capture only the active app window; Android 11–13 capture the visible display. Temporary frames stay on this device and are never uploaded by the Accessibility service.</string>
     <string name="step_capture_building">Building guide from %1$d steps…</string>
     <string name="step_capture_saved">Step guide saved — opening editor.</string>
     <string name="step_capture_none">No steps captured.</string>
@@ -21,6 +21,13 @@
     <string name="step_capture_notification_title">Step Capture</string>
     <string name="step_capture_notification_active">Active · %1$d/%2$d steps</string>
     <string name="step_capture_notification_unavailable">Notifications are unavailable. Keep the Step Capture Quick Settings tile available so you can stop safely.</string>
+    <string name="accessibility_capture_secure">This app protects the active window from screenshots. Switch to non-secure content or stop capture.</string>
+    <string name="accessibility_capture_window_lost">Capture switched to a different app window. Return to the original app and restart capture.</string>
+    <string name="accessibility_capture_invalid_window">Android rejected the active app window identifier. Return to the app and retry capture.</string>
+    <string name="accessibility_capture_window_unavailable">No active app window is available. Open the app you want to capture and retry.</string>
+    <string name="accessibility_capture_throttled">Android is throttling screenshots. Wait a moment, then retry the step.</string>
+    <string name="accessibility_capture_access_revoked">Accessibility screenshot access ended. Re-enable the matching SnapCrop service before retrying.</string>
+    <string name="accessibility_capture_invalid_display">The active display is no longer available. Move the app to the main display and retry.</string>
     <string name="step_capture_stop">Stop and build guide</string>
     <string name="tile_step_label">Step capture</string>
     <string name="tile_step_ready">Tap to start</string>
@@ -161,9 +168,9 @@
     <string name="accessibility_open_settings">Open settings</string>
     <string name="accessibility_not_now">Not now</string>
     <string name="accessibility_long_title">Allow Long screenshot Accessibility access?</string>
-    <string name="accessibility_long_body">Long screenshot uses Android Accessibility only when you start this workflow. It reads the active window structure, performs scroll gestures, and captures visible screen frames to stitch one image. Temporary frames and the finished image stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. You can cancel and continue using manual crop, stitch, Gallery, and editor tools.</string>
+    <string name="accessibility_long_body">Long screenshot uses Android Accessibility only when you start this workflow. It reads the active window structure, performs scroll gestures, and captures frames to stitch one image. Android 14 and later capture only the active app window; Android 11–13 capture the visible display. Temporary frames and the finished image stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. You can cancel and continue using manual crop, stitch, Gallery, and editor tools.</string>
     <string name="accessibility_step_title">Allow Step capture Accessibility access?</string>
-    <string name="accessibility_step_body">Step capture uses Android Accessibility only during a session you start. It observes click and long-click events, reads the selected control’s screen bounds, and captures the visible screen after each step to assemble a numbered guide. Temporary frames and the guide stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. Tap the Step capture tile again to stop a session, or cancel now without enabling Accessibility.</string>
+    <string name="accessibility_step_body">Step capture uses Android Accessibility only during a session you start. It observes click and long-click events, reads the selected control’s screen bounds, and captures each step to assemble a numbered guide. Android 14 and later capture only the active app window; Android 11–13 capture the visible display. Temporary frames and the guide stay on this device unless you explicitly share or upload the result. The Accessibility service does not upload data. Tap the Step capture tile again to stop a session, or cancel now without enabling Accessibility.</string>
     <string name="accessibility_agree_continue">Agree and continue</string>
 
     <!-- Toasts -->

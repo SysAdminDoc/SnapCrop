@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Active-window Accessibility capture (v6.36.0).**
+
+- Android 14 and later Long Screenshot and Step Capture sessions now target the
+  current active application window with `takeScreenshotOfWindow`, excluding
+  Accessibility overlays and system UI. Android 11–13 retain the visible-display
+  capture fallback with system-bar cropping.
+- Long Screenshot locks capture and scroll actions to the initial app window;
+  switching or closing it stops safely instead of mixing frames. Step tap markers
+  now translate screen coordinates into window-local coordinates.
+- Added distinct recovery messages for unavailable, changed, invalid, secure,
+  throttled, revoked-access, and invalid-display failures, plus policy tests for
+  active-window selection, non-zero-origin taps, and overlay contamination.
+
 **Bounded streaming network exports (v6.35.0).**
 
 - PDF reports now serialize into a bounded private temp file, stream-copy to

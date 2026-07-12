@@ -26,7 +26,7 @@ internal data class StoredStepFrame(
     val encodedBytes: Long
 )
 
-internal enum class StepCaptureStopReason { MANUAL, FRAME_LIMIT, PIXEL_LIMIT, MEMORY_LIMIT, CACHE_LIMIT, DURATION, INACTIVITY, STORAGE_FAILURE }
+internal enum class StepCaptureStopReason { MANUAL, FRAME_LIMIT, PIXEL_LIMIT, MEMORY_LIMIT, CACHE_LIMIT, DURATION, INACTIVITY, STORAGE_FAILURE, SCREENSHOT_ACCESS }
 
 internal class StepCaptureLimitException(val reason: StepCaptureStopReason) : Exception(reason.name)
 
