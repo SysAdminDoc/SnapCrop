@@ -4,6 +4,15 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Single visible editor command path (v6.52.0).**
+
+- Removed all editor key-event interception, including Ctrl+Z/Y/S, arrow-key crop
+  nudges/zoom, and Enter preview toggling. Text fields and system focus navigation
+  now receive keyboard input without a competing editor-level command path.
+- Undo, redo, save, preview, crop nudge, and zoom remain available through visible
+  controls and canvas accessibility custom actions. A source-policy regression test
+  prevents shortcut handlers or key APIs from returning while asserting those actions.
+
 **Consistent secure media previews (v6.51.0).**
 
 - The existing preference is now named Protect media previews and applies to the
@@ -621,8 +630,8 @@ All notable changes to SnapCrop will be documented in this file.
   format actions for Quick Crop.
 - Added an adaptive editor layout for tablet/foldable/desktop-width windows:
   wide layouts use a persistent right inspector for modes, crop controls,
-  redaction, draw layers, and adjustments, with keyboard shortcuts and
-  mouse-wheel zoom support.
+  redaction, draw layers, and adjustments, with visible controls, accessibility
+  actions, and mouse-wheel zoom support.
 - Upgraded gallery PDF export into a local incident report builder with title,
   notes, timestamps, image metadata, source hints, dimensions, and optional OCR
   appendix pages.

@@ -7,21 +7,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.horizontalScroll
@@ -864,7 +854,6 @@ fun CropEditorScreen(
         else -> if (cropMethod.startsWith("profile:")) cropMethod.substringAfter(":") else ""
     }
 
-    val editorFocusRequester = remember { FocusRequester() }
     val modeOptions = listOf(
         Triple(stringResource(R.string.mode_crop), EditMode.CROP, Primary),
         Triple(stringResource(R.string.mode_pixelate), EditMode.PIXELATE, Tertiary),
@@ -994,66 +983,12 @@ fun CropEditorScreen(
         }
     }
 
-    fun handleEditorShortcut(event: androidx.compose.ui.input.key.KeyEvent): Boolean {
-        if (event.type != KeyEventType.KeyDown) return false
-        return when {
-            event.isCtrlPressed && event.key == Key.Z -> {
-                undo()
-                true
-            }
-            event.isCtrlPressed && event.key == Key.Y -> {
-                redo()
-                true
-            }
-            event.isCtrlPressed && event.key == Key.S -> {
-                onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), exportAdjustments())
-                true
-            }
-            event.key == Key.DirectionLeft && editMode == EditMode.CROP -> {
-                pushUndo()
-                nudgeCrop(if (event.isShiftPressed) -10 else -1, 0)
-                true
-            }
-            event.key == Key.DirectionRight && editMode == EditMode.CROP -> {
-                pushUndo()
-                nudgeCrop(if (event.isShiftPressed) 10 else 1, 0)
-                true
-            }
-            event.key == Key.DirectionUp && editMode == EditMode.CROP -> {
-                if (event.isCtrlPressed) zoomBy(1.08f) else {
-                    pushUndo()
-                    nudgeCrop(0, if (event.isShiftPressed) -10 else -1)
-                }
-                true
-            }
-            event.key == Key.DirectionDown && editMode == EditMode.CROP -> {
-                if (event.isCtrlPressed) zoomBy(0.92f) else {
-                    pushUndo()
-                    nudgeCrop(0, if (event.isShiftPressed) 10 else 1)
-                }
-                true
-            }
-            event.key == Key.Enter -> {
-                previewMode = !previewMode
-                true
-            }
-            else -> false
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        runCatching { editorFocusRequester.requestFocus() }
-    }
-
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(Black)
             .safeDrawingPadding()
             .imePadding()
-            .focusRequester(editorFocusRequester)
-            .onPreviewKeyEvent { handleEditorShortcut(it) }
-            .focusable()
     ) {
         val isWideLayout = editorLayoutClass(maxWidth.value, maxHeight.value) == EditorLayoutClass.Wide
         val sidePanelWidth = editorSidePanelWidthDp(maxWidth.value).dp
