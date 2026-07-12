@@ -6,6 +6,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -13,6 +14,49 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SnapCropProjectSidecarTest {
+    @Test
+    fun explicitSourceContextRoundTripsInVersionFour() {
+        val context = ExplicitSourceContext(
+            url = "https://example.com/support?id=42",
+            label = "Support case",
+            packageName = "com.example.browser"
+        )
+        val project = basicProject().copy(sourceContext = context)
+
+        val encoded = SnapCropProjectSidecar.encode(project)
+        val decoded = SnapCropProjectSidecar.decode(encoded)
+
+        assertEquals(context, decoded.sourceContext)
+        assertEquals(4, JSONObject(encoded).getInt("version"))
+    }
+
+    @Test
+    fun olderProjectDefaultsSourceContextToNull() {
+        val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject()))
+        encoded.put("version", 3)
+        encoded.getJSONObject("source").remove("context")
+
+        assertNull(SnapCropProjectSidecar.decode(encoded.toString()).sourceContext)
+    }
+
+    @Test
+    fun nonCanonicalExternalSourceContextIsRejected() {
+        val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject()))
+        encoded.getJSONObject("source").put(
+            "context",
+            JSONObject().put("url", "https://USER:secret@example.com")
+        )
+
+        val result = SnapCropProjectSidecar.decodeString(
+            encoded.toString(),
+            ProjectImportOrigin.EXTERNAL
+        )
+
+        assertEquals(
+            ProjectDecodeResult.Rejected(ProjectRejectReason.INVALID_FIELD, "source.context"),
+            result
+        )
+    }
     private val validHash = "a".repeat(64)
 
     @Test

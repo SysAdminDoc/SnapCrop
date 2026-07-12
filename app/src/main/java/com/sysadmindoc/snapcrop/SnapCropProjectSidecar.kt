@@ -29,7 +29,8 @@ data class SnapCropProject(
     val exportMimeType: String?,
     val exportQuality: Int,
     val exportSavePath: String?,
-    val deleteOriginal: Boolean
+    val deleteOriginal: Boolean,
+    val sourceContext: ExplicitSourceContext? = null
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -49,7 +50,8 @@ data class SnapCropProject(
                 exportMimeType == other.exportMimeType &&
                 exportQuality == other.exportQuality &&
                 exportSavePath == other.exportSavePath &&
-                deleteOriginal == other.deleteOriginal
+                deleteOriginal == other.deleteOriginal &&
+                sourceContext == other.sourceContext
     }
 
     override fun hashCode(): Int {
@@ -69,6 +71,7 @@ data class SnapCropProject(
         result = 31 * result + exportQuality
         result = 31 * result + (exportSavePath?.hashCode() ?: 0)
         result = 31 * result + deleteOriginal.hashCode()
+        result = 31 * result + (sourceContext?.hashCode() ?: 0)
         return result
     }
 }
@@ -84,7 +87,10 @@ data class ProjectImportLimits(
     val maxTotalPoints: Int = 65_536,
     val maxTextChars: Int = 4_096,
     val maxUriChars: Int = 8_192,
-    val maxPathChars: Int = 1_024
+    val maxPathChars: Int = 1_024,
+    val maxSourceUrlChars: Int = 2_048,
+    val maxSourceLabelChars: Int = 160,
+    val maxSourcePackageChars: Int = 255
 )
 
 enum class ProjectImportOrigin { EXTERNAL, INTERNAL_DRAFT }
@@ -102,7 +108,7 @@ enum class SourceMatch { MATCH, HASH_MISMATCH, DIMENSION_MISMATCH, MISSING_FINGE
 object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
-    private const val VERSION = 3
+    private const val VERSION = 4
     private const val ADJUSTMENT_COUNT = 25
     val DEFAULT_LIMITS = ProjectImportLimits()
     private val HASH_PATTERN = Regex("^[0-9a-fA-F]{64}$")
@@ -122,6 +128,7 @@ object SnapCropProjectSidecar {
     }
 
     fun encode(project: SnapCropProject): String {
+        require(project.sourceContext == project.sourceContext?.normalizedOrNull()) { "source.context" }
         return JSONObject()
             .put("schema", SCHEMA)
             .put("version", VERSION)
@@ -130,6 +137,7 @@ object SnapCropProjectSidecar {
                 .putNullable("sha256", project.sourceSha256)
                 .put("width", project.sourceWidth)
                 .put("height", project.sourceHeight)
+                .put("context", project.sourceContext?.toJson() ?: JSONObject.NULL)
             )
             .put("crop", project.cropRect.toJson())
             .put("adjustments", project.adjustments.toAdjustmentsJson())
@@ -218,6 +226,13 @@ object SnapCropProjectSidecar {
         val export = root.optJSONObject("export") ?: JSONObject()
         val adjustments = root.optJSONObject("adjustments").toAdjustmentsArray()
         val legacyRects = if (version == 1) root.optJSONArray("pixelateRects").toRectList() else emptyList()
+        val sourceContext = if (version >= 4) source.optJSONObject("context")?.let { context ->
+            ExplicitSourceContext(
+                url = context.optNullableString("url"),
+                label = context.optNullableString("label"),
+                packageName = context.optNullableString("packageName")
+            )
+        } else null
         return SnapCropProject(
             sourceUri = source.optNullableString("uri"),
             sourceSha256 = source.optNullableString("sha256"),
@@ -238,7 +253,8 @@ object SnapCropProjectSidecar {
             exportMimeType = export.optNullableString("mimeType"),
             exportQuality = export.optInt("quality", 100),
             exportSavePath = export.optNullableString("savePath"),
-            deleteOriginal = export.optBoolean("deleteOriginal", false)
+            deleteOriginal = export.optBoolean("deleteOriginal", false),
+            sourceContext = sourceContext
         )
     }
 
@@ -269,6 +285,13 @@ object SnapCropProjectSidecar {
         val height = project.sourceHeight
         if (width !in 1..4096 || height !in 1..4096 || width.toLong() * height > 16_777_216L) return reject("source.dimensions")
         if ((project.sourceUri?.length ?: 0) > limits.maxUriChars) return reject("source.uri")
+        project.sourceContext?.let { context ->
+            if ((context.url?.length ?: 0) > limits.maxSourceUrlChars ||
+                (context.label?.length ?: 0) > limits.maxSourceLabelChars ||
+                (context.packageName?.length ?: 0) > limits.maxSourcePackageChars ||
+                context.normalizedOrNull() != context
+            ) return reject("source.context")
+        }
         val hash = project.sourceSha256
         if (hash != null && !HASH_PATTERN.matches(hash)) return reject("source.sha256")
         if (origin == ProjectImportOrigin.EXTERNAL && hash == null) {
@@ -345,6 +368,11 @@ object SnapCropProjectSidecar {
 
     private fun JSONObject.putNullable(name: String, value: String?): JSONObject =
         put(name, value ?: JSONObject.NULL)
+
+    private fun ExplicitSourceContext.toJson(): JSONObject = JSONObject()
+        .putNullable("url", url)
+        .putNullable("label", label)
+        .putNullable("packageName", packageName)
 
     private fun JSONObject.optNullableString(name: String): String? =
         if (!has(name) || isNull(name)) null else optString(name)

@@ -120,6 +120,7 @@ class CropActivity : ComponentActivity() {
     private val draftFile get() = File(filesDir, "editor_draft.json")
     private var intentSourceHints: List<String> = emptyList()
     private var currentCropHints: List<String> = emptyList()
+    private val explicitSourceContext = mutableStateOf<ExplicitSourceContext?>(null)
     private val initialRedactions = mutableStateOf<List<RedactionRegion>>(emptyList())
     private val initialDrawPaths = mutableStateOf<List<DrawPath>>(emptyList())
     private val initialAdjustments = mutableStateOf<FloatArray?>(null)
@@ -184,6 +185,7 @@ class CropActivity : ComponentActivity() {
         // Reset state for the new image or project sidecar.
         sourceUri = null
         intentSourceHints = CropSourceHints.fromIntent(incomingIntent, newUri)
+        explicitSourceContext.value = ExplicitSourceContext.fromIntent(incomingIntent, referrer)
         isLoading.value = true
         bitmapState.value = null
         cropMethod.value = ""
@@ -207,6 +209,12 @@ class CropActivity : ComponentActivity() {
                 loadProjectSidecar(newUri)
             } else {
                 sourceUri = newUri
+                val storedContext = mediaDateAdded(newUri)?.let { dateAdded ->
+                    runCatching {
+                        ScreenshotIndexStore(this@CropActivity).sourceContext(newUri, dateAdded)
+                    }.getOrNull()
+                }
+                explicitSourceContext.value = storedContext?.mergedWith(explicitSourceContext.value)
                 loadBitmap(newUri)
             }
             withContext(Dispatchers.Main) { isLoading.value = false }
@@ -239,6 +247,7 @@ class CropActivity : ComponentActivity() {
         setContent {
             SnapCropTheme {
                 val showDeleteConfirm = remember { mutableStateOf(false) }
+                val showSourceContextEditor = remember { mutableStateOf(false) }
                 val replaceOriginalOnSave = remember { effectiveDeleteOriginalOnSave() }
                 Box(Modifier.fillMaxSize().background(Black)) {
                     if (isLoading.value) {
@@ -273,6 +282,8 @@ class CropActivity : ComponentActivity() {
                             onSaveCopy = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = false) },
                             onShare = { rect, redactions, draw, adj -> shareCropped(bmp, rect, redactions, draw, adj) },
                             onCopyClipboard = { rect, redactions, draw, adj -> copyToClipboard(bmp, rect, redactions, draw, adj) },
+                            hasSourceContext = explicitSourceContext.value != null,
+                            onEditSourceContext = { showSourceContextEditor.value = true },
                             onDiscard = { finish() },
                             onDelete = { showDeleteConfirm.value = true },
                             onAutoCrop = {
@@ -348,6 +359,35 @@ class CropActivity : ComponentActivity() {
                                 }
                             },
                             replaceOriginalOnSave = replaceOriginalOnSave
+                        )
+                    }
+
+                    if (showSourceContextEditor.value) {
+                        SourceContextEditorDialog(
+                            initial = explicitSourceContext.value,
+                            onSave = { contextValue ->
+                                explicitSourceContext.value = contextValue
+                                showSourceContextEditor.value = false
+                                sourceUri?.let { mediaUri ->
+                                    lifecycleScope.launch(Dispatchers.IO) {
+                                        mediaDateAdded(mediaUri)?.let { dateAdded ->
+                                            runCatching {
+                                                ScreenshotIndexStore(this@CropActivity)
+                                                    .putSourceContext(mediaUri, dateAdded, contextValue)
+                                            }.onFailure {
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(
+                                                        this@CropActivity,
+                                                        R.string.source_context_save_failed,
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onDismiss = { showSourceContextEditor.value = false }
                         )
                     }
 
@@ -724,6 +764,7 @@ class CropActivity : ComponentActivity() {
                     intentSourceHints + CropSourceHints.fromMedia(contentResolver, uri)
                 )
                 if (project != null) {
+                    explicitSourceContext.value = project.sourceContext
                     cropRect.value = project.cropRect
                     cropMethod.value = "project"
                     initialRedactions.value = project.redactions
@@ -1881,7 +1922,8 @@ class CropActivity : ComponentActivity() {
             exportMimeType = exportFormat.mime,
             exportQuality = exportFormat.quality,
             exportSavePath = savePath.take(limits.maxPathChars),
-            deleteOriginal = deleteOriginal
+            deleteOriginal = deleteOriginal,
+            sourceContext = explicitSourceContext.value
         )
         return SnapCropProjectSidecar.encode(project)
     }
@@ -2021,24 +2063,28 @@ class CropActivity : ComponentActivity() {
                 cropped.recycle()
                 return@launch
             }
-            val metadataPolicy = try {
-                if (metadataSummary.hasMetadata) {
-                    chooseShareMetadataPolicy(metadataSummary)
+            val shareOptions = try {
+                if (metadataSummary.hasMetadata || explicitSourceContext.value?.url != null) {
+                    chooseShareOptions(
+                        metadataSummary,
+                        sourceUrl = explicitSourceContext.value?.url
+                    )
                 } else {
-                    ShareMetadataPolicy.STRIP_ALL
+                    ShareOptions(ShareMetadataPolicy.STRIP_ALL, includeSourceLink = false)
                 }
             } catch (cancelled: CancellationException) {
                 cropped.recycle()
                 throw cancelled
             }
-            if (metadataPolicy == null) {
+            if (shareOptions == null) {
                 cropped.recycle()
                 return@launch
             }
+            val metadataPolicy = shareOptions.metadataPolicy
             val scanEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 .getBoolean("redact_on_share", true)
             if (!scanEnabled) {
-                dispatchShare(cropped, adj, metadataPolicy)
+                dispatchShare(cropped, adj, metadataPolicy, shareOptions.includeSourceLink)
                 return@launch
             }
 
@@ -2060,7 +2106,7 @@ class CropActivity : ComponentActivity() {
                 return@launch
             }
             if (detection.rects.isEmpty()) {
-                dispatchShare(cropped, adj, metadataPolicy)
+                dispatchShare(cropped, adj, metadataPolicy, shareOptions.includeSourceLink)
                 return@launch
             }
 
@@ -2104,6 +2150,7 @@ class CropActivity : ComponentActivity() {
                             candidate.categories.joinToString(", ") { sensitiveCategoryLabel(it) },
                         )
                     }
+
                 }
                 val checkList = LinearLayout(this@CropActivity).apply {
                     orientation = LinearLayout.VERTICAL
@@ -2168,7 +2215,7 @@ class CropActivity : ComponentActivity() {
                                         if (!cropped.isRecycled) cropped.recycle()
                                     }
                                 }
-                                dispatchShare(reviewed, adj, metadataPolicy)
+                                dispatchShare(reviewed, adj, metadataPolicy, shareOptions.includeSourceLink)
                             } catch (_: Exception) {
                                 if (!cropped.isRecycled) cropped.recycle()
                                 withContext(Dispatchers.Main) {
@@ -2182,7 +2229,7 @@ class CropActivity : ComponentActivity() {
                         pendingPreview?.cancel()
                         lifecycleScope.launch(Dispatchers.IO) {
                             pendingPreview?.join()
-                            dispatchShare(cropped, adj, metadataPolicy)
+                            dispatchShare(cropped, adj, metadataPolicy, shareOptions.includeSourceLink)
                         }
                     }
                     .setNegativeButton(getString(R.string.cancel)) { _, _ ->
@@ -2212,9 +2259,26 @@ class CropActivity : ComponentActivity() {
         }
     }
 
+    private fun mediaDateAdded(uri: Uri): Long? = try {
+        contentResolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.DATE_ADDED),
+            null,
+            null,
+            null
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getLong(0) else null }
+    } catch (_: Exception) {
+        null
+    }
+
     /** Compresses [shareBitmap] per the current format/shape settings and fires the share chooser.
      *  Recycles [shareBitmap] when done. */
-    private fun dispatchShare(shareBitmap: Bitmap, adj: FloatArray, metadataPolicy: ShareMetadataPolicy) {
+    private fun dispatchShare(
+        shareBitmap: Bitmap,
+        adj: FloatArray,
+        metadataPolicy: ShareMetadataPolicy,
+        includeSourceLink: Boolean
+    ) {
         lifecycleScope.launch(Dispatchers.IO) {
             val exportSettings = currentExportSettings()
             val out = applyExportDecorations(shareBitmap, exportSettings)
@@ -2249,6 +2313,9 @@ class CropActivity : ComponentActivity() {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                         type = mime
                         putExtra(Intent.EXTRA_STREAM, shareUri)
+                        if (includeSourceLink) explicitSourceContext.value?.shareText?.let {
+                            putExtra(Intent.EXTRA_TEXT, it)
+                        }
                         clipData = ClipData.newRawUri("SnapCrop shared image", shareUri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }, null))
@@ -2440,7 +2507,7 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun saveToGallery(
+    private suspend fun saveToGallery(
         bitmap: Bitmap,
         name: String,
         deleteOriginal: Boolean,
@@ -2515,6 +2582,12 @@ class CropActivity : ComponentActivity() {
                     else getString(R.string.crop_copy_saved_path, savePath)
             }
 
+            explicitSourceContext.value?.let { contextValue ->
+                val dateAdded = mediaDateAdded(uri)
+                    ?: throw IOException("Could not read saved media identity")
+                ScreenshotIndexStore(this).putSourceContext(uri, dateAdded, contextValue)
+            }
+
             val svgSaved = annotationSvg == null || saveSvgSidecar(name, savePath, annotationSvg)
             val projectSaved = projectSidecarJson == null || saveProjectSidecar(name, savePath, projectSidecarJson)
             val ocrTextSaved = correctedOcrText == null || saveOcrTextSidecar(name, savePath, correctedOcrText)
@@ -2554,6 +2627,7 @@ class CropActivity : ComponentActivity() {
             android.util.Log.e("SnapCrop", "saveToGallery failed", e)
             runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed) + ": " + (e.message ?: e.javaClass.simpleName), Toast.LENGTH_LONG).show() }
             try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+            runCatching { ScreenshotIndexStore(this).deleteSourceContexts(listOf(uri)) }
         }
     }
 
@@ -2622,6 +2696,13 @@ class CropActivity : ComponentActivity() {
             mutationStartedAt,
             if (succeeded) DiagnosticCode.NONE else DiagnosticCode.PERMISSION_DENIED
         )
+        if (succeeded) {
+            sourceUri?.let { deletedSource ->
+                lifecycleScope.launch(Dispatchers.IO) {
+                    runCatching { ScreenshotIndexStore(this@CropActivity).deleteSourceContexts(listOf(deletedSource)) }
+                }
+            }
+        }
         when (purpose) {
             SourceMutationPurpose.REPLACE_AFTER_SAVE -> {
                 val message = if (succeeded) {

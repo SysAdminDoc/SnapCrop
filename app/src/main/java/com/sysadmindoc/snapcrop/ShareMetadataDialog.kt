@@ -17,10 +17,16 @@ internal const val PREF_SHARE_METADATA_DEFAULT = "share_metadata_policy_default"
 internal const val EXTRA_PRIVACY_SHARE_URIS = "com.sysadmindoc.snapcrop.PRIVACY_SHARE_URIS"
 internal const val EXTRA_DISMISS_DETECTED_NOTIFICATION = "com.sysadmindoc.snapcrop.DISMISS_DETECTED_NOTIFICATION"
 
-internal suspend fun ComponentActivity.chooseShareMetadataPolicy(
+internal data class ShareOptions(
+    val metadataPolicy: ShareMetadataPolicy,
+    val includeSourceLink: Boolean
+)
+
+internal suspend fun ComponentActivity.chooseShareOptions(
     summary: MetadataSummary,
     allowSanitize: Boolean = true,
-): ShareMetadataPolicy? = withContext(Dispatchers.Main) {
+    sourceUrl: String? = null,
+): ShareOptions? = withContext(Dispatchers.Main) {
     suspendCancellableCoroutine { continuation ->
         val prefs = getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
         val remembered = prefs.getString(PREF_SHARE_METADATA_DEFAULT, null)
@@ -29,9 +35,9 @@ internal suspend fun ComponentActivity.chooseShareMetadataPolicy(
         val initial = remembered?.takeIf { allowSanitize || it == ShareMetadataPolicy.PRESERVE }
             ?: if (allowSanitize) ShareMetadataPolicy.STRIP_ALL else ShareMetadataPolicy.PRESERVE
 
-        val group = RadioGroup(this@chooseShareMetadataPolicy).apply { orientation = RadioGroup.VERTICAL }
+        val group = RadioGroup(this@chooseShareOptions).apply { orientation = RadioGroup.VERTICAL }
         val buttons = ShareMetadataPolicy.entries.associateWith { policy ->
-            RadioButton(this@chooseShareMetadataPolicy).apply {
+            RadioButton(this@chooseShareOptions).apply {
                 id = android.view.View.generateViewId()
                 text = getString(
                     when (policy) {
@@ -45,8 +51,12 @@ internal suspend fun ComponentActivity.chooseShareMetadataPolicy(
                 group.addView(this)
             }
         }
-        val remember = CheckBox(this@chooseShareMetadataPolicy).apply {
+        val remember = CheckBox(this@chooseShareOptions).apply {
             text = getString(R.string.share_metadata_remember)
+        }
+        val includeLink = CheckBox(this@chooseShareOptions).apply {
+            isChecked = false
+            text = getString(R.string.share_source_include)
         }
         val categories = summary.categories.sortedBy { it.ordinal }.joinToString(", ") { category ->
             getString(
@@ -62,31 +72,45 @@ internal suspend fun ComponentActivity.chooseShareMetadataPolicy(
             )
         }
         val pad = (20 * resources.displayMetrics.density).toInt()
-        val content = LinearLayout(this@chooseShareMetadataPolicy).apply {
+        val content = LinearLayout(this@chooseShareOptions).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(pad, 0, pad, 0)
-            addView(TextView(this@chooseShareMetadataPolicy).apply {
-                text = getString(R.string.share_metadata_summary, categories)
-            })
-            if (!allowSanitize) {
-                addView(TextView(this@chooseShareMetadataPolicy).apply {
-                    text = getString(R.string.share_metadata_video_limit)
+            if (summary.hasMetadata) {
+                addView(TextView(this@chooseShareOptions).apply {
+                    text = getString(R.string.share_metadata_summary, categories)
                 })
+                if (!allowSanitize) {
+                    addView(TextView(this@chooseShareOptions).apply {
+                        text = getString(R.string.share_metadata_video_limit)
+                    })
+                }
+                addView(group)
+                addView(remember)
             }
-            addView(group)
-            addView(remember)
+            if (sourceUrl != null) {
+                addView(includeLink)
+                if (android.net.Uri.parse(sourceUrl).query != null) {
+                    addView(TextView(this@chooseShareOptions).apply {
+                        text = getString(R.string.share_source_query_warning)
+                    })
+                }
+            }
         }
         lateinit var dialog: AlertDialog
-        dialog = AlertDialog.Builder(this@chooseShareMetadataPolicy)
-            .setTitle(R.string.share_metadata_title)
+        dialog = AlertDialog.Builder(this@chooseShareOptions)
+            .setTitle(if (summary.hasMetadata) R.string.share_metadata_title else R.string.share_source_title)
             .setView(content)
             .setPositiveButton(R.string.share_metadata_continue) { _, _ ->
-                val selected = buttons.entries.firstOrNull { it.value.isChecked }?.key
-                    ?: ShareMetadataPolicy.STRIP_ALL
-                if (remember.isChecked) {
+                val selected = if (summary.hasMetadata) {
+                    buttons.entries.firstOrNull { it.value.isChecked }?.key
+                        ?: ShareMetadataPolicy.STRIP_ALL
+                } else {
+                    ShareMetadataPolicy.PRESERVE
+                }
+                if (summary.hasMetadata && remember.isChecked) {
                     prefs.edit().putString(PREF_SHARE_METADATA_DEFAULT, selected.name).apply()
                 }
-                if (continuation.isActive) continuation.resume(selected)
+                if (continuation.isActive) continuation.resume(ShareOptions(selected, sourceUrl != null && includeLink.isChecked))
             }
             .setNegativeButton(R.string.cancel) { _, _ ->
                 if (continuation.isActive) continuation.resume(null)

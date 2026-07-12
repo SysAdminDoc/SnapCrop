@@ -61,7 +61,8 @@ class ScreenshotIndexDatabaseMigrationTest {
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_1_2,
-                ScreenshotIndexMigrations.MIGRATION_2_3
+                ScreenshotIndexMigrations.MIGRATION_2_3,
+                ScreenshotIndexMigrations.MIGRATION_3_4
             )
             .build()
         try {
@@ -104,7 +105,10 @@ class ScreenshotIndexDatabaseMigrationTest {
         }
 
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
-            .addMigrations(ScreenshotIndexMigrations.MIGRATION_2_3)
+            .addMigrations(
+                ScreenshotIndexMigrations.MIGRATION_2_3,
+                ScreenshotIndexMigrations.MIGRATION_3_4
+            )
             .build()
         try {
             database.openHelper.writableDatabase
@@ -129,6 +133,34 @@ class ScreenshotIndexDatabaseMigrationTest {
                     )
                 )
             )
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun versionThreeMigrationAddsUserOwnedSourceContextTable() = runBlocking<Unit> {
+        helper.createDatabase(TEST_DB, 3).close()
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_3_4)
+            .build()
+        try {
+            val dao = database.dao()
+            val row = MediaSourceContextRow(
+                mediaUri = "content://media/external/images/media/9",
+                mediaDateAdded = 123,
+                sourceUrl = "https://example.com/runbook",
+                sourceLabel = "Runbook",
+                sourcePackage = "com.example.browser",
+                updatedAt = 456
+            )
+            dao.upsertSourceContext(row)
+            assertEquals(row, dao.getSourceContext(row.mediaUri, row.mediaDateAdded))
+            assertEquals(null, dao.getSourceContext(row.mediaUri, row.mediaDateAdded + 1))
+
+            dao.replaceAll(listOf(sampleRow(9)))
+            dao.deleteAll()
+            assertEquals(row, dao.getSourceContext(row.mediaUri, row.mediaDateAdded))
         } finally {
             database.close()
         }

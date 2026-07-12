@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -107,6 +108,7 @@ data class Photo(
     val albumPath: String = "",
     val mimeType: String = "",
     val ownerPackage: String = "",
+    val sourceContext: ExplicitSourceContext? = null,
     val indexCategories: Set<String> = emptySet(),
     val indexText: String = ""
 )
@@ -348,6 +350,7 @@ fun GalleryScreen(
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var manualCollections by remember { mutableStateOf<List<ManualCollectionSummary>>(emptyList()) }
+    var sourceContexts by remember { mutableStateOf<Map<Pair<String, Long>, ExplicitSourceContext>>(emptyMap()) }
     var selectedAlbum by rememberSaveable { mutableStateOf<String?>(null) }
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var indexEntries by remember { mutableStateOf<Map<String, ScreenshotIndexEntry>>(emptyMap()) }
@@ -370,10 +373,15 @@ fun GalleryScreen(
     var collectionMutating by remember { mutableStateOf(false) }
     var addSelectionAfterCreate by remember { mutableStateOf(false) }
     var pendingCollectionSelection by remember { mutableStateOf<CollectionSelection?>(null) }
+    var sourceEditorPhoto by remember { mutableStateOf<Photo?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
 
     LaunchedEffect(Unit) {
         collectionStore.observeCollections().collect { manualCollections = it }
+    }
+
+    LaunchedEffect(Unit) {
+        collectionStore.observeSourceContexts().collect { sourceContexts = it }
     }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
@@ -436,8 +444,12 @@ fun GalleryScreen(
         }
     }
 
-    val enrichedPhotos = remember(photos, indexEntries, selectedAlbum, favoriteKeys) {
-        val enriched = photos.map { photo -> photo.withIndex(indexEntries[photo.uri.toString()]) }
+    val enrichedPhotos = remember(photos, indexEntries, selectedAlbum, favoriteKeys, sourceContexts) {
+        val enriched = photos.map { photo ->
+            photo.withIndex(indexEntries[photo.uri.toString()]).copy(
+                sourceContext = sourceContexts[photo.uri.toString() to photo.dateAdded]
+            )
+        }
         when (selectedAlbum) {
             FAVORITES_PATH -> enriched.filter { FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }
             else -> smartAlbumRuleFor(selectedAlbum.orEmpty())?.let { rule -> enriched.filter(rule::matches) } ?: enriched
@@ -506,6 +518,25 @@ fun GalleryScreen(
                 showCollectionPicker = true
             },
             onDismiss = { showFilters = false }
+        )
+    }
+
+    sourceEditorPhoto?.let { photo ->
+        SourceContextEditorDialog(
+            initial = photo.sourceContext,
+            onSave = { contextValue ->
+                sourceEditorPhoto = null
+                scope.launch {
+                    runCatching { collectionStore.putSourceContext(photo.uri, photo.dateAdded, contextValue) }
+                        .onSuccess {
+                            Toast.makeText(context, R.string.source_context_saved, Toast.LENGTH_SHORT).show()
+                        }
+                        .onFailure {
+                            Toast.makeText(context, R.string.source_context_save_failed, Toast.LENGTH_LONG).show()
+                        }
+                }
+            },
+            onDismiss = { sourceEditorPhoto = null }
         )
     }
 
@@ -669,6 +700,8 @@ fun GalleryScreen(
             onClose = { viewerIndex = -1 },
             onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
             onShare = { onShareUris(listOf(it.uri)) },
+            onEditSource = { sourceEditorPhoto = it },
+            onOpenSource = { photo -> openExplicitSource(context, photo.sourceContext) },
             onDelete = { photo ->
                 pendingDeleteUris = listOf(photo.uri)
             },
@@ -1033,6 +1066,17 @@ private fun buildGallerySourceOptions(context: Context, photos: List<Photo>): Li
         }
         .sortedBy { it.label.lowercase() }
         .toList()
+
+private fun openExplicitSource(context: Context, sourceContext: ExplicitSourceContext?) {
+    val uri = sourceContext?.openUri ?: return
+    val intent = Intent(Intent.ACTION_VIEW, uri).apply { addCategory(Intent.CATEGORY_BROWSABLE) }
+    try {
+        if (intent.resolveActivity(context.packageManager) != null) context.startActivity(intent)
+        else Toast.makeText(context, R.string.source_context_open_failed, Toast.LENGTH_LONG).show()
+    } catch (_: Exception) {
+        Toast.makeText(context, R.string.source_context_open_failed, Toast.LENGTH_LONG).show()
+    }
+}
 
 @Composable
 private fun GalleryEmptyState(
@@ -1431,6 +1475,8 @@ private fun PhotoViewer(
     onClose: () -> Unit,
     onEdit: (Photo) -> Unit,
     onShare: (Photo) -> Unit,
+    onEditSource: (Photo) -> Unit,
+    onOpenSource: (Photo) -> Unit,
     onDelete: (Photo) -> Unit,
     onToggleFavorite: (Photo) -> Boolean // returns new state
 ) {
@@ -1668,7 +1714,27 @@ private fun PhotoViewer(
                     .background(Color.Black.copy(alpha = 0.7f))
                     .padding(12.dp)
             ) {
-                Text(photoInfo, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                val currentPhoto = photos.getOrNull(pagerState.currentPage)
+                val source = currentPhoto?.sourceContext
+                val sourceLabel = source?.label ?: source?.openUri?.host ?: source?.packageName
+                Column {
+                    Text(photoInfo, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                    sourceLabel?.let {
+                        Text(it, color = OnSurface, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                    currentPhoto?.let { photo ->
+                        Row {
+                            TextButton(onClick = { onEditSource(photo) }) {
+                                Text(stringResource(if (source == null) R.string.source_context_action_add else R.string.source_context_action_edit))
+                            }
+                            source?.openUri?.host?.let { host ->
+                                TextButton(onClick = { onOpenSource(photo) }) {
+                                    Text(stringResource(R.string.source_context_action_open, host))
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

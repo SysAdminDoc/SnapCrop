@@ -220,6 +220,20 @@ internal data class ManualCollectionItemRow(
     @ColumnInfo(name = "added_at") val addedAt: Long
 )
 
+@Entity(
+    tableName = "media_source_context",
+    primaryKeys = ["media_uri", "media_date_added"],
+    indices = [Index("media_uri")]
+)
+internal data class MediaSourceContextRow(
+    @ColumnInfo(name = "media_uri") val mediaUri: String,
+    @ColumnInfo(name = "media_date_added") val mediaDateAdded: Long,
+    @ColumnInfo(name = "source_url") val sourceUrl: String?,
+    @ColumnInfo(name = "source_label") val sourceLabel: String?,
+    @ColumnInfo(name = "source_package") val sourcePackage: String?,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
 data class ManualCollectionMedia(val uri: Uri, val dateAdded: Long)
 
 data class ManualCollectionSummary(
@@ -314,11 +328,31 @@ internal interface ScreenshotIndexDao {
 
     @Query("DELETE FROM manual_collection_item WHERE collection_id = :collectionId AND media_uri IN (:mediaUris)")
     suspend fun deleteCollectionItems(collectionId: Long, mediaUris: List<String>): Int
+
+    @Query("SELECT * FROM media_source_context ORDER BY updated_at DESC")
+    fun observeSourceContexts(): Flow<List<MediaSourceContextRow>>
+
+    @Query("SELECT * FROM media_source_context WHERE media_uri = :uri AND media_date_added = :dateAdded LIMIT 1")
+    suspend fun getSourceContext(uri: String, dateAdded: Long): MediaSourceContextRow?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSourceContext(row: MediaSourceContextRow)
+
+    @Query("DELETE FROM media_source_context WHERE media_uri = :uri AND media_date_added = :dateAdded")
+    suspend fun deleteSourceContext(uri: String, dateAdded: Long): Int
+
+    @Query("DELETE FROM media_source_context WHERE media_uri IN (:uris)")
+    suspend fun deleteSourceContexts(uris: List<String>): Int
 }
 
 @Database(
-    entities = [ScreenshotIndexRow::class, ManualCollectionRow::class, ManualCollectionItemRow::class],
-    version = 3,
+    entities = [
+        ScreenshotIndexRow::class,
+        ManualCollectionRow::class,
+        ManualCollectionItemRow::class,
+        MediaSourceContextRow::class
+    ],
+    version = 4,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -403,6 +437,22 @@ internal object ScreenshotIndexMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_orientation_date_added` ON `screenshot_index` (`orientation`, `date_added`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_is_favorite_date_added` ON `screenshot_index` (`is_favorite`, `date_added`)")
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_screenshot_index_width_height` ON `screenshot_index` (`width`, `height`)")
+        }
+    }
+
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `media_source_context` (
+                    `media_uri` TEXT NOT NULL,
+                    `media_date_added` INTEGER NOT NULL,
+                    `source_url` TEXT,
+                    `source_label` TEXT,
+                    `source_package` TEXT,
+                    `updated_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`media_uri`, `media_date_added`))""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_source_context_media_uri` ON `media_source_context` (`media_uri`)")
         }
     }
 }
@@ -504,6 +554,45 @@ class ScreenshotIndexStore(context: Context) {
     suspend fun removeFromCollection(id: Long, uris: Collection<Uri>): Int {
         val values = uris.asSequence().map(Uri::toString).distinct().toList()
         return if (values.isEmpty()) 0 else dao.deleteCollectionItems(id, values)
+    }
+
+    fun observeSourceContexts(): Flow<Map<Pair<String, Long>, ExplicitSourceContext>> =
+        dao.observeSourceContexts().map { rows ->
+            rows.mapNotNull { row ->
+                ExplicitSourceContext(row.sourceUrl, row.sourceLabel, row.sourcePackage)
+                    .normalizedOrNull()
+                    ?.let { (row.mediaUri to row.mediaDateAdded) to it }
+            }.toMap()
+        }
+
+    suspend fun sourceContext(uri: Uri, dateAdded: Long): ExplicitSourceContext? =
+        dao.getSourceContext(uri.toString(), dateAdded)?.let { row ->
+            ExplicitSourceContext(row.sourceUrl, row.sourceLabel, row.sourcePackage).normalizedOrNull()
+        }
+
+    suspend fun putSourceContext(uri: Uri, dateAdded: Long, context: ExplicitSourceContext?) {
+        require(uri.scheme.equals("content", ignoreCase = true) && uri.toString().length <= 8_192)
+        require(dateAdded >= 0)
+        val normalized = context?.normalizedOrNull()
+        if (normalized == null) {
+            dao.deleteSourceContext(uri.toString(), dateAdded)
+        } else {
+            dao.upsertSourceContext(
+                MediaSourceContextRow(
+                    mediaUri = uri.toString(),
+                    mediaDateAdded = dateAdded,
+                    sourceUrl = normalized.url,
+                    sourceLabel = normalized.label,
+                    sourcePackage = normalized.packageName,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun deleteSourceContexts(uris: Collection<Uri>): Int {
+        val values = uris.map(Uri::toString).distinct()
+        return if (values.isEmpty()) 0 else dao.deleteSourceContexts(values)
     }
 
     private fun queryImages(
@@ -688,7 +777,8 @@ class ScreenshotIndexStore(context: Context) {
                 INSTANCE ?: Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, DB_NAME)
                     .addMigrations(
                         ScreenshotIndexMigrations.MIGRATION_1_2,
-                        ScreenshotIndexMigrations.MIGRATION_2_3
+                        ScreenshotIndexMigrations.MIGRATION_2_3,
+                        ScreenshotIndexMigrations.MIGRATION_3_4
                     )
                     .build()
                     .also {

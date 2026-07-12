@@ -206,6 +206,7 @@ class MainActivity : ComponentActivity() {
     private val inboundShareUris = mutableStateOf<List<Uri>>(emptyList())
     private val inboundShareFailures = mutableStateOf<List<String>>(emptyList())
     private val showInboundShareDialog = mutableStateOf(false)
+    private val inboundSourceContext = mutableStateOf<ExplicitSourceContext?>(null)
 
     @Suppress("DEPRECATION")
     private fun handleSharedUrl(intent: Intent): Boolean {
@@ -224,6 +225,7 @@ class MainActivity : ComponentActivity() {
 
     @Suppress("DEPRECATION")
     private fun handleInboundShares(intent: Intent) {
+        val sharedContext = ExplicitSourceContext.fromIntent(intent, referrer)
         val forwarded = intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS).orEmpty()
         val raw = if (forwarded.isNotEmpty()) forwarded else InboundShareContract.extractUris(intent)
         if (raw.size <= 1) return
@@ -251,14 +253,17 @@ class MainActivity : ComponentActivity() {
                 }
                 if (result.accepted.size >= 2) {
                     inboundShareUris.value = result.accepted
+                    inboundSourceContext.value = sharedContext
                     showInboundShareDialog.value = true
                 } else if (result.accepted.size == 1) {
                     val uri = result.accepted.single()
-                    startActivity(Intent(this@MainActivity, CropActivity::class.java).apply {
+                    val cropIntent = Intent(this@MainActivity, CropActivity::class.java).apply {
                         data = uri
                         clipData = ClipData.newRawUri("Shared image", uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    })
+                    }
+                    sharedContext?.putInto(cropIntent)
+                    startActivity(cropIntent)
                 } else {
                     Toast.makeText(this@MainActivity, R.string.inbound_share_not_enough, Toast.LENGTH_LONG).show()
                 }
@@ -288,7 +293,7 @@ class MainActivity : ComponentActivity() {
 
     private fun launchInboundActivity(target: Class<out ComponentActivity>) {
         val uris = inboundShareUris.value
-        startActivity(Intent(this, target).apply {
+        val targetIntent = Intent(this, target).apply {
             putParcelableArrayListExtra(InboundShareContract.EXTRA_URIS, ArrayList(uris))
             uris.firstOrNull()?.let { first ->
                 clipData = ClipData.newRawUri("Shared images", first).apply {
@@ -296,8 +301,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        })
+        }
+        inboundSourceContext.value?.putInto(targetIntent)
+        startActivity(targetIntent)
         showInboundShareDialog.value = false
+        inboundSourceContext.value = null
     }
 
     private fun batchAutocrop(uris: List<Uri>) {
@@ -1851,11 +1859,19 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
                 val summary = MetadataSummary(summaries.flatMapTo(linkedSetOf()) { it.categories })
-                val policy = if (summary.hasMetadata) {
-                    chooseShareMetadataPolicy(summary, allowSanitize = !hasVideo)
+                val contextStore = ScreenshotIndexStore(this@MainActivity)
+                val sourceUrls = uris.map { uri ->
+                    val dateAdded = mediaDateAdded(uri)
+                    if (dateAdded == null) null else contextStore.sourceContext(uri, dateAdded)?.url
+                }
+                val commonSourceUrl = sourceUrls.filterNotNull().distinct().singleOrNull()
+                    ?.takeIf { sourceUrls.all { value -> value == it } }
+                val options = if (summary.hasMetadata || commonSourceUrl != null) {
+                    chooseShareOptions(summary, allowSanitize = !hasVideo, sourceUrl = commonSourceUrl)
                 } else {
-                    ShareMetadataPolicy.PRESERVE
+                    ShareOptions(ShareMetadataPolicy.PRESERVE, includeSourceLink = false)
                 } ?: return@launch
+                val policy = options.metadataPolicy
 
                 val sharedUris = if (policy == ShareMetadataPolicy.PRESERVE) {
                     uris
@@ -1896,7 +1912,13 @@ class MainActivity : ComponentActivity() {
                     hasVideo -> "video/*"
                     else -> "image/*"
                 }
-                withContext(Dispatchers.Main) { dispatchShareIntent(sharedUris, shareType) }
+                withContext(Dispatchers.Main) {
+                    dispatchShareIntent(
+                        sharedUris,
+                        shareType,
+                        commonSourceUrl.takeIf { options.includeSourceLink }
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 preparedDirectory?.deleteRecursively()
                 throw cancelled
@@ -1913,7 +1935,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun dispatchShareIntent(uris: List<Uri>, shareType: String) {
+    private fun dispatchShareIntent(uris: List<Uri>, shareType: String, sourceUrl: String? = null) {
         if (uris.isEmpty()) return
         val intent = if (uris.size == 1) {
             Intent(Intent.ACTION_SEND).apply {
@@ -1930,7 +1952,22 @@ class MainActivity : ComponentActivity() {
             uris.drop(1).forEach { addItem(ClipData.Item(it)) }
         }
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        sourceUrl?.let { intent.putExtra(Intent.EXTRA_TEXT, it) }
         startShareChooser(intent)
+    }
+
+    private fun mediaDateAdded(uri: Uri): Long? = try {
+        contentResolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.DATE_ADDED),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(0) else null
+        }
+    } catch (_: Exception) {
+        null
     }
 
     private fun startShareChooser(baseIntent: Intent) {
@@ -2041,6 +2078,9 @@ class MainActivity : ComponentActivity() {
         )
         if (succeeded.isNotEmpty()) {
             FavoritesStore.removeAll(this, succeeded)
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { ScreenshotIndexStore(this@MainActivity).deleteSourceContexts(succeeded) }
+            }
             galleryRefreshKey.intValue++
             loadRecentCrops()
         }

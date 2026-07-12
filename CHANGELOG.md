@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Explicit source context through edit, projects, Gallery, and sharing (v6.58.0).**
+
+- Whole-field shared/Web Capture URLs plus explicit referrer/package hints now use
+  a bounded typed context model separate from filename, OCR, MediaStore, and
+  Accessibility heuristics. Editor and Gallery users can add, edit, clear, or
+  explicitly open a validated HTTP(S) source in an external browser.
+- Room v4 stores user-owned context by media URI plus original date independently
+  of the rebuildable screenshot index. Edited copies inherit context before any
+  replace/trash request, confirmed app-mediated deletes clean it up, and project
+  sidecar v4 round-trips it without changing source-image fingerprint behavior.
+- The existing share privacy dialog can include the one common canonical source
+  link, unchecked on every share. Crop, Gallery, notification, direct-share, and
+  metadata/redaction branches add no link unless the user opts in.
+
 **Structured gallery filters and stable media identity (v6.57.0).**
 
 - Gallery filters now combine media type, creator/source folder, indexed category,

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.CropFree
@@ -145,6 +146,8 @@ fun CropEditorScreen(
     onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onCopyClipboard: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
+    hasSourceContext: Boolean = false,
+    onEditSourceContext: () -> Unit = {},
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -3678,6 +3681,13 @@ fun CropEditorScreen(
                     Icon(Icons.Default.Share, stringResource(R.string.editor_share), tint = OnSurface) }
                 IconButton(onClick = { onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.ContentCopy, stringResource(R.string.editor_copy), tint = OnSurface) }
+                IconButton(onClick = onEditSourceContext) {
+                    Icon(
+                        Icons.Default.Link,
+                        stringResource(if (hasSourceContext) R.string.source_context_action_edit else R.string.source_context_action_add),
+                        tint = if (hasSourceContext) Primary else OnSurface
+                    )
+                }
                 IconButton(onClick = { onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Save, stringResource(R.string.crop_save_copy), tint = OnSurface) }
             }
