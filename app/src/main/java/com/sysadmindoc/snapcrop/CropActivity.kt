@@ -115,6 +115,9 @@ class CropActivity : ComponentActivity() {
     private val rotationKey = mutableIntStateOf(0)
     private var pendingMutationPurpose: SourceMutationPurpose? = null
     private var pendingExportMessage: String? = null
+    private var pendingRelinkProject: SnapCropProject? = null
+    private var pendingProjectPolicy = SourceVerificationPolicy.REQUIRE_FINGERPRINT
+    private val projectCanRelink = mutableStateOf(false)
 
     private val sourceMutationLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -125,6 +128,21 @@ class CropActivity : ComponentActivity() {
             deleteSourceOnLegacyAndroid()
         } else {
             completeSourceMutation(false)
+        }
+    }
+
+    private val projectSourcePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val project = pendingRelinkProject ?: return@registerForActivityResult
+        if (uri == null || !uri.scheme.equals("content", ignoreCase = true)) return@registerForActivityResult
+        runCatching {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        isLoading.value = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            verifyAndLoadProjectSource(uri, project, pendingProjectPolicy)
+            withContext(Dispatchers.Main) { isLoading.value = false }
         }
     }
 
@@ -148,6 +166,8 @@ class CropActivity : ComponentActivity() {
         initialDrawPaths.value = emptyList()
         initialAdjustments.value = null
         projectLoadError.value = null
+        projectCanRelink.value = false
+        pendingRelinkProject = null
 
         showFlash.value = incomingIntent.getBooleanExtra(EXTRA_SHOW_FLASH, false)
         if (showFlash.value) vibrateShort()
@@ -310,6 +330,11 @@ class CropActivity : ComponentActivity() {
                                         lineHeight = 18.sp
                                     )
                                     Spacer(Modifier.height(16.dp))
+                                    if (projectCanRelink.value) {
+                                        TextButton(onClick = { projectSourcePicker.launch(arrayOf("image/*")) }) {
+                                            Text(stringResource(R.string.crop_choose_source), color = Primary)
+                                        }
+                                    }
                                     TextButton(onClick = { finish() }) {
                                         Text(stringResource(R.string.close), color = Primary)
                                     }
@@ -450,36 +475,50 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun loadProjectSidecar(uri: Uri) {
-        try {
-            val json = contentResolver.openInputStream(uri)?.use { stream ->
-                stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            } ?: throw IOException("Failed to open project sidecar")
-            loadProjectFromJson(json)
-        } catch (e: Exception) {
-            showProjectError(getString(R.string.crop_sidecar_open_failed, e.message ?: "unknown error"))
+        val result = try {
+            contentResolver.openInputStream(uri)?.use { stream ->
+                SnapCropProjectSidecar.decode(stream, ProjectImportOrigin.EXTERNAL)
+            } ?: ProjectDecodeResult.Rejected(ProjectRejectReason.MALFORMED)
+        } catch (_: Exception) {
+            ProjectDecodeResult.Rejected(ProjectRejectReason.MALFORMED)
         }
+        handleProjectDecode(result, ProjectImportOrigin.EXTERNAL)
     }
 
     private fun loadProjectFromJson(json: String) {
-        try {
-            val project = SnapCropProjectSidecar.decode(json)
-            val source = project.sourceUri?.let { Uri.parse(it) }
-            if (source == null) {
-                showProjectError(getString(R.string.crop_sidecar_no_uri))
-                return
+        handleProjectDecode(
+            SnapCropProjectSidecar.decodeString(json, ProjectImportOrigin.INTERNAL_DRAFT),
+            ProjectImportOrigin.INTERNAL_DRAFT
+        )
+    }
+
+    private fun handleProjectDecode(result: ProjectDecodeResult, origin: ProjectImportOrigin) {
+        if (result is ProjectDecodeResult.Rejected) {
+            val message = when (result.reason) {
+                ProjectRejectReason.TOO_LARGE -> getString(R.string.crop_project_too_large)
+                ProjectRejectReason.UNSUPPORTED_SCHEMA, ProjectRejectReason.UNSUPPORTED_VERSION ->
+                    getString(R.string.crop_project_unsupported)
+                ProjectRejectReason.MISSING_FINGERPRINT -> getString(R.string.crop_project_no_fingerprint)
+                else -> getString(R.string.crop_project_invalid)
             }
-            // Only honor content:// sources — never let a project/draft point the editor at an
-            // arbitrary file:// path it shouldn't read.
-            if (!"content".equals(source.scheme, ignoreCase = true)) {
-                showProjectError(getString(R.string.crop_sidecar_no_uri))
-                return
-            }
-            sourceUri = source
-            intentSourceHints = listOf("snapcrop_project")
-            loadBitmap(source, project)
-        } catch (e: Exception) {
-            showProjectError(getString(R.string.crop_sidecar_open_failed, e.message ?: "unknown error"))
+            showProjectError(message)
+            return
         }
+        val project = (result as ProjectDecodeResult.Success).project
+        val policy = if (origin == ProjectImportOrigin.EXTERNAL) {
+            SourceVerificationPolicy.REQUIRE_FINGERPRINT
+        } else {
+            SourceVerificationPolicy.ALLOW_MISSING_FINGERPRINT
+        }
+        pendingRelinkProject = project
+        pendingProjectPolicy = policy
+        val source = project.sourceUri?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        if (source == null || !source.scheme.equals("content", ignoreCase = true) ||
+            (origin == ProjectImportOrigin.EXTERNAL && !canAutoOpenProjectSource(source))) {
+            showProjectError(getString(R.string.crop_project_choose_source), canRelink = true)
+            return
+        }
+        verifyAndLoadProjectSource(source, project, policy)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -507,15 +546,46 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun showProjectError(message: String) {
+    private fun showProjectError(message: String, canRelink: Boolean = false) {
         runOnUiThread {
             bitmapState.value = null
             projectLoadError.value = message
+            projectCanRelink.value = canRelink
             isLoading.value = false
         }
     }
 
-    private fun loadBitmap(uri: Uri, project: SnapCropProject? = null) {
+    private fun canAutoOpenProjectSource(uri: Uri): Boolean {
+        if (uri.authority == "media" || uri.authority?.startsWith("com.android.providers.media") == true) return true
+        return contentResolver.persistedUriPermissions.any { it.isReadPermission && it.uri == uri }
+    }
+
+    private fun verifyAndLoadProjectSource(
+        uri: Uri,
+        project: SnapCropProject,
+        policy: SourceVerificationPolicy
+    ) {
+        val hash = sha256OfUri(uri, maxBytes = 512L * 1024 * 1024)
+        if (hash == null) {
+            showProjectError(getString(R.string.crop_project_source_unavailable), canRelink = true)
+            return
+        }
+        val expectedHash = project.sourceSha256
+        if (expectedHash != null && !hash.equals(expectedHash, ignoreCase = true)) {
+            showProjectError(getString(R.string.crop_project_hash_mismatch), canRelink = true)
+            return
+        }
+        sourceUri = uri
+        intentSourceHints = listOf("snapcrop_project")
+        loadBitmap(uri, project, hash, policy)
+    }
+
+    private fun loadBitmap(
+        uri: Uri,
+        project: SnapCropProject? = null,
+        sourceHash: String? = null,
+        policy: SourceVerificationPolicy = SourceVerificationPolicy.ALLOW_MISSING_FINGERPRINT
+    ) {
         try {
             // First pass: get dimensions
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -532,17 +602,50 @@ class CropActivity : ComponentActivity() {
 
             // Second pass: decode
             val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            contentResolver.openInputStream(uri)?.use {
-                originalBitmap = BitmapFactory.decodeStream(it, null, decodeOpts)
+            val decoded = contentResolver.openInputStream(uri)?.use {
+                BitmapFactory.decodeStream(it, null, decodeOpts)
             }
 
-            originalBitmap?.let { bmp ->
+            decoded?.let { bmp ->
+                if (project != null) {
+                    when (SnapCropProjectSidecar.compareSource(
+                        project,
+                        SourceIdentity(sourceHash, bmp.width, bmp.height),
+                        policy
+                    )) {
+                        SourceMatch.MATCH -> Unit
+                        SourceMatch.HASH_MISMATCH -> {
+                            bmp.recycle()
+                            showProjectError(getString(R.string.crop_project_hash_mismatch), canRelink = true)
+                            return
+                        }
+                        SourceMatch.DIMENSION_MISMATCH -> {
+                            val actualWidth = bmp.width
+                            val actualHeight = bmp.height
+                            bmp.recycle()
+                            showProjectError(
+                                getString(R.string.crop_project_dimension_mismatch, project.sourceWidth, project.sourceHeight, actualWidth, actualHeight),
+                                canRelink = true
+                            )
+                            return
+                        }
+                        SourceMatch.MISSING_FINGERPRINT -> {
+                            bmp.recycle()
+                            showProjectError(getString(R.string.crop_project_no_fingerprint))
+                            return
+                        }
+                    }
+                }
+                originalBitmap = bmp
                 bitmapState.value = bmp
+                projectLoadError.value = null
+                projectCanRelink.value = false
+                pendingRelinkProject = null
                 currentCropHints = CropSourceHints.normalize(
                     intentSourceHints + CropSourceHints.fromMedia(contentResolver, uri)
                 )
                 if (project != null) {
-                    cropRect.value = project.cropRect.coerceInside(bmp.width, bmp.height)
+                    cropRect.value = project.cropRect
                     cropMethod.value = "project"
                     initialPixelateRects.value = project.pixelateRects
                     initialDrawPaths.value = project.drawLayers
@@ -1640,32 +1743,54 @@ class CropActivity : ComponentActivity() {
     ): String {
         val source = sourceUri
         val bitmap = bitmapState.value
+        val limits = SnapCropProjectSidecar.DEFAULT_LIMITS
+        var remainingPoints = limits.maxTotalPoints
+        val boundedDrawPaths = drawPaths.take(limits.maxDrawLayers).mapNotNull { path ->
+            val pointCount = minOf(path.points.size, limits.maxPointsPerLayer, remainingPoints)
+            if (pointCount <= 0) return@mapNotNull null
+            remainingPoints -= pointCount
+            path.copy(
+                points = path.points.take(pointCount),
+                text = path.text?.take(limits.maxTextChars),
+                strokeWidth = path.strokeWidth.coerceIn(0f, 80f),
+                transOffsetX = path.transOffsetX.coerceIn(-(bitmap?.width ?: 1) * 4f, (bitmap?.width ?: 1) * 4f),
+                transOffsetY = path.transOffsetY.coerceIn(-(bitmap?.height ?: 1) * 4f, (bitmap?.height ?: 1) * 4f),
+                transScale = path.transScale.coerceIn(0.2f, 5f),
+                transRotation = path.transRotation.coerceIn(-3600f, 3600f)
+            )
+        }
         val project = SnapCropProject(
-            sourceUri = source?.toString(),
+            sourceUri = source?.toString()?.take(limits.maxUriChars),
             sourceSha256 = if (computeHash) source?.let { sha256OfUri(it) } else null,
             sourceWidth = bitmap?.width ?: 0,
             sourceHeight = bitmap?.height ?: 0,
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
-            pixelateRects = pixRects.map { Rect(it) },
-            drawLayers = drawPaths,
+            pixelateRects = pixRects.take(limits.maxPixelateRects).map { Rect(it) },
+            drawLayers = boundedDrawPaths,
             exportFormat = exportFormat.ext,
             exportMimeType = exportFormat.mime,
             exportQuality = exportFormat.quality,
-            exportSavePath = savePath,
+            exportSavePath = savePath.take(limits.maxPathChars),
             deleteOriginal = deleteOriginal
         )
         return SnapCropProjectSidecar.encode(project)
     }
 
-    private fun sha256OfUri(uri: Uri): String? {
+    private fun sha256OfUri(uri: Uri, maxBytes: Long = 512L * 1024 * 1024): String? {
         return try {
+            contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                if (descriptor.length > maxBytes) return null
+            }
             val digest = MessageDigest.getInstance("SHA-256")
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
             contentResolver.openInputStream(uri)?.use { input ->
                 while (true) {
                     val read = input.read(buffer)
                     if (read <= 0) break
+                    total += read
+                    if (total > maxBytes) return null
                     digest.update(buffer, 0, read)
                 }
             } ?: return null

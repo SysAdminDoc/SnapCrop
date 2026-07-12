@@ -12,6 +12,8 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SnapCropProjectSidecarTest {
+    private val validHash = "a".repeat(64)
+
     @Test
     fun encodeDecodePreservesEditableProjectState() {
         val adjustments = floatArrayOf(
@@ -21,7 +23,7 @@ class SnapCropProjectSidecarTest {
         )
         val project = SnapCropProject(
             sourceUri = "content://media/external/images/media/42",
-            sourceSha256 = "abc123",
+            sourceSha256 = "a".repeat(64),
             sourceWidth = 1440,
             sourceHeight = 3120,
             cropRect = Rect(10, 20, 500, 900),
@@ -81,7 +83,7 @@ class SnapCropProjectSidecarTest {
     fun encodeDecodePreservesLayerTransform() {
         val project = SnapCropProject(
             sourceUri = "content://media/external/images/media/7",
-            sourceSha256 = "deadbeef",
+            sourceSha256 = "d".repeat(64),
             sourceWidth = 1080,
             sourceHeight = 1920,
             cropRect = Rect(0, 0, 1080, 1920),
@@ -143,7 +145,7 @@ class SnapCropProjectSidecarTest {
             {
               "schema": "com.sysadmindoc.snapcrop.project",
               "version": 1,
-              "source": {},
+              "source": { "width": 100, "height": 100 },
               "crop": { "left": 1, "top": 2, "right": 3, "bottom": 4 }
             }
             """.trimIndent()
@@ -159,6 +161,91 @@ class SnapCropProjectSidecarTest {
         assertTrue(decoded.drawLayers.isEmpty())
         assertFalse(decoded.deleteOriginal)
     }
+
+    @Test
+    fun externalProjectRequiresSourceFingerprint() {
+        val json = """
+            {"schema":"com.sysadmindoc.snapcrop.project","version":1,
+             "source":{"width":100,"height":100},
+             "crop":{"left":0,"top":0,"right":100,"bottom":100}}
+        """.trimIndent()
+
+        val result = SnapCropProjectSidecar.decode(
+            json.byteInputStream(),
+            ProjectImportOrigin.EXTERNAL
+        )
+
+        assertEquals(ProjectRejectReason.MISSING_FINGERPRINT, (result as ProjectDecodeResult.Rejected).reason)
+    }
+
+    @Test
+    fun inputByteLimitRejectsBeforeJsonParsing() {
+        val result = SnapCropProjectSidecar.decode(
+            "123456".byteInputStream(),
+            ProjectImportOrigin.EXTERNAL,
+            ProjectImportLimits(maxJsonBytes = 5)
+        )
+
+        assertEquals(ProjectRejectReason.TOO_LARGE, (result as ProjectDecodeResult.Rejected).reason)
+    }
+
+    @Test
+    fun collectionLimitsRejectExcessRects() {
+        val project = basicProject().copy(
+            pixelateRects = listOf(Rect(1, 1, 2, 2), Rect(2, 2, 3, 3))
+        )
+
+        val result = SnapCropProjectSidecar.decode(
+            SnapCropProjectSidecar.encode(project).byteInputStream(),
+            ProjectImportOrigin.EXTERNAL,
+            ProjectImportLimits(maxPixelateRects = 1)
+        )
+
+        assertEquals(ProjectRejectReason.INVALID_FIELD, (result as ProjectDecodeResult.Rejected).reason)
+        assertEquals("pixelateRects", result.field)
+    }
+
+    @Test
+    fun sourceComparatorDistinguishesHashDimensionsAndDraftPolicy() {
+        val project = basicProject()
+
+        assertEquals(
+            SourceMatch.MATCH,
+            SnapCropProjectSidecar.compareSource(project, SourceIdentity(validHash, 100, 100), SourceVerificationPolicy.REQUIRE_FINGERPRINT)
+        )
+        assertEquals(
+            SourceMatch.HASH_MISMATCH,
+            SnapCropProjectSidecar.compareSource(project, SourceIdentity("b".repeat(64), 100, 100), SourceVerificationPolicy.REQUIRE_FINGERPRINT)
+        )
+        assertEquals(
+            SourceMatch.DIMENSION_MISMATCH,
+            SnapCropProjectSidecar.compareSource(project, SourceIdentity(validHash, 99, 100), SourceVerificationPolicy.REQUIRE_FINGERPRINT)
+        )
+        assertEquals(
+            SourceMatch.MISSING_FINGERPRINT,
+            SnapCropProjectSidecar.compareSource(project.copy(sourceSha256 = null), SourceIdentity(null, 100, 100), SourceVerificationPolicy.REQUIRE_FINGERPRINT)
+        )
+        assertEquals(
+            SourceMatch.MATCH,
+            SnapCropProjectSidecar.compareSource(project.copy(sourceSha256 = null), SourceIdentity(null, 100, 100), SourceVerificationPolicy.ALLOW_MISSING_FINGERPRINT)
+        )
+    }
+
+    private fun basicProject() = SnapCropProject(
+        sourceUri = "content://media/external/images/media/42",
+        sourceSha256 = validHash,
+        sourceWidth = 100,
+        sourceHeight = 100,
+        cropRect = Rect(0, 0, 100, 100),
+        adjustments = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+        pixelateRects = emptyList(),
+        drawLayers = emptyList(),
+        exportFormat = "png",
+        exportMimeType = "image/png",
+        exportQuality = 100,
+        exportSavePath = "Pictures/SnapCrop",
+        deleteOriginal = false
+    )
 
     private fun assertRectEquals(expected: Rect, actual: Rect) {
         assertEquals(expected.left, actual.left)

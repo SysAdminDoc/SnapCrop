@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Bounded, verified project imports (v6.30.0).**
+
+- External `.snapcrop.json` imports now enforce an 8 MB UTF-8 input ceiling,
+  exact schema/version, source dimensions/fingerprint, bounded rectangles,
+  layers, points, text, transforms, adjustment ranges, and export metadata.
+- Project source images are hashed before decode and their decoded working
+  dimensions are checked before any bitmap or editor collections are published.
+  Missing, inaccessible, untrusted-provider, hash-mismatched, and
+  dimension-mismatched sources now offer a verified OpenDocument relink flow.
+- Process-death drafts retain a separate trusted policy that permits their
+  intentionally omitted hash while still requiring exact dimensions. Exported
+  projects are capped to the same limits the importer accepts.
+
 **Purpose-specific Accessibility consent (v6.29.0).**
 
 - Long Screenshot and Step Capture now have separate, versioned consent records

@@ -138,8 +138,8 @@ are blocked behind explicit opt-in and evaluation gates.
 - **Share shortcuts:** The Android share sheet can surface the destinations you
   choose most often
 - **Save location:** Pictures, DCIM, or Downloads
-- **Extras:** Export border, watermark overlay, EXIF stripping,
-  editable project sidecars, delete-original toggle
+- **Extras:** Export border, watermark overlay, EXIF stripping, and bounded
+  editable project sidecars with source fingerprint verification and relinking
 
 ---
 

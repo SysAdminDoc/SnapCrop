@@ -371,6 +371,15 @@
     <string name="crop_sidecar_no_uri">This project sidecar does not include a source image URI.</string>
     <string name="crop_sidecar_open_failed">SnapCrop could not open this project sidecar: %1$s</string>
     <string name="crop_source_missing">The original image referenced by this project is missing or inaccessible: %1$s</string>
+    <string name="crop_choose_source">Choose source image</string>
+    <string name="crop_project_too_large">This project file exceeds SnapCrop’s 8 MB safety limit.</string>
+    <string name="crop_project_unsupported">This project uses an unsupported schema or version.</string>
+    <string name="crop_project_no_fingerprint">This external project has no source fingerprint and cannot be opened safely.</string>
+    <string name="crop_project_invalid">This project contains invalid or excessive editor data.</string>
+    <string name="crop_project_choose_source">The saved source is unavailable or is not a trusted media URI. Choose the original image to verify and relink it.</string>
+    <string name="crop_project_source_unavailable">SnapCrop could not read this source image. Choose another copy of the original.</string>
+    <string name="crop_project_hash_mismatch">The selected image contents do not match this project. Choose the original source image.</string>
+    <string name="crop_project_dimension_mismatch">The selected image is %3$d×%4$d, but this project requires %1$d×%2$d. Choose the original source image.</string>
     <string name="crop_saved">Saved</string>
     <string name="crop_saved_size">Saved (%1$s, quality %2$d%%)</string>
     <string name="crop_save_copy">Save Copy</string>
