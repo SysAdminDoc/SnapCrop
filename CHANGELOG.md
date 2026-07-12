@@ -4,6 +4,15 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Transform-safe pixel layers (v6.41.0).**
+
+- Blur, fill, smart-erase, and heal layers now resolve their transformed image-space
+  points before sampling or replacing pixels during export. Brush scaling follows the
+  same transform as the editor preview, and transform controls are enabled for these
+  layers instead of silently doing nothing.
+- Added regression coverage for transformed points, scaled brush widths, single-use
+  transforms, and every bitmap-mutating layer type.
+
 **Safe inbound multi-image shares (v6.40.0).**
 
 - Added `ACTION_SEND_MULTIPLE` plus stable-order extraction across stream extras,

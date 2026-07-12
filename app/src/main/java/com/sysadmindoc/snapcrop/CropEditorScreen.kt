@@ -413,12 +413,8 @@ fun CropEditorScreen(
         haptic()
     }
 
-    fun canTransformLayer(layer: DrawPath): Boolean =
-        layer.shapeType !in listOf("fill", "blur", "smart_erase", "heal")
-
     fun transformDrawLayer(index: Int, dx: Float, dy: Float, scaleMul: Float, dRotation: Float): Boolean {
-        val layer = drawPaths.getOrNull(index) ?: return false
-        if (!canTransformLayer(layer)) return false
+        if (index !in drawPaths.indices) return false
         val step = maxOf(bitmap.width, bitmap.height) * 0.02f
         updateDrawLayer(index) {
             it.copy(

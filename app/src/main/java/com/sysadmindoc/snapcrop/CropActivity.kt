@@ -751,9 +751,11 @@ class CropActivity : ComponentActivity() {
         }
         for (dp in visiblePaths) {
             if (dp.points.isEmpty()) continue
-            // Apply the per-layer move/resize/rotate transform (pivoted on centroid). Pixel-based
-            // tools (fill/smart erase) operate on the bitmap directly and are unaffected by the matrix.
-            val layerMatrix = dp.transformMatrix()
+            // Bitmap-mutating tools resolve their geometry first because Canvas transforms cannot
+            // move the source pixels they sample. Vector layers continue to use Canvas.concat.
+            val pixelOperation = dp.isPixelOperation()
+            val operationPath = if (pixelOperation) dp.transformedForPixelOperation() else dp
+            val layerMatrix = if (pixelOperation) null else dp.transformMatrix()
             val layerSaveCount = if (layerMatrix != null) {
                 val sc = canvas.save(); canvas.concat(layerMatrix); sc
             } else -1
@@ -820,8 +822,8 @@ class CropActivity : ComponentActivity() {
 
             // Blur brush — Gaussian blur along the stroke path
             if (dp.shapeType == "blur" && dp.points.size >= 2) {
-                val radius = (dp.strokeWidth * 2).toInt().coerceAtLeast(4)
-                for (pt in dp.points) {
+                val radius = (operationPath.strokeWidth * 2).toInt().coerceAtLeast(4)
+                for (pt in operationPath.points) {
                     val cx = pt.x.toInt(); val cy = pt.y.toInt()
                     val half = radius
                     val l = (cx - half).coerceAtLeast(0)
@@ -1012,15 +1014,15 @@ class CropActivity : ComponentActivity() {
 
             // Flood fill — fill contiguous region at tap point with selected color
             if (dp.shapeType == "fill" && dp.points.isNotEmpty()) {
-                val fx = dp.points[0].x.toInt().coerceIn(0, result.width - 1)
-                val fy = dp.points[0].y.toInt().coerceIn(0, result.height - 1)
+                val fx = operationPath.points[0].x.toInt().coerceIn(0, result.width - 1)
+                val fy = operationPath.points[0].y.toInt().coerceIn(0, result.height - 1)
                 floodFill(result, fx, fy, dp.color)
                 continue
             }
 
             // Smart Erase — mask-based object removal with edge-aware inpainting.
             if ((dp.shapeType == "smart_erase" || dp.shapeType == "heal") && dp.points.size >= 2) {
-                SmartEraseEngine.eraseInPlace(result, dp)
+                SmartEraseEngine.eraseInPlace(result, operationPath)
                 continue
             }
 

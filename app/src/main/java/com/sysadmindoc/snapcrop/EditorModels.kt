@@ -5,6 +5,7 @@ import android.graphics.PointF
 import android.graphics.Rect
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 data class DrawPath(
@@ -52,7 +53,42 @@ data class DrawPath(
             postTranslate(transOffsetX, transOffsetY)
         }
     }
+
+    /**
+     * Resolves a bitmap-mutating layer into image-space geometry. Unlike ordinary vector layers,
+     * these operations cannot rely on Canvas.concat because they sample or replace source pixels
+     * directly. Clearing the transform also prevents a caller from applying it a second time.
+     */
+    fun transformedForPixelOperation(): DrawPath {
+        val matrix = transformMatrix() ?: return this
+        val coordinates = FloatArray(points.size * 2)
+        points.forEachIndexed { index, point ->
+            coordinates[index * 2] = point.x
+            coordinates[index * 2 + 1] = point.y
+        }
+        matrix.mapPoints(coordinates)
+        val mappedPoints = points.indices.map { index ->
+            PointF(coordinates[index * 2], coordinates[index * 2 + 1])
+        }
+        val mappedControlPoint = controlPoint?.let { point ->
+            val pair = floatArrayOf(point.x, point.y)
+            matrix.mapPoints(pair)
+            PointF(pair[0], pair[1])
+        }
+        return copy(
+            points = mappedPoints,
+            controlPoint = mappedControlPoint,
+            strokeWidth = strokeWidth * abs(transScale),
+            transOffsetX = 0f,
+            transOffsetY = 0f,
+            transScale = 1f,
+            transRotation = 0f
+        )
+    }
 }
+
+internal fun DrawPath.isPixelOperation(): Boolean =
+    shapeType in setOf("fill", "blur", "smart_erase", "heal")
 
 internal enum class DragHandle {
     NONE, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT,
