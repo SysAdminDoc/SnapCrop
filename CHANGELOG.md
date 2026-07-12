@@ -4,6 +4,16 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Keystore-backed network credentials (v6.32.0).**
+
+- Replaced active `EncryptedSharedPreferences` storage with a bounded,
+  versioned AES-256-GCM credential file under no-backup storage and an Android
+  Keystore key. Existing encrypted and legacy plaintext credentials migrate
+  once, after which the old stores are removed.
+- Credential corruption, key invalidation, and encryption failures now disable
+  network exports without retaining plaintext. Settings explains the failure
+  and provides an immediate credential reset path.
+
 **Fail-closed official release gate (v6.31.2).**
 
 - Added `:app:verifyOfficialRelease`, which refuses contributor/debug signing,

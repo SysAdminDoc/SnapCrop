@@ -305,7 +305,7 @@ class MainActivity : ComponentActivity() {
             SnapCropTheme {
                 var selectedTab by remember { mutableIntStateOf(0) }
                 val prefs = remember { getSharedPreferences("snapcrop", MODE_PRIVATE) }
-                val credPrefs = remember { NetworkExportSettings.encryptedPrefs(this@MainActivity) }
+                val credentialStore = remember { NetworkCredentialStore.open(this@MainActivity) }
 
                 // Opt-in, once-per-launch anonymous update check (sideload has no other update path).
                 var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
@@ -537,7 +537,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showReportDialogState.value) {
-                    val networkSettings = NetworkExportSettings.fromPrefs(prefs, credPrefs)
+                    val networkSettings = NetworkExportSettings.fromPrefs(prefs, credentialStore)
                     val reportDefaultTitle = stringResource(R.string.report_default_title)
                     var reportTitle by remember(reportUris.value) { mutableStateOf(reportDefaultTitle) }
                     var notes by remember(reportUris.value) { mutableStateOf("") }
@@ -1039,7 +1039,7 @@ class MainActivity : ComponentActivity() {
     ): NetworkExportResult {
         val settings = NetworkExportSettings.fromPrefs(
             getSharedPreferences("snapcrop", MODE_PRIVATE),
-            NetworkExportSettings.encryptedPrefs(this)
+            NetworkCredentialStore.open(this)
         )
         if (!settings.isConfigured) {
             return NetworkExportResult(false, settings.target, 0, "Network export is not configured")

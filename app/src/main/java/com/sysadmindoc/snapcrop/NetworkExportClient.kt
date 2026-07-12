@@ -1,10 +1,6 @@
 package com.sysadmindoc.snapcrop
 
-import android.content.Context
 import android.content.SharedPreferences
-import android.os.Build
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKeys
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -48,68 +44,13 @@ data class NetworkExportSettings(
         const val PREF_AUTHORIZATION = "network_export_authorization"
         const val PREF_IMGUR_CLIENT_ID = "network_export_imgur_client_id"
 
-        private const val CRED_STORE = "snapcrop_credentials"
-
-        private fun createEncrypted(context: Context): SharedPreferences {
-            val masterKey = MasterKeys.getOrCreate(MasterKeys.AES256_GCM_SPEC)
-            return EncryptedSharedPreferences.create(
-                CRED_STORE,
-                masterKey,
-                context,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        }
-
-        /**
-         * EncryptedSharedPreferences (security-crypto, deprecated) can throw on some OEMs when the
-         * stored keyset is corrupted after a backup/restore or Keystore reset. Self-heal by wiping
-         * the corrupt store and recreating it, so the app never hard-crashes on launch over an
-         * optional credential store. Falls back to a transient store only if encryption is wholly
-         * unavailable (broken Keystore) so the app still runs.
-         */
-        fun encryptedPrefs(context: Context): SharedPreferences {
-            return try {
-                createEncrypted(context)
-            } catch (_: Exception) {
-                runCatching {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        context.deleteSharedPreferences(CRED_STORE)
-                    }
-                }
-                try {
-                    createEncrypted(context)
-                } catch (_: Exception) {
-                    // Degraded mode: encrypted storage unavailable. Creds entered now are not
-                    // persisted encrypted; network export is opt-in and off by default.
-                    context.getSharedPreferences("${CRED_STORE}_plain", Context.MODE_PRIVATE)
-                }
-            }
-        }
-
-        fun migrateCredentials(plainPrefs: SharedPreferences, encPrefs: SharedPreferences) {
-            val auth = plainPrefs.getString(PREF_AUTHORIZATION, null)
-            val imgur = plainPrefs.getString(PREF_IMGUR_CLIENT_ID, null)
-            if (auth != null || imgur != null) {
-                encPrefs.edit().apply {
-                    auth?.let { putString(PREF_AUTHORIZATION, it) }
-                    imgur?.let { putString(PREF_IMGUR_CLIENT_ID, it) }
-                }.apply()
-                plainPrefs.edit()
-                    .remove(PREF_AUTHORIZATION)
-                    .remove(PREF_IMGUR_CLIENT_ID)
-                    .apply()
-            }
-        }
-
-        fun fromPrefs(prefs: SharedPreferences, encPrefs: SharedPreferences? = null): NetworkExportSettings {
-            val securePrefs = encPrefs ?: prefs
+        fun fromPrefs(prefs: SharedPreferences, credentialStore: NetworkCredentialStore? = null): NetworkExportSettings {
             return NetworkExportSettings(
                 enabled = prefs.getBoolean(PREF_ENABLED, false),
                 target = NetworkExportTarget.fromPref(prefs.getString(PREF_TARGET, NetworkExportTarget.HTTP.prefValue)),
                 endpoint = prefs.getString(PREF_ENDPOINT, "").orEmpty().trim(),
-                authorizationHeader = securePrefs.getString(PREF_AUTHORIZATION, "").orEmpty().trim(),
-                imgurClientId = securePrefs.getString(PREF_IMGUR_CLIENT_ID, "").orEmpty().trim()
+                authorizationHeader = credentialStore?.getString(PREF_AUTHORIZATION).orEmpty().trim(),
+                imgurClientId = credentialStore?.getString(PREF_IMGUR_CLIENT_ID).orEmpty().trim()
             )
         }
     }

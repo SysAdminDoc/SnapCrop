@@ -178,7 +178,9 @@ release/security policy.
 - The screenshot intelligence index is opt-in, local-only, and can be rebuilt
   or purged from Settings.
 - Network exports are opt-in. HTTP/WebDAV report uploads and Imgur image
-  uploads run only after the user enables and configures a target.
+  uploads run only after the user enables and configures a target. Credentials
+  are stored in a versioned AES-256-GCM file whose key remains in Android
+  Keystore; decryption failures disable uploads and expose a Settings reset.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop.
 

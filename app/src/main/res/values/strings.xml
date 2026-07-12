@@ -255,6 +255,11 @@
     <string name="settings_http_label">HTTP upload endpoint</string>
     <string name="settings_auth_label">Authorization header value</string>
     <string name="settings_auth_hint">Example: Bearer token or Basic credentials. Leave blank for no auth.</string>
+    <string name="settings_credentials_migrated">Existing network credentials were moved to the new Android Keystore-backed store.</string>
+    <string name="settings_credentials_recovery">Saved network credentials cannot be decrypted. Network exports are disabled until you reset them.</string>
+    <string name="settings_credentials_reset">Reset saved credentials</string>
+    <string name="settings_credentials_reset_done">Saved network credentials reset</string>
+    <string name="settings_credentials_save_failed">Credentials could not be encrypted. Network exports are disabled until you reset them.</string>
     <string name="settings_section_watermark">Watermark</string>
     <string name="settings_watermark_title">Add watermark on save</string>
     <string name="settings_watermark_subtitle">Stamp diagonal repeating text on saved images</string>

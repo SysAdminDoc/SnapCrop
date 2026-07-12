@@ -40,6 +40,7 @@ import androidx.lifecycle.lifecycleScope
 import com.sysadmindoc.snapcrop.ui.theme.*
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
@@ -52,12 +53,12 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val credPrefs = NetworkExportSettings.encryptedPrefs(this)
-        NetworkExportSettings.migrateCredentials(prefs, credPrefs)
+        val initialCredentialStore = NetworkCredentialStore.open(this)
         val (screenW, screenH) = getScreenSize(this)
 
         setContent {
             SnapCropTheme {
+                var credentialStore by remember { mutableStateOf(initialCredentialStore) }
                 var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", true)) }
                 var useJpeg by remember { mutableStateOf(prefs.getBoolean("use_jpeg", false)) }
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
@@ -662,10 +663,33 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getString(NetworkExportSettings.PREF_ENDPOINT, "") ?: "")
                     }
                     var networkAuthorization by remember {
-                        mutableStateOf(credPrefs.getString(NetworkExportSettings.PREF_AUTHORIZATION, "") ?: "")
+                        mutableStateOf(credentialStore.getString(NetworkExportSettings.PREF_AUTHORIZATION))
                     }
                     var imgurClientId by remember {
-                        mutableStateOf(credPrefs.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, "") ?: "")
+                        mutableStateOf(credentialStore.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID))
+                    }
+                    var credentialStatus by remember { mutableStateOf(credentialStore.status) }
+                    LaunchedEffect(credentialStore, networkAuthorization) {
+                        if (!credentialStatus.isUsable) return@LaunchedEffect
+                        delay(500)
+                        val saved = withContext(Dispatchers.IO) {
+                            credentialStore.putString(NetworkExportSettings.PREF_AUTHORIZATION, networkAuthorization)
+                        }
+                        credentialStatus = credentialStore.status
+                        if (!saved && credentialStatus == NetworkCredentialStore.Status.RECOVERY_REQUIRED) {
+                            Toast.makeText(this@SettingsActivity, getString(R.string.settings_credentials_save_failed), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    LaunchedEffect(credentialStore, imgurClientId) {
+                        if (!credentialStatus.isUsable) return@LaunchedEffect
+                        delay(500)
+                        val saved = withContext(Dispatchers.IO) {
+                            credentialStore.putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId)
+                        }
+                        credentialStatus = credentialStore.status
+                        if (!saved && credentialStatus == NetworkCredentialStore.Status.RECOVERY_REQUIRED) {
+                            Toast.makeText(this@SettingsActivity, getString(R.string.settings_credentials_save_failed), Toast.LENGTH_LONG).show()
+                        }
                     }
                     Text(stringResource(R.string.settings_section_network), color = Primary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(8.dp))
@@ -678,6 +702,21 @@ class SettingsActivity : ComponentActivity() {
                             prefs.edit().putBoolean(NetworkExportSettings.PREF_ENABLED, it).apply()
                         }
                     )
+                    if (credentialStatus == NetworkCredentialStore.Status.MIGRATED) {
+                        Text(
+                            stringResource(R.string.settings_credentials_migrated),
+                            color = OnSurfaceVariant,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    } else if (credentialStatus == NetworkCredentialStore.Status.RECOVERY_REQUIRED) {
+                        Text(
+                            stringResource(R.string.settings_credentials_recovery),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                     if (networkExportsEnabled) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -715,7 +754,6 @@ class SettingsActivity : ComponentActivity() {
                                         value = imgurClientId,
                                         onValueChange = {
                                             imgurClientId = it.trim()
-                                            credPrefs.edit().putString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID, imgurClientId).apply()
                                         },
                                         singleLine = true,
                                         label = { Text(stringResource(R.string.settings_imgur_label)) },
@@ -760,7 +798,6 @@ class SettingsActivity : ComponentActivity() {
                                         value = networkAuthorization,
                                         onValueChange = {
                                             networkAuthorization = it
-                                            credPrefs.edit().putString(NetworkExportSettings.PREF_AUTHORIZATION, it).apply()
                                         },
                                         singleLine = true,
                                         label = { Text(stringResource(R.string.settings_auth_label)) },
@@ -782,6 +819,35 @@ class SettingsActivity : ComponentActivity() {
                                     )
                                 }
                             }
+                        }
+                    }
+                    if (credentialStatus == NetworkCredentialStore.Status.RECOVERY_REQUIRED ||
+                        networkAuthorization.isNotBlank() || imgurClientId.isNotBlank()
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                lifecycleScope.launch {
+                                    val reopened = withContext(Dispatchers.IO) {
+                                        NetworkCredentialStore.reset(this@SettingsActivity)
+                                    }
+                                    credentialStore = reopened
+                                    credentialStatus = reopened.status
+                                    networkAuthorization = ""
+                                    imgurClientId = ""
+                                    networkExportsEnabled = false
+                                    prefs.edit().putBoolean(NetworkExportSettings.PREF_ENABLED, false).apply()
+                                    Toast.makeText(
+                                        this@SettingsActivity,
+                                        getString(R.string.settings_credentials_reset_done),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.settings_credentials_reset))
                         }
                     }
 
