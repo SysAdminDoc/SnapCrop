@@ -109,6 +109,17 @@ internal object DuplicateGrouping {
         }
     }
 
+    /**
+     * Dismissals that split a single candidate out of a group without discarding the matches
+     * among the remaining candidates: only the pairs between [identity] and every other member.
+     */
+    fun dismissalsForCandidate(group: DuplicateGroup, identity: String): Set<DuplicateDismissal> {
+        val target = group.candidates.firstOrNull { it.identity == identity } ?: return emptySet()
+        return group.candidates.asSequence()
+            .filter { it.identity != identity }
+            .mapTo(mutableSetOf()) { DuplicateDismissal.of(target.fingerprintKey, it.fingerprintKey) }
+    }
+
     private fun similar(
         first: DuplicateCandidate,
         second: DuplicateCandidate,

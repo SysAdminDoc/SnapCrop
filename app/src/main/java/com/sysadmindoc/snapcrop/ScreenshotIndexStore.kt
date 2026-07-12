@@ -675,9 +675,16 @@ class ScreenshotIndexStore(context: Context) {
         return DuplicateGrouping.group(candidates, sensitivity, dismissals)
     }
 
-    suspend fun rememberNotSimilar(group: DuplicateGroup) {
+    suspend fun rememberNotSimilar(group: DuplicateGroup) =
+        persistDismissals(DuplicateGrouping.dismissalsFor(group))
+
+    /** Remembers that one candidate is not a match for the rest of its group. */
+    suspend fun rememberCandidateNotSimilar(group: DuplicateGroup, identity: String) =
+        persistDismissals(DuplicateGrouping.dismissalsForCandidate(group, identity))
+
+    private suspend fun persistDismissals(dismissals: Set<DuplicateDismissal>) {
         val now = System.currentTimeMillis()
-        val rows = DuplicateGrouping.dismissalsFor(group).map {
+        val rows = dismissals.map {
             DuplicateDismissalRow(it.firstFingerprint, it.secondFingerprint, now)
         }
         if (rows.isNotEmpty()) dao.insertDuplicateDismissals(rows)

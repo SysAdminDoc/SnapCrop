@@ -631,9 +631,9 @@ fun GalleryScreen(
                     }.takeIf { it.isNotEmpty() }
                 }
             },
-            onNotSimilar = { group ->
+            onNotSimilar = { group, identity ->
                 scope.launch {
-                    withContext(Dispatchers.IO) { collectionStore.rememberNotSimilar(group) }
+                    withContext(Dispatchers.IO) { collectionStore.rememberCandidateNotSimilar(group, identity) }
                     duplicateGroups = withContext(Dispatchers.IO) {
                         collectionStore.duplicateGroups(duplicateSensitivity)
                     }.takeIf { it.isNotEmpty() }

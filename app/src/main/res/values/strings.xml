@@ -619,7 +619,7 @@
     <string name="duplicate_remove">Remove</string>
     <string name="duplicate_keep_oldest">Keep oldest</string>
     <string name="duplicate_keep_newest">Keep newest</string>
-    <string name="duplicate_not_similar">Not similar</string>
+    <string name="duplicate_not_similar">Not a match</string>
     <string name="duplicate_skip">Next group</string>
     <string name="duplicate_trash_count">Trash %1$d</string>
     <string name="duplicate_none_found">No duplicate screenshots found at this sensitivity.</string>

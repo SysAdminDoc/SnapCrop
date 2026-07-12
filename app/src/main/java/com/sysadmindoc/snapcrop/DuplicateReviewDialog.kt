@@ -109,7 +109,7 @@ internal fun DuplicateReviewDialog(
     groups: List<DuplicateGroup>,
     sensitivity: DuplicateSensitivity,
     onSensitivityChange: (DuplicateSensitivity) -> Unit,
-    onNotSimilar: (DuplicateGroup) -> Unit,
+    onNotSimilar: (DuplicateGroup, String) -> Unit,
     onTrash: (List<android.net.Uri>) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -211,8 +211,8 @@ internal fun DuplicateReviewDialog(
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    if (group.kind == DuplicateMatchKind.SIMILAR) {
-                        TextButton(onClick = { onNotSimilar(group) }) { Text(stringResource(R.string.duplicate_not_similar)) }
+                    if (group.kind == DuplicateMatchKind.SIMILAR && group.candidates.size > 1) {
+                        TextButton(onClick = { onNotSimilar(group, active.identity) }) { Text(stringResource(R.string.duplicate_not_similar)) }
                     }
                     Spacer(Modifier.weight(1f))
                     TextButton(
