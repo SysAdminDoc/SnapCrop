@@ -25,7 +25,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 
 ### Instant Screenshot Detection
 - Background service monitors for new screenshots and opens the editor automatically
-- Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions
+- Rich notification with thumbnail preview + **Edit**, **Share**, and **Quick Crop** actions; Protect media previews omits screenshot pixels and marks the notification secret
 - Quick Settings tiles for monitoring, long screenshot capture, bounded step-by-step guide capture, and rerunning the last Quick Crop action. On Android 14+, Long Screenshot and Step Capture target only the active app window so overlays and system UI do not contaminate captures; Android 11–13 use a visible-display fallback. Step Capture keeps at most 10 normalized 720 px frames in private temporary storage, stops after 10 minutes or 2 minutes idle, and exposes Stop in its ongoing notification.
 - Dark, Light, and System themes cover the editor, Gallery, crop, stitch, collage,
   device-frame, video, launch, and system-bar surfaces; media previews retain a
@@ -213,6 +213,10 @@ release/security policy.
   never stores paths, URIs, image/OCR content, credentials, messages, or stack
   traces; Settings can disable and purge it or explicitly view, copy, or attach
   the redacted snapshot.
+- Protect media previews applies secure window/Recents policy to Gallery, the
+  editor, stitch/collage/frame/video tools, long/web review, and the floating
+  preview. It also removes screenshot pixels from detected notifications, including
+  a notification already visible when the preference is enabled.
 - Network exports are opt-in. HTTP/WebDAV report uploads and Imgur image
   uploads run only after the user enables and configures a target. Credentials
   are stored in a versioned AES-256-GCM file whose key remains in Android

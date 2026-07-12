@@ -1191,7 +1191,7 @@ class SettingsActivity : ComponentActivity() {
                     }
 
                     var secureEditor by remember {
-                        mutableStateOf(prefs.getBoolean("secure_editor", false))
+                        mutableStateOf(prefs.getBoolean(SecurePreviewPolicy.PREF_ENABLED, false))
                     }
                     SettingToggle(
                         title = stringResource(R.string.settings_secure_editor_title),
@@ -1199,7 +1199,7 @@ class SettingsActivity : ComponentActivity() {
                         checked = secureEditor,
                         onCheckedChange = {
                             secureEditor = it
-                            prefs.edit().putBoolean("secure_editor", it).apply()
+                            prefs.edit().putBoolean(SecurePreviewPolicy.PREF_ENABLED, it).apply()
                         }
                     )
 

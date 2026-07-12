@@ -4,6 +4,18 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Consistent secure media previews (v6.51.0).**
+
+- The existing preference is now named Protect media previews and applies to the
+  editor, Gallery/home, stitch, collage, device-frame, video, long/web review,
+  floating overlay, system Recents, and every other Activity that renders media.
+- Activities reapply protection on resume. The floating overlay updates its live
+  WindowManager flags when Settings changes, while an existing rich notification is
+  rebuilt immediately without screenshot pixels and marked secret.
+- The backward-compatible preference key/default remain unchanged. Policy and
+  Robolectric Activity tests cover default, enabled/disabled window flags, overlay
+  flags, and notification-thumbnail suppression.
+
 **Bounded local operation journal (v6.50.0).**
 
 - Settings now exposes a local-only diagnostic ring with enable/disable, view,
@@ -416,9 +428,9 @@ All notable changes to SnapCrop will be documented in this file.
   auto-check-on-launch toggle) does a single anonymous query to the GitHub Releases
   API and offers the download link when a newer version exists. No account, no
   tracking — sideload builds otherwise have no update path.
-- Added an opt-in "Protect the editor screen" setting that marks the editor window
-  `FLAG_SECURE` (and hides it from Recents on Android 13+), so other apps can't
-  screenshot/screen-record the un-redacted image.
+- Added an opt-in "Protect media previews" setting that marks all media windows and
+  floating previews `FLAG_SECURE`, hides them from Recents on Android 13+, and omits
+  screenshot pixels from rich notifications.
 - Hardened the network-credential store: `EncryptedSharedPreferences` (deprecated)
   now self-heals on a corrupted keyset (wipe + recreate) instead of crashing on launch.
 - Enabled per-app language support (`generateLocaleConfig`); SnapCrop will appear under

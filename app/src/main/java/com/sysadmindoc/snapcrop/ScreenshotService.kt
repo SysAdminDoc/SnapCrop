@@ -52,9 +52,22 @@ class ScreenshotService : Service() {
     // Lifecycle-bound scope so quick-save / last-action work is cancelled when the service stops,
     // rather than leaking a fresh CoroutineScope per invocation that runs after onDestroy.
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var securePreferences: SharedPreferences
+    @Volatile private var lastDetectedUri: Uri? = null
+    private val securePreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == SecurePreviewPolicy.PREF_ENABLED) {
+            lastDetectedUri?.let { uri -> serviceScope.launch { showDetectedNotification(uri) } }
+        }
+    }
     private var foregroundStarted = false
     private var delayedCaptureBaseline: Long = 0L
     private var delayedCaptureActive = false
+
+    override fun onCreate() {
+        super.onCreate()
+        securePreferences = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        securePreferences.registerOnSharedPreferenceChangeListener(securePreferenceListener)
+    }
 
     private fun ensureForeground() {
         if (foregroundStarted) return
@@ -558,6 +571,7 @@ class ScreenshotService : Service() {
     }
 
     private fun showDetectedNotification(uri: Uri) {
+        lastDetectedUri = uri
         val editIntent = PendingIntent.getActivity(this, 10,
             Intent(this, CropActivity::class.java).apply {
                 data = uri; putExtra(CropActivity.EXTRA_SHOW_FLASH, false)
@@ -578,13 +592,14 @@ class ScreenshotService : Service() {
             Intent(this, ScreenshotService::class.java).apply { action = ACTION_DISMISS },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-        // Load thumbnail for rich notification
-        val thumbnail = try {
+        val securePreview = SecurePreviewPolicy.isEnabled(this)
+        // Secure preview intentionally omits screenshot pixels from system notification surfaces.
+        val thumbnail = if (SecurePreviewPolicy.showNotificationThumbnail(securePreview)) try {
             contentResolver.openInputStream(uri)?.use { stream ->
                 val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
                 BitmapFactory.decodeStream(stream, null, opts)
             }
-        } catch (_: Exception) { null }
+        } catch (_: Exception) { null } else null
 
         val builder = NotificationCompat.Builder(this, SnapCropApp.CHANNEL_DETECTED)
             .setContentTitle(getString(R.string.notif_detected_title))
@@ -597,6 +612,7 @@ class ScreenshotService : Service() {
             .addAction(0, getString(R.string.notif_action_share), shareIntent)
             .addAction(0, getString(R.string.notif_action_quick_crop), quickSaveIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setVisibility(if (securePreview) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PRIVATE)
             .setTimeoutAfter(30_000)
 
         if (thumbnail != null) {
@@ -608,6 +624,9 @@ class ScreenshotService : Service() {
 
         val nm = getSystemService(NotificationManager::class.java)
         nm.notify(DETECTED_NOTIF_ID, notification)
+        handler.postDelayed({
+            if (lastDetectedUri == uri) lastDetectedUri = null
+        }, 30_000L)
         // Do NOT recycle thumbnail here — the notification system reads it asynchronously
     }
 
@@ -619,6 +638,7 @@ class ScreenshotService : Service() {
     }
 
     private fun dismissDetectedNotification() {
+        lastDetectedUri = null
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancel(DETECTED_NOTIF_ID)
     }
@@ -714,6 +734,9 @@ class ScreenshotService : Service() {
     }
 
     override fun onDestroy() {
+        if (::securePreferences.isInitialized) {
+            securePreferences.unregisterOnSharedPreferenceChangeListener(securePreferenceListener)
+        }
         isRunning = false
         delayedCaptureActive = false
         foregroundStarted = false

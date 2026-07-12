@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.graphics.PixelFormat
 import android.net.Uri
@@ -20,7 +21,18 @@ class FloatingScreenshotService : Service() {
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
     private var overlayBitmap: android.graphics.Bitmap? = null
+    private lateinit var securePreferences: SharedPreferences
+    private val securePreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == SecurePreviewPolicy.PREF_ENABLED) refreshOverlaySecurity()
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        securePreferences = getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
+        securePreferences.registerOnSharedPreferenceChangeListener(securePreferenceListener)
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -79,11 +91,12 @@ class FloatingScreenshotService : Service() {
         )
         container.addView(closeBtn, closeLp)
 
+        val securePreview = SecurePreviewPolicy.isEnabled(this)
         val params = WindowManager.LayoutParams(
             imgW,
             imgH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            SecurePreviewPolicy.overlayFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, securePreview),
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -132,6 +145,7 @@ class FloatingScreenshotService : Service() {
         try {
             windowManager?.addView(container, params)
             overlayView = container
+            overlayParams = params
         } catch (_: Exception) {
             // Overlay permission revoked or window token rejected — fail cleanly.
             removeOverlay()
@@ -158,13 +172,27 @@ class FloatingScreenshotService : Service() {
             try { windowManager?.removeView(it) } catch (_: Exception) {}
         }
         overlayView = null
+        overlayParams = null
         overlayBitmap?.let { if (!it.isRecycled) it.recycle() }
         overlayBitmap = null
     }
 
     override fun onDestroy() {
+        if (::securePreferences.isInitialized) {
+            securePreferences.unregisterOnSharedPreferenceChangeListener(securePreferenceListener)
+        }
         removeOverlay()
         super.onDestroy()
+    }
+
+    private fun refreshOverlaySecurity() {
+        val view = overlayView ?: return
+        val params = overlayParams ?: return
+        params.flags = SecurePreviewPolicy.overlayFlags(
+            params.flags,
+            SecurePreviewPolicy.isEnabled(this)
+        )
+        runCatching { windowManager?.updateViewLayout(view, params) }
     }
 
     companion object {

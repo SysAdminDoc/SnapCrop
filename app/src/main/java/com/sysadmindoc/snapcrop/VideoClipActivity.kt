@@ -47,6 +47,7 @@ class VideoClipActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureWindow(this)
         videoUri = intent.data
         if (videoUri == null) {
             finish()
@@ -65,6 +66,11 @@ class VideoClipActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applySecureWindow(this)
     }
 
     private fun getSaveFormat(): FrameSaveFormat {

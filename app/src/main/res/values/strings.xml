@@ -370,8 +370,8 @@
     <string name="redaction_style_bar_short">Bar</string>
     <string name="redaction_style_pixelate_short">Pixelate</string>
     <string name="redaction_style_blur_short">Blur</string>
-    <string name="settings_secure_editor_title">Protect the editor screen</string>
-    <string name="settings_secure_editor_subtitle">When ON, the editor is marked secure: other apps can\'t screenshot or screen-record it, and it\'s hidden in Recents. Also blocks your own screenshots of the editor.</string>
+    <string name="settings_secure_editor_title">Protect media previews</string>
+    <string name="settings_secure_editor_subtitle">Protects the editor, Gallery viewer, stitch/collage/frame/video tools, web and long-capture review, floating preview, and Recents from screenshots or recording. Screenshot thumbnails are omitted from notifications. Also blocks your own captures of these surfaces.</string>
     <string name="redact_share_dialog_title">Sensitive info detected</string>
     <string name="redact_share_dialog_message">SnapCrop found %d area(s) that may contain sensitive info. Share with these pixels replaced using your selected style?</string>
     <string name="redact_share_action_redacted">Share redacted</string>

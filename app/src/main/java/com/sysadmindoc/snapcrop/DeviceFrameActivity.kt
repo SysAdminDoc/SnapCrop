@@ -73,6 +73,7 @@ class DeviceFrameActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureWindow(this)
 
         // Accept incoming image
         imageUri.value = intent?.data
@@ -182,6 +183,11 @@ class DeviceFrameActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applySecureWindow(this)
     }
 
     private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {

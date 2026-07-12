@@ -365,6 +365,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureWindow(this)
         pendingMutationUris = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_URIS)
             ?.map(Uri::parse)?.toMutableList() ?: mutableListOf()
         pendingMutationSucceeded = savedInstanceState?.getStringArrayList(KEY_PENDING_MUTATION_SUCCEEDED)
@@ -1048,6 +1049,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        applySecureWindow(this)
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
         refreshLongScreenshotState()

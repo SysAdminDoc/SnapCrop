@@ -68,6 +68,7 @@ class StitchActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applySecureWindow(this)
         @Suppress("DEPRECATION")
         intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
             ?.distinctBy(Uri::toString)
@@ -119,6 +120,11 @@ class StitchActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applySecureWindow(this)
     }
 
     /**
