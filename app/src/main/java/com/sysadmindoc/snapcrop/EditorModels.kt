@@ -99,7 +99,7 @@ internal enum class DragHandle {
  *  across process death. */
 data class EditorDraft(
     val crop: Rect,
-    val pix: List<Rect>,
+    val redactions: List<RedactionRegion>,
     val draws: List<DrawPath>,
     val adj: FloatArray
 )
@@ -263,7 +263,7 @@ internal data class EditorSnapshot(
     val dn: Float,
     val gradBg: Int,
     val filter: ImageFilter,
-    val pixRects: List<Rect>,
+    val redactions: List<RedactionRegion>,
     val draws: List<DrawPath>,
     val cR: Float = 0f,
     val cG: Float = 0f,

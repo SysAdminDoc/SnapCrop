@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.graphics.PointF
 import android.graphics.Rect
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -56,8 +57,10 @@ class SnapCropProjectSidecarTest {
         assertEquals(project.sourceSha256, decoded.sourceSha256)
         assertRectEquals(project.cropRect, decoded.cropRect)
         assertTrue(project.adjustments.contentEquals(decoded.adjustments))
-        assertEquals(1, decoded.pixelateRects.size)
-        assertRectEquals(project.pixelateRects.first(), decoded.pixelateRects.first())
+        assertEquals(1, decoded.redactions.size)
+        assertRectEquals(project.pixelateRects.first(), decoded.redactions.first().bounds)
+        assertEquals(RedactionStyle.PIXELATE, decoded.redactions.first().style)
+        assertEquals(setOf(RedactionCategory.MANUAL), decoded.redactions.first().categories)
         assertEquals(1, decoded.drawLayers.size)
         val layer = decoded.drawLayers.first()
         assertEquals(2, layer.points.size)
@@ -163,6 +166,75 @@ class SnapCropProjectSidecarTest {
     }
 
     @Test
+    fun versionOnePixelateRectsMigrateToEditableRegions() {
+        val decoded = SnapCropProjectSidecar.decode(
+            """
+            {"schema":"com.sysadmindoc.snapcrop.project","version":1,
+             "source":{"width":100,"height":100},
+             "crop":{"left":0,"top":0,"right":100,"bottom":100},
+             "pixelateRects":[{"left":10,"top":12,"right":40,"bottom":44}]}
+            """.trimIndent()
+        )
+
+        val region = decoded.redactions.single()
+        assertRectEquals(Rect(10, 12, 40, 44), region.bounds)
+        assertEquals(RedactionStyle.PIXELATE, region.style)
+        assertEquals(setOf(RedactionCategory.MANUAL), region.categories)
+        assertTrue(region.enabled)
+    }
+
+    @Test
+    fun versionTwoPreservesTypedDisabledRedaction() {
+        val source = basicProject().copy(
+            redactions = listOf(
+                RedactionRegion(
+                    id = "red_test",
+                    bounds = Rect(10, 12, 40, 44),
+                    categories = setOf(RedactionCategory.EMAIL, RedactionCategory.PHONE),
+                    source = RedactionSource.OCR_REGEX,
+                    style = RedactionStyle.BLUR,
+                    enabled = false
+                )
+            )
+        )
+
+        val region = SnapCropProjectSidecar.decode(SnapCropProjectSidecar.encode(source)).redactions.single()
+
+        assertEquals("red_test", region.id)
+        assertEquals(setOf(RedactionCategory.EMAIL, RedactionCategory.PHONE), region.categories)
+        assertEquals(RedactionSource.OCR_REGEX, region.source)
+        assertEquals(RedactionStyle.BLUR, region.style)
+        assertFalse(region.enabled)
+    }
+
+    @Test
+    fun duplicateRedactionIdsAreRejected() {
+        val region = RedactionRegions.manual(Rect(10, 10, 30, 30))
+        val json = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(redactions = listOf(region, region.copy()))))
+
+        val result = SnapCropProjectSidecar.decode(
+            json.toString().byteInputStream(),
+            ProjectImportOrigin.EXTERNAL
+        )
+
+        assertEquals("redactions.id", (result as ProjectDecodeResult.Rejected).field)
+    }
+
+    @Test
+    fun unknownRedactionStyleIsRejected() {
+        val region = RedactionRegions.manual(Rect(10, 10, 30, 30))
+        val json = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(redactions = listOf(region))))
+        json.getJSONArray("redactions").getJSONObject(0).put("style", "TRANSPARENT")
+
+        val result = SnapCropProjectSidecar.decode(
+            json.toString().byteInputStream(),
+            ProjectImportOrigin.EXTERNAL
+        )
+
+        assertTrue(result is ProjectDecodeResult.Rejected)
+    }
+
+    @Test
     fun externalProjectRequiresSourceFingerprint() {
         val json = """
             {"schema":"com.sysadmindoc.snapcrop.project","version":1,
@@ -190,19 +262,22 @@ class SnapCropProjectSidecarTest {
     }
 
     @Test
-    fun collectionLimitsRejectExcessRects() {
+    fun collectionLimitsRejectExcessRedactions() {
         val project = basicProject().copy(
-            pixelateRects = listOf(Rect(1, 1, 2, 2), Rect(2, 2, 3, 3))
+            redactions = listOf(
+                RedactionRegions.manual(Rect(1, 1, 5, 5)),
+                RedactionRegions.manual(Rect(6, 6, 10, 10))
+            )
         )
 
         val result = SnapCropProjectSidecar.decode(
             SnapCropProjectSidecar.encode(project).byteInputStream(),
             ProjectImportOrigin.EXTERNAL,
-            ProjectImportLimits(maxPixelateRects = 1)
+            ProjectImportLimits(maxRedactions = 1)
         )
 
         assertEquals(ProjectRejectReason.INVALID_FIELD, (result as ProjectDecodeResult.Rejected).reason)
-        assertEquals("pixelateRects", result.field)
+        assertEquals("redactions", result.field)
     }
 
     @Test

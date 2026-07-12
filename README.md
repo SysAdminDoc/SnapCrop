@@ -84,6 +84,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 
 All tools support: custom colors (6 presets + full RGB picker + eyedropper), adjustable width, dashed lines, undo/redo.
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
+Auto-detected and manual redactions remain editable until export: review individual
+email/phone/card/IP/face regions, toggle whole categories, choose safe opaque Bar or
+cosmetic Pixelate/Blur, and move or resize each region before it is flattened once.
 Annotated saves include a same-name SVG sidecar for visible vector layers and reversible concealment rectangles.
 Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
 then reopened later to restore the crop, concealment masks, adjustment state, and draw

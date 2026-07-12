@@ -18,7 +18,10 @@ data class SnapCropProject(
     val sourceHeight: Int,
     val cropRect: Rect,
     val adjustments: FloatArray,
-    val pixelateRects: List<Rect>,
+    val pixelateRects: List<Rect> = emptyList(),
+    val redactions: List<RedactionRegion> = pixelateRects.map { bounds ->
+        RedactionRegions.manual(bounds, RedactionStyle.PIXELATE)
+    },
     val drawLayers: List<DrawPath>,
     val exportFormat: String?,
     val exportMimeType: String?,
@@ -36,6 +39,7 @@ data class SnapCropProject(
                 cropRect == other.cropRect &&
                 adjustments.contentEquals(other.adjustments) &&
                 pixelateRects == other.pixelateRects &&
+                redactions == other.redactions &&
                 drawLayers == other.drawLayers &&
                 exportFormat == other.exportFormat &&
                 exportMimeType == other.exportMimeType &&
@@ -52,6 +56,7 @@ data class SnapCropProject(
         result = 31 * result + cropRect.hashCode()
         result = 31 * result + adjustments.contentHashCode()
         result = 31 * result + pixelateRects.hashCode()
+        result = 31 * result + redactions.hashCode()
         result = 31 * result + drawLayers.hashCode()
         result = 31 * result + (exportFormat?.hashCode() ?: 0)
         result = 31 * result + (exportMimeType?.hashCode() ?: 0)
@@ -65,6 +70,7 @@ data class SnapCropProject(
 data class ProjectImportLimits(
     val maxJsonBytes: Int = 8 * 1024 * 1024,
     val maxPixelateRects: Int = 512,
+    val maxRedactions: Int = 512,
     val maxDrawLayers: Int = 256,
     val maxPointsPerLayer: Int = 16_384,
     val maxTotalPoints: Int = 65_536,
@@ -88,10 +94,11 @@ enum class SourceMatch { MATCH, HASH_MISMATCH, DIMENSION_MISMATCH, MISSING_FINGE
 object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val ADJUSTMENT_COUNT = 25
     val DEFAULT_LIMITS = ProjectImportLimits()
     private val HASH_PATTERN = Regex("^[0-9a-fA-F]{64}$")
+    private val REDACTION_ID_PATTERN = Regex("^[A-Za-z0-9_-]{1,80}$")
     private val ALLOWED_SHAPES = setOf(
         "rect", "circle", "text", "highlight", "callout", "spotlight", "magnifier",
         "emoji", "neon", "blur", "line", "measure", "eraser", "fill", "smart_erase", "heal"
@@ -118,8 +125,8 @@ object SnapCropProjectSidecar {
             )
             .put("crop", project.cropRect.toJson())
             .put("adjustments", project.adjustments.toAdjustmentsJson())
-            .put("pixelateRects", JSONArray().apply {
-                project.pixelateRects.forEach { put(it.toJson()) }
+            .put("redactions", JSONArray().apply {
+                project.redactions.forEach { put(it.toJson()) }
             })
             .put("drawLayers", JSONArray().apply {
                 project.drawLayers.forEach { put(it.toJson()) }
@@ -193,11 +200,12 @@ object SnapCropProjectSidecar {
         val schema = root.optString("schema", "")
         val version = root.optInt("version", 0)
         require(schema == SCHEMA) { "schema" }
-        require(version == VERSION) { "version" }
+        require(version in 1..VERSION) { "version" }
 
         val source = root.optJSONObject("source") ?: JSONObject()
         val export = root.optJSONObject("export") ?: JSONObject()
         val adjustments = root.optJSONObject("adjustments").toAdjustmentsArray()
+        val legacyRects = if (version == 1) root.optJSONArray("pixelateRects").toRectList() else emptyList()
         return SnapCropProject(
             sourceUri = source.optNullableString("uri"),
             sourceSha256 = source.optNullableString("sha256"),
@@ -205,7 +213,12 @@ object SnapCropProjectSidecar {
             sourceHeight = source.optInt("height", 0),
             cropRect = root.optJSONObject("crop")?.toRect() ?: Rect(0, 0, 0, 0),
             adjustments = adjustments,
-            pixelateRects = root.optJSONArray("pixelateRects").toRectList(),
+            pixelateRects = legacyRects,
+            redactions = if (version == 1) {
+                legacyRects.map { RedactionRegions.manual(it, RedactionStyle.PIXELATE) }
+            } else {
+                root.optJSONArray("redactions").toRedactionList()
+            },
             drawLayers = root.optJSONArray("drawLayers").toDrawPathList(),
             exportFormat = export.optNullableString("format"),
             exportMimeType = export.optNullableString("mimeType"),
@@ -250,6 +263,12 @@ object SnapCropProjectSidecar {
         if (!project.cropRect.isValidInside(width, height)) return reject("crop")
         if (project.pixelateRects.size > limits.maxPixelateRects || project.pixelateRects.any { !it.isValidInside(width, height) }) {
             return reject("pixelateRects")
+        }
+        if (project.redactions.size > limits.maxRedactions) return reject("redactions")
+        if (project.redactions.map { it.id }.toSet().size != project.redactions.size) return reject("redactions.id")
+        for (region in project.redactions) {
+            if (!REDACTION_ID_PATTERN.matches(region.id)) return reject("redactions.id")
+            if (!region.bounds.isValidInside(width, height)) return reject("redactions.bounds")
         }
         if (project.drawLayers.size > limits.maxDrawLayers) return reject("drawLayers")
         var totalPoints = 0
@@ -322,6 +341,33 @@ object SnapCropProjectSidecar {
         optInt("right", 0),
         optInt("bottom", 0)
     )
+
+    private fun RedactionRegion.toJson(): JSONObject = JSONObject()
+        .put("id", id)
+        .put("bounds", bounds.toJson())
+        .put("categories", JSONArray().apply {
+            categories.sortedBy(RedactionCategory::name).forEach { put(it.name) }
+        })
+        .put("source", source.name)
+        .put("style", style.name)
+        .put("enabled", enabled)
+
+    private fun JSONObject.toRedaction(): RedactionRegion {
+        val categoryJson = optJSONArray("categories") ?: throw IllegalArgumentException("redactions.categories")
+        val categories = buildSet {
+            for (index in 0 until categoryJson.length()) {
+                add(RedactionCategory.valueOf(categoryJson.getString(index)))
+            }
+        }
+        return RedactionRegion(
+            id = getString("id"),
+            bounds = getJSONObject("bounds").toRect(),
+            categories = categories,
+            source = RedactionSource.valueOf(getString("source")),
+            style = RedactionStyle.valueOf(getString("style")),
+            enabled = optBoolean("enabled", true)
+        )
+    }
 
     private fun PointF.toJson(): JSONObject = JSONObject()
         .put("x", x.toDouble())
@@ -437,6 +483,13 @@ object SnapCropProjectSidecar {
         if (this == null) return emptyList()
         return buildList {
             for (i in 0 until length()) add((optJSONObject(i) ?: JSONObject()).toRect())
+        }
+    }
+
+    private fun JSONArray?.toRedactionList(): List<RedactionRegion> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (i in 0 until length()) add(getJSONObject(i).toRedaction())
         }
     }
 

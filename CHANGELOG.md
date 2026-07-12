@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Editable redaction regions (v6.42.0).**
+
+- Auto-text now preserves email, phone, payment-card, IP, address, MAC, and IBAN
+  categories instead of flattening detections into anonymous rectangles; face and manual
+  concealments use the same dedicated region model.
+- Added per-category and per-region enable controls, Bar/Pixelate/Blur styles, bounded
+  move/resize controls, explicit disabled-region previews, and deep undo/draft copies.
+- Export validates enabled geometry, renders mixed styles once with opaque bars last, and
+  conceals source pixels before rotation/perspective transforms to prevent mask drift.
+- Project sidecars now write schema v2 typed redactions while safely migrating v1
+  `pixelateRects`; IDs, bounds, categories, sources, styles, counts, and duplicates are
+  validated on import. Annotation SVG companions carry enabled redaction metadata.
+
 **Transform-safe pixel layers (v6.41.1).**
 
 - Blur, fill, smart-erase, and heal layers now resolve their transformed image-space

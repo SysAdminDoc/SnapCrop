@@ -144,13 +144,13 @@ fun CropEditorScreen(
     bitmap: Bitmap,
     initialCropRect: Rect,
     cropMethod: String,
-    initialPixelateRects: List<Rect> = emptyList(),
+    initialRedactions: List<RedactionRegion> = emptyList(),
     initialDrawPaths: List<DrawPath> = emptyList(),
     initialAdjustments: FloatArray? = null,
-    onSave: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
-    onSaveCopy: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
-    onShare: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
-    onCopyClipboard: (Rect, List<Rect>, List<DrawPath>, FloatArray) -> Unit,
+    onSave: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
+    onSaveCopy: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
+    onShare: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
+    onCopyClipboard: (Rect, List<RedactionRegion>, List<DrawPath>, FloatArray) -> Unit,
     onDiscard: () -> Unit,
     onDelete: () -> Unit,
     onAutoCrop: () -> Rect,
@@ -198,7 +198,8 @@ fun CropEditorScreen(
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
-    val pixelateRects = remember { mutableStateListOf<Rect>().apply { addAll(initialPixelateRects) } }
+    val redactions = remember { mutableStateListOf<RedactionRegion>().apply { addAll(initialRedactions.map { it.copy() }) } }
+    var selectedRedactionIndex by remember { mutableIntStateOf(-1) }
     var pixDragStart by remember { mutableStateOf<Offset?>(null) }
     var pixDragCurrent by remember { mutableStateOf<Offset?>(null) }
 
@@ -355,7 +356,7 @@ fun CropEditorScreen(
         brightness, contrast, saturation, warmth, vignette, sharpen, rotationAngle,
         highlights, shadows, tiltShift, denoise, gradientBg,
         selectedFilter,
-        pixelateRects.toList(),
+        redactions.map { it.copy() },
         drawPaths.toList(),
         curveR, curveG, curveB,
         if (perspectiveMode) listOf(PointF(quadTL.x, quadTL.y), PointF(quadTR.x, quadTR.y), PointF(quadBR.x, quadBR.y), PointF(quadBL.x, quadBL.y)) else null
@@ -366,7 +367,8 @@ fun CropEditorScreen(
         brightness = s.bright; contrast = s.contr; saturation = s.sat; warmth = s.warm; vignette = s.vig; sharpen = s.sharp; rotationAngle = s.rotAngle
         highlights = s.hi; shadows = s.sh; tiltShift = s.tilt; denoise = s.dn; gradientBg = s.gradBg
         selectedFilter = s.filter
-        pixelateRects.clear(); pixelateRects.addAll(s.pixRects)
+        redactions.clear(); redactions.addAll(s.redactions.map { it.copy() })
+        selectedRedactionIndex = -1
         drawPaths.clear(); drawPaths.addAll(s.draws)
         curveR = s.cR; curveG = s.cG; curveB = s.cB
         if (s.perspectiveQuad != null && s.perspectiveQuad.size == 4) {
@@ -433,6 +435,111 @@ fun CropEditorScreen(
         drawPaths.removeAt(index)
         drawRedoStack.clear()
         haptic()
+    }
+
+    fun replaceRedactions(updated: List<RedactionRegion>) {
+        pushUndo()
+        redactions.clear()
+        redactions.addAll(updated.map { it.copy() })
+        if (selectedRedactionIndex !in redactions.indices) selectedRedactionIndex = -1
+        haptic()
+    }
+
+    fun updateRedaction(index: Int, transform: (RedactionRegion) -> RedactionRegion) {
+        val region = redactions.getOrNull(index) ?: return
+        pushUndo()
+        redactions[index] = transform(region)
+        haptic()
+    }
+
+    fun moveRedaction(index: Int, dx: Int, dy: Int) {
+        val step = (maxOf(bitmap.width, bitmap.height) * 0.02f).roundToInt().coerceAtLeast(1)
+        updateRedaction(index) {
+            RedactionRegions.move(it, dx * step, dy * step, bitmap.width, bitmap.height)
+        }
+    }
+
+    fun resizeRedaction(index: Int, dw: Int, dh: Int) {
+        val region = redactions.getOrNull(index) ?: return
+        val step = (maxOf(bitmap.width, bitmap.height) * 0.02f).roundToInt().coerceAtLeast(1)
+        val bounds = region.bounds
+        updateRedaction(index) {
+            RedactionRegions.resize(
+                it,
+                Rect(bounds.left, bounds.top, bounds.right + dw * step, bounds.bottom + dh * step),
+                bitmap.width,
+                bitmap.height
+            )
+        }
+    }
+
+    fun defaultRedactionStyle(): RedactionStyle = RedactionStyle.fromPreference(
+        drawPrefs.getString(ImageRedactor.PREF_REDACTION_STYLE, RedactionStyle.SOLID.preferenceValue)
+    )
+
+    fun addDetectedRedactions(incoming: List<RedactionRegion>): Int {
+        if (incoming.isEmpty()) return 0
+        val merged = RedactionRegions.merge(redactions.toList(), incoming)
+        val added = merged.size - redactions.size
+        if (merged != redactions.toList()) replaceRedactions(merged)
+        return added.coerceAtLeast(0)
+    }
+
+    fun scanFacesForRedaction() {
+        if (faceRedacting) return
+        faceRedacting = true
+        scope.launch {
+            try {
+                val faces = FaceDetector.detect(bitmap)
+                val detected = RedactionRegions.fromFaces(faces, defaultRedactionStyle())
+                addDetectedRedactions(detected)
+                lastFaceCount = detected.size
+                android.widget.Toast.makeText(
+                    context,
+                    if (detected.isEmpty()) context.getString(R.string.toast_no_faces)
+                    else context.getString(R.string.toast_redacted_faces, detected.size),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } finally {
+                faceRedacting = false
+            }
+        }
+    }
+
+    fun scanTextForRedaction() {
+        if (textRedacting) return
+        textRedacting = true
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    SensitiveTextDetector.detect(
+                        bitmap,
+                        OcrScript.fromContext(context),
+                        failOnOcrError = true
+                    )
+                }
+                val detected = RedactionRegions.fromSensitiveDetections(
+                    result.detections,
+                    defaultRedactionStyle()
+                )
+                addDetectedRedactions(detected)
+                lastTextRedactionCount = detected.size
+                android.widget.Toast.makeText(
+                    context,
+                    if (detected.isEmpty()) context.getString(R.string.toast_no_text)
+                    else context.getString(R.string.toast_redacted_text_blocks, detected.size),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } catch (_: Exception) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.toast_redaction_scan_failed),
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                textRedacting = false
+            }
+        }
     }
 
     fun undo() {
@@ -674,7 +781,7 @@ fun CropEditorScreen(
     // Let the host pull the live editor state to checkpoint a draft across process death.
     DisposableEffect(Unit) {
         registerStateProvider {
-            EditorDraft(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), exportAdjustments())
+            EditorDraft(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), exportAdjustments())
         }
         onDispose { registerStateProvider(null) }
     }
@@ -768,7 +875,7 @@ fun CropEditorScreen(
                 true
             }
             event.isCtrlPressed && event.key == Key.S -> {
-                onSave(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), exportAdjustments())
+                onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), exportAdjustments())
                 true
             }
             event.key == Key.DirectionLeft && editMode == EditMode.CROP -> {
@@ -1018,65 +1125,42 @@ fun CropEditorScreen(
                     PanelSection(stringResource(R.string.mode_pixelate)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             FilledTonalButton(
-                                onClick = {
-                                    if (!faceRedacting) {
-                                        faceRedacting = true
-                                        scope.launch {
-                                            val faces = FaceDetector.detect(bitmap)
-                                            if (faces.isNotEmpty()) pushUndo()
-                                            pixelateRects.addAll(faces)
-                                            lastFaceCount = faces.size
-                                            faceRedacting = false
-                                            android.widget.Toast.makeText(
-                                                context,
-                                                if (faces.isEmpty()) context.getString(R.string.toast_no_faces) else context.getString(R.string.toast_redacted_faces, faces.size),
-                                                android.widget.Toast.LENGTH_SHORT
-                                            ).show()
-                                            if (faces.isNotEmpty()) haptic()
-                                        }
-                                    }
-                                },
+                                onClick = { scanFacesForRedaction() },
                                 enabled = !faceRedacting,
                                 colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                             ) { Text(stringResource(R.string.pixelate_blur_faces), color = Tertiary, fontSize = 11.sp) }
                             FilledTonalButton(
-                                onClick = {
-                                    if (!textRedacting) {
-                                        textRedacting = true
-                                        scope.launch {
-                                            val result = withContext(Dispatchers.IO) {
-                                                SensitiveTextDetector.detect(bitmap, OcrScript.fromContext(context))
-                                            }
-                                            if (result.rects.isNotEmpty()) pushUndo()
-                                            pixelateRects.addAll(result.rects)
-                                            lastTextRedactionCount = result.rects.size
-                                            textRedacting = false
-                                            android.widget.Toast.makeText(
-                                                context,
-                                                if (result.rects.isEmpty()) context.getString(R.string.toast_no_text) else context.getString(R.string.toast_redacted_text_blocks, result.rects.size),
-                                                android.widget.Toast.LENGTH_SHORT
-                                            ).show()
-                                            if (result.rects.isNotEmpty()) haptic()
-                                        }
-                                    }
-                                },
+                                onClick = { scanTextForRedaction() },
                                 enabled = !textRedacting,
                                 colors = ButtonDefaults.filledTonalButtonColors(containerColor = Primary.copy(alpha = 0.2f)),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                             ) { Text(stringResource(R.string.pixelate_auto_text), color = Primary, fontSize = 11.sp) }
                         }
-                        if (pixelateRects.isNotEmpty()) {
+                        if (redactions.isNotEmpty()) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TextButton(onClick = { pushUndo(); pixelateRects.removeLastOrNull() }) {
+                                TextButton(onClick = { replaceRedactions(redactions.dropLast(1)) }) {
                                     Text(stringResource(R.string.editor_undo), color = Tertiary, fontSize = 11.sp)
                                 }
-                                TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
+                                TextButton(onClick = { replaceRedactions(emptyList()) }) {
                                     Text(stringResource(R.string.editor_clear), color = Tertiary, fontSize = 11.sp)
                                 }
                             }
+                            RedactionLayerPanel(
+                                regions = redactions,
+                                selectedIndex = selectedRedactionIndex,
+                                onSelectRegion = { index -> selectedRedactionIndex = if (selectedRedactionIndex == index) -1 else index },
+                                onToggleRegion = { index -> updateRedaction(index) { it.copy(enabled = !it.enabled) } },
+                                onDeleteRegion = { index -> replaceRedactions(redactions.filterIndexed { i, _ -> i != index }) },
+                                onStyleRegion = { index, style -> updateRedaction(index) { it.copy(style = style) } },
+                                onMoveRegion = ::moveRedaction,
+                                onResizeRegion = ::resizeRedaction,
+                                onToggleCategory = { category, enabled ->
+                                    replaceRedactions(RedactionRegions.setCategoryEnabled(redactions, category, enabled))
+                                }
+                            )
                         }
                     }
                 }
@@ -1338,7 +1422,7 @@ fun CropEditorScreen(
                 undoStack.forEachIndexed { idx, snap ->
                     val label = buildString {
                         if (snap.draws.isNotEmpty()) append("D${snap.draws.size} ")
-                        if (snap.pixRects.isNotEmpty()) append("P${snap.pixRects.size} ")
+                        if (snap.redactions.isNotEmpty()) append("R${snap.redactions.size} ")
                         if (snap.filter != ImageFilter.NONE) append(snap.filter.label + " ")
                         if (snap.bright != 0f || snap.contr != 1f || snap.sat != 1f) append("Adj ")
                         val cropDesc = "${snap.crop.width()}x${snap.crop.height()}"
@@ -1627,24 +1711,7 @@ fun CropEditorScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilledTonalButton(
-                        onClick = {
-                            if (!faceRedacting) {
-                                faceRedacting = true
-                                scope.launch {
-                                    val faces = FaceDetector.detect(bitmap)
-                                    if (faces.isNotEmpty()) pushUndo()
-                                    pixelateRects.addAll(faces)
-                                    lastFaceCount = faces.size
-                                    faceRedacting = false
-                                    if (faces.isEmpty()) {
-                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_no_faces), android.widget.Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_redacted_faces, faces.size), android.widget.Toast.LENGTH_SHORT).show()
-                                        haptic()
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { scanFacesForRedaction() },
                         enabled = !faceRedacting,
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Tertiary.copy(alpha = 0.2f)),
                         shape = RoundedCornerShape(8.dp),
@@ -1664,26 +1731,7 @@ fun CropEditorScreen(
                     }
 
                     FilledTonalButton(
-                        onClick = {
-                            if (!textRedacting) {
-                                textRedacting = true
-                                scope.launch {
-                                    val result = withContext(Dispatchers.IO) {
-                                        SensitiveTextDetector.detect(bitmap, OcrScript.fromContext(context))
-                                    }
-                                    if (result.rects.isNotEmpty()) pushUndo()
-                                    pixelateRects.addAll(result.rects)
-                                    lastTextRedactionCount = result.rects.size
-                                    textRedacting = false
-                                    if (result.rects.isEmpty()) {
-                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_no_text), android.widget.Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        android.widget.Toast.makeText(context, context.getString(R.string.toast_redacted_text_blocks, result.rects.size), android.widget.Toast.LENGTH_SHORT).show()
-                                        haptic()
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { scanTextForRedaction() },
                         enabled = !textRedacting,
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Primary.copy(alpha = 0.2f)),
                         shape = RoundedCornerShape(8.dp),
@@ -1704,15 +1752,30 @@ fun CropEditorScreen(
                 }
 
                 Row {
-                    if (pixelateRects.isNotEmpty()) {
-                        TextButton(onClick = { pushUndo(); pixelateRects.removeLastOrNull() }) {
+                    if (redactions.isNotEmpty()) {
+                        TextButton(onClick = { replaceRedactions(redactions.dropLast(1)) }) {
                             Text(stringResource(R.string.editor_undo), color = Tertiary, fontSize = 11.sp)
                         }
-                        TextButton(onClick = { pushUndo(); pixelateRects.clear() }) {
+                        TextButton(onClick = { replaceRedactions(emptyList()) }) {
                             Text(stringResource(R.string.editor_clear), color = Tertiary, fontSize = 11.sp)
                         }
                     }
                 }
+            }
+            if (redactions.isNotEmpty()) {
+                RedactionLayerPanel(
+                    regions = redactions,
+                    selectedIndex = selectedRedactionIndex,
+                    onSelectRegion = { index -> selectedRedactionIndex = if (selectedRedactionIndex == index) -1 else index },
+                    onToggleRegion = { index -> updateRedaction(index) { it.copy(enabled = !it.enabled) } },
+                    onDeleteRegion = { index -> replaceRedactions(redactions.filterIndexed { i, _ -> i != index }) },
+                    onStyleRegion = { index, style -> updateRedaction(index) { it.copy(style = style) } },
+                    onMoveRegion = ::moveRedaction,
+                    onResizeRegion = ::resizeRedaction,
+                    onToggleCategory = { category, enabled ->
+                        replaceRedactions(RedactionRegions.setCategoryEnabled(redactions, category, enabled))
+                    }
+                )
             }
         }
 
@@ -2160,7 +2223,7 @@ fun CropEditorScreen(
             cropTop,
             bitmap.width,
             bitmap.height,
-            pixelateRects.size,
+            redactions.size,
             drawPaths.size,
             selectedLayerState
         )
@@ -2195,10 +2258,10 @@ fun CropEditorScreen(
             add(CustomAccessibilityAction(zoomInLabel) { zoomBy(1.1f); true })
             add(CustomAccessibilityAction(zoomOutLabel) { zoomBy(0.9f); true })
             add(CustomAccessibilityAction(previewLabel) { previewMode = !previewMode; true })
-            if (pixelateRects.isNotEmpty()) {
+            if (redactions.isNotEmpty()) {
                 add(CustomAccessibilityAction(removeRedactionLabel) {
                     pushUndo()
-                    pixelateRects.removeLastOrNull()
+                    redactions.removeLastOrNull()
                     true
                 })
             }
@@ -2427,9 +2490,12 @@ fun CropEditorScreen(
                                                         val bx2 = ((maxOf(s.x, e.x) - offsetX) / scaleX).roundToInt().coerceIn(0, bitmap.width)
                                                         val by2 = ((maxOf(s.y, e.y) - offsetY) / scaleY).roundToInt().coerceIn(0, bitmap.height)
                                                         if (bx2 - bx1 > 10 && by2 - by1 > 10) {
-                                                            pushUndo()
-                                                            pixelateRects.add(Rect(bx1, by1, bx2, by2))
-                                                            haptic()
+                                                            val manual = RedactionRegions.manual(
+                                                                Rect(bx1, by1, bx2, by2),
+                                                                defaultRedactionStyle()
+                                                            )
+                                                            val merged = RedactionRegions.merge(redactions, listOf(manual))
+                                                            if (merged != redactions.toList()) replaceRedactions(merged)
                                                         }
                                                     }
                                                     pixDragStart = null; pixDragCurrent = null
@@ -2845,14 +2911,25 @@ fun CropEditorScreen(
                     }
                     } // end else (non-perspective)
 
-                    // Pixelate region indicators (mosaic pattern)
-                    val pixColor = Tertiary.copy(alpha = 0.35f)
-                    val pixBorder = Tertiary.copy(alpha = 0.7f)
-                    for (pr in pixelateRects) {
+                    // Editable redaction objects remain visible until export, including disabled
+                    // regions so an exclusion cannot become invisible during review.
+                    for ((index, region) in redactions.withIndex()) {
+                        val pr = region.bounds
                         val px1 = ox + pr.left * scale; val py1 = oy + pr.top * scale
                         val px2 = ox + pr.right * scale; val py2 = oy + pr.bottom * scale
-                        drawRect(pixColor, Offset(px1, py1), Size(px2 - px1, py2 - py1))
-                        drawRect(pixBorder, Offset(px1, py1), Size(px2 - px1, py2 - py1), style = Stroke(1.5f.dp.toPx()))
+                        val fill = when (region.style) {
+                            RedactionStyle.SOLID -> Color.Black.copy(alpha = if (region.enabled) 1f else 0.12f)
+                            RedactionStyle.PIXELATE -> Tertiary.copy(alpha = if (region.enabled) 0.42f else 0.10f)
+                            RedactionStyle.BLUR -> Color.White.copy(alpha = if (region.enabled) 0.28f else 0.08f)
+                        }
+                        val border = if (index == selectedRedactionIndex) Secondary else Tertiary
+                        drawRect(fill, Offset(px1, py1), Size(px2 - px1, py2 - py1))
+                        drawRect(
+                            border.copy(alpha = if (region.enabled) 0.9f else 0.45f),
+                            Offset(px1, py1),
+                            Size(px2 - px1, py2 - py1),
+                            style = Stroke(if (index == selectedRedactionIndex) 2.5f.dp.toPx() else 1.5f.dp.toPx())
+                        )
                     }
 
                     // Draw paths + shapes
@@ -3350,16 +3427,16 @@ fun CropEditorScreen(
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.editor_delete), tint = Tertiary) }
                 IconButton(onClick = { showResizeDialog = true }) {
                     Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.adjust_resize_button), tint = OnSurface) }
-                IconButton(onClick = { onShare(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Share, stringResource(R.string.editor_share), tint = OnSurface) }
-                IconButton(onClick = { onCopyClipboard(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.ContentCopy, stringResource(R.string.editor_copy), tint = OnSurface) }
-                IconButton(onClick = { onSaveCopy(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) }) {
+                IconButton(onClick = { onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) }) {
                     Icon(Icons.Default.Save, stringResource(R.string.crop_save_copy), tint = OnSurface) }
             }
 
             // Main save button — full width
-            Button(onClick = { onSave(currentCropRect(), pixelateRects.toList(), drawPaths.toList(), adj) },
+            Button(onClick = { onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
                 shape = RoundedCornerShape(12.dp)

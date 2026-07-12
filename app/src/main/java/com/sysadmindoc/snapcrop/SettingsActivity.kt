@@ -1057,10 +1057,11 @@ class SettingsActivity : ComponentActivity() {
                                     prefs.edit().putString(ImageRedactor.PREF_REDACTION_STYLE, style.preferenceValue).apply()
                                 },
                                 label = {
-                                    Text(stringResource(
-                                        if (style == RedactionStyle.SOLID) R.string.redaction_style_solid
-                                        else R.string.redaction_style_pixelate
-                                    ))
+                                    Text(stringResource(when (style) {
+                                        RedactionStyle.SOLID -> R.string.redaction_style_solid
+                                        RedactionStyle.PIXELATE -> R.string.redaction_style_pixelate
+                                        RedactionStyle.BLUR -> R.string.redaction_style_blur
+                                    }))
                                 },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = Primary.copy(alpha = 0.22f),

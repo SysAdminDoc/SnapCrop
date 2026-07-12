@@ -109,7 +109,7 @@ class CropActivity : ComponentActivity() {
     private val draftFile get() = File(filesDir, "editor_draft.json")
     private var intentSourceHints: List<String> = emptyList()
     private var currentCropHints: List<String> = emptyList()
-    private val initialPixelateRects = mutableStateOf<List<Rect>>(emptyList())
+    private val initialRedactions = mutableStateOf<List<RedactionRegion>>(emptyList())
     private val initialDrawPaths = mutableStateOf<List<DrawPath>>(emptyList())
     private val initialAdjustments = mutableStateOf<FloatArray?>(null)
     private val projectLoadError = mutableStateOf<String?>(null)
@@ -173,7 +173,7 @@ class CropActivity : ComponentActivity() {
         isLoading.value = true
         bitmapState.value = null
         cropMethod.value = ""
-        initialPixelateRects.value = emptyList()
+        initialRedactions.value = emptyList()
         initialDrawPaths.value = emptyList()
         initialAdjustments.value = null
         projectLoadError.value = null
@@ -235,14 +235,14 @@ class CropActivity : ComponentActivity() {
                             bitmap = bmp,
                             initialCropRect = cropRect.value,
                             cropMethod = cropMethod.value,
-                            initialPixelateRects = initialPixelateRects.value,
+                            initialRedactions = initialRedactions.value,
                             initialDrawPaths = initialDrawPaths.value,
                             initialAdjustments = initialAdjustments.value,
                             registerStateProvider = { provider -> draftStateProvider = provider },
-                            onSave = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
-                            onSaveCopy = { rect, pix, draw, adj -> saveCropped(bmp, rect, pix, draw, adj, deleteOriginal = false) },
-                            onShare = { rect, pix, draw, adj -> shareCropped(bmp, rect, pix, draw, adj) },
-                            onCopyClipboard = { rect, pix, draw, adj -> copyToClipboard(bmp, rect, pix, draw, adj) },
+                            onSave = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = effectiveDeleteOriginalOnSave()) },
+                            onSaveCopy = { rect, redactions, draw, adj -> saveCropped(bmp, rect, redactions, draw, adj, deleteOriginal = false) },
+                            onShare = { rect, redactions, draw, adj -> shareCropped(bmp, rect, redactions, draw, adj) },
+                            onCopyClipboard = { rect, redactions, draw, adj -> copyToClipboard(bmp, rect, redactions, draw, adj) },
                             onDiscard = { finish() },
                             onDelete = { showDeleteConfirm.value = true },
                             onAutoCrop = {
@@ -543,7 +543,7 @@ class CropActivity : ComponentActivity() {
             val d = provider()
             val json = buildProjectSidecarJson(
                 rect = d.crop,
-                pixRects = d.pix,
+                redactions = d.redactions,
                 drawPaths = d.draws,
                 adj = d.adj,
                 deleteOriginal = effectiveDeleteOriginalOnSave(),
@@ -658,7 +658,7 @@ class CropActivity : ComponentActivity() {
                 if (project != null) {
                     cropRect.value = project.cropRect
                     cropMethod.value = "project"
-                    initialPixelateRects.value = project.pixelateRects
+                    initialRedactions.value = project.redactions
                     initialDrawPaths.value = project.drawLayers
                     initialAdjustments.value = project.adjustments
                 } else {
@@ -735,8 +735,8 @@ class CropActivity : ComponentActivity() {
         bitmapState.value = flipped
     }
 
-    private fun applyPixelate(bitmap: Bitmap, pixRects: List<Rect>): Bitmap {
-        return ImageRedactor.pixelate(bitmap, pixRects)
+    private fun applyRedactions(bitmap: Bitmap, redactions: List<RedactionRegion>): Bitmap {
+        return ImageRedactor.render(bitmap, redactions)
     }
 
     private fun applyDraw(bitmap: Bitmap, paths: List<DrawPath>): Bitmap {
@@ -1379,20 +1379,21 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
-        // Apply free rotation first (before adjustments/crop)
+    private fun createCroppedBitmap(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f)): Bitmap {
+        // Redact source pixels before any geometric transform so rotate/perspective cannot move
+        // secrets away from an untransformed mask. Invalid enabled regions abort the export.
+        val redacted = applyRedactions(bitmap, redactions)
+        // Apply free rotation before adjustments/crop.
         val rotAngle = if (adj.size > 8) adj[8] else 0f
         val rotated = if (rotAngle != 0f) {
             val matrix = Matrix().apply { postRotate(rotAngle, bitmap.width / 2f, bitmap.height / 2f) }
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        } else bitmap
+            Bitmap.createBitmap(redacted, 0, 0, redacted.width, redacted.height, matrix, true)
+        } else redacted
 
         val adjusted = applyAdjustments(rotated, adj)
         if (adjusted !== rotated && rotated !== bitmap) rotated.recycle()
-        val pixelated = applyPixelate(adjusted, pixRects)
-        if (pixelated !== adjusted && adjusted !== bitmap) adjusted.recycle()
-        val drawn = applyDraw(pixelated, drawPaths)
-        if (drawn !== pixelated && pixelated !== bitmap) pixelated.recycle()
+        val drawn = applyDraw(adjusted, drawPaths)
+        if (drawn !== adjusted && adjusted !== bitmap) adjusted.recycle()
 
         // Perspective warp: adj[17..24] = quad TL.x, TL.y, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y
         val hasPerspective = adj.size >= 25 && (adj[17] != 0f || adj[18] != 0f || adj[19] != 0f || adj[20] != 0f ||
@@ -1578,7 +1579,7 @@ class CropActivity : ComponentActivity() {
         return result
     }
 
-    private fun buildAnnotationSvg(cropRect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>): String? {
+    private fun buildAnnotationSvg(cropRect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>): String? {
         val width = cropRect.width().coerceAtLeast(1)
         val height = cropRect.height().coerceAtLeast(1)
         val elements = StringBuilder()
@@ -1606,13 +1607,16 @@ class CropActivity : ComponentActivity() {
         fun strokeAttrs(dp: DrawPath, opacity: Float = alpha(dp.color)): String =
             """fill="none" stroke="${colorHex(dp.color)}" stroke-width="${dp.strokeWidth.svgNum()}" stroke-linecap="round" stroke-linejoin="round" opacity="${opacity.svgNum()}"${dash(dp)}"""
 
-        pixRects.forEachIndexed { index, rect ->
+        redactions.filter(RedactionRegion::enabled).forEachIndexed { index, region ->
+            val rect = region.bounds
             val left = (rect.left - cropRect.left).coerceIn(0, width).toFloat()
             val top = (rect.top - cropRect.top).coerceIn(0, height).toFloat()
             val right = (rect.right - cropRect.left).coerceIn(0, width).toFloat()
             val bottom = (rect.bottom - cropRect.top).coerceIn(0, height).toFloat()
             if (right > left && bottom > top) {
-                elements.append("""  <rect id="pixelate-${index + 1}" x="${left.svgNum()}" y="${top.svgNum()}" width="${(right - left).svgNum()}" height="${(bottom - top).svgNum()}" fill="#000000" opacity="0.35" stroke="#F38BA8" stroke-width="2"/>""")
+                val categories = region.categories.joinToString(",") { it.name.lowercase(Locale.US) }
+                val opacity = if (region.style == RedactionStyle.SOLID) "1.00" else "0.65"
+                elements.append("""  <rect id="${xml(region.id)}" data-style="${region.style.preferenceValue}" data-categories="${xml(categories)}" x="${left.svgNum()}" y="${top.svgNum()}" width="${(right - left).svgNum()}" height="${(bottom - top).svgNum()}" fill="#000000" opacity="$opacity" stroke="#F38BA8" stroke-width="2"/>""")
                     .append('\n')
             }
         }
@@ -1746,7 +1750,7 @@ class CropActivity : ComponentActivity() {
 
     private fun buildProjectSidecarJson(
         rect: Rect,
-        pixRects: List<Rect>,
+        redactions: List<RedactionRegion>,
         drawPaths: List<DrawPath>,
         adj: FloatArray,
         deleteOriginal: Boolean,
@@ -1779,7 +1783,7 @@ class CropActivity : ComponentActivity() {
             sourceHeight = bitmap?.height ?: 0,
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
-            pixelateRects = pixRects.take(limits.maxPixelateRects).map { Rect(it) },
+            redactions = redactions.take(limits.maxRedactions).map { it.copy() },
             drawLayers = boundedDrawPaths,
             exportFormat = exportFormat.ext,
             exportMimeType = exportFormat.mime,
@@ -1813,13 +1817,13 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun saveCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
+    private fun saveCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray, deleteOriginal: Boolean) {
         if (isSaving.value) return
         isSaving.value = true
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
-                cropped = createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+                cropped = createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj)
                 val bordered = applyBorder(cropped)
                 if (bordered !== cropped) cropped.recycle()
                 cropped = bordered
@@ -1828,12 +1832,12 @@ class CropActivity : ComponentActivity() {
                 cropped = watermarked
                 val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
                 val name = resolveFilename()
-                val annotationSvg = buildAnnotationSvg(rect, pixRects, drawPaths)
+                val annotationSvg = buildAnnotationSvg(rect, redactions, drawPaths)
                 val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
                 val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
                 val exportFormat = getExportFormat(forcePng = hasShapeCrop)
                 val projectSidecarJson = if (projectSidecarsEnabled()) {
-                    buildProjectSidecarJson(rect, pixRects, drawPaths, adj, deleteOriginal, exportFormat, savePath)
+                    buildProjectSidecarJson(rect, redactions, drawPaths, adj, deleteOriginal, exportFormat, savePath)
                 } else {
                     null
                 }
@@ -1859,11 +1863,11 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
+    private fun copyToClipboard(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             var cropped: Bitmap? = null
             try {
-                cropped = applyExportDecorations(createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj))
+                cropped = applyExportDecorations(createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj))
                 val clipDir = File(cacheDir, "clipboard")
                 clipDir.mkdirs()
                 val file = File(clipDir, "clip.png")
@@ -1885,10 +1889,10 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun shareCropped(bitmap: Bitmap, rect: Rect, pixRects: List<Rect>, drawPaths: List<DrawPath>, adj: FloatArray) {
+    private fun shareCropped(bitmap: Bitmap, rect: Rect, redactions: List<RedactionRegion>, drawPaths: List<DrawPath>, adj: FloatArray) {
         lifecycleScope.launch(Dispatchers.IO) {
             val cropped = try {
-                createCroppedBitmap(bitmap, rect, pixRects, drawPaths, adj)
+                createCroppedBitmap(bitmap, rect, redactions, drawPaths, adj)
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@CropActivity, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
