@@ -2367,6 +2367,7 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 val store = ScreenshotIndexStore(this@MainActivity)
                 runCatching { store.deleteSourceContexts(succeeded) }
+                runCatching { store.deleteDuplicateMetadata(succeeded) }
                 runCatching {
                     store.deleteNoteReminders(succeeded).forEach { reminder ->
                         ScreenshotReminderScheduler.cancel(

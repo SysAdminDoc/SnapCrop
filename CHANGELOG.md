@@ -4,6 +4,29 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Straighten export now matches the editor preview (v6.65.0).**
+
+- The straighten angle is applied within the original image frame on export instead
+  of expanding the canvas to the rotated bounding box. Exported straightened crops
+  now land on the same pixels the preview showed, and a straighten-only save keeps
+  the source dimensions rather than growing transparent corners.
+
+**Reviewed near-duplicate screenshot cleanup (v6.65.0).**
+
+- Gallery can analyze the complete screenshot library on demand using streamed
+  SHA-256 plus bounded 9×8 perceptual hashes, then group exact or visually
+  similar captures under strict, balanced, or loose thresholds.
+- A source-resolution, one-image-at-a-time review surface supports keep-oldest,
+  keep-newest, and safe manual removal. Nothing is selected or deleted
+  automatically; confirmed removals use Android's existing recoverable trash.
+  Trashing a group advances to the remaining groups instead of ending the
+  review, and background analysis throttles its progress reporting so large
+  libraries do not flood WorkManager with per-item writes.
+- Room v6 retains resumable derived fingerprints across interrupted scans and
+  content-keyed “not similar” corrections across copies or moves. Stale hashes
+  prune only after a complete MediaStore pass, while index purge never removes
+  the correction history.
+
 **Physical PDF page layouts and deterministic pagination (v6.64.0).**
 
 - Fixed the report renderer’s root geometry error: 1240×1754 values were being

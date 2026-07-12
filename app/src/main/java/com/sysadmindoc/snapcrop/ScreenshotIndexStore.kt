@@ -249,6 +249,36 @@ internal data class ScreenshotNoteReminderRow(
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
 
+@Entity(
+    tableName = "duplicate_fingerprint",
+    primaryKeys = ["media_uri", "media_date_added"],
+    indices = [Index("exact_sha256"), Index("difference_hash")]
+)
+internal data class DuplicateFingerprintRow(
+    @ColumnInfo(name = "media_uri") val mediaUri: String,
+    @ColumnInfo(name = "media_date_added") val mediaDateAdded: Long,
+    @ColumnInfo(name = "display_name") val displayName: String,
+    @ColumnInfo(name = "width") val width: Int,
+    @ColumnInfo(name = "height") val height: Int,
+    @ColumnInfo(name = "size_bytes") val sizeBytes: Long,
+    @ColumnInfo(name = "exact_sha256") val exactSha256: String?,
+    @ColumnInfo(name = "difference_hash") val differenceHash: Long,
+    @ColumnInfo(name = "average_luma") val averageLuma: Int,
+    @ColumnInfo(name = "hash_version") val hashVersion: Int,
+    @ColumnInfo(name = "updated_at") val updatedAt: Long
+)
+
+@Entity(
+    tableName = "duplicate_dismissal",
+    primaryKeys = ["first_fingerprint", "second_fingerprint"],
+    indices = [Index("created_at")]
+)
+internal data class DuplicateDismissalRow(
+    @ColumnInfo(name = "first_fingerprint") val firstFingerprint: String,
+    @ColumnInfo(name = "second_fingerprint") val secondFingerprint: String,
+    @ColumnInfo(name = "created_at") val createdAt: Long
+)
+
 data class ScreenshotNoteReminder(
     val uri: Uri,
     val dateAdded: Long,
@@ -410,6 +440,31 @@ internal interface ScreenshotIndexDao {
 
     @Query("UPDATE media_note_reminder SET reminder_at = NULL, reminder_token = NULL, updated_at = :updatedAt WHERE media_uri = :uri AND media_date_added = :dateAdded AND reminder_token = :token")
     suspend fun clearReminder(uri: String, dateAdded: Long, token: String, updatedAt: Long): Int
+
+    @Query("SELECT * FROM duplicate_fingerprint ORDER BY media_date_added ASC, media_uri ASC")
+    suspend fun getDuplicateFingerprints(): List<DuplicateFingerprintRow>
+
+    @Query("DELETE FROM duplicate_fingerprint")
+    suspend fun deleteDuplicateFingerprints()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertDuplicateFingerprints(rows: List<DuplicateFingerprintRow>)
+
+    @Query("SELECT * FROM duplicate_dismissal")
+    suspend fun getDuplicateDismissals(): List<DuplicateDismissalRow>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertDuplicateDismissals(rows: List<DuplicateDismissalRow>)
+
+    @Query("DELETE FROM duplicate_dismissal WHERE rowid IN (SELECT rowid FROM duplicate_dismissal ORDER BY created_at DESC LIMIT -1 OFFSET :maxRows)")
+    suspend fun trimDuplicateDismissals(maxRows: Int)
+
+    @Query("DELETE FROM duplicate_fingerprint WHERE media_uri IN (:uris)")
+    suspend fun deleteDuplicateFingerprints(uris: List<String>)
+
+    @Query("DELETE FROM duplicate_fingerprint WHERE media_uri = :uri AND media_date_added = :dateAdded")
+    suspend fun deleteDuplicateFingerprint(uri: String, dateAdded: Long)
+
 }
 
 @Database(
@@ -418,9 +473,11 @@ internal interface ScreenshotIndexDao {
         ManualCollectionRow::class,
         ManualCollectionItemRow::class,
         MediaSourceContextRow::class,
-        ScreenshotNoteReminderRow::class
+        ScreenshotNoteReminderRow::class,
+        DuplicateFingerprintRow::class,
+        DuplicateDismissalRow::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -541,6 +598,36 @@ internal object ScreenshotIndexMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_note_reminder_reminder_at` ON `media_note_reminder` (`reminder_at`)")
         }
     }
+
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `duplicate_fingerprint` (
+                    `media_uri` TEXT NOT NULL,
+                    `media_date_added` INTEGER NOT NULL,
+                    `display_name` TEXT NOT NULL,
+                    `width` INTEGER NOT NULL,
+                    `height` INTEGER NOT NULL,
+                    `size_bytes` INTEGER NOT NULL,
+                    `exact_sha256` TEXT,
+                    `difference_hash` INTEGER NOT NULL,
+                    `average_luma` INTEGER NOT NULL,
+                    `hash_version` INTEGER NOT NULL,
+                    `updated_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`media_uri`, `media_date_added`))""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_duplicate_fingerprint_exact_sha256` ON `duplicate_fingerprint` (`exact_sha256`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_duplicate_fingerprint_difference_hash` ON `duplicate_fingerprint` (`difference_hash`)")
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `duplicate_dismissal` (
+                    `first_fingerprint` TEXT NOT NULL,
+                    `second_fingerprint` TEXT NOT NULL,
+                    `created_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`first_fingerprint`, `second_fingerprint`))""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_duplicate_dismissal_created_at` ON `duplicate_dismissal` (`created_at`)")
+        }
+    }
 }
 
 /**
@@ -575,6 +662,45 @@ class ScreenshotIndexStore(context: Context) {
 
     suspend fun purge() {
         dao.deleteAll()
+        dao.deleteDuplicateFingerprints()
+    }
+
+    suspend fun duplicateGroups(sensitivity: DuplicateSensitivity): List<DuplicateGroup> {
+        val candidates = dao.getDuplicateFingerprints()
+            .filter { it.hashVersion == DuplicateHashing.HASH_VERSION }
+            .map { it.toCandidate() }
+        val dismissals = dao.getDuplicateDismissals().mapTo(hashSetOf()) {
+            DuplicateDismissal(it.firstFingerprint, it.secondFingerprint)
+        }
+        return DuplicateGrouping.group(candidates, sensitivity, dismissals)
+    }
+
+    suspend fun rememberNotSimilar(group: DuplicateGroup) {
+        val now = System.currentTimeMillis()
+        val rows = DuplicateGrouping.dismissalsFor(group).map {
+            DuplicateDismissalRow(it.firstFingerprint, it.secondFingerprint, now)
+        }
+        if (rows.isNotEmpty()) dao.insertDuplicateDismissals(rows)
+        dao.trimDuplicateDismissals(MAX_DUPLICATE_DISMISSALS)
+    }
+
+    internal suspend fun storedDuplicateFingerprints(): List<DuplicateFingerprintRow> =
+        dao.getDuplicateFingerprints()
+
+    internal suspend fun upsertDuplicateFingerprints(rows: List<DuplicateFingerprintRow>) {
+        if (rows.isNotEmpty()) dao.upsertDuplicateFingerprints(rows)
+    }
+
+    internal suspend fun pruneDuplicateFingerprints(currentIdentities: Set<Pair<String, Long>>) {
+        dao.getDuplicateFingerprints()
+            .filter { (it.mediaUri to it.mediaDateAdded) !in currentIdentities }
+            .forEach { dao.deleteDuplicateFingerprint(it.mediaUri, it.mediaDateAdded) }
+    }
+
+    suspend fun deleteDuplicateMetadata(uris: Collection<Uri>) {
+        uris.map(Uri::toString).distinct().chunked(500)
+            .filter(List<String>::isNotEmpty)
+            .forEach { dao.deleteDuplicateFingerprints(it) }
     }
 
     suspend fun updateRecognizedText(uri: Uri, text: String, codes: List<String>) {
@@ -935,9 +1061,22 @@ class ScreenshotIndexStore(context: Context) {
         updatedAt = updatedAt
     )
 
+    private fun DuplicateFingerprintRow.toCandidate() = DuplicateCandidate(
+        uri = Uri.parse(mediaUri),
+        dateAdded = mediaDateAdded,
+        displayName = displayName,
+        width = width,
+        height = height,
+        sizeBytes = sizeBytes,
+        exactSha256 = exactSha256,
+        differenceHash = differenceHash,
+        averageLuma = averageLuma
+    )
+
     companion object {
         const val PREF_ENABLED = "screenshot_index_enabled"
         private const val MAX_RECOGNIZED_TEXT_CHARS = 8192
+        private const val MAX_DUPLICATE_DISMISSALS = 20_000
         private const val DB_NAME = "screenshot_index_room.db"
         private const val LEGACY_DB_NAME = "screenshot_index.db"
 
@@ -951,7 +1090,8 @@ class ScreenshotIndexStore(context: Context) {
                         ScreenshotIndexMigrations.MIGRATION_1_2,
                         ScreenshotIndexMigrations.MIGRATION_2_3,
                         ScreenshotIndexMigrations.MIGRATION_3_4,
-                        ScreenshotIndexMigrations.MIGRATION_4_5
+                        ScreenshotIndexMigrations.MIGRATION_4_5,
+                        ScreenshotIndexMigrations.MIGRATION_5_6
                     )
                     .build()
                     .also {

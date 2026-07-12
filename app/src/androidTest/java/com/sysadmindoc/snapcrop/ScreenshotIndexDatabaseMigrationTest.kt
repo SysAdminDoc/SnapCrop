@@ -63,7 +63,8 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_1_2,
                 ScreenshotIndexMigrations.MIGRATION_2_3,
                 ScreenshotIndexMigrations.MIGRATION_3_4,
-                ScreenshotIndexMigrations.MIGRATION_4_5
+                ScreenshotIndexMigrations.MIGRATION_4_5,
+                ScreenshotIndexMigrations.MIGRATION_5_6
             )
             .build()
         try {
@@ -109,7 +110,8 @@ class ScreenshotIndexDatabaseMigrationTest {
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_2_3,
                 ScreenshotIndexMigrations.MIGRATION_3_4,
-                ScreenshotIndexMigrations.MIGRATION_4_5
+                ScreenshotIndexMigrations.MIGRATION_4_5,
+                ScreenshotIndexMigrations.MIGRATION_5_6
             )
             .build()
         try {
@@ -146,7 +148,8 @@ class ScreenshotIndexDatabaseMigrationTest {
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_3_4,
-                ScreenshotIndexMigrations.MIGRATION_4_5
+                ScreenshotIndexMigrations.MIGRATION_4_5,
+                ScreenshotIndexMigrations.MIGRATION_5_6
             )
             .build()
         try {
@@ -175,7 +178,10 @@ class ScreenshotIndexDatabaseMigrationTest {
     fun versionFourMigrationAddsDurableNotesAndConditionalReminders() = runBlocking<Unit> {
         helper.createDatabase(TEST_DB, 4).close()
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
-            .addMigrations(ScreenshotIndexMigrations.MIGRATION_4_5)
+            .addMigrations(
+                ScreenshotIndexMigrations.MIGRATION_4_5,
+                ScreenshotIndexMigrations.MIGRATION_5_6
+            )
             .build()
         try {
             val dao = database.dao()
@@ -219,6 +225,45 @@ class ScreenshotIndexDatabaseMigrationTest {
 
             assertEquals(2, database.dao().count())
             assertEquals(setOf(image.uri, video.uri), database.dao().getAll().map { it.uri }.toSet())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun versionFiveMigrationAddsDerivedFingerprintsAndDurableDismissals() = runBlocking<Unit> {
+        helper.createDatabase(TEST_DB, 5).close()
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_5_6)
+            .build()
+        try {
+            val dao = database.dao()
+            val fingerprint = DuplicateFingerprintRow(
+                mediaUri = "content://media/external/images/media/15",
+                mediaDateAdded = 15,
+                displayName = "Screenshot_15.png",
+                width = 1080,
+                height = 2400,
+                sizeBytes = 1234,
+                exactSha256 = "a".repeat(64),
+                differenceHash = 42,
+                averageLuma = 127,
+                hashVersion = DuplicateHashing.HASH_VERSION,
+                updatedAt = 100
+            )
+            val dismissal = DuplicateDismissalRow(
+                firstFingerprint = "sha256:${"a".repeat(64)}",
+                secondFingerprint = "sha256:${"b".repeat(64)}",
+                createdAt = 200
+            )
+            dao.upsertDuplicateFingerprints(listOf(fingerprint))
+            dao.insertDuplicateDismissals(listOf(dismissal))
+
+            assertEquals(fingerprint, dao.getDuplicateFingerprints().single())
+            assertEquals(dismissal, dao.getDuplicateDismissals().single())
+            dao.deleteDuplicateFingerprints()
+            assertTrue(dao.getDuplicateFingerprints().isEmpty())
+            assertEquals(dismissal, dao.getDuplicateDismissals().single())
         } finally {
             database.close()
         }

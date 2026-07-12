@@ -87,7 +87,10 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.sysadmindoc.snapcrop.ui.theme.*
 import android.content.ClipboardManager
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -389,6 +392,12 @@ fun GalleryScreen(
     var pendingCollectionSelection by remember { mutableStateOf<CollectionSelection?>(null) }
     var sourceEditorPhoto by remember { mutableStateOf<Photo?>(null) }
     var noteEditorPhoto by remember { mutableStateOf<Photo?>(null) }
+    var showDuplicateScan by remember { mutableStateOf(false) }
+    var duplicateSensitivity by rememberSaveable { mutableStateOf(DuplicateSensitivity.BALANCED) }
+    var duplicateAnalysisRunning by remember { mutableStateOf(false) }
+    var duplicateScanned by remember { mutableIntStateOf(0) }
+    var duplicateTotal by remember { mutableIntStateOf(0) }
+    var duplicateGroups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
 
     LaunchedEffect(Unit) {
@@ -561,6 +570,88 @@ fun GalleryScreen(
                 showCollectionPicker = true
             },
             onDismiss = { showFilters = false }
+        )
+    }
+
+    if (showDuplicateScan) {
+        DuplicateScanDialog(
+            sensitivity = duplicateSensitivity,
+            running = duplicateAnalysisRunning,
+            scanned = duplicateScanned,
+            total = duplicateTotal,
+            onSensitivityChange = { duplicateSensitivity = it },
+            onAnalyze = {
+                duplicateAnalysisRunning = true
+                duplicateScanned = 0
+                duplicateTotal = 0
+                val workId = DuplicateAnalysisWorker.start(context)
+                scope.launch {
+                    val workManager = WorkManager.getInstance(context.applicationContext)
+                    var finalInfo: WorkInfo? = null
+                    while (finalInfo == null) {
+                        val info = withContext(Dispatchers.IO) { workManager.getWorkInfoById(workId).get() }
+                        if (info == null) break
+                        duplicateScanned = info.progress.getInt(DuplicateAnalysisWorker.KEY_SCANNED, duplicateScanned)
+                        duplicateTotal = info.progress.getInt(DuplicateAnalysisWorker.KEY_TOTAL, duplicateTotal)
+                        if (info.state.isFinished) finalInfo = info else delay(250)
+                    }
+                    duplicateAnalysisRunning = false
+                    if (finalInfo?.state == WorkInfo.State.SUCCEEDED &&
+                        !finalInfo.outputData.getBoolean(DuplicateAnalysisWorker.KEY_PERMISSION_LOST, false)
+                    ) {
+                        val groups = withContext(Dispatchers.IO) {
+                            collectionStore.duplicateGroups(duplicateSensitivity)
+                        }
+                        showDuplicateScan = false
+                        duplicateGroups = groups.takeIf { it.isNotEmpty() }
+                        if (groups.isEmpty()) Toast.makeText(context, R.string.duplicate_none_found, Toast.LENGTH_LONG).show()
+                    } else if (finalInfo?.state != WorkInfo.State.CANCELLED) {
+                        Toast.makeText(context, R.string.duplicate_scan_failed, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onCancel = {
+                DuplicateAnalysisWorker.cancel(context)
+                duplicateAnalysisRunning = false
+                showDuplicateScan = false
+            },
+            onDismiss = { showDuplicateScan = false }
+        )
+    }
+
+    duplicateGroups?.takeIf { it.isNotEmpty() }?.let { groups ->
+        DuplicateReviewDialog(
+            groups = groups,
+            sensitivity = duplicateSensitivity,
+            onSensitivityChange = { sensitivity ->
+                duplicateSensitivity = sensitivity
+                scope.launch {
+                    duplicateGroups = withContext(Dispatchers.IO) {
+                        collectionStore.duplicateGroups(sensitivity)
+                    }.takeIf { it.isNotEmpty() }
+                }
+            },
+            onNotSimilar = { group ->
+                scope.launch {
+                    withContext(Dispatchers.IO) { collectionStore.rememberNotSimilar(group) }
+                    duplicateGroups = withContext(Dispatchers.IO) {
+                        collectionStore.duplicateGroups(duplicateSensitivity)
+                    }.takeIf { it.isNotEmpty() }
+                    if (duplicateGroups == null) {
+                        Toast.makeText(context, R.string.duplicate_none_found, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onTrash = { uris ->
+                // Keep the review open on the remaining groups instead of forcing a full
+                // rescan. Only the reviewed group touches these URIs, so drop it and advance.
+                val trashed = uris.toHashSet()
+                duplicateGroups = groups
+                    .filterNot { candidateGroup -> candidateGroup.candidates.any { it.uri in trashed } }
+                    .takeIf { it.isNotEmpty() }
+                pendingDeleteUris = uris
+            },
+            onDismiss = { duplicateGroups = null }
         )
     }
 
@@ -933,6 +1024,20 @@ fun GalleryScreen(
                     }
                     // One-tap "select all screenshots" — drops user into selection mode with
                     // every dimension-matching image pre-selected, ready for bulk delete.
+                    IconButton(onClick = {
+                        if (imageAccess == MediaAccess.FULL) {
+                            showDuplicateScan = true
+                        } else {
+                            Toast.makeText(context, R.string.duplicate_full_access_required, Toast.LENGTH_LONG).show()
+                            onRequestImageAccess()
+                        }
+                    }) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            stringResource(R.string.duplicate_review_action),
+                            tint = OnSurfaceVariant
+                        )
+                    }
                     val screenshotCount = viewerPhotos.count { it.isScreenshot && !FavoritesStore.isFavoriteKey(favoriteKeys, it.uri, it.id, it.isVideo) }
                     if (screenshotCount > 0) {
                         TextButton(

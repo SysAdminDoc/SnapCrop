@@ -133,6 +133,10 @@ are blocked behind explicit opt-in and evaluation gates.
 - 17 filters: Mono, Sepia, Cool, Warm, Vivid, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red/Blue/Green Pop, Glitch + Auto-enhance
 
 ### Gallery
+- Review duplicate screenshots locally with exact/perceptual matching, strict,
+  balanced, or loose sensitivity, full-resolution candidate previews, and
+  keep-oldest/newest/manual choices. Nothing is auto-deleted; confirmed files
+  move through Android's recoverable trash, and false matches stay dismissed.
 - Browse all photos and videos by album
 - Optional local intelligence index powers smart auto-albums for Screenshots, Chats, Games, Sites, Documents, Codes, and Payments without moving files
 - Combine structured chips for media type, creator/source folder, indexed category,
