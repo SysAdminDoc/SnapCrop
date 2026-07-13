@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.Manifest
 import android.app.PendingIntent
 import android.app.RecoverableSecurityException
 import android.content.ClipData
@@ -9,6 +10,7 @@ import android.content.ContentValues
 import android.content.ComponentName
 import android.content.ClipDescription
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.view.DragEvent
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
@@ -20,6 +22,7 @@ import android.provider.Settings
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,6 +91,12 @@ import java.util.Locale
 
 data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
 
+private enum class LocalNetworkPermissionOutcome {
+    GRANTED,
+    DENIED,
+    OPEN_SETTINGS,
+}
+
 class MainActivity : ComponentActivity() {
     private companion object {
         const val MAX_REPORT_ITEMS = 100
@@ -127,6 +136,7 @@ class MainActivity : ComponentActivity() {
     private var pendingMutationChunk = emptyList<Uri>()
     private var pendingMutationRequested = 0
     private var pendingMutationStartedAt: Long? = null
+    private var pendingLocalNetworkPermission: CompletableDeferred<LocalNetworkPermissionOutcome>? = null
 
     private val mediaMutationLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -165,6 +175,22 @@ class MainActivity : ComponentActivity() {
             pendingWidgetOpenLatest = false
             if (mediaCapabilities.value.canQueryImages) openLatestScreenshotFromWidget()
         }
+    }
+
+    private val localNetworkPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val wasRequested = prefs.getBoolean(AndroidLocalNetworkAccess.PREF_PERMISSION_REQUESTED, false)
+        prefs.edit().putBoolean(AndroidLocalNetworkAccess.PREF_PERMISSION_REQUESTED, true).apply()
+        val outcome = when {
+            granted -> LocalNetworkPermissionOutcome.GRANTED
+            wasRequested && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_LOCAL_NETWORK) ->
+                LocalNetworkPermissionOutcome.OPEN_SETTINGS
+            else -> LocalNetworkPermissionOutcome.DENIED
+        }
+        pendingLocalNetworkPermission?.complete(outcome)
+        pendingLocalNetworkPermission = null
     }
 
     private val pickImageLauncher = registerForActivityResult(
@@ -1275,6 +1301,12 @@ class MainActivity : ComponentActivity() {
         galleryRefreshKey.intValue++
     }
 
+    override fun onDestroy() {
+        pendingLocalNetworkPermission?.cancel()
+        pendingLocalNetworkPermission = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -1640,7 +1672,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun uploadReportArtifacts(
+    private suspend fun requestLocalNetworkPermission(): LocalNetworkPermissionOutcome =
+        withContext(Dispatchers.Main.immediate) {
+            if (Build.VERSION.SDK_INT < LocalNetworkEndpointPolicy.ANDROID_17_API ||
+                ContextCompat.checkSelfPermission(
+                    this@MainActivity,
+                    Manifest.permission.ACCESS_LOCAL_NETWORK,
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                return@withContext LocalNetworkPermissionOutcome.GRANTED
+            }
+
+            val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            val requestedBefore = prefs.getBoolean(AndroidLocalNetworkAccess.PREF_PERMISSION_REQUESTED, false)
+            if (requestedBefore &&
+                !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_LOCAL_NETWORK)
+            ) {
+                return@withContext LocalNetworkPermissionOutcome.OPEN_SETTINGS
+            }
+
+            pendingLocalNetworkPermission?.let { return@withContext it.await() }
+            val pending = CompletableDeferred<LocalNetworkPermissionOutcome>()
+            pendingLocalNetworkPermission = pending
+            localNetworkPermissionLauncher.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+            pending.await()
+        }
+
+    private fun openLocalNetworkPermissionSettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            })
+        }.onFailure {
+            Toast.makeText(this, R.string.local_network_settings_open_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private suspend fun uploadReportArtifacts(
         displayName: String,
         pdfFile: java.io.File,
         sourceUris: List<Uri>
@@ -1650,18 +1718,56 @@ class MainActivity : ComponentActivity() {
             NetworkCredentialStore.open(this)
         )
         if (!settings.isConfigured) {
-            return NetworkExportResult(false, settings.target, 0, "Network export is not configured")
+            return NetworkExportResult(
+                false,
+                settings.target,
+                0,
+                "Network export is not configured",
+                failureReason = NetworkExportFailureReason.NOT_CONFIGURED,
+            )
+        }
+        var localNetworkAccess = AndroidLocalNetworkAccess.assess(this, settings)
+        if (localNetworkAccess.permissionDecision == LocalNetworkPermissionDecision.REQUEST_PERMISSION) {
+            when (requestLocalNetworkPermission()) {
+                LocalNetworkPermissionOutcome.GRANTED -> {
+                    localNetworkAccess = AndroidLocalNetworkAccess.assess(this, settings)
+                }
+                LocalNetworkPermissionOutcome.DENIED -> {
+                    return NetworkExportResult(
+                        false,
+                        settings.target,
+                        0,
+                        "LAN upload skipped. Local network access was denied; retry to ask again.",
+                        failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
+                    )
+                }
+                LocalNetworkPermissionOutcome.OPEN_SETTINGS -> {
+                    withContext(Dispatchers.Main.immediate) { openLocalNetworkPermissionSettings() }
+                    return NetworkExportResult(
+                        false,
+                        settings.target,
+                        0,
+                        "LAN upload skipped. Allow Local network access in SnapCrop app settings, then retry.",
+                        failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
+                    )
+                }
+            }
         }
         val cancellation = NetworkExportCancellation(
             if (settings.target == NetworkExportTarget.IMGUR) 15L * 60L * 1000L else 5L * 60L * 1000L
         ).also { activeNetworkCancellation = it }
         if (settings.target != NetworkExportTarget.IMGUR) {
-            return NetworkExportClient.uploadReportPdf(
+            val result = NetworkExportClient.uploadReportPdf(
                 settings,
                 NetworkUploadSource(displayName, "application/pdf", pdfFile.length()) { pdfFile.inputStream().buffered() },
+                localNetworkAccess,
                 cancellation,
                 uploadProgressReporter(displayName, 1, 1)
             )
+            if (result.failureReason == NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION) {
+                withContext(Dispatchers.Main.immediate) { openLocalNetworkPermissionSettings() }
+            }
+            return result
         }
 
         var uploaded = 0

@@ -32,7 +32,7 @@ val hasReleaseKeystore = releaseStoreFile.exists()
 
 android {
     namespace = "com.sysadmindoc.snapcrop"
-    compileSdk = 36
+    compileSdk = 37
 
     androidResources {
         // Auto-generate locales_config.xml from values-* folders and wire android:localeConfig,
@@ -44,9 +44,9 @@ android {
     defaultConfig {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
-        targetSdk = 36
-        versionCode = 121
-        versionName = "6.69.0"
+        targetSdk = 37
+        versionCode = 122
+        versionName = "6.70.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

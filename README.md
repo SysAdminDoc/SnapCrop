@@ -188,7 +188,9 @@ are blocked behind explicit opt-in and evaluation gates.
   portrait/landscape, and margins with a proportional preview. Output is
   standard PDF; PDF/A archival conformance is not generated or claimed
 - **Opt-in network exports:** Settings can enable explicit HTTP, WebDAV/
-  Nextcloud, or Imgur upload targets; uploads are never used by default
+  Nextcloud, or Imgur upload targets; uploads are never used by default. On
+  Android 17, public HTTPS and Imgur remain permission-free while LAN,
+  link-local, and `.local` destinations request Local network access only when used
 - **Share shortcuts:** The Android share sheet can surface the destinations you
   choose most often
 - **Metadata privacy preflight:** Metadata-bearing image shares list only present
@@ -274,6 +276,9 @@ release/security policy.
   Uploads are HTTPS-only bounded streams with byte progress and cancellation:
   reports are capped at 64 MiB, Imgur images at 50,000,000 bytes each, and
   private temporary PDFs are deleted after success, failure, or cancellation.
+  Android 17 Local network access is requested only for LAN, link-local, or
+  `.local` custom endpoints; denial skips that upload while preserving the local
+  report and all public export paths, with retry and app-settings recovery.
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop. The
   manual Settings backup is a versioned, typed allowlist: it excludes network
@@ -293,7 +298,7 @@ release/security policy.
 | **Image Loading** | Coil 3.3 with a 25% background memory-cache cap |
 | **Min SDK** | 29 (Android 10) |
 | **Target SDK** | 36 |
-| **Compile SDK** | 36 |
+| **Compile / target SDK** | 37 |
 
 ---
 

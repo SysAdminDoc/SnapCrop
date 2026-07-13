@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Android 17 local-network compatibility (v6.70.0).**
+
+- Raised compile/target SDK to API 37 and added Android 17's scoped Local network
+  access permission for custom HTTP/WebDAV destinations only; public HTTPS and
+  Imgur paths never prompt.
+- Added strict endpoint/DNS/route classification, just-in-time permission handling,
+  denial and revocation recovery, TLS/network/LAN failure typing, masked credentials,
+  and Settings disclosure without weakening certificate validation.
+- Kept local report saves available when LAN access is denied. Pure policy tests,
+  source-routing guards, the full host suite/lint, and all 11 instrumentation tests
+  pass on a headless API-37 emulator; Robolectric host emulation is pinned to API 36
+  until it ships an API-37 runtime.
+
 **Transactional image publication (v6.69.0).**
 
 - Routed editor, Quick Crop, batch crop/resize, Stitch, Collage, device-frame,

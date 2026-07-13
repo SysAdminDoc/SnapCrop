@@ -149,12 +149,42 @@ class NetworkExportClientTest {
             ) {
                 opened = true
                 ByteArrayInputStream(byteArrayOf(1))
-            }
+            },
+            publicNetworkAccess(),
         )
 
         assertFalse(result.success)
         assertFalse(opened)
         assertTrue(result.message.contains("64 MiB"))
+    }
+
+    @Test
+    fun deniedLocalNetworkAccessDoesNotOpenSourceOrConnection() {
+        var opened = false
+        val settings = NetworkExportSettings(
+            enabled = true,
+            target = NetworkExportTarget.WEBDAV,
+            endpoint = "https://192.168.1.5/dav",
+            authorizationHeader = "",
+            imgurClientId = "",
+        )
+
+        val result = NetworkExportClient.uploadReportPdf(
+            settings,
+            NetworkUploadSource("report.pdf", "application/pdf", 1) {
+                opened = true
+                ByteArrayInputStream(byteArrayOf(1))
+            },
+            LocalNetworkAccessAssessment(
+                endpointScope = NetworkEndpointScope.LOCAL_NETWORK,
+                transportScope = NetworkTransportScope.BROADCAST_CAPABLE,
+                permissionDecision = LocalNetworkPermissionDecision.REQUEST_PERMISSION,
+            ),
+        )
+
+        assertFalse(result.success)
+        assertFalse(opened)
+        assertEquals(NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION, result.failureReason)
     }
 
     @Test
@@ -184,6 +214,12 @@ class NetworkExportClientTest {
             return count
         }
     }
+
+    private fun publicNetworkAccess() = LocalNetworkAccessAssessment(
+        endpointScope = NetworkEndpointScope.PUBLIC,
+        transportScope = NetworkTransportScope.UNKNOWN,
+        permissionDecision = LocalNetworkPermissionDecision.NOT_REQUIRED,
+    )
 
     private class DiscardOutputStream : OutputStream() {
         var written = 0L

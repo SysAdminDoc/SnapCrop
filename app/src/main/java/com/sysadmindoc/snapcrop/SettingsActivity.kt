@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -7,7 +8,9 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
@@ -34,12 +38,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.sysadmindoc.snapcrop.ui.theme.*
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
@@ -749,6 +757,34 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(credentialStore.getString(NetworkExportSettings.PREF_IMGUR_CLIENT_ID))
                     }
                     var credentialStatus by remember { mutableStateOf(credentialStore.status) }
+                    var localNetworkPermissionGranted by remember {
+                        mutableStateOf(
+                            Build.VERSION.SDK_INT < LocalNetworkEndpointPolicy.ANDROID_17_API ||
+                                checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+                                android.content.pm.PackageManager.PERMISSION_GRANTED
+                        )
+                    }
+                    var localNetworkPermissionRequested by remember {
+                        mutableStateOf(
+                            prefs.getBoolean(AndroidLocalNetworkAccess.PREF_PERMISSION_REQUESTED, false)
+                        )
+                    }
+                    DisposableEffect(Unit) {
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                localNetworkPermissionGranted =
+                                    Build.VERSION.SDK_INT < LocalNetworkEndpointPolicy.ANDROID_17_API ||
+                                    checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+                                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                                localNetworkPermissionRequested = prefs.getBoolean(
+                                    AndroidLocalNetworkAccess.PREF_PERMISSION_REQUESTED,
+                                    false,
+                                )
+                            }
+                        }
+                        lifecycle.addObserver(observer)
+                        onDispose { lifecycle.removeObserver(observer) }
+                    }
                     LaunchedEffect(credentialStore, networkAuthorization) {
                         if (!credentialStatus.isUsable) return@LaunchedEffect
                         delay(500)
@@ -882,6 +918,8 @@ class SettingsActivity : ComponentActivity() {
                                         singleLine = true,
                                         label = { Text(stringResource(R.string.settings_auth_label)) },
                                         modifier = Modifier.fillMaxWidth(),
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = Primary,
                                             unfocusedBorderColor = Outline,
@@ -897,6 +935,53 @@ class SettingsActivity : ComponentActivity() {
                                         fontSize = 11.sp,
                                         modifier = Modifier.padding(top = 4.dp)
                                     )
+                                    if (Build.VERSION.SDK_INT >= LocalNetworkEndpointPolicy.ANDROID_17_API) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(vertical = 12.dp),
+                                            color = Outline.copy(alpha = 0.45f),
+                                        )
+                                        Text(
+                                            stringResource(R.string.settings_local_network_title),
+                                            color = OnSurface,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 13.sp,
+                                        )
+                                        Text(
+                                            stringResource(R.string.settings_local_network_body),
+                                            color = OnSurfaceVariant,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(top = 4.dp),
+                                        )
+                                        when {
+                                            localNetworkPermissionGranted -> Text(
+                                                stringResource(R.string.settings_local_network_ready),
+                                                color = Success,
+                                                fontSize = 12.sp,
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            )
+                                            localNetworkPermissionRequested -> OutlinedButton(
+                                                onClick = {
+                                                    runCatching {
+                                                        startActivity(
+                                                            Intent(
+                                                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                                Uri.parse("package:$packageName"),
+                                                            )
+                                                        )
+                                                    }.onFailure {
+                                                        Toast.makeText(
+                                                            this@SettingsActivity,
+                                                            getString(R.string.local_network_settings_open_failed),
+                                                            Toast.LENGTH_LONG,
+                                                        ).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.padding(top = 8.dp),
+                                            ) {
+                                                Text(stringResource(R.string.settings_local_network_open_settings))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

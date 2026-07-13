@@ -5,9 +5,11 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.ssl.SSLException
 
 enum class NetworkExportTarget(val prefValue: String, val label: String) {
     HTTP("http", "HTTPS endpoint"),
@@ -60,12 +62,28 @@ data class NetworkExportSettings(
     }
 }
 
+enum class NetworkExportFailureReason {
+    NONE,
+    NOT_CONFIGURED,
+    VALIDATION,
+    LOCAL_NETWORK_PERMISSION,
+    TLS,
+    NETWORK,
+    CANCELLED,
+    REMOTE,
+}
+
 data class NetworkExportResult(
     val success: Boolean,
     val target: NetworkExportTarget,
     val statusCode: Int,
     val message: String,
-    val cancelled: Boolean = false
+    val cancelled: Boolean = false,
+    val failureReason: NetworkExportFailureReason = if (success) {
+        NetworkExportFailureReason.NONE
+    } else {
+        NetworkExportFailureReason.REMOTE
+    },
 )
 
 data class NetworkUploadSource(
@@ -121,18 +139,42 @@ object NetworkExportClient {
     /** Never transmit credentials over a non-TLS connection. */
     private fun rejectInsecureAuth(target: NetworkExportTarget, endpoint: String, authorizationHeader: String): NetworkExportResult? {
         return if (authorizationHeader.isNotBlank() && !endpoint.startsWith("https://")) {
-            NetworkExportResult(false, target, 0, "Refusing to send credentials over an insecure connection — use an https:// endpoint.")
+            NetworkExportResult(
+                false,
+                target,
+                0,
+                "Refusing to send credentials over an insecure connection — use an https:// endpoint.",
+                failureReason = NetworkExportFailureReason.VALIDATION,
+            )
         } else null
     }
 
-    fun uploadReportPdf(
+    internal fun uploadReportPdf(
         settings: NetworkExportSettings,
         source: NetworkUploadSource,
+        localNetworkAccess: LocalNetworkAccessAssessment,
         cancellation: NetworkExportCancellation = NetworkExportCancellation(),
         onProgress: (NetworkUploadProgress) -> Unit = {}
     ): NetworkExportResult {
         if (!settings.isConfigured) {
-            return NetworkExportResult(false, settings.target, 0, "Network export is not configured")
+            return NetworkExportResult(
+                false,
+                settings.target,
+                0,
+                "Network export is not configured",
+                failureReason = NetworkExportFailureReason.NOT_CONFIGURED,
+            )
+        }
+        if (localNetworkAccess.endpointScope == NetworkEndpointScope.LOCAL_NETWORK &&
+            localNetworkAccess.permissionDecision == LocalNetworkPermissionDecision.REQUEST_PERMISSION
+        ) {
+            return NetworkExportResult(
+                false,
+                settings.target,
+                0,
+                "Local network access is required for this destination",
+                failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
+            )
         }
         return when (settings.target) {
             NetworkExportTarget.HTTP -> multipartUpload(
@@ -141,6 +183,7 @@ object NetworkExportClient {
                 authorizationHeader = settings.authorizationHeader,
                 fieldName = "file",
                 source = source,
+                localNetworkEndpoint = localNetworkAccess.endpointScope == NetworkEndpointScope.LOCAL_NETWORK,
                 cancellation = cancellation,
                 onProgress = onProgress
             )
@@ -148,6 +191,7 @@ object NetworkExportClient {
                 settings = settings,
                 endpoint = appendWebDavFileName(settings.endpoint, source.fileName),
                 source = source,
+                localNetworkEndpoint = localNetworkAccess.endpointScope == NetworkEndpointScope.LOCAL_NETWORK,
                 cancellation = cancellation,
                 onProgress = onProgress
             )
@@ -167,7 +211,13 @@ object NetworkExportClient {
         onProgress: (NetworkUploadProgress) -> Unit = {}
     ): NetworkExportResult {
         if (!settings.isConfigured || settings.target != NetworkExportTarget.IMGUR) {
-            return NetworkExportResult(false, NetworkExportTarget.IMGUR, 0, "Imgur export is not configured")
+            return NetworkExportResult(
+                false,
+                NetworkExportTarget.IMGUR,
+                0,
+                "Imgur export is not configured",
+                failureReason = NetworkExportFailureReason.NOT_CONFIGURED,
+            )
         }
         return multipartUpload(
             target = NetworkExportTarget.IMGUR,
@@ -175,6 +225,7 @@ object NetworkExportClient {
             authorizationHeader = "Client-ID ${settings.imgurClientId}",
             fieldName = "image",
             source = source.copy(mimeType = source.mimeType.ifBlank { "image/png" }),
+            localNetworkEndpoint = false,
             cancellation = cancellation,
             onProgress = onProgress
         )
@@ -197,13 +248,18 @@ object NetworkExportClient {
         authorizationHeader: String,
         fieldName: String,
         source: NetworkUploadSource,
+        localNetworkEndpoint: Boolean,
         cancellation: NetworkExportCancellation,
         onProgress: (NetworkUploadProgress) -> Unit
     ): NetworkExportResult {
         rejectInsecureAuth(target, endpoint, authorizationHeader)?.let { return it }
-        validateEndpoint(endpoint, authorizationHeader)?.let { return NetworkExportResult(false, target, 0, it) }
+        validateEndpoint(endpoint, authorizationHeader)?.let {
+            return NetworkExportResult(false, target, 0, it, failureReason = NetworkExportFailureReason.VALIDATION)
+        }
         val maximumBytes = if (target == NetworkExportTarget.IMGUR) MAX_IMGUR_UPLOAD_BYTES else MAX_UPLOAD_BYTES
-        validateSource(source, maximumBytes)?.let { return NetworkExportResult(false, target, 0, it) }
+        validateSource(source, maximumBytes)?.let {
+            return NetworkExportResult(false, target, 0, it, failureReason = NetworkExportFailureReason.VALIDATION)
+        }
         val boundary = "SnapCropBoundary${java.util.UUID.randomUUID().toString().replace("-", "")}"
         val safeFileName = sanitizeHeaderValue(source.fileName)
         val encodedFileName = URLEncoder.encode(source.fileName, Charsets.UTF_8.name()).replace("+", "%20").take(768)
@@ -243,10 +299,11 @@ object NetworkExportClient {
             cancellation.throwIfCancelled()
             connection.toResult(target, cancellation)
         } catch (_: UploadCancelledException) {
-            NetworkExportResult(false, target, 0, "Upload cancelled", cancelled = true)
+            cancelledResult(target)
         } catch (e: Exception) {
-            if (cancellation.isCancelled) NetworkExportResult(false, target, 0, "Upload cancelled", cancelled = true)
-            else NetworkExportResult(false, target, 0, e.message ?: "Upload failed")
+            if (cancellation.isCancelled) cancelledResult(target) else {
+                exceptionResult(target, e, localNetworkEndpoint)
+            }
         } finally {
             cancellation.detach(connection)
             connection.disconnect()
@@ -257,12 +314,29 @@ object NetworkExportClient {
         settings: NetworkExportSettings,
         endpoint: String,
         source: NetworkUploadSource,
+        localNetworkEndpoint: Boolean,
         cancellation: NetworkExportCancellation,
         onProgress: (NetworkUploadProgress) -> Unit
     ): NetworkExportResult {
         rejectInsecureAuth(settings.target, endpoint, settings.authorizationHeader)?.let { return it }
-        validateEndpoint(endpoint, settings.authorizationHeader)?.let { return NetworkExportResult(false, settings.target, 0, it) }
-        validateSource(source, MAX_UPLOAD_BYTES)?.let { return NetworkExportResult(false, settings.target, 0, it) }
+        validateEndpoint(endpoint, settings.authorizationHeader)?.let {
+            return NetworkExportResult(
+                false,
+                settings.target,
+                0,
+                it,
+                failureReason = NetworkExportFailureReason.VALIDATION,
+            )
+        }
+        validateSource(source, MAX_UPLOAD_BYTES)?.let {
+            return NetworkExportResult(
+                false,
+                settings.target,
+                0,
+                it,
+                failureReason = NetworkExportFailureReason.VALIDATION,
+            )
+        }
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "PUT"
             connectTimeout = 15_000
@@ -287,10 +361,11 @@ object NetworkExportClient {
             cancellation.throwIfCancelled()
             connection.toResult(settings.target, cancellation)
         } catch (_: UploadCancelledException) {
-            NetworkExportResult(false, settings.target, 0, "Upload cancelled", cancelled = true)
+            cancelledResult(settings.target)
         } catch (e: Exception) {
-            if (cancellation.isCancelled) NetworkExportResult(false, settings.target, 0, "Upload cancelled", cancelled = true)
-            else NetworkExportResult(false, settings.target, 0, e.message ?: "Upload failed")
+            if (cancellation.isCancelled) cancelledResult(settings.target) else {
+                exceptionResult(settings.target, e, localNetworkEndpoint)
+            }
         } finally {
             cancellation.detach(connection)
             connection.disconnect()
@@ -316,6 +391,50 @@ object NetworkExportClient {
             if (trimmed.isNotBlank()) append(": ").append(trimmed)
         }
         return NetworkExportResult(code in 200..299, target, code, message)
+    }
+
+    private fun cancelledResult(target: NetworkExportTarget) = NetworkExportResult(
+        success = false,
+        target = target,
+        statusCode = 0,
+        message = "Upload cancelled",
+        cancelled = true,
+        failureReason = NetworkExportFailureReason.CANCELLED,
+    )
+
+    private fun exceptionResult(
+        target: NetworkExportTarget,
+        error: Exception,
+        localNetworkEndpoint: Boolean,
+    ): NetworkExportResult = when {
+        error is SecurityException && localNetworkEndpoint -> NetworkExportResult(
+            false,
+            target,
+            0,
+            "Local network access is required for this destination",
+            failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
+        )
+        error is SSLException -> NetworkExportResult(
+            false,
+            target,
+            0,
+            "Secure connection failed. Check the server certificate and device time.",
+            failureReason = NetworkExportFailureReason.TLS,
+        )
+        error is IOException -> NetworkExportResult(
+            false,
+            target,
+            0,
+            error.message ?: "Network upload failed",
+            failureReason = NetworkExportFailureReason.NETWORK,
+        )
+        else -> NetworkExportResult(
+            false,
+            target,
+            0,
+            error.message ?: "Upload failed",
+            failureReason = NetworkExportFailureReason.REMOTE,
+        )
     }
 
     private fun validateSource(source: NetworkUploadSource, maximumBytes: Long): String? = when {

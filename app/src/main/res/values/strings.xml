@@ -175,6 +175,7 @@
     <string name="report_upload_after">Upload after saving</string>
     <string name="report_configure_target">Configure the network target in Settings</string>
     <string name="report_network_off">Network upload is off in Settings</string>
+    <string name="local_network_settings_open_failed">Could not open SnapCrop app settings.</string>
     <string name="report_default_title">SnapCrop incident report</string>
     <string name="report_no_images">No images to export</string>
     <string name="report_too_many_items">A report can contain at most %1$d images.</string>
@@ -364,6 +365,10 @@
     <string name="settings_http_label">HTTPS upload endpoint</string>
     <string name="settings_auth_label">Authorization header value</string>
     <string name="settings_auth_hint">Example: Bearer token or Basic credentials. Leave blank for no auth.</string>
+    <string name="settings_local_network_title">Local network access</string>
+    <string name="settings_local_network_body">Public HTTPS endpoints work without this permission. Android asks only when an upload targets a LAN address, link-local host, or .local name.</string>
+    <string name="settings_local_network_ready">Ready for local network destinations</string>
+    <string name="settings_local_network_open_settings">Open app settings</string>
     <string name="settings_credentials_migrated">Existing network credentials were moved to the new Android Keystore-backed store.</string>
     <string name="settings_credentials_recovery">Saved network credentials cannot be decrypted. Network exports are disabled until you reset them.</string>
     <string name="settings_credentials_reset">Reset saved credentials</string>
