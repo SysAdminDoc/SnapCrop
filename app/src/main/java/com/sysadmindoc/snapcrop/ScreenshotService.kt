@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Intent
 import android.database.ContentObserver
 import android.graphics.Bitmap
@@ -21,7 +20,6 @@ import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
-import java.io.IOException
 
 private data class SaveFormat(val format: Bitmap.CompressFormat, val quality: Int, val ext: String, val mime: String)
 
@@ -452,32 +450,29 @@ class ScreenshotService : Service() {
                     ?: exportSettings.savePath
                 val displayName = ExportPresetStore.nextFilename(prefs, exportSettings)
 
-                val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "$displayName.$ext")
-                    put(MediaStore.Images.Media.MIME_TYPE, mime)
-                    put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-                    put(MediaStore.Images.Media.IS_PENDING, 1)
+                val publication = MediaStoreImageWriter.write(
+                    resolver = contentResolver,
+                    request = MediaStoreImageWriter.Request(
+                        displayName = "$displayName.$ext",
+                        mimeType = mime,
+                        relativePath = savePath,
+                    ),
+                ) { output ->
+                    if (exportSettings.targetSizeEnabled && fmt != Bitmap.CompressFormat.PNG) {
+                        val (bytes, _) = ExportPresetRenderer.compressToTarget(
+                            requireNotNull(cropped),
+                            fmt,
+                            exportSettings.targetSizeKb,
+                        )
+                        output.write(bytes)
+                        bytes.isNotEmpty()
+                    } else {
+                        requireNotNull(cropped).compress(fmt, quality, output)
+                    }
                 }
-
-                val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                if (savedUri != null) {
-                    try {
-                        if (exportSettings.targetSizeEnabled && fmt != Bitmap.CompressFormat.PNG) {
-                            val (bytes, _) = ExportPresetRenderer.compressToTarget(requireNotNull(cropped), fmt, exportSettings.targetSizeKb)
-                            contentResolver.openOutputStream(savedUri)?.use { out -> out.write(bytes) }
-                                ?: throw IOException("Output stream unavailable")
-                        } else {
-                            val compressed = contentResolver.openOutputStream(savedUri)?.use { out ->
-                                requireNotNull(cropped).compress(fmt, quality, out)
-                            } ?: false
-                            if (!compressed) throw IOException("Image encoder failed")
-                        }
-                        values.clear()
-                        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                        if (contentResolver.update(savedUri, values, null, null) != 1) {
-                            throw IOException("Failed to publish Quick Crop output")
-                        }
-
+                when (publication) {
+                    is MediaStoreImageWriter.Result.Success -> {
+                        val savedUri = publication.uri
                         prefs.edit().putString(PREF_LAST_ACTION, LAST_ACTION_QUICK_CROP).apply()
                         handler.post { copyUriToClipboard(savedUri) }
                         val message = if (actionRule != null) {
@@ -497,18 +492,14 @@ class ScreenshotService : Service() {
                             this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.COMPLETE,
                             DiagnosticResult.SUCCESS, journalStarted
                         )
-                    } catch (e: IOException) {
+                    }
+                    is MediaStoreImageWriter.Result.Failure -> {
                         OperationJournal.record(
                             this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.SAVE,
-                            DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE, e
+                            DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE,
+                            publication.cause,
                         )
-                        runCatching { contentResolver.delete(savedUri, null, null) }
                     }
-                } else {
-                    OperationJournal.record(
-                        this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.SAVE,
-                        DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE
-                    )
                 }
             } catch (error: Exception) {
                 OperationJournal.record(

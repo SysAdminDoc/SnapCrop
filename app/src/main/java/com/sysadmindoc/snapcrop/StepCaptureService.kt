@@ -5,7 +5,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ComponentName
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,7 +13,6 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
-import android.provider.MediaStore
 import android.service.quicksettings.TileService
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
@@ -372,25 +370,18 @@ class StepCaptureService : AccessibilityService() {
     private fun saveGuide(bitmap: Bitmap): Uri? {
         val prefs = getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
         val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Steps_${System.currentTimeMillis()}.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        return try {
-            val encoded = contentResolver.openOutputStream(uri)?.use {
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
-            } ?: throw IllegalStateException("Output stream unavailable")
-            check(encoded) { "Could not encode step guide" }
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            check(contentResolver.update(uri, values, null, null) == 1) { "Could not publish step guide" }
-            uri
-        } catch (_: Exception) {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            null
+        return when (val result = MediaStoreImageWriter.write(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "SnapCrop_Steps_${System.currentTimeMillis()}.png",
+                mimeType = "image/png",
+                relativePath = savePath,
+            ),
+        ) { output ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+        }) {
+            is MediaStoreImageWriter.Result.Success -> result.uri
+            is MediaStoreImageWriter.Result.Failure -> null
         }
     }
 

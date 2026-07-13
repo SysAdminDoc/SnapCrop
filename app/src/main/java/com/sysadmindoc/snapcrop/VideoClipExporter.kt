@@ -54,7 +54,9 @@ object VideoClipExporter {
             } ?: throw IllegalStateException("Unable to open output video")
             values.clear()
             values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            resolver.update(outputUri, values, null, null)
+            check(resolver.update(outputUri, values, null, null) == 1) {
+                "Unable to publish output video"
+            }
             outputUri
         } catch (_: Exception) {
             try {
@@ -202,28 +204,18 @@ object VideoClipExporter {
         mime: String,
         savePath: String
     ): Uri? {
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Frame_${System.currentTimeMillis()}.$ext")
-            put(MediaStore.Images.Media.MIME_TYPE, mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-
-        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: return null
-        return try {
-            resolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
-                ?: throw IllegalStateException("Unable to open output image")
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-            uri
-        } catch (_: Exception) {
-            try {
-                resolver.delete(uri, null, null)
-            } catch (_: Exception) {
-            }
-            null
+        return when (val result = MediaStoreImageWriter.write(
+            resolver = resolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "SnapCrop_Frame_${System.currentTimeMillis()}.$ext",
+                mimeType = mime,
+                relativePath = savePath,
+            ),
+        ) { output ->
+            bitmap.compress(format, quality, output)
+        }) {
+            is MediaStoreImageWriter.Result.Success -> result.uri
+            is MediaStoreImageWriter.Result.Failure -> null
         }
     }
 }

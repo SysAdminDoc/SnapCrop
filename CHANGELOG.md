@@ -4,6 +4,16 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Transactional image publication (v6.69.0).**
+
+- Routed editor, Quick Crop, batch crop/resize, Stitch, Collage, device-frame,
+  long/step capture, and video-frame saves through one typed MediaStore writer.
+- Image publication now requires a row and stream, a successful encoder, non-empty
+  bytes, and exactly one pending-row publish update; every post-insert failure
+  attempts cleanup, including cancellation and fatal-error paths.
+- Added a failure-injection matrix, readable bitmap round trip, and source-routing
+  guard; video trimming now also rejects an unsuccessful publish update.
+
 **Privacy-safe home widget (v6.68.0).**
 
 - Added a resizable AMOLED home-screen widget with direct actions for the newest

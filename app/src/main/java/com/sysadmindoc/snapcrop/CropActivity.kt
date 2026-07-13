@@ -1761,48 +1761,44 @@ class CropActivity : ComponentActivity() {
         val targetSizeKb = exportSettings.targetSizeKb
         val useTargetSize = targetSizeEnabled && !forcePng && format != Bitmap.CompressFormat.PNG
 
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$name.$ext")
-            put(MediaStore.Images.Media.MIME_TYPE, mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+        var targetQuality: Int? = null
+        val publication = MediaStoreImageWriter.write(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "$name.$ext",
+                mimeType = mime,
+                relativePath = savePath,
+            ),
+            beforePublish = { uri ->
+                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
+            },
+        ) { output ->
+            if (useTargetSize) {
+                val (bytes, usedQuality) = ExportPresetRenderer.compressToTarget(bitmap, format, targetSizeKb)
+                targetQuality = usedQuality
+                output.write(bytes)
+                bytes.isNotEmpty()
+            } else {
+                bitmap.compress(format, quality, output)
+            }
         }
-
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) {
+        if (publication is MediaStoreImageWriter.Result.Failure) {
             OperationJournal.record(
                 this, DiagnosticOperation.EXPORT, DiagnosticStage.SAVE, DiagnosticResult.FAILED,
-                journalStarted, DiagnosticCode.PUBLISH_FAILURE
+                journalStarted, DiagnosticCode.PUBLISH_FAILURE, publication.cause,
             )
             runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
             return
         }
+        val success = publication as MediaStoreImageWriter.Result.Success
+        val uri = success.uri
 
         try {
-            val baseMessage: String
-            if (useTargetSize) {
-                val (bytes, usedQuality) = ExportPresetRenderer.compressToTarget(bitmap, format, targetSizeKb)
-                contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                    ?: throw IOException("Failed to open output stream")
-                val sizeKb = bytes.size / 1024
-                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                if (contentResolver.update(uri, values, null, null) != 1) {
-                    throw IOException("Failed to publish output")
-                }
-                baseMessage = getString(R.string.crop_saved_size, "${sizeKb}KB", usedQuality)
+            val baseMessage = if (useTargetSize) {
+                val sizeKb = success.bytesWritten / 1024
+                getString(R.string.crop_saved_size, "${sizeKb}KB", checkNotNull(targetQuality))
             } else {
-                val compressed = contentResolver.openOutputStream(uri)?.use { bitmap.compress(format, quality, it) }
-                    ?: throw IOException("Failed to open output stream")
-                if (!compressed) throw IOException("Image encoder failed")
-                sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
-                values.clear()
-                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                if (contentResolver.update(uri, values, null, null) != 1) {
-                    throw IOException("Failed to publish output")
-                }
-                baseMessage = if (deleteOriginal) getString(R.string.crop_saved_path, savePath)
+                if (deleteOriginal) getString(R.string.crop_saved_path, savePath)
                     else getString(R.string.crop_copy_saved_path, savePath)
             }
 

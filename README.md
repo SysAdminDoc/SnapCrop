@@ -174,6 +174,9 @@ are blocked behind explicit opt-in and evaluation gates.
 - **Color Palette** — Extract 6 dominant colors with hex codes and percentages
 
 ### Export Options
+- Image saves use one transactional MediaStore path: an output is published only
+  after its encoder writes a non-empty file and Android confirms the pending row;
+  failed rows are removed instead of being reported as successful.
 - **Formats:** PNG, JPEG, or WebP with quality slider
 - **Target file size:** Set a KB budget, SnapCrop auto-adjusts quality to hit it
 - **Custom filenames:** Templates with `%timestamp%`, `%date%`, `%time%`, `%counter%`

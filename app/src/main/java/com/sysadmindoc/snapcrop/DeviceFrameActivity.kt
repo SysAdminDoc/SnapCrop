@@ -1,10 +1,8 @@
 package com.sysadmindoc.snapcrop
 
-import android.content.ContentValues
 import android.graphics.*
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.activity.ComponentActivity
@@ -39,7 +37,6 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 private data class DeviceFrame(
     val key: String,
@@ -214,33 +211,24 @@ class DeviceFrameActivity : ComponentActivity() {
             "jpg" -> "image/jpeg"
             else -> "image/png"
         }
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Frame_${System.currentTimeMillis()}.$ext")
-            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+        val result = MediaStoreImageWriter.write(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "SnapCrop_Frame_${System.currentTimeMillis()}.$ext",
+                mimeType = mimeType,
+                relativePath = savePath,
+            ),
+        ) { output ->
+            bitmap.compress(format, quality, output)
         }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) { runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }; isSaving.value = false; return }
-        try {
-            val stream = contentResolver.openOutputStream(uri)
-            if (stream == null) {
-                runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
-                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-                isSaving.value = false
-                return
-            }
-            stream.use { bitmap.compress(format, quality, it) }
-            values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
-            runOnUiThread {
+        runOnUiThread {
+            if (result is MediaStoreImageWriter.Result.Success) {
                 Toast.makeText(this, getString(R.string.device_frame_saved), Toast.LENGTH_SHORT).show()
                 finish()
+            } else {
+                Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
+                isSaving.value = false
             }
-        } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            isSaving.value = false
         }
     }
 }

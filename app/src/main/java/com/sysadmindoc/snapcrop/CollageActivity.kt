@@ -1,12 +1,10 @@
 package com.sysadmindoc.snapcrop
 
-import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.activity.ComponentActivity
@@ -43,7 +41,6 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 private data class CollageLayout(
     val name: String,
@@ -289,31 +286,26 @@ class CollageActivity : ComponentActivity() {
     private fun saveToGallery(bitmap: Bitmap) {
         val (fmt, quality, ext) = getSaveFormat()
         val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Collage_${System.currentTimeMillis()}.$ext")
-            put(MediaStore.Images.Media.MIME_TYPE, mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
-            put(MediaStore.Images.Media.IS_PENDING, 1)
+        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+        val result = MediaStoreImageWriter.write(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "SnapCrop_Collage_${System.currentTimeMillis()}.$ext",
+                mimeType = mime,
+                relativePath = savePath,
+            ),
+        ) { output ->
+            bitmap.compress(fmt, quality, output)
         }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-        if (uri == null) {
-            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
-            isSaving.value = false
-            return
-        }
-        try {
-            (contentResolver.openOutputStream(uri) ?: throw java.io.IOException("Failed to open output stream")).use { bitmap.compress(fmt, quality, it) }
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            contentResolver.update(uri, values, null, null)
-            runOnUiThread {
+        runOnUiThread {
+            if (result is MediaStoreImageWriter.Result.Success) {
                 Toast.makeText(this, getString(R.string.collage_saved), Toast.LENGTH_SHORT).show()
                 finish()
+            } else {
+                Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
+                isSaving.value = false
             }
-        } catch (e: IOException) {
-            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            isSaving.value = false
         }
     }
 }

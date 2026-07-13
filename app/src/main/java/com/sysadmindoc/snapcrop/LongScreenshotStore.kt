@@ -1,12 +1,10 @@
 package com.sysadmindoc.snapcrop
 
-import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -179,33 +177,18 @@ internal object LongScreenshotStore {
         val saveFormat = getSaveFormat(context)
         val prefs = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
         val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-        val values = ContentValues().apply {
-            put(
-                MediaStore.Images.Media.DISPLAY_NAME,
-                "SnapCrop_Long_${System.currentTimeMillis()}.${saveFormat.ext}"
-            )
-            put(MediaStore.Images.Media.MIME_TYPE, saveFormat.mime)
-            put(MediaStore.Images.Media.RELATIVE_PATH, savePath)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-
-        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            ?: return null
-
-        return try {
-            val output = context.contentResolver.openOutputStream(uri)
-                ?: throw IllegalStateException("Output stream unavailable")
-            output.use { bitmap.compress(saveFormat.format, saveFormat.quality, it) }
-            values.clear()
-            values.put(MediaStore.Images.Media.IS_PENDING, 0)
-            context.contentResolver.update(uri, values, null, null)
-            uri
-        } catch (_: Exception) {
-            try {
-                context.contentResolver.delete(uri, null, null)
-            } catch (_: Exception) {
-            }
-            null
+        return when (val result = MediaStoreImageWriter.write(
+            resolver = context.contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = "SnapCrop_Long_${System.currentTimeMillis()}.${saveFormat.ext}",
+                mimeType = saveFormat.mime,
+                relativePath = savePath,
+            ),
+        ) { output ->
+            bitmap.compress(saveFormat.format, saveFormat.quality, output)
+        }) {
+            is MediaStoreImageWriter.Result.Success -> result.uri
+            is MediaStoreImageWriter.Result.Failure -> null
         }
     }
 

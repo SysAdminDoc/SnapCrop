@@ -383,29 +383,19 @@ class MainActivity : ComponentActivity() {
 
                         val (fmt, qual, ext) = getSaveFormat()
                         val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-                        val values = android.content.ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_${System.currentTimeMillis()}.$ext")
-                            put(MediaStore.Images.Media.MIME_TYPE, mime)
-                            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
-                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+                        val result = MediaStoreImageWriter.write(
+                            resolver = contentResolver,
+                            request = MediaStoreImageWriter.Request(
+                                displayName = "SnapCrop_${System.currentTimeMillis()}.$ext",
+                                mimeType = mime,
+                                relativePath = savePath,
+                            ),
+                        ) { output ->
+                            toSave.compress(fmt, qual, output)
                         }
-                        val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                        if (savedUri != null) {
-                            var ok = false
-                            try {
-                                contentResolver.openOutputStream(savedUri)?.use { out -> toSave.compress(fmt, qual, out) }
-                                    ?: throw IOException("Output stream unavailable")
-                                values.clear()
-                                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                                contentResolver.update(savedUri, values, null, null)
-                                ok = true
-                            } catch (_: Exception) {
-                            }
-                            if (!ok) {
-                                try { contentResolver.delete(savedUri, null, null) } catch (_: Exception) {}
-                                failed++
-                            }
-                        }
+                        if (result is MediaStoreImageWriter.Result.Failure) failed++
                         if (toSave !== bitmap) toSave.recycle()
                         bitmap.recycle()
                     }
@@ -1451,29 +1441,19 @@ class MainActivity : ComponentActivity() {
                         bmp.recycle()
                         val (fmt, qual, ext) = getSaveFormat()
                         val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-                        val values = android.content.ContentValues().apply {
-                            put(MediaStore.Images.Media.DISPLAY_NAME, "SnapCrop_Resize_${System.currentTimeMillis()}.$ext")
-                            put(MediaStore.Images.Media.MIME_TYPE, mime)
-                            put(MediaStore.Images.Media.RELATIVE_PATH, getSharedPreferences("snapcrop", MODE_PRIVATE).getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
-                            put(MediaStore.Images.Media.IS_PENDING, 1)
+                        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+                        val result = MediaStoreImageWriter.write(
+                            resolver = contentResolver,
+                            request = MediaStoreImageWriter.Request(
+                                displayName = "SnapCrop_Resize_${System.currentTimeMillis()}.$ext",
+                                mimeType = mime,
+                                relativePath = savePath,
+                            ),
+                        ) { output ->
+                            resized.compress(fmt, qual, output)
                         }
-                        val savedUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-                        if (savedUri != null) {
-                            var ok = false
-                            try {
-                                contentResolver.openOutputStream(savedUri)?.use { out -> resized.compress(fmt, qual, out) }
-                                    ?: throw IOException("Output stream unavailable")
-                                values.clear()
-                                values.put(MediaStore.Images.Media.IS_PENDING, 0)
-                                contentResolver.update(savedUri, values, null, null)
-                                ok = true
-                            } catch (_: Exception) {
-                            }
-                            if (!ok) {
-                                try { contentResolver.delete(savedUri, null, null) } catch (_: Exception) {}
-                                failed++
-                            }
-                        }
+                        if (result is MediaStoreImageWriter.Result.Failure) failed++
                         resized.recycle()
                     }
                 } catch (_: Exception) { failed++ }
