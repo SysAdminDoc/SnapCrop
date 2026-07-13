@@ -182,6 +182,10 @@ are blocked behind explicit opt-in and evaluation gates.
 - **Custom filenames:** Templates with `%timestamp%`, `%date%`, `%time%`, `%counter%`
 - **Batch rename:** Gallery-selected screenshots can use `%app%`, `%date%`,
   `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates
+- **Bounded batch crop/resize:** Up to 50 selected images are byte-preflighted,
+  bounds-decoded, and sampled before allocation. Sources are limited to 64 MiB /
+  48 MP and working bitmaps to 12 MP / 48 MiB; results report saved, skipped,
+  oversized, unreadable, failed, and cancelled counts separately
 - **PDF reports:** Gallery selections can be bundled with title, notes,
   timestamps, source/dimension metadata, and an optional OCR appendix; choose
   physical A4, US Letter, or validated custom millimetre dimensions,

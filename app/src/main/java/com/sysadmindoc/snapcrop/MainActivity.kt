@@ -12,6 +12,7 @@ import android.content.ClipDescription
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.view.DragEvent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
@@ -369,73 +370,98 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun batchAutocrop(uris: List<Uri>) {
+        if (uris.isEmpty()) return
         batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
             val statusBarPx = SystemBars.statusBarHeight(resources)
             val navBarPx = SystemBars.navigationBarHeight(resources)
             val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
             val userProfiles = UserAppProfileStore.load(prefs)
-            var done = 0; var failed = 0
             val total = uris.size
+            val accepted = uris.take(BatchImageIntake.MAX_ITEMS)
+            var saved = 0
+            var skipped = 0
+            var oversized = total - accepted.size
+            var unreadable = 0
+            var failed = 0
 
-            for (uri in uris) {
+            for ((index, uri) in accepted.withIndex()) {
                 if (batchCancelled.value) break
                 withContext(Dispatchers.Main) {
-                    batchProgress.value = getString(R.string.batch_cropping, done + 1, total)
-                    batchProgressFraction.floatValue = done.toFloat() / total
+                    batchProgress.value = getString(R.string.batch_cropping, index + 1, total)
+                    batchProgressFraction.floatValue = index.toFloat() / total
                 }
-                try {
-                    val input = contentResolver.openInputStream(uri) ?: throw IOException("Shared image is unreadable")
-                    input.use { stream ->
-                        val bitmap = android.graphics.BitmapFactory.decodeStream(stream)
-                            ?: throw IOException("Shared image could not be decoded")
-                        val cropRect = AutoCrop.detect(
-                            bitmap = bitmap,
-                            statusBarPx = statusBarPx,
-                            navBarPx = navBarPx,
-                            sourceHints = CropSourceHints.normalize(CropSourceHints.fromMedia(contentResolver, uri)),
-                            userProfiles = userProfiles,
-                            appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
-                        )
-                        val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
+                when (val intake = BatchImageIntake.decode(contentResolver, uri) { batchCancelled.value }) {
+                    BatchImageIntakeResult.Cancelled -> break
+                    is BatchImageIntakeResult.Oversized -> oversized++
+                    is BatchImageIntakeResult.Unreadable -> unreadable++
+                    is BatchImageIntakeResult.Failed -> failed++
+                    is BatchImageIntakeResult.Skipped -> skipped++
+                    is BatchImageIntakeResult.Ready -> {
+                        val bitmap = intake.bitmap
+                        var derived: Bitmap? = null
+                        try {
+                            val sourceHints = CropSourceHints.normalize(
+                                CropSourceHints.fromMedia(contentResolver, uri)
+                            )
+                            val cropRect = AutoCrop.detect(
+                                bitmap = bitmap,
+                                statusBarPx = statusBarPx,
+                                navBarPx = navBarPx,
+                                sourceHints = sourceHints,
+                                userProfiles = userProfiles,
+                                appProfilesEnabled = prefs.getBoolean("app_crop_profiles", true)
+                            )
+                            val isFullImage = cropRect.left == 0 && cropRect.top == 0 &&
                                 cropRect.right == bitmap.width && cropRect.bottom == bitmap.height
 
-                        val cw = cropRect.width().coerceAtMost(bitmap.width - cropRect.left.coerceAtLeast(0)).coerceAtLeast(1)
-                        val ch = cropRect.height().coerceAtMost(bitmap.height - cropRect.top.coerceAtLeast(0)).coerceAtLeast(1)
-                        val toSave = if (isFullImage) bitmap else {
-                            android.graphics.Bitmap.createBitmap(bitmap,
-                                cropRect.left.coerceAtLeast(0), cropRect.top.coerceAtLeast(0), cw, ch)
-                        }
+                            val left = cropRect.left.coerceAtLeast(0)
+                            val top = cropRect.top.coerceAtLeast(0)
+                            val width = cropRect.width().coerceAtMost(bitmap.width - left).coerceAtLeast(1)
+                            val height = cropRect.height().coerceAtMost(bitmap.height - top).coerceAtLeast(1)
+                            val toSave = if (isFullImage) bitmap else {
+                                Bitmap.createBitmap(bitmap, left, top, width, height)
+                                    .also { derived = it }
+                            }
+                            if (batchCancelled.value) continue
 
-                        val (fmt, qual, ext) = getSaveFormat()
-                        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-                        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
-                            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-                        val result = MediaStoreImageWriter.write(
-                            resolver = contentResolver,
-                            request = MediaStoreImageWriter.Request(
-                                displayName = "SnapCrop_${System.currentTimeMillis()}.$ext",
-                                mimeType = mime,
-                                relativePath = savePath,
-                            ),
-                        ) { output ->
-                            toSave.compress(fmt, qual, output)
+                            val (fmt, qual, ext) = getSaveFormat()
+                            val mime = when (ext) {
+                                "jpg" -> "image/jpeg"
+                                "webp" -> "image/webp"
+                                else -> "image/png"
+                            }
+                            val savePath = prefs.getString("save_path", "Pictures/SnapCrop")
+                                ?: "Pictures/SnapCrop"
+                            val result = MediaStoreImageWriter.write(
+                                resolver = contentResolver,
+                                request = MediaStoreImageWriter.Request(
+                                    displayName = "SnapCrop_${System.currentTimeMillis()}.$ext",
+                                    mimeType = mime,
+                                    relativePath = savePath,
+                                ),
+                            ) { output ->
+                                toSave.compress(fmt, qual, output)
+                            }
+                            if (result is MediaStoreImageWriter.Result.Success) saved++ else failed++
+                        } catch (_: Exception) {
+                            failed++
+                        } catch (_: OutOfMemoryError) {
+                            failed++
+                        } finally {
+                            derived?.takeIf { !it.isRecycled }?.recycle()
+                            if (!bitmap.isRecycled) bitmap.recycle()
                         }
-                        if (result is MediaStoreImageWriter.Result.Failure) failed++
-                        if (toSave !== bitmap) toSave.recycle()
-                        bitmap.recycle()
                     }
-                } catch (_: Exception) { failed++ }
-                done++
+                }
             }
-            val cancelled = batchCancelled.value
+            val cancelled = (total - saved - skipped - oversized - unreadable - failed).coerceAtLeast(0)
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                val msg = buildString {
-                    append(getString(R.string.batch_cropped, done - failed, total))
-                    if (failed > 0) append(getString(R.string.batch_failed_count, failed))
-                    if (cancelled) append(getString(R.string.batch_stopped))
-                }
+                val msg = getString(
+                    R.string.batch_result_summary,
+                    saved, skipped, oversized, unreadable, failed, cancelled,
+                )
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 loadRecentCrops()
             }
@@ -795,6 +821,13 @@ class MainActivity : ComponentActivity() {
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text(stringResource(R.string.resize_count, resizeUris.value.size), color = OnSurfaceVariant, fontSize = 12.sp)
+                                Text(
+                                    stringResource(R.string.batch_limits),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
                             }
                         },
                         confirmButton = {
@@ -1451,54 +1484,79 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun batchResize(uris: List<Uri>, maxDim: Int) {
+        if (uris.isEmpty()) return
         batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
-            var done = 0; var failed = 0
-            for (uri in uris) {
+            val total = uris.size
+            val accepted = uris.take(BatchImageIntake.MAX_ITEMS)
+            var saved = 0
+            var skipped = 0
+            var oversized = total - accepted.size
+            var unreadable = 0
+            var failed = 0
+            for ((index, uri) in accepted.withIndex()) {
                 if (batchCancelled.value) break
                 withContext(Dispatchers.Main) {
-                    batchProgress.value = getString(R.string.batch_resizing, done + 1, uris.size)
-                    batchProgressFraction.floatValue = done.toFloat() / uris.size
+                    batchProgress.value = getString(R.string.batch_resizing, index + 1, total)
+                    batchProgressFraction.floatValue = index.toFloat() / total
                 }
-                try {
-                    val input = contentResolver.openInputStream(uri) ?: throw IOException("Shared image is unreadable")
-                    input.use { stream ->
-                        val bmp = BitmapFactory.decodeStream(stream)
-                            ?: throw IOException("Shared image could not be decoded")
-                        if (bmp.width <= maxDim && bmp.height <= maxDim) { bmp.recycle(); return@use }
-                        val scale = maxDim.toFloat() / maxOf(bmp.width, bmp.height)
-                        val newW = (bmp.width * scale).toInt()
-                        val newH = (bmp.height * scale).toInt()
-                        val resized = android.graphics.Bitmap.createScaledBitmap(bmp, newW, newH, true)
-                        bmp.recycle()
-                        val (fmt, qual, ext) = getSaveFormat()
-                        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-                        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
-                            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
-                        val result = MediaStoreImageWriter.write(
-                            resolver = contentResolver,
-                            request = MediaStoreImageWriter.Request(
-                                displayName = "SnapCrop_Resize_${System.currentTimeMillis()}.$ext",
-                                mimeType = mime,
-                                relativePath = savePath,
-                            ),
-                        ) { output ->
-                            resized.compress(fmt, qual, output)
+                when (val intake = BatchImageIntake.decode(
+                    contentResolver,
+                    uri,
+                    targetMaxDimension = maxDim,
+                ) { batchCancelled.value }) {
+                    BatchImageIntakeResult.Cancelled -> break
+                    is BatchImageIntakeResult.Oversized -> oversized++
+                    is BatchImageIntakeResult.Unreadable -> unreadable++
+                    is BatchImageIntakeResult.Failed -> failed++
+                    is BatchImageIntakeResult.Skipped -> skipped++
+                    is BatchImageIntakeResult.Ready -> {
+                        val bmp = intake.bitmap
+                        var resized: Bitmap? = null
+                        try {
+                            val scale = maxDim.toFloat() / maxOf(bmp.width, bmp.height)
+                            val newWidth = (bmp.width * scale).toInt().coerceAtLeast(1)
+                            val newHeight = (bmp.height * scale).toInt().coerceAtLeast(1)
+                            val outputBitmap = Bitmap.createScaledBitmap(bmp, newWidth, newHeight, true)
+                                .also { resized = it }
+                            if (batchCancelled.value) continue
+                            val (fmt, qual, ext) = getSaveFormat()
+                            val mime = when (ext) {
+                                "jpg" -> "image/jpeg"
+                                "webp" -> "image/webp"
+                                else -> "image/png"
+                            }
+                            val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                                .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+                            val result = MediaStoreImageWriter.write(
+                                resolver = contentResolver,
+                                request = MediaStoreImageWriter.Request(
+                                    displayName = "SnapCrop_Resize_${System.currentTimeMillis()}.$ext",
+                                    mimeType = mime,
+                                    relativePath = savePath,
+                                ),
+                            ) { output ->
+                                outputBitmap.compress(fmt, qual, output)
+                            }
+                            if (result is MediaStoreImageWriter.Result.Success) saved++ else failed++
+                        } catch (_: Exception) {
+                            failed++
+                        } catch (_: OutOfMemoryError) {
+                            failed++
+                        } finally {
+                            resized?.takeIf { !it.isRecycled }?.recycle()
+                            if (!bmp.isRecycled) bmp.recycle()
                         }
-                        if (result is MediaStoreImageWriter.Result.Failure) failed++
-                        resized.recycle()
                     }
-                } catch (_: Exception) { failed++ }
-                done++
+                }
             }
-            val cancelled = batchCancelled.value
+            val cancelled = (total - saved - skipped - oversized - unreadable - failed).coerceAtLeast(0)
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                val msg = buildString {
-                    append(getString(R.string.batch_resized, done - failed, uris.size, maxDim))
-                    if (failed > 0) append(getString(R.string.batch_failed_count, failed))
-                    if (cancelled) append(getString(R.string.batch_stopped))
-                }
+                val msg = getString(
+                    R.string.batch_result_summary,
+                    saved, skipped, oversized, unreadable, failed, cancelled,
+                )
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 galleryRefreshKey.intValue++
             }

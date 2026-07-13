@@ -83,7 +83,7 @@
     <string name="home_web_capture_subtitle">Load an HTTPS page locally and send a bounded full-page image to the editor.</string>
     <string name="home_crop_one_subtitle">Open the editor with auto-crop, redaction, OCR, and export tools.</string>
     <string name="home_batch_title">Batch autocrop</string>
-    <string name="home_batch_subtitle">Clean multiple screenshots.</string>
+    <string name="home_batch_subtitle">Clean up to 50 screenshots, each up to 64 MiB / 48 MP.</string>
     <string name="home_delay_title">Delayed capture</string>
     <string name="home_delay_subtitle">Start a timed screenshot.</string>
     <string name="home_delay_choose">Choose delay</string>
@@ -116,14 +116,13 @@
 
     <!-- Batch operations -->
     <string name="batch_cropping">Cropping %1$d/%2$d…</string>
-    <string name="batch_cropped">Cropped %1$d/%2$d</string>
     <string name="batch_resizing">Resizing %1$d/%2$d…</string>
-    <string name="batch_resized">Resized %1$d/%2$d to %3$dpx</string>
     <string name="batch_renaming">Renaming %1$d/%2$d…</string>
     <string name="batch_renamed">Renamed %1$d/%2$d</string>
-    <string name="batch_failed_count"> (%1$d failed)</string>
     <string name="batch_rename_failed_count"> (%1$d need write access or failed)</string>
     <string name="batch_stopped"> (stopped)</string>
+    <string name="batch_result_summary">%1$d saved · %2$d skipped · %3$d oversized · %4$d unreadable · %5$d failed · %6$d cancelled</string>
+    <string name="batch_limits">Up to 50 images. Each source is limited to 64 MiB / 48 MP and decoded to a 12 MP / 48 MiB working bitmap.</string>
     <string name="batch_building_report">Building report %1$d/%2$d…</string>
     <string name="batch_uploading_file">Uploading %1$d/%2$d · %3$s · %4$s of %5$s</string>
     <string name="batch_upload_unknown_size">unknown size</string>

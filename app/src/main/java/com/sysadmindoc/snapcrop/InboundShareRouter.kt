@@ -71,7 +71,7 @@ internal object InboundShareContract {
         } ?: true
     }.getOrDefault(true)
 
-    private fun declaredSize(resolver: ContentResolver, uri: Uri): Long? {
+    internal fun declaredSize(resolver: ContentResolver, uri: Uri): Long? {
         val descriptorLength = runCatching {
             resolver.openAssetFileDescriptor(uri, "r")?.use { it.length.takeIf { length -> length >= 0 } }
         }.getOrNull()

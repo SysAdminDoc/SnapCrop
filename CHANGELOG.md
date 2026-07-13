@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Bounded batch image intake (v6.72.0).**
+
+- Routed Home/Gallery batch auto-crop and resize through one shared intake policy:
+  50 items, 64 MiB encoded, 48 MP source, and 12 MP / 48 MiB decoded working caps.
+- Every provider stream is byte-preflighted before bounds decode, reopened through
+  a hard byte limiter, and power-of-two sampled before pixel allocation. Resize
+  no-ops skip allocation after bounds; cancellation is rechecked before publication.
+- Batch completion now distinguishes saved, skipped, oversized, unreadable, failed,
+  and cancelled items. Native bitmap, huge-dimension, oversized generator, corrupt,
+  throwing, stalled-stream, cancellation, and source-routing tests cover the path.
+
 **Kotlin build-cache containment (v6.71.0).**
 
 - Disabled reusable Gradle task-output, configuration, Kotlin build, and Kotlin
