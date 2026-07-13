@@ -26,11 +26,13 @@ class GalleryFilterRoutingTest {
         val source = String(Files.readAllBytes(
             Paths.get("src/main/java/com/sysadmindoc/snapcrop/GalleryScreen.kt")
         ))
-        val loadEffect = source.substringAfter(
-            "LaunchedEffect(selectedAlbum, manualCollections, refreshKey, canReadImages, canReadVideos)"
-        ).substringBefore("val enrichedPhotos")
+        val coordinator = String(Files.readAllBytes(
+            Paths.get("src/main/java/com/sysadmindoc/snapcrop/GalleryLoadCoordinator.kt")
+        ))
 
-        assertFalse(loadEffect.contains("indexEntries,"))
+        assertTrue(source.contains("GalleryLoadCoordinator.album("))
+        val albumLoad = coordinator.substringAfter("suspend fun album(").substringBefore("internal interface Source")
+        assertFalse(albumLoad.contains("loadIndex()"))
         assertTrue(source.contains("photo.withIndex(indexEntries[photo.uri.toString()])"))
         assertTrue(source.contains("selectedUris.retainAll(visibleUris)"))
     }

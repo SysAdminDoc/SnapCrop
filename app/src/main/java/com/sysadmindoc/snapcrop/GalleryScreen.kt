@@ -113,7 +113,7 @@ data class Album(
     val isManual: Boolean = false
 )
 
-private enum class GalleryFailureSource {
+internal enum class GalleryFailureSource {
     IMAGE_QUERY,
     VIDEO_QUERY,
     INDEX_DATABASE,
@@ -122,16 +122,16 @@ private enum class GalleryFailureSource {
     NOTE_DATABASE,
 }
 
-private data class GalleryLoadFailure(val source: GalleryFailureSource, val error: Throwable)
+internal data class GalleryLoadFailure(val source: GalleryFailureSource, val error: Throwable)
 
-private data class GalleryOverviewLoad(
+internal data class GalleryOverviewLoad(
     val albums: List<Album>,
     val smartAlbums: List<Album>,
     val index: Map<String, ScreenshotIndexEntry>,
     val failures: List<GalleryLoadFailure>,
 )
 
-private data class GalleryPhotoLoad(
+internal data class GalleryPhotoLoad(
     val photos: List<Photo>,
     val failures: List<GalleryLoadFailure>,
 )
@@ -187,11 +187,11 @@ private enum class SortMode { DATE, NAME, SIZE }
 
 private const val ALL_PHOTOS_PATH = "__ALL__"
 private const val FAVORITES_PATH = "__FAVS__"
-private const val SMART_ALBUM_PREFIX = "__SMART__:"
-private const val MANUAL_COLLECTION_PREFIX = "__COLLECTION__:"
+internal const val SMART_ALBUM_PREFIX = "__SMART__:"
+internal const val MANUAL_COLLECTION_PREFIX = "__COLLECTION__:"
 
 private fun manualCollectionPath(id: Long) = "$MANUAL_COLLECTION_PREFIX$id"
-private fun manualCollectionId(path: String?): Long? =
+internal fun manualCollectionId(path: String?): Long? =
     path?.takeIf { it.startsWith(MANUAL_COLLECTION_PREFIX) }
         ?.removePrefix(MANUAL_COLLECTION_PREFIX)?.toLongOrNull()
 
@@ -420,6 +420,9 @@ fun GalleryScreen(
     val prefs = remember { context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE) }
     val collectionStore = remember { ScreenshotIndexStore(context) }
     val (screenW, screenH) = remember { getScreenSize(context) }
+    val galleryLoadSource = remember(context, screenW, screenH, collectionStore) {
+        AndroidGalleryLoadSource(context, screenW, screenH, collectionStore)
+    }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var smartAlbums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var manualCollections by remember { mutableStateOf<List<ManualCollectionSummary>>(emptyList()) }
@@ -605,37 +608,12 @@ fun GalleryScreen(
     LaunchedEffect(refreshKey, reloadGeneration, indexEnabled, favoriteKeys, canReadImages, canReadVideos) {
         if (selectedAlbum == null && albums.isEmpty()) isLoading = true
         val refreshedCollections = withContext(Dispatchers.IO) {
-            val failures = mutableListOf<GalleryLoadFailure>()
-            suspend fun <T> load(source: GalleryFailureSource, fallback: T, block: suspend () -> T): T = try {
-                block()
-            } catch (error: Throwable) {
-                failures += GalleryLoadFailure(source, error)
-                fallback
-            }
-
-            val index = if (indexEnabled) {
-                load(GalleryFailureSource.INDEX_DATABASE, emptyMap()) {
-                    ScreenshotIndexStore(context).loadEntryMap()
-                }
-            } else {
-                emptyMap()
-            }
-            val imageAlbums = if (canReadImages) {
-                load(GalleryFailureSource.IMAGE_QUERY, emptyList()) {
-                    loadAlbums(context.contentResolver, includeImages = true, includeVideos = false)
-                }
-            } else emptyList()
-            val videoAlbums = if (canReadVideos) {
-                load(GalleryFailureSource.VIDEO_QUERY, emptyList()) {
-                    loadAlbums(context.contentResolver, includeImages = false, includeVideos = true)
-                }
-            } else emptyList()
-            val smart = if (canReadImages) {
-                load(GalleryFailureSource.IMAGE_QUERY, emptyList()) {
-                    loadSmartAlbums(context.contentResolver, screenW, screenH, index, includeImages = true)
-                }
-            } else emptyList()
-            GalleryOverviewLoad(mergeAlbumSources(imageAlbums, videoAlbums), smart, index, failures)
+            GalleryLoadCoordinator.overview(
+                source = galleryLoadSource,
+                indexEnabled = indexEnabled,
+                canReadImages = canReadImages,
+                canReadVideos = canReadVideos,
+            )
         }
         albums = refreshedCollections.albums
         smartAlbums = refreshedCollections.smartAlbums
@@ -684,41 +662,11 @@ fun GalleryScreen(
         selectedAlbum?.let { path ->
             isLoading = true
             val loaded = withContext(Dispatchers.IO) {
-                val failures = mutableListOf<GalleryLoadFailure>()
-                val members = if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
-                    try {
-                        val collectionId = manualCollectionId(path)
-                            ?: return@withContext GalleryPhotoLoad(emptyList(), failures)
-                        collectionStore.collectionItems(collectionId)
-                    } catch (error: Throwable) {
-                        failures += GalleryLoadFailure(GalleryFailureSource.COLLECTION_DATABASE, error)
-                        emptySet()
-                    }
-                } else emptySet()
-                fun load(source: GalleryFailureSource, includeImages: Boolean, includeVideos: Boolean): List<Photo> = try {
-                    loadPhotoSource(
-                        resolver = context.contentResolver,
-                        path = path,
-                        screenW = screenW,
-                        screenH = screenH,
-                        favoriteKeys = FavoritesStore.getAllKeys(context),
-                        members = members,
-                        includeImages = includeImages,
-                        includeVideos = includeVideos,
-                    )
-                } catch (error: Throwable) {
-                    failures += GalleryLoadFailure(source, error)
-                    emptyList()
-                }
-                val images = if (canReadImages) {
-                    load(GalleryFailureSource.IMAGE_QUERY, includeImages = true, includeVideos = false)
-                } else emptyList()
-                val videos = if (canReadVideos && !path.startsWith(SMART_ALBUM_PREFIX)) {
-                    load(GalleryFailureSource.VIDEO_QUERY, includeImages = false, includeVideos = true)
-                } else emptyList()
-                GalleryPhotoLoad(
-                    (images + videos).distinctBy { it.uri }.sortedByDescending(Photo::dateAdded),
-                    failures,
+                GalleryLoadCoordinator.album(
+                    source = galleryLoadSource,
+                    path = path,
+                    canReadImages = canReadImages,
+                    canReadVideos = canReadVideos,
                 )
             }
             val photoSources = setOf(
@@ -2657,7 +2605,7 @@ internal fun PhotoViewer(
     }
 }
 
-private fun mergeAlbumSources(images: List<Album>, videos: List<Album>): List<Album> =
+internal fun mergeAlbumSources(images: List<Album>, videos: List<Album>): List<Album> =
     (images + videos)
         .groupBy(Album::path)
         .map { (_, values) ->
@@ -2666,7 +2614,7 @@ private fun mergeAlbumSources(images: List<Album>, videos: List<Album>): List<Al
         }
         .sortedBy(Album::name)
 
-private fun loadPhotoSource(
+internal fun loadPhotoSource(
     resolver: ContentResolver,
     path: String,
     screenW: Int,
@@ -2696,7 +2644,7 @@ private fun loadPhotoSource(
     }
 }
 
-private fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includeVideos: Boolean): List<Album> {
+internal fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includeVideos: Boolean): List<Album> {
     val albumMap = mutableMapOf<String, MutableList<Pair<Long, Boolean>>>() // id to isVideo
     val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH)
     val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
@@ -2734,7 +2682,7 @@ private fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includ
     }.sortedByDescending { it.count }
 }
 
-private fun loadSmartAlbums(
+internal fun loadSmartAlbums(
     resolver: ContentResolver,
     screenW: Int,
     screenH: Int,

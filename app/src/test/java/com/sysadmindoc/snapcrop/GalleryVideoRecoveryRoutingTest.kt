@@ -8,14 +8,15 @@ class GalleryVideoRecoveryRoutingTest {
     @Test
     fun gallerySeparatesQueryFailuresAndPreservesFilenameDateFallback() {
         val gallery = source("GalleryScreen.kt")
+        val coordinator = source("GalleryLoadCoordinator.kt")
         val strings = File("src/main/res/values/strings.xml").readText()
 
         assertTrue(Regex("GalleryQueryUnavailableException").findAll(gallery).count() >= 7)
-        assertTrue(gallery.contains("GalleryFailureSource.IMAGE_QUERY"))
-        assertTrue(gallery.contains("GalleryFailureSource.VIDEO_QUERY"))
-        assertTrue(gallery.contains("GalleryFailureSource.INDEX_DATABASE"))
+        assertTrue(coordinator.contains("GalleryFailureSource.IMAGE_QUERY"))
+        assertTrue(coordinator.contains("GalleryFailureSource.VIDEO_QUERY"))
+        assertTrue(coordinator.contains("GalleryFailureSource.INDEX_DATABASE"))
         assertTrue(strings.contains("filename and date browsing still work"))
-        assertTrue(gallery.contains("sortedByDescending(Photo::dateAdded)"))
+        assertTrue(coordinator.contains("sortedByDescending(Photo::dateAdded)"))
     }
 
     @Test
