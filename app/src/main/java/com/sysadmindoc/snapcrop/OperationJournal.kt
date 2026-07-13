@@ -25,7 +25,10 @@ internal enum class DiagnosticOperation {
     EXPORT,
     DELETE,
     MODEL,
-    WEB_CAPTURE
+    WEB_CAPTURE,
+    GALLERY,
+    INDEX,
+    VIDEO
 }
 
 internal enum class DiagnosticStage {

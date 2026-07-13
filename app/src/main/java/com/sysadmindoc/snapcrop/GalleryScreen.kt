@@ -91,6 +91,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,6 +105,31 @@ data class Album(
     val subtitle: String = "",
     val isManual: Boolean = false
 )
+
+private enum class GalleryFailureSource {
+    IMAGE_QUERY,
+    VIDEO_QUERY,
+    INDEX_DATABASE,
+    COLLECTION_DATABASE,
+    SOURCE_CONTEXT_DATABASE,
+    NOTE_DATABASE,
+}
+
+private data class GalleryLoadFailure(val source: GalleryFailureSource, val error: Throwable)
+
+private data class GalleryOverviewLoad(
+    val albums: List<Album>,
+    val smartAlbums: List<Album>,
+    val index: Map<String, ScreenshotIndexEntry>,
+    val failures: List<GalleryLoadFailure>,
+)
+
+private data class GalleryPhotoLoad(
+    val photos: List<Photo>,
+    val failures: List<GalleryLoadFailure>,
+)
+
+private class GalleryQueryUnavailableException : IllegalStateException("Media provider returned no cursor")
 data class Photo(
     val id: Long, val uri: Uri, val dateAdded: Long,
     val name: String = "", val size: Long = 0,
@@ -376,7 +402,10 @@ fun GalleryScreen(
     var photos by remember { mutableStateOf<List<Photo>>(emptyList()) }
     var indexEntries by remember { mutableStateOf<Map<String, ScreenshotIndexEntry>>(emptyMap()) }
     var indexEnabled by remember { mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) }
+    var indexHealth by remember { mutableStateOf(IndexHealthStore.load(context)) }
     var isLoading by remember { mutableStateOf(true) }
+    var galleryFailures by remember { mutableStateOf<Set<GalleryFailureSource>>(emptySet()) }
+    var reloadGeneration by remember { mutableIntStateOf(0) }
     var viewerIndex by remember { mutableIntStateOf(-1) }
     val selectedUris = remember { mutableStateListOf<String>() }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -404,16 +433,78 @@ fun GalleryScreen(
     var duplicateGroups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
 
-    LaunchedEffect(Unit) {
-        collectionStore.observeCollections().collect { manualCollections = it }
+    fun reportFailure(source: GalleryFailureSource, error: Throwable) {
+        galleryFailures = galleryFailures + source
+        OperationJournal.record(
+            context,
+            DiagnosticOperation.GALLERY,
+            DiagnosticStage.OBSERVE,
+            DiagnosticResult.FAILED,
+            code = if (error is SecurityException) DiagnosticCode.PERMISSION_DENIED else DiagnosticCode.INTERNAL,
+            error = error,
+        )
+    }
+
+    fun rebuildIndex() {
+        if (!indexEnabled || indexHealth.pendingCount > 0) return
+        scope.launch {
+            val journalStarted = OperationJournal.start()
+            IndexHealthStore.markStarted(context)
+            indexHealth = IndexHealthStore.load(context)
+            try {
+                val count = collectionStore.rebuildFromMediaStore(
+                    context.contentResolver,
+                    screenW,
+                    screenH,
+                    FavoritesStore.getAllKeys(context),
+                )
+                IndexHealthStore.markSuccess(context, count, albums.sumOf(Album::count))
+                indexHealth = IndexHealthStore.load(context)
+                indexEntries = collectionStore.loadEntryMap()
+                galleryFailures = galleryFailures - GalleryFailureSource.INDEX_DATABASE
+                OperationJournal.record(
+                    context, DiagnosticOperation.INDEX, DiagnosticStage.COMPLETE,
+                    DiagnosticResult.SUCCESS, journalStarted,
+                )
+            } catch (error: Throwable) {
+                IndexHealthStore.markFailure(context)
+                indexHealth = IndexHealthStore.load(context)
+                reportFailure(GalleryFailureSource.INDEX_DATABASE, error)
+                OperationJournal.record(
+                    context, DiagnosticOperation.INDEX, DiagnosticStage.OBSERVE,
+                    DiagnosticResult.FAILED, journalStarted,
+                    if (error is SecurityException) DiagnosticCode.PERMISSION_DENIED else DiagnosticCode.INTERNAL,
+                    error,
+                )
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
-        collectionStore.observeSourceContexts().collect { sourceContexts = it }
+        collectionStore.observeCollections()
+            .catch { reportFailure(GalleryFailureSource.COLLECTION_DATABASE, it) }
+            .collect {
+                manualCollections = it
+                galleryFailures = galleryFailures - GalleryFailureSource.COLLECTION_DATABASE
+            }
     }
 
     LaunchedEffect(Unit) {
-        collectionStore.observeNoteReminders().collect { noteReminders = it }
+        collectionStore.observeSourceContexts()
+            .catch { reportFailure(GalleryFailureSource.SOURCE_CONTEXT_DATABASE, it) }
+            .collect {
+                sourceContexts = it
+                galleryFailures = galleryFailures - GalleryFailureSource.SOURCE_CONTEXT_DATABASE
+            }
+    }
+
+    LaunchedEffect(Unit) {
+        collectionStore.observeNoteReminders()
+            .catch { reportFailure(GalleryFailureSource.NOTE_DATABASE, it) }
+            .collect {
+                noteReminders = it
+                galleryFailures = galleryFailures - GalleryFailureSource.NOTE_DATABASE
+            }
     }
 
     LaunchedEffect(openRequest) {
@@ -427,23 +518,60 @@ fun GalleryScreen(
     }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
-    LaunchedEffect(refreshKey, indexEnabled, favoriteKeys, canReadImages, canReadVideos) {
+    LaunchedEffect(refreshKey, reloadGeneration, indexEnabled, favoriteKeys, canReadImages, canReadVideos) {
+        if (selectedAlbum == null && albums.isEmpty()) isLoading = true
         val refreshedCollections = withContext(Dispatchers.IO) {
+            val failures = mutableListOf<GalleryLoadFailure>()
+            suspend fun <T> load(source: GalleryFailureSource, fallback: T, block: suspend () -> T): T = try {
+                block()
+            } catch (error: Throwable) {
+                failures += GalleryLoadFailure(source, error)
+                fallback
+            }
+
             val index = if (indexEnabled) {
-                val store = ScreenshotIndexStore(context)
-                store.loadEntryMap()
+                load(GalleryFailureSource.INDEX_DATABASE, emptyMap()) {
+                    ScreenshotIndexStore(context).loadEntryMap()
+                }
             } else {
                 emptyMap()
             }
-            Triple(
-                loadAlbums(context.contentResolver, canReadImages, canReadVideos),
-                loadSmartAlbums(context.contentResolver, screenW, screenH, index, canReadImages),
-                index
-            )
+            val imageAlbums = if (canReadImages) {
+                load(GalleryFailureSource.IMAGE_QUERY, emptyList()) {
+                    loadAlbums(context.contentResolver, includeImages = true, includeVideos = false)
+                }
+            } else emptyList()
+            val videoAlbums = if (canReadVideos) {
+                load(GalleryFailureSource.VIDEO_QUERY, emptyList()) {
+                    loadAlbums(context.contentResolver, includeImages = false, includeVideos = true)
+                }
+            } else emptyList()
+            val smart = if (canReadImages) {
+                load(GalleryFailureSource.IMAGE_QUERY, emptyList()) {
+                    loadSmartAlbums(context.contentResolver, screenW, screenH, index, includeImages = true)
+                }
+            } else emptyList()
+            GalleryOverviewLoad(mergeAlbumSources(imageAlbums, videoAlbums), smart, index, failures)
         }
-        albums = refreshedCollections.first
-        smartAlbums = refreshedCollections.second
-        indexEntries = refreshedCollections.third
+        albums = refreshedCollections.albums
+        smartAlbums = refreshedCollections.smartAlbums
+        indexEntries = refreshedCollections.index
+        val overviewSources = setOf(
+            GalleryFailureSource.IMAGE_QUERY,
+            GalleryFailureSource.VIDEO_QUERY,
+            GalleryFailureSource.INDEX_DATABASE,
+        )
+        galleryFailures = (galleryFailures - overviewSources) + refreshedCollections.failures.map { it.source }
+        refreshedCollections.failures.forEach { reportFailure(it.source, it.error) }
+        val eligibleCount = albums.sumOf(Album::count)
+        if (indexEnabled) {
+            if (refreshedCollections.failures.any { it.source == GalleryFailureSource.INDEX_DATABASE }) {
+                IndexHealthStore.markFailure(context)
+            } else {
+                IndexHealthStore.updateObservedCounts(context, indexEntries.size, eligibleCount)
+            }
+            indexHealth = IndexHealthStore.load(context)
+        }
         indexEnabled = prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
         // Photos for the open album are loaded by the single effect below (keyed on refreshKey),
         // so they are never written from two effects at once.
@@ -454,34 +582,72 @@ fun GalleryScreen(
     // here, refreshing smart-album membership and search without a manual reload.
     LaunchedEffect(indexEnabled) {
         if (!indexEnabled) return@LaunchedEffect
-        ScreenshotIndexStore(context).observeEntries().collect { latest ->
-            indexEntries = latest
-        }
+        ScreenshotIndexStore(context).observeEntries()
+            .catch {
+                IndexHealthStore.markFailure(context)
+                indexHealth = IndexHealthStore.load(context)
+                reportFailure(GalleryFailureSource.INDEX_DATABASE, it)
+            }
+            .collect { latest ->
+                indexEntries = latest
+                galleryFailures = galleryFailures - GalleryFailureSource.INDEX_DATABASE
+                IndexHealthStore.updateObservedCounts(context, latest.size, albums.sumOf(Album::count))
+                indexHealth = IndexHealthStore.load(context)
+            }
     }
 
-    LaunchedEffect(selectedAlbum, manualCollections, refreshKey, canReadImages, canReadVideos) {
+    LaunchedEffect(selectedAlbum, manualCollections, refreshKey, reloadGeneration, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
             selectedUris.clear()
-            val loadedPhotos = withContext(Dispatchers.IO) {
-                when (path) {
-                    ALL_PHOTOS_PATH -> loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, canReadVideos)
-                    FAVORITES_PATH -> loadFavoritePhotos(context.contentResolver, FavoritesStore.getAllKeys(context), screenW, screenH, emptyMap(), canReadImages, canReadVideos)
-                    else -> if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
-                        val collectionId = manualCollectionId(path) ?: return@withContext emptyList()
-                        val members = collectionStore.collectionItems(collectionId)
-                        filterCollectionPhotos(
-                            loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, canReadVideos),
-                            members
-                        )
-                    } else if (path.startsWith(SMART_ALBUM_PREFIX)) {
-                        loadAllPhotos(context.contentResolver, screenW, screenH, emptyMap(), canReadImages, includeVideos = false)
-                    } else {
-                        loadPhotos(context.contentResolver, path, screenW, screenH, emptyMap(), canReadImages, canReadVideos)
+            val loaded = withContext(Dispatchers.IO) {
+                val failures = mutableListOf<GalleryLoadFailure>()
+                val members = if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
+                    try {
+                        val collectionId = manualCollectionId(path)
+                            ?: return@withContext GalleryPhotoLoad(emptyList(), failures)
+                        collectionStore.collectionItems(collectionId)
+                    } catch (error: Throwable) {
+                        failures += GalleryLoadFailure(GalleryFailureSource.COLLECTION_DATABASE, error)
+                        emptySet()
                     }
+                } else emptySet()
+                fun load(source: GalleryFailureSource, includeImages: Boolean, includeVideos: Boolean): List<Photo> = try {
+                    loadPhotoSource(
+                        resolver = context.contentResolver,
+                        path = path,
+                        screenW = screenW,
+                        screenH = screenH,
+                        favoriteKeys = FavoritesStore.getAllKeys(context),
+                        members = members,
+                        includeImages = includeImages,
+                        includeVideos = includeVideos,
+                    )
+                } catch (error: Throwable) {
+                    failures += GalleryLoadFailure(source, error)
+                    emptyList()
                 }
+                val images = if (canReadImages) {
+                    load(GalleryFailureSource.IMAGE_QUERY, includeImages = true, includeVideos = false)
+                } else emptyList()
+                val videos = if (canReadVideos && !path.startsWith(SMART_ALBUM_PREFIX)) {
+                    load(GalleryFailureSource.VIDEO_QUERY, includeImages = false, includeVideos = true)
+                } else emptyList()
+                GalleryPhotoLoad(
+                    (images + videos).distinctBy { it.uri }.sortedByDescending(Photo::dateAdded),
+                    failures,
+                )
             }
-            photos = loadedPhotos
+            val photoSources = setOf(
+                GalleryFailureSource.IMAGE_QUERY,
+                GalleryFailureSource.VIDEO_QUERY,
+                GalleryFailureSource.COLLECTION_DATABASE,
+            )
+            galleryFailures = (galleryFailures - photoSources) + loaded.failures.map { it.source }
+            loaded.failures.forEach { reportFailure(it.source, it.error) }
+            if (loaded.photos.isNotEmpty() || loaded.failures.isEmpty() || photos.isEmpty()) {
+                photos = loaded.photos
+            }
             isLoading = false
         }
     }
@@ -1114,6 +1280,28 @@ fun GalleryScreen(
             }
         }
 
+        val hasUsableGalleryContent = albums.isNotEmpty() || photos.isNotEmpty() || manualCollections.isNotEmpty()
+        if (!selectionMode && galleryFailures.isNotEmpty() && hasUsableGalleryContent) {
+            GalleryReliabilityBanner(
+                title = stringResource(R.string.gallery_partial_failure_title),
+                body = if (GalleryFailureSource.INDEX_DATABASE in galleryFailures) {
+                    stringResource(R.string.gallery_index_fallback_body)
+                } else {
+                    stringResource(R.string.gallery_partial_failure_body)
+                },
+                onRetry = { reloadGeneration++ },
+            )
+        }
+
+        if (!selectionMode && indexEnabled) {
+            GalleryIndexHealthCard(
+                health = indexHealth,
+                indexFailed = GalleryFailureSource.INDEX_DATABASE in galleryFailures,
+                onRetry = { reloadGeneration++ },
+                onRebuild = { rebuildIndex() },
+            )
+        }
+
         // Search bar
         if (!selectionMode && ((selectedAlbum == null && (albums.isNotEmpty() || smartAlbums.isNotEmpty())) || selectedAlbum != null)) {
             OutlinedTextField(
@@ -1178,7 +1366,15 @@ fun GalleryScreen(
             if (searchQuery.isBlank()) values else values.filter { it.name.contains(searchQuery, ignoreCase = true) }
         }
 
-        if (isLoading) {
+        val visibleItemCount = if (selectedAlbum == null) albums.sumOf(Album::count) else viewerPhotos.size
+        val contentState = GalleryContentStateResolver.resolve(
+            loading = isLoading,
+            failed = galleryFailures.isNotEmpty() && !hasUsableGalleryContent,
+            itemCount = visibleItemCount,
+            imageAccess = imageAccess,
+            videoAccess = videoAccess,
+        )
+        if (contentState.status == GalleryContentStatus.LOADING) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = Primary)
@@ -1186,6 +1382,8 @@ fun GalleryScreen(
                     Text(stringResource(R.string.gallery_loading), color = OnSurfaceVariant, fontSize = 13.sp)
                 }
             }
+        } else if (contentState.status == GalleryContentStatus.FAILED) {
+            GalleryFailureState(onRetry = { reloadGeneration++ })
         } else if (selectedAlbum == null) {
             AlbumGrid(albums = filteredAlbums, smartAlbums = filteredSmartAlbums, manualAlbums = collectionAlbums,
                 showLibraryCards = searchQuery.isBlank(),
@@ -1226,6 +1424,98 @@ fun GalleryScreen(
             )
         }
     }
+}
+
+@Composable
+private fun GalleryReliabilityBanner(title: String, body: String, onRetry: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = Warning.copy(alpha = 0.12f)),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(title, color = OnSurface, fontWeight = FontWeight.Medium)
+            Text(body, color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 17.sp)
+            TextButton(onClick = onRetry, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.gallery_retry))
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryIndexHealthCard(
+    health: IndexHealthSnapshot,
+    indexFailed: Boolean,
+    onRetry: () -> Unit,
+    onRebuild: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(14.dp).semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) {
+            Text(stringResource(R.string.gallery_index_health_title), color = OnSurface, fontWeight = FontWeight.Medium)
+            Text(
+                stringResource(
+                    R.string.gallery_index_health_counts,
+                    health.indexedCount,
+                    health.eligibleCount,
+                    health.pendingCount,
+                    health.failedCount,
+                ),
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+            )
+            Text(
+                if (health.lastSuccessfulScanMs > 0L) {
+                    stringResource(
+                        R.string.gallery_index_last_success,
+                        java.text.DateFormat.getDateTimeInstance().format(java.util.Date(health.lastSuccessfulScanMs)),
+                    )
+                } else {
+                    stringResource(R.string.gallery_index_never_scanned)
+                },
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+            )
+            if (indexFailed) {
+                Text(
+                    stringResource(R.string.gallery_index_fallback_body),
+                    color = Warning,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (health.pendingCount > 0) {
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    color = Primary,
+                    trackColor = SurfaceContainer,
+                )
+            }
+            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onRetry, enabled = health.pendingCount == 0) {
+                    Text(stringResource(R.string.gallery_retry))
+                }
+                Button(onClick = onRebuild, enabled = health.pendingCount == 0) {
+                    Text(stringResource(R.string.settings_rebuild))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryFailureState(onRetry: () -> Unit) {
+    GalleryEmptyState(
+        icon = Icons.Default.Info,
+        title = stringResource(R.string.gallery_failed_title),
+        subtitle = stringResource(R.string.gallery_failed_body),
+        actionLabel = stringResource(R.string.gallery_retry),
+        onAction = onRetry,
+    )
 }
 
 @Composable
@@ -1320,7 +1610,7 @@ private fun GalleryEmptyState(
                 Spacer(Modifier.height(16.dp))
                 FilledTonalButton(
                     onClick = onAction,
-                    modifier = Modifier.heightIn(min = 44.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(actionLabel)
@@ -2196,13 +2486,53 @@ private fun PhotoViewer(
     }
 }
 
+private fun mergeAlbumSources(images: List<Album>, videos: List<Album>): List<Album> =
+    (images + videos)
+        .groupBy(Album::path)
+        .map { (_, values) ->
+            val first = values.first()
+            first.copy(count = values.sumOf(Album::count))
+        }
+        .sortedBy(Album::name)
+
+private fun loadPhotoSource(
+    resolver: ContentResolver,
+    path: String,
+    screenW: Int,
+    screenH: Int,
+    favoriteKeys: Set<String>,
+    members: Set<ManualCollectionMedia>,
+    includeImages: Boolean,
+    includeVideos: Boolean,
+): List<Photo> = when (path) {
+    ALL_PHOTOS_PATH -> loadAllPhotos(
+        resolver, screenW, screenH, emptyMap(), includeImages, includeVideos,
+    )
+    FAVORITES_PATH -> loadFavoritePhotos(
+        resolver, favoriteKeys, screenW, screenH, emptyMap(), includeImages, includeVideos,
+    )
+    else -> when {
+        path.startsWith(MANUAL_COLLECTION_PREFIX) -> filterCollectionPhotos(
+            loadAllPhotos(resolver, screenW, screenH, emptyMap(), includeImages, includeVideos),
+            members,
+        )
+        path.startsWith(SMART_ALBUM_PREFIX) -> loadAllPhotos(
+            resolver, screenW, screenH, emptyMap(), includeImages, includeVideos = false,
+        )
+        else -> loadPhotos(
+            resolver, path, screenW, screenH, emptyMap(), includeImages, includeVideos,
+        )
+    }
+}
+
 private fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includeVideos: Boolean): List<Album> {
     val albumMap = mutableMapOf<String, MutableList<Pair<Long, Boolean>>>() // id to isVideo
     val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.RELATIVE_PATH)
     val sortOrder = "${MediaStore.MediaColumns.DATE_ADDED} DESC"
 
     // Images
-    (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder) else null)?.use { cursor ->
+    (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)
+        ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
         while (cursor.moveToNext()) {
@@ -2212,7 +2542,8 @@ private fun loadAlbums(resolver: ContentResolver, includeImages: Boolean, includ
         }
     }
     // Videos
-    (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder) else null)?.use { cursor ->
+    (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder)
+        ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
         val pathCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
         while (cursor.moveToNext()) {
@@ -2292,7 +2623,7 @@ private fun loadPhotos(
     val selection = "${MediaStore.Images.Media.RELATIVE_PATH} = ?"
     val selectionArgs = arrayOf(albumPath)
     (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, selection, selectionArgs,
-        "${MediaStore.Images.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
+        "${MediaStore.Images.Media.DATE_ADDED} DESC") ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -2323,7 +2654,7 @@ private fun loadPhotos(
         }.toTypedArray()
     (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection,
         "${MediaStore.Video.Media.RELATIVE_PATH} = ?", selectionArgs,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
+        "${MediaStore.Video.Media.DATE_ADDED} DESC") ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -2366,7 +2697,7 @@ private fun loadAllPhotos(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         }.toTypedArray()
     (if (includeImages) resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imgProjection, null, null,
-        "${MediaStore.Images.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
+        "${MediaStore.Images.Media.DATE_ADDED} DESC") ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -2399,7 +2730,7 @@ private fun loadAllPhotos(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
         }.toTypedArray()
     (if (includeVideos) resolver.query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, vidProjection, null, null,
-        "${MediaStore.Video.Media.DATE_ADDED} DESC") else null)?.use { cursor ->
+        "${MediaStore.Video.Media.DATE_ADDED} DESC") ?: throw GalleryQueryUnavailableException() else null)?.use { cursor ->
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
         val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
         val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -2458,7 +2789,8 @@ private fun loadFavoritePhotos(
             val placeholders = chunk.joinToString(",") { "?" }
             val selection = "${MediaStore.MediaColumns._ID} IN ($placeholders)"
             val selectionArgs = chunk.map { it.toString() }.toTypedArray()
-            resolver.query(contentUri, projection, selection, selectionArgs, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use { cursor ->
+            (resolver.query(contentUri, projection, selection, selectionArgs, "${MediaStore.MediaColumns.DATE_ADDED} DESC")
+                ?: throw GalleryQueryUnavailableException()).use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val dateCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)

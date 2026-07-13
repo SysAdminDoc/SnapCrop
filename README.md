@@ -144,6 +144,10 @@ are blocked behind explicit opt-in and evaluation gates.
   move through Android's recoverable trash, and false matches stay dismissed.
 - Browse all photos and videos by album
 - Optional local intelligence index powers smart auto-albums for Screenshots, Chats, Games, Sites, Documents, Codes, and Payments without moving files
+- Gallery distinguishes loading, empty, partial-access, and failed states. Its
+  local index health card shows eligible/indexed work, pending or failed scans,
+  the last successful scan, and direct Retry/Rebuild actions; filename/date
+  browsing remains available when indexed metadata cannot be read.
 - Combine structured chips for media type, creator/source folder, indexed category,
   date, orientation/minimum dimensions, favorite state, and MIME format; filter
   state survives recreation and matching screenshots can seed a manual collection
@@ -164,7 +168,9 @@ are blocked behind explicit opt-in and evaluation gates.
 
 ### More Tools
 - **Long Screenshot** — Accessibility-powered scroll capture with sticky-header aware stitching, editable frame joins (trim/start sliders, precise nudges, reset), review/retry, and editor handoff
-- **Screen Recording Tools** — Trim recordings and grab editable frames from video
+- **Screen Recording Tools** — Trim recordings and grab editable frames from video;
+  unreadable metadata or preview frames offer Retry and Choose another instead
+  of appearing as a valid zero-duration recording
 - **Image Stitching** — Combine 2+ images vertically or horizontally with reorder controls
 - **Collage Maker** — 25 grid layouts, adjustable gaps, multiple aspect ratios
 - **Device Frame Mockup** — Wrap screenshots in Pixel, iPhone, Samsung, or flat device frames

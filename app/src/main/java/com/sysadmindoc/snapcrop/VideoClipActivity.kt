@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,34 +38,42 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.sysadmindoc.snapcrop.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class VideoClipActivity : ComponentActivity() {
-    private var videoUri: Uri? = null
+    private val videoUri = mutableStateOf<Uri?>(null)
     private val isWorking = mutableStateOf(false)
+    private val pickAnotherVideo = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) videoUri.value = uri
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        videoUri = intent.data
-        if (videoUri == null) {
+        videoUri.value = intent.data
+        if (videoUri.value == null) {
             finish()
             return
         }
 
         setContent {
             SnapCropTheme {
-                VideoClipScreen(
-                    uri = videoUri!!,
-                    isWorking = isWorking.value,
-                    onClose = { finish() },
-                    onOpenExternally = { openExternally(videoUri!!) },
-                    onGrabFrame = { timeMs -> grabFrame(timeMs) },
-                    onTrimClip = { startMs, endMs -> trimClip(startMs, endMs) }
-                )
+                videoUri.value?.let { uri ->
+                    VideoClipScreen(
+                        uri = uri,
+                        isWorking = isWorking.value,
+                        onClose = { finish() },
+                        onOpenExternally = { openExternally(uri) },
+                        onChooseAnother = { pickAnotherVideo.launch("video/*") },
+                        onGrabFrame = { timeMs -> grabFrame(timeMs) },
+                        onTrimClip = { startMs, endMs -> trimClip(startMs, endMs) }
+                    )
+                }
             }
         }
     }
@@ -93,12 +103,24 @@ class VideoClipActivity : ComponentActivity() {
     }
 
     private fun grabFrame(timeMs: Long) {
-        val uri = videoUri ?: return
+        val uri = videoUri.value ?: return
         if (isWorking.value) return
         isWorking.value = true
         lifecycleScope.launch(Dispatchers.IO) {
+            val journalStarted = OperationJournal.start()
             try {
-                val frame = VideoClipExporter.frameAt(this@VideoClipActivity, uri, timeMs)
+                val frame = when (val result = VideoClipLoader.frame {
+                    VideoClipExporter.frameAt(this@VideoClipActivity, uri, timeMs)
+                }) {
+                    is VideoFrameResult.Ready -> result.bitmap
+                    is VideoFrameResult.Failed -> {
+                        OperationJournal.record(
+                            this@VideoClipActivity, DiagnosticOperation.VIDEO, DiagnosticStage.PROCESS,
+                            DiagnosticResult.FAILED, journalStarted, DiagnosticCode.DECODE_FAILURE, result.cause,
+                        )
+                        null
+                    }
+                }
                 if (frame == null) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_failed), Toast.LENGTH_SHORT).show()
@@ -131,6 +153,14 @@ class VideoClipActivity : ComponentActivity() {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_save_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
+            } catch (error: Exception) {
+                OperationJournal.record(
+                    this@VideoClipActivity, DiagnosticOperation.VIDEO, DiagnosticStage.PROCESS,
+                    DiagnosticResult.FAILED, journalStarted, DiagnosticCode.INTERNAL, error,
+                )
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_failed), Toast.LENGTH_SHORT).show()
+                }
             } finally {
                 withContext(Dispatchers.Main) {
                     isWorking.value = false
@@ -140,7 +170,7 @@ class VideoClipActivity : ComponentActivity() {
     }
 
     private fun trimClip(startMs: Long, endMs: Long) {
-        val uri = videoUri ?: return
+        val uri = videoUri.value ?: return
         if (endMs - startMs < 1000L) {
             Toast.makeText(this, getString(R.string.video_min_duration), Toast.LENGTH_SHORT).show()
             return
@@ -149,14 +179,31 @@ class VideoClipActivity : ComponentActivity() {
         isWorking.value = true
 
         lifecycleScope.launch(Dispatchers.IO) {
+            val journalStarted = OperationJournal.start()
             try {
                 val savedUri = VideoClipExporter.trimToGallery(this@VideoClipActivity, uri, startMs, endMs)
+                OperationJournal.record(
+                    this@VideoClipActivity,
+                    DiagnosticOperation.VIDEO,
+                    if (savedUri != null) DiagnosticStage.COMPLETE else DiagnosticStage.SAVE,
+                    if (savedUri != null) DiagnosticResult.SUCCESS else DiagnosticResult.FAILED,
+                    journalStarted,
+                    if (savedUri != null) DiagnosticCode.NONE else DiagnosticCode.PUBLISH_FAILURE,
+                )
                 withContext(Dispatchers.Main) {
                     if (savedUri != null) {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_trim_saved), Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_trim_failed), Toast.LENGTH_SHORT).show()
                     }
+                }
+            } catch (error: Exception) {
+                OperationJournal.record(
+                    this@VideoClipActivity, DiagnosticOperation.VIDEO, DiagnosticStage.SAVE,
+                    DiagnosticResult.FAILED, journalStarted, DiagnosticCode.INTERNAL, error,
+                )
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@VideoClipActivity, getString(R.string.video_trim_failed), Toast.LENGTH_SHORT).show()
                 }
             } finally {
                 withContext(Dispatchers.Main) {
@@ -191,6 +238,7 @@ private fun VideoClipScreen(
     isWorking: Boolean,
     onClose: () -> Unit,
     onOpenExternally: () -> Unit,
+    onChooseAnother: () -> Unit,
     onGrabFrame: (Long) -> Unit,
     onTrimClip: (Long, Long) -> Unit
 ) {
@@ -198,24 +246,73 @@ private fun VideoClipScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var framePosition by remember { mutableFloatStateOf(0f) }
     var trimRange by remember { mutableStateOf(0f..1f) }
-    var preview by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var metadataFailure by remember { mutableStateOf<VideoLoadFailure?>(null) }
+    var previewFailure by remember { mutableStateOf<VideoLoadFailure?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var retryGeneration by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(uri) {
-        durationMs = withContext(Dispatchers.IO) { VideoClipExporter.durationMs(context, uri) }
-        val end = durationMs.toFloat().coerceAtLeast(1f)
-        framePosition = 0f
-        trimRange = 0f..end
+    DisposableEffect(uri) {
+        onDispose { previewBitmap?.takeIf { !it.isRecycled }?.recycle() }
+    }
+
+    LaunchedEffect(uri, retryGeneration) {
+        isLoading = true
+        metadataFailure = null
+        previewFailure = null
+        previewBitmap?.takeIf { !it.isRecycled }?.recycle()
+        previewBitmap = null
+        when (val result = withContext(Dispatchers.IO) {
+            VideoClipLoader.metadata { VideoClipExporter.durationMs(context, uri) }
+        }) {
+            is VideoMetadataResult.Ready -> {
+                durationMs = result.durationMs
+                val end = durationMs.toFloat()
+                framePosition = 0f
+                trimRange = 0f..end
+            }
+            is VideoMetadataResult.Failed -> {
+                durationMs = 0L
+                metadataFailure = result.reason
+                OperationJournal.record(
+                    context, DiagnosticOperation.VIDEO, DiagnosticStage.PROCESS,
+                    DiagnosticResult.FAILED, code = DiagnosticCode.DECODE_FAILURE,
+                    error = result.cause,
+                )
+            }
+        }
         isLoading = false
     }
 
-    LaunchedEffect(uri, framePosition, durationMs) {
+    LaunchedEffect(uri, framePosition, durationMs, retryGeneration) {
         if (durationMs <= 0L) return@LaunchedEffect
         delay(140)
-        val bitmap = withContext(Dispatchers.IO) {
-            VideoClipExporter.frameAt(context, uri, framePosition.toLong())
+        previewFailure = null
+        var candidate: Bitmap? = null
+        try {
+            when (val result = withContext(Dispatchers.IO) {
+                VideoClipLoader.frame { VideoClipExporter.frameAt(context, uri, framePosition.toLong()) }
+            }) {
+                is VideoFrameResult.Ready -> {
+                    candidate = result.bitmap
+                    currentCoroutineContext().ensureActive()
+                    val previous = previewBitmap
+                    previewBitmap = result.bitmap
+                    candidate = null
+                    if (previous !== result.bitmap) previous?.takeIf { !it.isRecycled }?.recycle()
+                }
+                is VideoFrameResult.Failed -> {
+                    previewFailure = result.reason
+                    OperationJournal.record(
+                        context, DiagnosticOperation.VIDEO, DiagnosticStage.PROCESS,
+                        DiagnosticResult.FAILED, code = DiagnosticCode.DECODE_FAILURE,
+                        error = result.cause,
+                    )
+                }
+            }
+        } finally {
+            candidate?.takeIf { !it.isRecycled }?.recycle()
         }
-        preview = bitmap?.asImageBitmap()
     }
 
     Column(
@@ -251,6 +348,26 @@ private fun VideoClipScreen(
             return@Column
         }
 
+        if (metadataFailure != null) {
+            VideoLoadErrorCard(
+                title = stringResource(R.string.video_metadata_failed_title),
+                body = stringResource(R.string.video_metadata_failed_body),
+                onRetry = { retryGeneration++ },
+                onChooseAnother = onChooseAnother,
+            )
+            return@Column
+        }
+
+        if (previewFailure != null) {
+            VideoLoadErrorCard(
+                title = stringResource(R.string.video_preview_failed_title),
+                body = stringResource(R.string.video_preview_failed_body),
+                onRetry = { retryGeneration++ },
+                onChooseAnother = onChooseAnother,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
@@ -260,16 +377,23 @@ private fun VideoClipScreen(
                 modifier = Modifier.fillMaxWidth().aspectRatio(9f / 16f).background(MediaSurface),
                 contentAlignment = Alignment.Center
             ) {
-                val image = preview
+                val image = previewBitmap
                 if (image != null) {
                     Image(
-                        bitmap = image,
+                        bitmap = image.asImageBitmap(),
                         contentDescription = stringResource(R.string.video_frame_cd),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
                 } else {
-                    Text(stringResource(R.string.video_scrubber_hint), color = OnMediaSurfaceVariant, fontSize = 13.sp)
+                    Text(
+                        stringResource(
+                            if (previewFailure != null) R.string.video_preview_unavailable
+                            else R.string.video_scrubber_hint,
+                        ),
+                        color = OnMediaSurfaceVariant,
+                        fontSize = 13.sp,
+                    )
                 }
             }
         }
@@ -365,6 +489,36 @@ private fun VideoClipScreen(
             lineHeight = 17.sp
         )
         Spacer(Modifier.height(20.dp))
+    }
+}
+
+@Composable
+private fun VideoLoadErrorCard(
+    title: String,
+    body: String,
+    onRetry: () -> Unit,
+    onChooseAnother: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().semantics {
+            liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite
+        },
+        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 16.sp)
+            Text(body, color = OnSurfaceVariant, fontSize = 13.sp, lineHeight = 18.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onRetry, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.gallery_retry))
+                }
+                OutlinedButton(onClick = onChooseAnother, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(stringResource(R.string.video_choose_another))
+                }
+            }
+        }
     }
 }
 

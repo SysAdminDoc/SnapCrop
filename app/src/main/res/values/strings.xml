@@ -304,6 +304,7 @@
     <string name="settings_index_count">Indexed items: %1$d</string>
     <string name="settings_index_loading">Reading local index…</string>
     <string name="settings_index_rebuilding">Rebuilding index…</string>
+    <string name="settings_index_failed">Index rebuild failed. Media remains available; retry when ready.</string>
     <string name="settings_rebuild">Rebuild</string>
     <string name="settings_purge">Purge</string>
     <string name="settings_section_erase">Smart erase</string>
@@ -675,6 +676,16 @@
     <string name="gallery_search_albums">Search albums and smart groups…</string>
     <string name="gallery_search_photos">Search names, source hints, and indexed categories…</string>
     <string name="gallery_loading">Loading your media library</string>
+    <string name="gallery_retry">Retry</string>
+    <string name="gallery_failed_title">Couldn’t load the media library</string>
+    <string name="gallery_failed_body">SnapCrop kept your existing data unchanged. Check media access and retry.</string>
+    <string name="gallery_partial_failure_title">Some library details are unavailable</string>
+    <string name="gallery_partial_failure_body">Available photos and videos remain usable. Retry the unavailable source.</string>
+    <string name="gallery_index_fallback_body">Smart categories are unavailable; filename and date browsing still work.</string>
+    <string name="gallery_index_health_title">Local index health</string>
+    <string name="gallery_index_health_counts">Indexed %1$d of %2$d · pending %3$d · failed %4$d</string>
+    <string name="gallery_index_last_success">Last successful scan: %1$s</string>
+    <string name="gallery_index_never_scanned">No successful scan yet</string>
     <string name="gallery_empty_title">No albums found</string>
     <string name="gallery_empty_subtitle">Grant media access or add photos to see them here.</string>
     <string name="gallery_images_denied_title">Device photos hidden</string>
@@ -1129,6 +1140,12 @@
     <string name="video_play">Play video</string>
     <string name="video_frame_cd">Selected video frame</string>
     <string name="video_scrubber_hint">Move the scrubber to preview a frame</string>
+    <string name="video_metadata_failed_title">Couldn’t read this video</string>
+    <string name="video_metadata_failed_body">The source may be unavailable or use unsupported metadata. Retry or choose another video.</string>
+    <string name="video_preview_failed_title">Preview unavailable</string>
+    <string name="video_preview_failed_body">The timeline loaded, but SnapCrop could not decode a preview frame. Trimming remains available.</string>
+    <string name="video_preview_unavailable">Preview frame unavailable</string>
+    <string name="video_choose_another">Choose another</string>
     <string name="video_frame_label">Frame</string>
     <string name="video_grab_edit">Grab frame and edit</string>
     <string name="video_trim_clip">Trim clip</string>

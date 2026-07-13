@@ -15,19 +15,40 @@ class IndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
         val prefs = applicationContext.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
         if (!prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) return Result.success()
 
+        val journalStarted = OperationJournal.start()
+        IndexHealthStore.markStarted(applicationContext)
         return try {
             val store = ScreenshotIndexStore(applicationContext)
             val screenSize = getScreenSize(applicationContext)
             val favoriteKeys = FavoritesStore.getAllKeys(applicationContext)
-            store.rebuildFromMediaStore(
+            val indexed = store.rebuildFromMediaStore(
                 applicationContext.contentResolver,
                 screenSize.first,
                 screenSize.second,
                 favoriteKeys
             )
+            IndexHealthStore.markSuccess(applicationContext, indexed)
+            OperationJournal.record(
+                applicationContext,
+                DiagnosticOperation.INDEX,
+                DiagnosticStage.COMPLETE,
+                DiagnosticResult.SUCCESS,
+                journalStarted,
+            )
             Result.success()
         } catch (error: Throwable) {
-            when (failureDisposition(error, runAttemptCount)) {
+            IndexHealthStore.markFailure(applicationContext)
+            val disposition = failureDisposition(error, runAttemptCount)
+            OperationJournal.record(
+                applicationContext,
+                DiagnosticOperation.INDEX,
+                DiagnosticStage.OBSERVE,
+                if (disposition == IndexFailureDisposition.RETRY) DiagnosticResult.RETRY else DiagnosticResult.FAILED,
+                journalStarted,
+                if (error is SecurityException) DiagnosticCode.PERMISSION_DENIED else DiagnosticCode.INTERNAL,
+                error,
+            )
+            when (disposition) {
                 IndexFailureDisposition.COMPLETE -> Result.success()
                 IndexFailureDisposition.RETRY -> Result.retry()
                 IndexFailureDisposition.FAIL -> Result.failure()

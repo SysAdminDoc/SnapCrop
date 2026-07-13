@@ -401,10 +401,17 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(getString(R.string.settings_index_loading))
                     }
                     LaunchedEffect(screenshotIndexStore) {
-                        screenshotIndexStatus = getString(
-                            R.string.settings_index_count,
-                            screenshotIndexStore.count()
-                        )
+                        screenshotIndexStatus = try {
+                            getString(R.string.settings_index_count, screenshotIndexStore.count())
+                        } catch (error: Exception) {
+                            IndexHealthStore.markFailure(this@SettingsActivity)
+                            OperationJournal.record(
+                                this@SettingsActivity, DiagnosticOperation.INDEX,
+                                DiagnosticStage.OBSERVE, DiagnosticResult.FAILED,
+                                code = DiagnosticCode.INTERNAL, error = error,
+                            )
+                            getString(R.string.settings_index_failed)
+                        }
                     }
                     SettingToggle(
                         title = stringResource(R.string.settings_index_title),
@@ -438,18 +445,41 @@ class SettingsActivity : ComponentActivity() {
                                         onClick = {
                                             screenshotIndexStatus = rebuildingStr
                                             lifecycleScope.launch {
-                                                val count = screenshotIndexStore.rebuildFromMediaStore(
+                                                val journalStarted = OperationJournal.start()
+                                                IndexHealthStore.markStarted(this@SettingsActivity)
+                                                try {
+                                                    val count = screenshotIndexStore.rebuildFromMediaStore(
                                                         contentResolver,
                                                         screenW,
                                                         screenH,
                                                         FavoritesStore.getAllKeys(this@SettingsActivity)
                                                     )
-                                                screenshotIndexStatus = getString(R.string.settings_index_count, count)
-                                                android.widget.Toast.makeText(
-                                                    this@SettingsActivity,
-                                                    getString(R.string.toast_index_rebuilt),
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
+                                                    IndexHealthStore.markSuccess(this@SettingsActivity, count)
+                                                    screenshotIndexStatus = getString(R.string.settings_index_count, count)
+                                                    OperationJournal.record(
+                                                        this@SettingsActivity, DiagnosticOperation.INDEX,
+                                                        DiagnosticStage.COMPLETE, DiagnosticResult.SUCCESS, journalStarted,
+                                                    )
+                                                    android.widget.Toast.makeText(
+                                                        this@SettingsActivity,
+                                                        getString(R.string.toast_index_rebuilt),
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                } catch (error: Exception) {
+                                                    IndexHealthStore.markFailure(this@SettingsActivity)
+                                                    screenshotIndexStatus = getString(R.string.settings_index_failed)
+                                                    OperationJournal.record(
+                                                        this@SettingsActivity, DiagnosticOperation.INDEX,
+                                                        DiagnosticStage.OBSERVE, DiagnosticResult.FAILED, journalStarted,
+                                                        if (error is SecurityException) DiagnosticCode.PERMISSION_DENIED else DiagnosticCode.INTERNAL,
+                                                        error,
+                                                    )
+                                                    android.widget.Toast.makeText(
+                                                        this@SettingsActivity,
+                                                        getString(R.string.settings_index_failed),
+                                                        android.widget.Toast.LENGTH_LONG,
+                                                    ).show()
+                                                }
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary),
@@ -460,13 +490,24 @@ class SettingsActivity : ComponentActivity() {
                                     OutlinedButton(
                                         onClick = {
                                             lifecycleScope.launch {
-                                                screenshotIndexStore.purge()
-                                                screenshotIndexStatus = getString(R.string.settings_index_count, 0)
-                                                android.widget.Toast.makeText(
-                                                    this@SettingsActivity,
-                                                    getString(R.string.toast_index_purged),
-                                                    android.widget.Toast.LENGTH_SHORT
-                                                ).show()
+                                                try {
+                                                    screenshotIndexStore.purge()
+                                                    IndexHealthStore.clear(this@SettingsActivity)
+                                                    screenshotIndexStatus = getString(R.string.settings_index_count, 0)
+                                                    android.widget.Toast.makeText(
+                                                        this@SettingsActivity,
+                                                        getString(R.string.toast_index_purged),
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                } catch (error: Exception) {
+                                                    IndexHealthStore.markFailure(this@SettingsActivity)
+                                                    screenshotIndexStatus = getString(R.string.settings_index_failed)
+                                                    OperationJournal.record(
+                                                        this@SettingsActivity, DiagnosticOperation.INDEX,
+                                                        DiagnosticStage.OBSERVE, DiagnosticResult.FAILED,
+                                                        code = DiagnosticCode.INTERNAL, error = error,
+                                                    )
+                                                }
                                             }
                                         },
                                         shape = RoundedCornerShape(8.dp)

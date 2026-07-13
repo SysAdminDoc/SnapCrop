@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Gallery, index, and video recovery (v6.75.0).**
+
+- Gallery now distinguishes loading, empty, partial-permission, failed, and ready
+  content states while preserving the last good image, video, collection, note,
+  or index result when another source fails.
+- Added an in-Gallery local-index health card with eligible/indexed, pending,
+  failure, and last-success data plus direct Retry and Rebuild recovery. Settings
+  and scheduled rebuilds update the same state and fail visibly.
+- Invalid video metadata and preview frames now have typed failure states with
+  Retry and Choose another actions. Replaced previews are recycled safely.
+- Gallery, index, and video failures emit content-free diagnostics. Focused unit,
+  routing, and headless API-37 rendered failure-state checks cover recovery.
+
 **Progressive permission recovery (v6.74.0).**
 
 - Replaced the anonymous multi-permission callback and three unrelated pending
