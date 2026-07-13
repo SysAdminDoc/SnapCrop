@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Measured screenshot-similarity guardrail (v6.87.0).**
+
+- A deterministic generated corpus now benchmarks 96 screenshot pairs across
+  JPEG recompression, uniform resize, slight crop, color shift, one-message and
+  sticky-header changes, unrelated same-layout content, and diagnostic theme
+  changes without committing private screenshots or binary fixtures.
+- The local benchmark separates production dimension/luma-gated dHash from raw
+  dHash, pHash, and bounded SSIM, then reports calibration/validation precision,
+  recall, F1, per-category outcomes, median/p95 time, and estimated scratch
+  memory. A dedicated Gradle task regenerates and validates the JSON report.
+- No candidate cleared the production-change gate. Validation measured pHash at
+  1.0 precision/0.625 recall, SSIM at 0.947 precision/0.75 recall, and raw dHash
+  below the precision floor, so exact matching, current dHash grouping, durable
+  dismissals, complete-link grouping, and human review remain unchanged.
+
 **Unfiled screenshot inbox (v6.86.0).**
 
 - Gallery now derives a deterministic Unfiled inbox from current screenshot
@@ -17,7 +32,7 @@ All notable changes to SnapCrop will be documented in this file.
 - Recoverable Trash preserves app metadata until Android confirms the result;
   permanent pre-Android-11 deletion still cleans immediately. Generated corpus,
   migration, coordinator, host, lint, rendered emulator, accessibility, and the
-  complete 25-test Android suite cover the new path.
+  complete 26-test Android suite cover the new path.
 
 **Testable state and I/O boundaries (v6.85.0).**
 

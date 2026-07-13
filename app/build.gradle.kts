@@ -60,8 +60,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 138
-        versionName = "6.86.0"
+        versionCode = 139
+        versionName = "6.87.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -636,5 +636,40 @@ tasks.register("verifyRedactionQuality") {
             "Redaction quality gate did not pass: tests=$tests failures=$failures errors=$errors"
         }
         logger.lifecycle("Redaction quality gate passed: ${report.absolutePath}")
+    }
+}
+
+val screenshotSimilarityReport = layout.buildDirectory
+    .file("reports/screenshot-similarity/benchmark.json")
+
+tasks.matching { it.name == "testDebugUnitTest" }.configureEach {
+    outputs.file(screenshotSimilarityReport)
+}
+
+tasks.register("benchmarkScreenshotSimilarity") {
+    group = "verification"
+    description = "Benchmarks generated screenshot pairs against production dHash, raw dHash, pHash, and bounded SSIM."
+    dependsOn("testDebugUnitTest")
+
+    doLast {
+        val junitReport = layout.buildDirectory
+            .file("test-results/testDebugUnitTest/TEST-com.sysadmindoc.snapcrop.ScreenshotSimilarityBenchmarkTest.xml")
+            .get().asFile
+        check(junitReport.isFile) { "Screenshot-similarity JUnit report is missing" }
+        val xml = junitReport.readText()
+        val tests = Regex("tests=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val failures = Regex("failures=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+        val errors = Regex("errors=\"(\\d+)\"").find(xml)?.groupValues?.get(1)?.toIntOrNull() ?: -1
+        check(tests >= 1 && failures == 0 && errors == 0) {
+            "Screenshot-similarity benchmark did not pass: tests=$tests failures=$failures errors=$errors"
+        }
+        val benchmarkReport = screenshotSimilarityReport.get().asFile
+        check(benchmarkReport.isFile && benchmarkReport.length() > 0) {
+            "Screenshot-similarity JSON report is missing"
+        }
+        check(JsonSlurper().parse(benchmarkReport) is Map<*, *>) {
+            "Screenshot-similarity JSON report must contain an object"
+        }
+        logger.lifecycle("Screenshot-similarity benchmark passed: ${benchmarkReport.absolutePath}")
     }
 }

@@ -424,6 +424,7 @@ disclosed below; optional exports and automatic update checks are off by default
 git clone https://github.com/SysAdminDoc/SnapCrop.git
 cd SnapCrop
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false clean :app:lintDebug :app:testDebugUnitTest --console=plain
+./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:benchmarkScreenshotSimilarity --console=plain
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:generateReleaseProvenance --console=plain
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:verifyOfficialRelease --console=plain
 ```
@@ -441,6 +442,10 @@ Until stable Kotlin 2.4.20 or newer is reviewed and pinned, settings evaluation
 rejects Gradle/Kotlin build-cache or incremental-cache opt-ins for
 CVE-2026-53914. Trusted commands state the safe cache flags explicitly; normal
 dependency downloads remain cached and checksum-verified.
+The screenshot-similarity benchmark generates a synthetic screenshot corpus and
+writes calibration/validation quality, latency, and memory measurements to
+`app/build/reports/screenshot-similarity/benchmark.json`; it never reads a user
+library or changes production duplicate matching automatically.
 The official-release task additionally requires the production keystore and
 pinned certificate, the exact five-APK asset set, a clean worktree, synchronized
 app/root/manifest/SBOM versions, correct native ABI contents, materially smaller
