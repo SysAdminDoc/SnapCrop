@@ -38,6 +38,11 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Share one image into SnapCrop to edit it, or share multiple images to choose
   Batch auto-crop, Stitch, Collage, or PDF report. Each item is validated and
   failures are reported individually instead of dropping unsupported inputs.
+- Stitch, Collage, Device Mockup, video trimming, Web Capture, and Gallery
+  navigation restore identity-and-option state after recreation without storing
+  pixels in Android saved state. Revoked media returns to a picker/retry path,
+  and Back closes dialogs, viewer, selection, and album layers before leaving
+  Gallery for Home.
 - Delayed capture mode (3 / 5 / 10 second countdown)
 - Searchable offline Help & Tips opens the relevant workflow controls, and an
   optional Home row remembers only the IDs of up to six successfully started

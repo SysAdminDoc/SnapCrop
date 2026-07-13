@@ -107,6 +107,7 @@ class CollageActivity : ComponentActivity() {
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
         if (uris.isNotEmpty()) {
+            uris.forEach { WorkflowStateRestoration.persistReadGrant(this, it) }
             val slots = selectedLayout.value.slots
             if (nextPickReplaces) {
                 imageUris.clear()
@@ -134,14 +135,28 @@ class CollageActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        @Suppress("DEPRECATION")
-        intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
-            ?.distinctBy(Uri::toString)
-            ?.take(MAX_INBOUND_ITEMS)
-            ?.let { incoming ->
-                selectedLayout.value = layouts.firstOrNull { it.slots >= incoming.size } ?: layouts.maxBy { it.slots }
-                imageUris.addAll(incoming)
-            }
+        val restored = WorkflowStateRestoration.restoreUris(savedInstanceState, STATE_URIS)
+        if (savedInstanceState != null) {
+            imageUris.addAll(restored.take(MAX_INBOUND_ITEMS))
+            selectedLayout.value = layouts.firstOrNull {
+                it.name == savedInstanceState.getString(STATE_LAYOUT)
+            } ?: layouts[2]
+            spacing.intValue = savedInstanceState.getInt(STATE_SPACING, 4).coerceIn(0, 64)
+            bgColorIdx.intValue = savedInstanceState.getInt(STATE_BACKGROUND, 0)
+                .coerceIn(collageBgColors.indices)
+            cellAspect.floatValue = savedInstanceState.getFloat(STATE_CELL_ASPECT, 4f / 3f)
+                .coerceIn(0.5f, 2f)
+            while (imageUris.size > selectedLayout.value.slots) imageUris.removeAt(imageUris.lastIndex)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
+                ?.distinctBy(Uri::toString)
+                ?.take(MAX_INBOUND_ITEMS)
+                ?.let { incoming ->
+                    selectedLayout.value = layouts.firstOrNull { it.slots >= incoming.size } ?: layouts.maxBy { it.slots }
+                    imageUris.addAll(incoming)
+                }
+        }
 
         setContent {
             SnapCropTheme {
@@ -169,9 +184,31 @@ class CollageActivity : ComponentActivity() {
             }
         }
 
+        if (savedInstanceState != null && restored.isNotEmpty()) {
+            lifecycleScope.launch {
+                val validated = withContext(Dispatchers.IO) {
+                    WorkflowStateRestoration.validateReadableUris(this@CollageActivity, restored)
+                }
+                if (validated.unavailableCount > 0) {
+                    imageUris.retainAll(validated.uris.toSet())
+                    Toast.makeText(this@CollageActivity, R.string.workflow_restore_missing_media, Toast.LENGTH_LONG).show()
+                    if (imageUris.isEmpty()) launchReplacePicker()
+                }
+            }
+        }
+
         // First launch: pick replaces (list is empty anyway).
         nextPickReplaces = true
         if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        WorkflowStateRestoration.putUris(outState, STATE_URIS, imageUris)
+        outState.putString(STATE_LAYOUT, selectedLayout.value.name)
+        outState.putInt(STATE_SPACING, spacing.intValue)
+        outState.putInt(STATE_BACKGROUND, bgColorIdx.intValue)
+        outState.putFloat(STATE_CELL_ASPECT, cellAspect.floatValue)
+        super.onSaveInstanceState(outState)
     }
 
     private fun buildAndSave() {
@@ -237,6 +274,11 @@ class CollageActivity : ComponentActivity() {
 
     companion object {
         const val MAX_INBOUND_ITEMS = 25
+        private const val STATE_URIS = "collage_uris"
+        private const val STATE_LAYOUT = "collage_layout"
+        private const val STATE_SPACING = "collage_spacing"
+        private const val STATE_BACKGROUND = "collage_background"
+        private const val STATE_CELL_ASPECT = "collage_cell_aspect"
     }
 
     private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {

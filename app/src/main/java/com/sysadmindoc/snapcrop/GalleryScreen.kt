@@ -17,6 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import android.content.ClipData
 import android.graphics.Point
 import android.view.View
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalView
@@ -62,7 +63,10 @@ import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -353,6 +357,17 @@ internal fun filterCollectionPhotos(
 
 internal data class CollectionSelection(val media: List<ManualCollectionMedia>, val skipped: Int)
 
+internal fun galleryViewerIdentity(photo: Photo): String = "${photo.dateAdded}\n${photo.uri}"
+
+internal fun resolveGalleryViewerIndex(photos: List<Photo>, identity: String?): Int {
+    if (identity == null) return -1
+    val split = identity.indexOf('\n')
+    if (split <= 0) return -1
+    val dateAdded = identity.substring(0, split).toLongOrNull() ?: return -1
+    val uri = identity.substring(split + 1)
+    return photos.indexOfFirst { it.dateAdded == dateAdded && it.uri.toString() == uri }
+}
+
 internal fun collectionSelection(photos: List<Photo>, selectedUris: Set<String>): CollectionSelection {
     val selected = photos.filter { it.uri.toString() in selectedUris }
     val supported = selected.filter { it.isScreenshot && !it.isVideo }
@@ -406,8 +421,13 @@ fun GalleryScreen(
     var isLoading by remember { mutableStateOf(true) }
     var galleryFailures by remember { mutableStateOf<Set<GalleryFailureSource>>(emptySet()) }
     var reloadGeneration by remember { mutableIntStateOf(0) }
-    var viewerIndex by remember { mutableIntStateOf(-1) }
-    val selectedUris = remember { mutableStateListOf<String>() }
+    var viewerIdentity by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedUris = rememberSaveable(
+        saver = listSaver<SnapshotStateList<String>, String>(
+            save = { WorkflowStateRestoration.boundedUriStrings(it) },
+            restore = { it.toMutableStateList() },
+        ),
+    ) { mutableStateListOf() }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var favoriteKeys by remember { mutableStateOf(FavoritesStore.getAllKeys(context)) }
     var sortMode by rememberSaveable { mutableStateOf(SortMode.DATE) }
@@ -432,6 +452,58 @@ fun GalleryScreen(
     var duplicateTotal by remember { mutableIntStateOf(0) }
     var duplicateGroups by remember { mutableStateOf<List<DuplicateGroup>?>(null) }
     val selectionMode = selectedUris.isNotEmpty()
+
+    fun openAlbum(path: String) {
+        selectedUris.clear()
+        viewerIdentity = null
+        searchQuery = ""
+        selectedAlbum = path
+    }
+
+    fun handleGalleryBack() {
+        when (WorkflowStateRestoration.deepestGalleryBackTarget(
+            GalleryBackState(
+                deleteDialog = pendingDeleteUris != null,
+                collectionEditor = collectionEditorId != null,
+                collectionPicker = showCollectionPicker,
+                sourceEditor = sourceEditorPhoto != null,
+                noteEditor = noteEditorPhoto != null,
+                duplicateReview = duplicateGroups != null,
+                duplicateScan = showDuplicateScan,
+                viewer = viewerIdentity != null,
+                selection = selectedUris.isNotEmpty(),
+                filters = showFilters,
+                album = selectedAlbum != null,
+            ),
+        )) {
+            GalleryBackTarget.DELETE_DIALOG -> pendingDeleteUris = null
+            GalleryBackTarget.COLLECTION_EDITOR -> {
+                collectionEditorId = null
+                collectionError = null
+                addSelectionAfterCreate = false
+                pendingCollectionSelection = null
+            }
+            GalleryBackTarget.COLLECTION_PICKER -> {
+                showCollectionPicker = false
+                pendingCollectionSelection = null
+            }
+            GalleryBackTarget.SOURCE_EDITOR -> sourceEditorPhoto = null
+            GalleryBackTarget.NOTE_EDITOR -> noteEditorPhoto = null
+            GalleryBackTarget.DUPLICATE_REVIEW -> duplicateGroups = null
+            GalleryBackTarget.DUPLICATE_SCAN -> showDuplicateScan = false
+            GalleryBackTarget.VIEWER -> viewerIdentity = null
+            GalleryBackTarget.SELECTION -> selectedUris.clear()
+            GalleryBackTarget.FILTERS -> showFilters = false
+            GalleryBackTarget.ALBUM -> {
+                selectedAlbum = null
+                photos = emptyList()
+                searchQuery = ""
+            }
+            GalleryBackTarget.ROOT -> onBack()
+        }
+    }
+
+    BackHandler(onBack = ::handleGalleryBack)
 
     fun reportFailure(source: GalleryFailureSource, error: Throwable) {
         galleryFailures = galleryFailures + source
@@ -509,11 +581,11 @@ fun GalleryScreen(
 
     LaunchedEffect(openRequest) {
         if (openRequest != null) {
-            selectedAlbum = ALL_PHOTOS_PATH
+            openAlbum(ALL_PHOTOS_PATH)
             searchQuery = ""
             encodedFilters = GalleryFilterState().encode()
             sortMode = SortMode.DATE
-            viewerIndex = -1
+            viewerIdentity = null
         }
     }
 
@@ -599,7 +671,6 @@ fun GalleryScreen(
     LaunchedEffect(selectedAlbum, manualCollections, refreshKey, reloadGeneration, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
-            selectedUris.clear()
             val loaded = withContext(Dispatchers.IO) {
                 val failures = mutableListOf<GalleryLoadFailure>()
                 val members = if (path.startsWith(MANUAL_COLLECTION_PREFIX)) {
@@ -698,15 +769,13 @@ fun GalleryScreen(
         }
     }
 
-    LaunchedEffect(viewerPhotos.size) {
-        if (viewerIndex >= viewerPhotos.size) {
-            viewerIndex = if (viewerPhotos.isEmpty()) -1 else viewerPhotos.lastIndex
-        }
-    }
+    val viewerIndex = resolveGalleryViewerIndex(viewerPhotos, viewerIdentity)
 
-    LaunchedEffect(viewerPhotos) {
+    LaunchedEffect(viewerPhotos, isLoading) {
+        if (isLoading) return@LaunchedEffect
         val visibleUris = viewerPhotos.mapTo(hashSetOf()) { it.uri.toString() }
         selectedUris.retainAll(visibleUris)
+        if (viewerIdentity != null && viewerIndex < 0) viewerIdentity = null
     }
 
     LaunchedEffect(openRequest, viewerPhotos, selectedAlbum, isLoading, imageAccess) {
@@ -714,7 +783,7 @@ fun GalleryScreen(
         if (selectedAlbum != ALL_PHOTOS_PATH || isLoading) return@LaunchedEffect
         val index = exactGalleryTargetIndex(viewerPhotos, target)
         if (index >= 0) {
-            viewerIndex = index
+            viewerIdentity = galleryViewerIdentity(viewerPhotos[index])
             onOpenRequestConsumed()
         } else if (imageAccess == MediaAccess.FULL) {
             Toast.makeText(context, R.string.gallery_reminder_missing, Toast.LENGTH_LONG).show()
@@ -1033,8 +1102,9 @@ fun GalleryScreen(
         PhotoViewer(
             photos = viewerPhotos,
             initialIndex = viewerIndex,
-            onClose = { viewerIndex = -1 },
-            onEdit = { onOpenEditor(it.uri); viewerIndex = -1 },
+            onCurrentPhotoChanged = { viewerIdentity = galleryViewerIdentity(it) },
+            onClose = { viewerIdentity = null },
+            onEdit = { onOpenEditor(it.uri); viewerIdentity = null },
             onShare = { onShareUris(listOf(it.uri)) },
             onEditSource = { sourceEditorPhoto = it },
             onEditNote = { noteEditorPhoto = it },
@@ -1112,10 +1182,7 @@ fun GalleryScreen(
                     }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Danger) }
                 }
             } else {
-                IconButton(onClick = {
-                    if (selectedAlbum != null) { selectedAlbum = null; photos = emptyList(); searchQuery = "" }
-                    else onBack()
-                }) {
+                IconButton(onClick = ::handleGalleryBack) {
                     @Suppress("DEPRECATION")
                     Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
                 }
@@ -1139,7 +1206,7 @@ fun GalleryScreen(
                     Text(stringResource(R.string.gallery_photo_count, albums.sumOf { it.count }), color = OnSurfaceVariant,
                         fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
                     IconButton(onClick = {
-                        selectedAlbum = ALL_PHOTOS_PATH
+                        openAlbum(ALL_PHOTOS_PATH)
                         showFilters = true
                     }) {
                         Icon(Icons.Default.FilterList, stringResource(R.string.gallery_filters_inactive), tint = OnSurfaceVariant)
@@ -1388,9 +1455,9 @@ fun GalleryScreen(
             AlbumGrid(albums = filteredAlbums, smartAlbums = filteredSmartAlbums, manualAlbums = collectionAlbums,
                 showLibraryCards = searchQuery.isBlank(),
                 totalMediaCount = albums.sumOf { it.count },
-                onAlbumClick = { searchQuery = ""; selectedAlbum = it.path },
-                onAllPhotos = { searchQuery = ""; selectedAlbum = ALL_PHOTOS_PATH },
-                onFavorites = { searchQuery = ""; selectedAlbum = FAVORITES_PATH },
+                onAlbumClick = { openAlbum(it.path) },
+                onAllPhotos = { openAlbum(ALL_PHOTOS_PATH) },
+                onFavorites = { openAlbum(FAVORITES_PATH) },
                 favCount = favoriteKeys.size,
                 emptyTitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_title) else stringResource(R.string.gallery_search_empty_title),
                 emptySubtitle = if (searchQuery.isBlank()) stringResource(R.string.gallery_empty_subtitle)
@@ -1414,7 +1481,7 @@ fun GalleryScreen(
                 onPhotoClick = { photo, index ->
                     if (selectionMode) toggleSelection(selectedUris, photo.uri.toString())
                     else if (photo.isVideo) onPlayVideo(photo.uri)
-                    else viewerIndex = index
+                    else viewerIdentity = galleryViewerIdentity(photo)
                 },
                 onPhotoLongClick = { photo -> toggleSelection(selectedUris, photo.uri.toString()) },
                 onPinchZoom = { zoom ->
@@ -2138,6 +2205,7 @@ private fun formatReminderTime(value: Long): String = java.text.DateFormat.getDa
 private fun PhotoViewer(
     photos: List<Photo>,
     initialIndex: Int,
+    onCurrentPhotoChanged: (Photo) -> Unit,
     onClose: () -> Unit,
     onEdit: (Photo) -> Unit,
     onShare: (Photo) -> Unit,
@@ -2161,6 +2229,14 @@ private fun PhotoViewer(
         photos.getOrNull(initialIndex)?.let { FavoritesStore.isFavorite(context, it) } ?: false
     ) }
 
+    BackHandler {
+        when {
+            showSummary -> showSummary = false
+            showInfo -> showInfo = false
+            else -> onClose()
+        }
+    }
+
     LaunchedEffect(initialIndex, photos) {
         if (photos.isNotEmpty()) pagerState.scrollToPage(initialIndex.coerceIn(0, photos.lastIndex))
     }
@@ -2169,6 +2245,7 @@ private fun PhotoViewer(
     LaunchedEffect(pagerState.currentPage) {
         val photo = photos.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
         isFav = FavoritesStore.isFavorite(context, photo)
+        onCurrentPhotoChanged(photo)
     }
 
     // Load info for current photo

@@ -1120,6 +1120,7 @@
     <string name="device_frame_empty_subtitle">Pick an image to wrap in a device frame.</string>
     <string name="device_frame_saved">Device mockup saved</string>
     <string name="device_frame_load_failed">Failed to load</string>
+    <string name="workflow_restore_missing_media">Some selected media is no longer available. Choose it again to continue.</string>
     <string name="device_frame_rendering">Rendering mockup…</string>
     <string name="device_frame_save_button">Save Mockup</string>
     <string name="device_frame_choose">Choose image</string>

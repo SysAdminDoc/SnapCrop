@@ -80,6 +80,8 @@ class WebCaptureActivity : ComponentActivity() {
         private const val RENDER_TIMEOUT_MS = 5_000L
         private const val CAPTURE_TIMEOUT_MS = 10_000L
         private const val CACHE_TTL_MS = 24 * 60 * 60 * 1000L
+        private const val STATE_INPUT_URL = "web_input_url"
+        private const val STATE_LOADED_URL = "web_loaded_url"
     }
 
     private var webView: WebView? = null
@@ -99,7 +101,10 @@ class WebCaptureActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        inputUrl = intent.getStringExtra(EXTRA_URL).orEmpty()
+        val restoredLoadedUrl = savedInstanceState?.getString(STATE_LOADED_URL)
+        inputUrl = savedInstanceState?.getString(STATE_INPUT_URL)
+            ?.take(WebCapturePolicy.MAX_URL_CHARS)
+            ?: intent.getStringExtra(EXTRA_URL).orEmpty()
         CookieManager.getInstance().removeAllCookies(null)
         WebView.setWebContentsDebuggingEnabled(false)
         setContent {
@@ -107,6 +112,16 @@ class WebCaptureActivity : ComponentActivity() {
                 WebCaptureScreen()
             }
         }
+        if (restoredLoadedUrl != null) {
+            inputUrl = restoredLoadedUrl.take(WebCapturePolicy.MAX_URL_CHARS)
+            window.decorView.post(::loadPage)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_INPUT_URL, inputUrl.take(WebCapturePolicy.MAX_URL_CHARS))
+        outState.putString(STATE_LOADED_URL, loadedUrl)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
@@ -131,10 +146,7 @@ class WebCaptureActivity : ComponentActivity() {
 
     @Composable
     private fun WebCaptureScreen() {
-        BackHandler {
-            val current = webView
-            if (current?.canGoBack() == true) current.goBack() else finish()
-        }
+        BackHandler(onBack = ::handleBack)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,7 +158,7 @@ class WebCaptureActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { finish() }) {
+                IconButton(onClick = ::handleBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = OnSurface)
                 }
                 Column(Modifier.weight(1f)) {
@@ -215,6 +227,20 @@ class WebCaptureActivity : ComponentActivity() {
                 Spacer(Modifier.padding(horizontal = 4.dp))
                 Text(stringResource(if (isCapturing) R.string.web_capture_capturing else R.string.web_capture_capture), color = OnPrimary)
             }
+        }
+    }
+
+    private fun handleBack() {
+        val current = webView
+        when {
+            isLoading || isCapturing -> cancelWork()
+            loadedUrl != null -> {
+                cancelWork(updateStatus = false)
+                current?.loadUrl("about:blank")
+                status = ""
+            }
+            current?.canGoBack() == true -> current.goBack()
+            else -> finish()
         }
     }
 

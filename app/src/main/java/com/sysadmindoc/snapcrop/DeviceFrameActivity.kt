@@ -58,22 +58,39 @@ private val frames = listOf(
 
 class DeviceFrameActivity : ComponentActivity() {
 
+    private companion object {
+        const val STATE_IMAGE_URI = "frame_image_uri"
+        const val STATE_FRAME = "frame_key"
+        const val STATE_BACKGROUND = "frame_background"
+    }
+
     private val imageUri = mutableStateOf<Uri?>(null)
     private val selectedFrame = mutableStateOf(frames[0])
     private val isSaving = mutableStateOf(false)
     private val bgColor = mutableStateOf(0xFF000000.toInt())
 
     private val pickImageLauncher = registerForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri -> uri?.let { imageUri.value = it } }
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let {
+        WorkflowStateRestoration.persistReadGrant(this, it)
+        imageUri.value = it
+    } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
 
-        // Accept incoming image
-        imageUri.value = intent?.data
+        val restored = WorkflowStateRestoration.restoreUris(savedInstanceState, STATE_IMAGE_URI)
+        if (savedInstanceState != null) {
+            imageUri.value = restored.firstOrNull()
+            selectedFrame.value = frames.firstOrNull {
+                it.key == savedInstanceState.getString(STATE_FRAME)
+            } ?: frames[0]
+            bgColor.value = savedInstanceState.getInt(STATE_BACKGROUND, 0xFF000000.toInt())
+        } else {
+            imageUri.value = intent?.data
+        }
 
         setContent {
             SnapCropTheme {
@@ -82,14 +99,33 @@ class DeviceFrameActivity : ComponentActivity() {
                     frame = selectedFrame.value,
                     isSaving = isSaving.value,
                     onFrameChange = { selectedFrame.value = it },
-                    onPickImage = { pickImageLauncher.launch("image/*") },
+                    onPickImage = { pickImageLauncher.launch(arrayOf("image/*")) },
                     onSave = { renderAndSave() },
                     onClose = { finish() }
                 )
             }
         }
 
-        if (imageUri.value == null) pickImageLauncher.launch("image/*")
+        if (savedInstanceState != null && restored.isNotEmpty()) {
+            lifecycleScope.launch {
+                val validated = withContext(Dispatchers.IO) {
+                    WorkflowStateRestoration.validateReadableUris(this@DeviceFrameActivity, restored)
+                }
+                if (validated.unavailableCount > 0) {
+                    imageUri.value = validated.uris.firstOrNull()
+                    Toast.makeText(this@DeviceFrameActivity, R.string.workflow_restore_missing_media, Toast.LENGTH_LONG).show()
+                    if (imageUri.value == null) pickImageLauncher.launch(arrayOf("image/*"))
+                }
+            }
+        }
+        if (imageUri.value == null) pickImageLauncher.launch(arrayOf("image/*"))
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        WorkflowStateRestoration.putUris(outState, STATE_IMAGE_URI, listOfNotNull(imageUri.value))
+        outState.putString(STATE_FRAME, selectedFrame.value.key)
+        outState.putInt(STATE_BACKGROUND, bgColor.value)
+        super.onSaveInstanceState(outState)
     }
 
     private fun renderAndSave() {

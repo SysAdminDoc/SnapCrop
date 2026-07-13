@@ -45,18 +45,40 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class VideoClipActivity : ComponentActivity() {
+    private companion object {
+        const val STATE_VIDEO_URI = "video_uri"
+        const val STATE_FRAME_POSITION = "video_frame_position"
+        const val STATE_TRIM_START = "video_trim_start"
+        const val STATE_TRIM_END = "video_trim_end"
+    }
+
     private val videoUri = mutableStateOf<Uri?>(null)
     private val isWorking = mutableStateOf(false)
-    private val pickAnotherVideo = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) videoUri.value = uri
+    private var savedFramePositionMs = 0L
+    private var savedTrimStartMs = 0L
+    private var savedTrimEndMs = -1L
+    private val pickAnotherVideo = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            WorkflowStateRestoration.persistReadGrant(this, uri)
+            savedFramePositionMs = 0L
+            savedTrimStartMs = 0L
+            savedTrimEndMs = -1L
+            videoUri.value = uri
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        videoUri.value = intent.data
-        if (videoUri.value == null) {
+        videoUri.value = if (savedInstanceState == null) intent.data else {
+            savedInstanceState.getString(STATE_VIDEO_URI)?.let { runCatching { Uri.parse(it) }.getOrNull() }
+                ?: Uri.EMPTY
+        }
+        savedFramePositionMs = savedInstanceState?.getLong(STATE_FRAME_POSITION, 0L) ?: 0L
+        savedTrimStartMs = savedInstanceState?.getLong(STATE_TRIM_START, 0L) ?: 0L
+        savedTrimEndMs = savedInstanceState?.getLong(STATE_TRIM_END, -1L) ?: -1L
+        if (savedInstanceState == null && videoUri.value == null) {
             finish()
             return
         }
@@ -69,13 +91,29 @@ class VideoClipActivity : ComponentActivity() {
                         isWorking = isWorking.value,
                         onClose = { finish() },
                         onOpenExternally = { openExternally(uri) },
-                        onChooseAnother = { pickAnotherVideo.launch("video/*") },
+                        onChooseAnother = { pickAnotherVideo.launch(arrayOf("video/*")) },
+                        initialFramePositionMs = savedFramePositionMs,
+                        initialTrimStartMs = savedTrimStartMs,
+                        initialTrimEndMs = savedTrimEndMs,
+                        onTimelineChanged = { frame, trimStart, trimEnd ->
+                            savedFramePositionMs = frame
+                            savedTrimStartMs = trimStart
+                            savedTrimEndMs = trimEnd
+                        },
                         onGrabFrame = { timeMs -> grabFrame(timeMs) },
                         onTrimClip = { startMs, endMs -> trimClip(startMs, endMs) }
                     )
                 }
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(STATE_VIDEO_URI, videoUri.value?.toString())
+        outState.putLong(STATE_FRAME_POSITION, savedFramePositionMs)
+        outState.putLong(STATE_TRIM_START, savedTrimStartMs)
+        outState.putLong(STATE_TRIM_END, savedTrimEndMs)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
@@ -239,6 +277,10 @@ private fun VideoClipScreen(
     onClose: () -> Unit,
     onOpenExternally: () -> Unit,
     onChooseAnother: () -> Unit,
+    initialFramePositionMs: Long,
+    initialTrimStartMs: Long,
+    initialTrimEndMs: Long,
+    onTimelineChanged: (Long, Long, Long) -> Unit,
     onGrabFrame: (Long) -> Unit,
     onTrimClip: (Long, Long) -> Unit
 ) {
@@ -267,9 +309,16 @@ private fun VideoClipScreen(
         }) {
             is VideoMetadataResult.Ready -> {
                 durationMs = result.durationMs
-                val end = durationMs.toFloat()
-                framePosition = 0f
-                trimRange = 0f..end
+                val restored = WorkflowStateRestoration.restoreVideoTimeline(
+                    durationMs, initialFramePositionMs, initialTrimStartMs, initialTrimEndMs,
+                )
+                framePosition = restored.frameMs.toFloat()
+                trimRange = restored.trimStartMs.toFloat()..restored.trimEndMs.toFloat()
+                onTimelineChanged(
+                    framePosition.toLong(),
+                    trimRange.start.toLong(),
+                    trimRange.endInclusive.toLong(),
+                )
             }
             is VideoMetadataResult.Failed -> {
                 durationMs = 0L
@@ -410,7 +459,10 @@ private fun VideoClipScreen(
             )
             Slider(
                 value = framePosition.coerceIn(0f, durationMs.toFloat().coerceAtLeast(1f)),
-                onValueChange = { framePosition = it },
+                onValueChange = {
+                    framePosition = it
+                    onTimelineChanged(it.toLong(), trimRange.start.toLong(), trimRange.endInclusive.toLong())
+                },
                 valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
                 modifier = Modifier.weight(1f).semantics {
                     contentDescription = framePositionCd
@@ -455,6 +507,11 @@ private fun VideoClipScreen(
             value = trimRange,
             onValueChange = {
                 trimRange = it.start.coerceAtLeast(0f)..it.endInclusive.coerceAtMost(durationMs.toFloat())
+                onTimelineChanged(
+                    framePosition.toLong(),
+                    trimRange.start.toLong(),
+                    trimRange.endInclusive.toLong(),
+                )
             },
             valueRange = 0f..durationMs.toFloat().coerceAtLeast(1f),
             modifier = Modifier.semantics {

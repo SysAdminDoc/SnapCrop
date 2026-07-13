@@ -4,6 +4,22 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Workflow restoration and hierarchical Back (v6.76.0).**
+
+- Stitch, Collage, Device Mockup, video, and Web Capture now restore URI/order,
+  layout/options, URL, and scrub/trim state across Activity recreation. Saved
+  identity state is capped below 64 KiB and never contains bitmaps, jobs, or
+  transient load failures.
+- Document-based pickers retain read grants. Restored media is validated off the
+  main thread; revoked items are pruned with a visible choose-again path, while
+  invalid video sources retain Retry and Choose another after recreation.
+- Gallery now restores bounded selection plus the exact viewer media identity,
+  including the page reached by swiping. Reordered/deleted libraries resolve or
+  fail closed without using a stale list index.
+- Toolbar and system Back share one deepest-first reducer: dialog, viewer detail,
+  viewer, selection, filter, album, then Gallery-to-Home. Robolectric round-trip,
+  state-budget, reducer, routing, and headless API-37 rendered checks cover it.
+
 **Gallery, index, and video recovery (v6.75.0).**
 
 - Gallery now distinguishes loading, empty, partial-permission, failed, and ready

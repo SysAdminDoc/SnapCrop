@@ -52,6 +52,11 @@ private fun stitchItemKey(uris: List<Uri>, index: Int): String {
 
 class StitchActivity : ComponentActivity() {
 
+    private companion object {
+        const val STATE_URIS = "stitch_uris"
+        const val STATE_VERTICAL = "stitch_vertical"
+    }
+
     private val imageUris = mutableStateListOf<Uri>()
     private val isVertical = mutableStateOf(true)
     private val isSaving = mutableStateOf(false)
@@ -59,17 +64,31 @@ class StitchActivity : ComponentActivity() {
     private val pickImagesLauncher = registerForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isNotEmpty()) imageUris.addAll(uris)
+        if (uris.isNotEmpty()) {
+            uris.forEach { WorkflowStateRestoration.persistReadGrant(this, it) }
+            val existing = imageUris.mapTo(mutableSetOf(), Uri::toString)
+            imageUris.addAll(
+                uris.filter { existing.add(it.toString()) }
+                    .take(WorkflowStateRestoration.MAX_SAVED_URIS - imageUris.size),
+            )
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        @Suppress("DEPRECATION")
-        intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
-            ?.distinctBy(Uri::toString)
-            ?.let(imageUris::addAll)
+        val restored = WorkflowStateRestoration.restoreUris(savedInstanceState, STATE_URIS)
+        if (savedInstanceState != null) {
+            imageUris.addAll(restored)
+            isVertical.value = savedInstanceState.getBoolean(STATE_VERTICAL, true)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
+                ?.distinctBy(Uri::toString)
+                ?.take(WorkflowStateRestoration.MAX_SAVED_URIS)
+                ?.let(imageUris::addAll)
+        }
 
         setContent {
             SnapCropTheme {
@@ -88,8 +107,28 @@ class StitchActivity : ComponentActivity() {
             }
         }
 
+        if (savedInstanceState != null && restored.isNotEmpty()) {
+            lifecycleScope.launch {
+                val validated = withContext(Dispatchers.IO) {
+                    WorkflowStateRestoration.validateReadableUris(this@StitchActivity, restored)
+                }
+                if (validated.unavailableCount > 0) {
+                    imageUris.clear()
+                    imageUris.addAll(validated.uris)
+                    Toast.makeText(this@StitchActivity, R.string.workflow_restore_missing_media, Toast.LENGTH_LONG).show()
+                    if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
+                }
+            }
+        }
+
         // Auto-open picker on launch
         if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        WorkflowStateRestoration.putUris(outState, STATE_URIS, imageUris)
+        outState.putBoolean(STATE_VERTICAL, isVertical.value)
+        super.onSaveInstanceState(outState)
     }
 
     private fun stitchAndSave() {
