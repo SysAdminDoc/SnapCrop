@@ -168,6 +168,10 @@ are blocked behind explicit opt-in and evaluation gates.
   local index health card shows eligible/indexed work, pending or failed scans,
   the last successful scan, and direct Retry/Rebuild actions; filename/date
   browsing remains available when indexed metadata cannot be read.
+- A zero-count-visible Unfiled inbox gathers current screenshot images that have
+  not been filed, deferred by a future reminder, or explicitly reviewed. Labeled
+  File, Remind me, Keep unfiled, and recoverable Trash actions leave MediaStore
+  ownership and file location unchanged unless Android confirms Trash.
 - The opt-in index reconciles exact MediaStore volumes incrementally from
   version/generation watermarks. Android 37.1's deletion feed avoids full ID
   walks when available; older systems use an ID-only set difference, and volume,
@@ -341,7 +345,8 @@ disclosed below; optional exports and automatic update checks are off by default
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop. The
   manual Settings backup is a versioned, typed allowlist: it excludes network
-  credentials, transient capture state, screenshot notes, and reminders;
+  credentials, transient capture state, screenshot notes, reminders, and local
+  Unfiled inbox decisions;
   migrates supported legacy keys; and reports unknown or invalid entries.
 
 ### Network and ML Kit disclosure

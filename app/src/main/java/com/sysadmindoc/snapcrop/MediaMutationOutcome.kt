@@ -23,3 +23,7 @@ data class MediaMutationOutcome(
         else -> MediaMutationResult.PARTIAL
     }
 }
+
+internal object MediaMutationMetadataPolicy {
+    fun cleanImmediately(platformSdk: Int): Boolean = platformSdk < 30
+}

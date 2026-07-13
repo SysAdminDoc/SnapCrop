@@ -468,7 +468,7 @@
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>
     <string name="settings_section_backup">Backup</string>
-    <string name="settings_backup_hint">Back up settings, presets, and app rules for reinstall. Network credentials, screenshot notes, and reminders stay on this device.</string>
+    <string name="settings_backup_hint">Back up settings, presets, and app rules for reinstall. Network credentials, screenshot notes, reminders, and inbox decisions stay on this device.</string>
     <string name="settings_backup_export">Back up settings</string>
     <string name="settings_backup_import">Restore</string>
     <string name="settings_backup_done">Settings backed up.</string>
@@ -798,6 +798,17 @@
     <string name="gallery_collection_cd">Collection %1$s, %2$d items</string>
     <string name="gallery_collection_empty_title">This collection is empty</string>
     <string name="gallery_collection_empty_subtitle">Open All Photos, select screenshots, then add them to this collection.</string>
+    <string name="gallery_unfiled_title">Unfiled</string>
+    <string name="gallery_unfiled_subtitle">Screenshots waiting for a filing decision</string>
+    <string name="gallery_unfiled_empty_title">Inbox cleared</string>
+    <string name="gallery_unfiled_empty_subtitle">New screenshots without a collection will appear here.</string>
+    <string name="gallery_unfiled_count">%1$d waiting</string>
+    <string name="gallery_unfiled_file">File</string>
+    <string name="gallery_unfiled_keep">Keep unfiled</string>
+    <string name="gallery_unfiled_kept">Cleared from the inbox.</string>
+    <string name="gallery_unfiled_keep_failed">Couldn’t update the inbox.</string>
+    <string name="gallery_unfiled_remind">Remind me</string>
+    <string name="gallery_unfiled_actions">Choose an inbox action.</string>
     <string name="gallery_auto_badge">Auto</string>
     <string name="gallery_matched_count">%1$d matched</string>
     <string name="gallery_album_cd">%1$s album, %2$d items</string>

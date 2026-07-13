@@ -369,6 +369,17 @@ internal data class ScreenshotNoteReminderRow(
 )
 
 @Entity(
+    tableName = "media_triage",
+    primaryKeys = ["media_uri", "media_date_added"],
+    indices = [Index("media_uri"), Index("triaged_at")],
+)
+internal data class MediaTriageRow(
+    @ColumnInfo(name = "media_uri") val mediaUri: String,
+    @ColumnInfo(name = "media_date_added") val mediaDateAdded: Long,
+    @ColumnInfo(name = "triaged_at") val triagedAt: Long,
+)
+
+@Entity(
     tableName = "duplicate_fingerprint",
     primaryKeys = ["media_uri", "media_date_added"],
     indices = [Index("exact_sha256"), Index("difference_hash")]
@@ -429,6 +440,18 @@ data class ManualCollectionSummary(
     @ColumnInfo(name = "name") val name: String,
     @ColumnInfo(name = "item_count") val itemCount: Int,
     @ColumnInfo(name = "cover_uri") val coverUri: String?
+)
+
+internal data class UnfiledExclusions(
+    val filed: Set<ManualCollectionMedia>,
+    val triaged: Set<ManualCollectionMedia>,
+    val deferred: Set<ManualCollectionMedia> = emptySet(),
+)
+
+internal data class UnfiledExclusionRows(
+    val filed: List<ManualCollectionItemRow>,
+    val triaged: List<MediaTriageRow>,
+    val deferred: List<ScreenshotNoteReminderRow>,
 )
 
 internal data class NormalizedCollectionName(val display: String, val key: String)
@@ -539,8 +562,14 @@ internal interface ScreenshotIndexDao {
     @Query("SELECT * FROM manual_collection_item WHERE collection_id = :collectionId ORDER BY added_at DESC")
     suspend fun getCollectionItems(collectionId: Long): List<ManualCollectionItemRow>
 
+    @Query("SELECT * FROM manual_collection_item ORDER BY added_at DESC")
+    suspend fun getAllCollectionItems(): List<ManualCollectionItemRow>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertCollectionItems(rows: List<ManualCollectionItemRow>): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCollectionItems(rows: List<ManualCollectionItemRow>): List<Long>
 
     @Transaction
     suspend fun insertCollectionWithItems(
@@ -548,8 +577,33 @@ internal interface ScreenshotIndexDao {
         items: List<ManualCollectionItemRow>
     ): Pair<Long, Int> {
         val id = insertCollection(collection)
+        if (id == -1L) return id to 0
         val inserted = if (items.isEmpty()) 0 else insertCollectionItems(items.map { it.copy(collectionId = id) }).count { it != -1L }
         return id to inserted
+    }
+
+    @Transaction
+    suspend fun insertCollectionWithItemsAndTriage(
+        collection: ManualCollectionRow,
+        items: List<ManualCollectionItemRow>,
+        triageRows: List<MediaTriageRow>,
+    ): Pair<Long, Int> {
+        val result = insertCollectionWithItems(collection, items)
+        if (result.first != -1L && triageRows.isNotEmpty()) upsertMediaTriage(triageRows)
+        return result
+    }
+
+    @Transaction
+    suspend fun insertCollectionItemsAndTriage(
+        items: List<ManualCollectionItemRow>,
+        triageRows: List<MediaTriageRow>,
+    ): Int {
+        val existingByUri = items.firstOrNull()?.collectionId?.let { getCollectionItems(it) }
+            .orEmpty().associateBy(ManualCollectionItemRow::mediaUri)
+        val changed = items.count { existingByUri[it.mediaUri]?.mediaDateAdded != it.mediaDateAdded }
+        if (items.isNotEmpty()) upsertCollectionItems(items)
+        if (triageRows.isNotEmpty()) upsertMediaTriage(triageRows)
+        return changed
     }
 
     @Query("DELETE FROM manual_collection_item WHERE collection_id = :collectionId AND media_uri IN (:mediaUris)")
@@ -579,6 +633,9 @@ internal interface ScreenshotIndexDao {
     @Query("SELECT * FROM media_note_reminder WHERE media_uri IN (:uris)")
     suspend fun getNoteReminders(uris: List<String>): List<ScreenshotNoteReminderRow>
 
+    @Query("SELECT * FROM media_note_reminder WHERE reminder_at IS NOT NULL AND reminder_at > :now ORDER BY reminder_at")
+    suspend fun getFutureReminders(now: Long): List<ScreenshotNoteReminderRow>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertNoteReminder(row: ScreenshotNoteReminderRow)
 
@@ -597,6 +654,19 @@ internal interface ScreenshotIndexDao {
 
     @Query("UPDATE media_note_reminder SET reminder_at = NULL, reminder_token = NULL, updated_at = :updatedAt WHERE media_uri = :uri AND media_date_added = :dateAdded AND reminder_token = :token")
     suspend fun clearReminder(uri: String, dateAdded: Long, token: String, updatedAt: Long): Int
+
+    @Query("SELECT * FROM media_triage ORDER BY triaged_at DESC")
+    suspend fun getMediaTriage(): List<MediaTriageRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMediaTriage(rows: List<MediaTriageRow>)
+
+    @Transaction
+    suspend fun getUnfiledExclusionRows(now: Long): UnfiledExclusionRows = UnfiledExclusionRows(
+        filed = getAllCollectionItems(),
+        triaged = getMediaTriage(),
+        deferred = getFutureReminders(now),
+    )
 
     @Query("SELECT * FROM duplicate_fingerprint ORDER BY media_date_added ASC, media_uri ASC")
     suspend fun getDuplicateFingerprints(): List<DuplicateFingerprintRow>
@@ -631,11 +701,12 @@ internal interface ScreenshotIndexDao {
         ManualCollectionItemRow::class,
         MediaSourceContextRow::class,
         ScreenshotNoteReminderRow::class,
+        MediaTriageRow::class,
         DuplicateFingerprintRow::class,
         DuplicateDismissalRow::class,
         MediaSyncStateRow::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -798,6 +869,20 @@ internal object ScreenshotIndexMigrations {
                     `completed_at` INTEGER NOT NULL,
                     PRIMARY KEY(`volume_name`))""".trimIndent()
             )
+        }
+    }
+
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `media_triage` (
+                    `media_uri` TEXT NOT NULL,
+                    `media_date_added` INTEGER NOT NULL,
+                    `triaged_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`media_uri`, `media_date_added`))""".trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_triage_media_uri` ON `media_triage` (`media_uri`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_media_triage_triaged_at` ON `media_triage` (`triaged_at`)")
         }
     }
 }
@@ -1024,7 +1109,7 @@ class ScreenshotIndexStore(context: Context) {
         val collection = ManualCollectionRow(name = normalized.display, normalizedName = normalized.key, createdAt = now, updatedAt = now)
         val items = media.asSequence().distinctBy { it.uri.toString() }
             .map { ManualCollectionItemRow(0, it.uri.toString(), it.dateAdded, now) }.toList()
-        return dao.insertCollectionWithItems(collection, items)
+        return dao.insertCollectionWithItemsAndTriage(collection, items, triageRows(media, now))
     }
 
     suspend fun renameCollection(id: Long, name: String) {
@@ -1046,13 +1131,41 @@ class ScreenshotIndexStore(context: Context) {
         val rows = media.asSequence().distinctBy { it.uri.toString() }
             .map { ManualCollectionItemRow(id, it.uri.toString(), it.dateAdded, now) }.toList()
         if (rows.isEmpty()) return 0
-        return dao.insertCollectionItems(rows).count { it != -1L }
+        return dao.insertCollectionItemsAndTriage(rows, triageRows(media, now))
     }
 
     suspend fun removeFromCollection(id: Long, uris: Collection<Uri>): Int {
         val values = uris.asSequence().map(Uri::toString).distinct().toList()
         return if (values.isEmpty()) 0 else dao.deleteCollectionItems(id, values)
     }
+
+    internal suspend fun unfiledExclusions(now: Long = System.currentTimeMillis()): UnfiledExclusions =
+        dao.getUnfiledExclusionRows(now).let { rows -> UnfiledExclusions(
+        filed = rows.filed.mapTo(linkedSetOf()) {
+            ManualCollectionMedia(Uri.parse(it.mediaUri), it.mediaDateAdded)
+        },
+        triaged = rows.triaged.mapTo(linkedSetOf()) {
+            ManualCollectionMedia(Uri.parse(it.mediaUri), it.mediaDateAdded)
+        },
+        deferred = rows.deferred.mapTo(linkedSetOf()) {
+            ManualCollectionMedia(Uri.parse(it.mediaUri), it.mediaDateAdded)
+        },
+    ) }
+
+    internal suspend fun markTriaged(media: Collection<ManualCollectionMedia>) {
+        val rows = triageRows(media, System.currentTimeMillis())
+        if (rows.isNotEmpty()) dao.upsertMediaTriage(rows)
+    }
+
+    private fun triageRows(media: Collection<ManualCollectionMedia>, now: Long): List<MediaTriageRow> =
+        media.asSequence()
+            .onEach {
+                require(it.uri.scheme.equals("content", ignoreCase = true) && it.uri.toString().length <= 8_192)
+                require(it.dateAdded >= 0)
+            }
+            .distinctBy { it.uri.toString() to it.dateAdded }
+            .map { MediaTriageRow(it.uri.toString(), it.dateAdded, now) }
+            .toList()
 
     fun observeSourceContexts(): Flow<Map<Pair<String, Long>, ExplicitSourceContext>> =
         dao.observeSourceContexts().map { rows ->
@@ -1572,6 +1685,7 @@ class ScreenshotIndexStore(context: Context) {
                         ScreenshotIndexMigrations.MIGRATION_4_5,
                         ScreenshotIndexMigrations.MIGRATION_5_6,
                         ScreenshotIndexMigrations.MIGRATION_6_7,
+                        ScreenshotIndexMigrations.MIGRATION_7_8,
                     )
                     .build()
                     .also {

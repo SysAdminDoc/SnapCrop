@@ -2543,18 +2543,20 @@ class MainActivity : ComponentActivity() {
             mutationStartedAt
         )
         if (succeeded.isNotEmpty()) {
-            FavoritesStore.removeAll(this, succeeded)
-            lifecycleScope.launch(Dispatchers.IO) {
-                val store = ScreenshotIndexStore(this@MainActivity)
-                runCatching { store.deleteSourceContexts(succeeded) }
-                runCatching { store.deleteDuplicateMetadata(succeeded) }
-                runCatching {
-                    store.deleteNoteReminders(succeeded).forEach { reminder ->
-                        ScreenshotReminderScheduler.cancel(
-                            this@MainActivity,
-                            reminder.uri,
-                            reminder.dateAdded
-                        )
+            if (MediaMutationMetadataPolicy.cleanImmediately(Build.VERSION.SDK_INT)) {
+                FavoritesStore.removeAll(this, succeeded)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val store = ScreenshotIndexStore(this@MainActivity)
+                    runCatching { store.deleteSourceContexts(succeeded) }
+                    runCatching { store.deleteDuplicateMetadata(succeeded) }
+                    runCatching {
+                        store.deleteNoteReminders(succeeded).forEach { reminder ->
+                            ScreenshotReminderScheduler.cancel(
+                                this@MainActivity,
+                                reminder.uri,
+                                reminder.dateAdded
+                            )
+                        }
                     }
                 }
             }

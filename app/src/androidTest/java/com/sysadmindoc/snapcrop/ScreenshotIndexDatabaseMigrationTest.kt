@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import android.content.Context
+import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.test.core.app.ApplicationProvider
@@ -66,6 +67,7 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_4_5,
                 ScreenshotIndexMigrations.MIGRATION_5_6,
                 ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
             )
             .build()
         try {
@@ -114,6 +116,7 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_4_5,
                 ScreenshotIndexMigrations.MIGRATION_5_6,
                 ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
             )
             .build()
         try {
@@ -153,6 +156,7 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_4_5,
                 ScreenshotIndexMigrations.MIGRATION_5_6,
                 ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
             )
             .build()
         try {
@@ -185,6 +189,7 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_4_5,
                 ScreenshotIndexMigrations.MIGRATION_5_6,
                 ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
             )
             .build()
         try {
@@ -241,6 +246,7 @@ class ScreenshotIndexDatabaseMigrationTest {
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_5_6,
                 ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
             )
             .build()
         try {
@@ -299,7 +305,10 @@ class ScreenshotIndexDatabaseMigrationTest {
         }
 
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
-            .addMigrations(ScreenshotIndexMigrations.MIGRATION_6_7)
+            .addMigrations(
+                ScreenshotIndexMigrations.MIGRATION_6_7,
+                ScreenshotIndexMigrations.MIGRATION_7_8,
+            )
             .build()
         try {
             val dao = database.dao()
@@ -309,6 +318,59 @@ class ScreenshotIndexDatabaseMigrationTest {
             assertEquals("Review", dao.getNoteReminder(uri, 42)?.note)
             assertEquals("first", dao.getDuplicateDismissals().single().firstFingerprint)
             assertTrue(dao.getMediaSyncStates().isEmpty())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun versionSevenMigrationAddsDurableTriageWithoutTouchingUserOwnedMetadata() = runBlocking<Unit> {
+        val uri = "content://media/external/images/media/77"
+        helper.createDatabase(TEST_DB, 7).apply {
+            execSQL(
+                """INSERT INTO screenshot_index (
+                    media_id, uri, name, album_path, width, height, date_added, size,
+                    is_video, is_screenshot, is_favorite, base_categories,
+                    recognized_categories, base_search_text, recognized_text,
+                    mime_type, owner_package, orientation, indexed_at
+                ) VALUES (77, '$uri', 'Screenshot_77.png', 'Pictures/Screenshots/',
+                    1080, 2400, 77, 1077, 0, 1, 0, 'screenshots', 'receipts',
+                    'screenshot 77', 'reviewed receipt', 'image/png', '', 'portrait', 77)""".trimIndent()
+            )
+            execSQL("INSERT INTO manual_collection (collection_id, name, normalized_name, created_at, updated_at) VALUES (7, 'Receipts', 'receipts', 1, 1)")
+            execSQL("INSERT INTO manual_collection_item (collection_id, media_uri, media_date_added, added_at) VALUES (7, '$uri', 77, 2)")
+            execSQL("INSERT INTO media_source_context (media_uri, media_date_added, source_url, source_label, source_package, updated_at) VALUES ('$uri', 77, 'https://example.com/77', 'Receipt', 'com.example', 3)")
+            execSQL("INSERT INTO media_note_reminder (media_uri, media_date_added, note, reminder_at, reminder_token, created_at, updated_at) VALUES ('$uri', 77, 'Expense', NULL, NULL, 4, 4)")
+            execSQL("INSERT INTO duplicate_dismissal (first_fingerprint, second_fingerprint, created_at) VALUES ('first-77', 'second-77', 5)")
+            execSQL("INSERT INTO media_sync_state (volume_name, store_version, generation, scope_signature, completed_at) VALUES ('external_primary', 'v7', 7, 'scope', 6)")
+            close()
+        }
+
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_7_8)
+            .build()
+        try {
+            val dao = database.dao()
+            assertEquals("reviewed receipt", dao.getByUri(uri)?.recognizedText)
+            assertEquals(77L, dao.getCollectionItems(7).single().mediaDateAdded)
+            assertEquals("Receipt", dao.getSourceContext(uri, 77)?.sourceLabel)
+            assertEquals("Expense", dao.getNoteReminder(uri, 77)?.note)
+            assertEquals("first-77", dao.getDuplicateDismissals().single().firstFingerprint)
+            assertEquals(7L, dao.getMediaSyncStates().single().generation)
+            assertTrue(dao.getMediaTriage().isEmpty())
+
+            val triage = MediaTriageRow(uri, 77, 100)
+            dao.upsertMediaTriage(listOf(triage))
+            val reusedIdentity = ManualCollectionItemRow(7, uri, 88, 101)
+            val reusedTriage = MediaTriageRow(uri, 88, 101)
+            assertEquals(
+                1,
+                dao.insertCollectionItemsAndTriage(listOf(reusedIdentity), listOf(reusedTriage)),
+            )
+            assertEquals(88L, dao.getCollectionItems(7).single().mediaDateAdded)
+            dao.replaceAll(listOf(sampleRow(77)))
+            dao.deleteAll()
+            assertEquals(setOf(triage, reusedTriage), dao.getMediaTriage().toSet())
         } finally {
             database.close()
         }
@@ -393,6 +455,39 @@ class ScreenshotIndexDatabaseMigrationTest {
 
             assertEquals(listOf(uri), dao.getCollectionItems(collectionId).map { it.mediaUri })
             assertEquals(1, dao.observeCollections().first().single().itemCount)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun failedCollectionCreationDoesNotFileOrTriageMedia() = runBlocking<Unit> {
+        val database = Room.inMemoryDatabaseBuilder(context, ScreenshotIndexDatabase::class.java).build()
+        try {
+            val dao = database.dao()
+            val collection = ManualCollectionRow(
+                name = "Research",
+                normalizedName = "research",
+                createdAt = 100,
+                updatedAt = 100,
+            )
+            assertTrue(dao.insertCollection(collection) > 0)
+            val mediaUri = "content://media/external/images/media/42"
+
+            var rejected = false
+            try {
+                dao.insertCollectionWithItemsAndTriage(
+                    collection = collection,
+                    items = listOf(ManualCollectionItemRow(0, mediaUri, 42, 101)),
+                    triageRows = listOf(MediaTriageRow(mediaUri, 42, 101)),
+                )
+            } catch (_: SQLiteConstraintException) {
+                rejected = true
+            }
+
+            assertTrue(rejected)
+            assertTrue(dao.getAllCollectionItems().isEmpty())
+            assertTrue(dao.getMediaTriage().isEmpty())
         } finally {
             database.close()
         }

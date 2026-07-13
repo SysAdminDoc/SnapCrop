@@ -1,7 +1,9 @@
 package com.sysadmindoc.snapcrop
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaMutationOutcomeTest {
@@ -34,5 +36,12 @@ class MediaMutationOutcomeTest {
         assertThrows(IllegalArgumentException::class.java) {
             MediaMutationOutcome(requested = 1, succeeded = 2)
         }
+    }
+
+    @Test
+    fun `recoverable trash preserves user metadata while permanent deletion cleans it`() {
+        assertFalse(MediaMutationMetadataPolicy.cleanImmediately(platformSdk = 30))
+        assertFalse(MediaMutationMetadataPolicy.cleanImmediately(platformSdk = 37))
+        assertTrue(MediaMutationMetadataPolicy.cleanImmediately(platformSdk = 29))
     }
 }

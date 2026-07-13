@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
@@ -120,6 +121,7 @@ internal enum class GalleryFailureSource {
     COLLECTION_DATABASE,
     SOURCE_CONTEXT_DATABASE,
     NOTE_DATABASE,
+    TRIAGE_DATABASE,
 }
 
 internal data class GalleryLoadFailure(val source: GalleryFailureSource, val error: Throwable)
@@ -185,10 +187,11 @@ internal fun looksLikeScreenshot(width: Int, height: Int, name: String, screenW:
 
 private enum class SortMode { DATE, NAME, SIZE }
 
-private const val ALL_PHOTOS_PATH = "__ALL__"
+internal const val ALL_PHOTOS_PATH = "__ALL__"
 private const val FAVORITES_PATH = "__FAVS__"
 internal const val SMART_ALBUM_PREFIX = "__SMART__:"
 internal const val MANUAL_COLLECTION_PREFIX = "__COLLECTION__:"
+internal const val UNFILED_PATH = "__UNFILED__"
 
 private fun manualCollectionPath(id: Long) = "$MANUAL_COLLECTION_PREFIX$id"
 internal fun manualCollectionId(path: String?): Long? =
@@ -605,7 +608,16 @@ fun GalleryScreen(
     }
 
     // Reload albums on initial load and when refreshKey changes (e.g., returning from editor)
-    LaunchedEffect(refreshKey, reloadGeneration, indexEnabled, favoriteKeys, canReadImages, canReadVideos) {
+    LaunchedEffect(
+        refreshKey,
+        reloadGeneration,
+        indexEnabled,
+        favoriteKeys,
+        manualCollections,
+        noteReminders,
+        canReadImages,
+        canReadVideos,
+    ) {
         if (selectedAlbum == null && albums.isEmpty()) isLoading = true
         val refreshedCollections = withContext(Dispatchers.IO) {
             GalleryLoadCoordinator.overview(
@@ -622,6 +634,7 @@ fun GalleryScreen(
             GalleryFailureSource.IMAGE_QUERY,
             GalleryFailureSource.VIDEO_QUERY,
             GalleryFailureSource.INDEX_DATABASE,
+            GalleryFailureSource.TRIAGE_DATABASE,
         )
         galleryFailures = (galleryFailures - overviewSources) + refreshedCollections.failures.map { it.source }
         refreshedCollections.failures.forEach { reportFailure(it.source, it.error) }
@@ -658,7 +671,7 @@ fun GalleryScreen(
             }
     }
 
-    LaunchedEffect(selectedAlbum, manualCollections, refreshKey, reloadGeneration, canReadImages, canReadVideos) {
+    LaunchedEffect(selectedAlbum, manualCollections, noteReminders, refreshKey, reloadGeneration, canReadImages, canReadVideos) {
         selectedAlbum?.let { path ->
             isLoading = true
             val loaded = withContext(Dispatchers.IO) {
@@ -673,6 +686,7 @@ fun GalleryScreen(
                 GalleryFailureSource.IMAGE_QUERY,
                 GalleryFailureSource.VIDEO_QUERY,
                 GalleryFailureSource.COLLECTION_DATABASE,
+                GalleryFailureSource.TRIAGE_DATABASE,
             )
             galleryFailures = (galleryFailures - photoSources) + loaded.failures.map { it.source }
             loaded.failures.forEach { reportFailure(it.source, it.error) }
@@ -889,6 +903,7 @@ fun GalleryScreen(
                             ScreenshotReminderScheduler.schedule(context, it)
                         }
                         noteEditorPhoto = null
+                        reloadGeneration++
                         Toast.makeText(context, R.string.gallery_note_saved, Toast.LENGTH_SHORT).show()
                     } catch (_: Exception) {
                         if (stored?.reminderAt != null) {
@@ -1079,6 +1094,7 @@ fun GalleryScreen(
                     Text(
                         stringResource(
                             when {
+                                selectedAlbum == UNFILED_PATH -> R.string.gallery_unfiled_actions
                                 selectedMedia.any(Photo::isVideo) -> R.string.gallery_compare_images_only
                                 selectedUris.size == 1 -> R.string.gallery_compare_select_one_more
                                 compareUris != null -> R.string.gallery_compare_ready
@@ -1111,8 +1127,10 @@ fun GalleryScreen(
                         selectedUris.clear()
                         selectedUris.addAll(viewerPhotos.map { it.uri.toString() })
                     }) { Icon(Icons.Default.SelectAll, stringResource(R.string.gallery_select_all), tint = OnSurface) }
-                    IconButton(onClick = { pendingCollectionSelection = null; showCollectionPicker = true }) {
-                        Icon(Icons.Default.PushPin, stringResource(R.string.gallery_add_to_collection), tint = Primary)
+                    if (selectedAlbum != UNFILED_PATH) {
+                        IconButton(onClick = { pendingCollectionSelection = null; showCollectionPicker = true }) {
+                            Icon(Icons.Default.PushPin, stringResource(R.string.gallery_add_to_collection), tint = Primary)
+                        }
                     }
                     manualCollectionId(selectedAlbum)?.let { collectionId ->
                         IconButton(onClick = {
@@ -1144,10 +1162,12 @@ fun GalleryScreen(
                         val uris = photos.filter { it.uri.toString() in selectedUris && !it.isVideo }.map { it.uri }
                         if (uris.isNotEmpty()) { onBatchResize(uris); selectedUris.clear() }
                     }) { Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.resize), tint = OnSurface) }
-                    IconButton(onClick = {
-                        val uris = photos.filter { it.uri.toString() in selectedUris }.map { it.uri }
-                        if (uris.isNotEmpty()) pendingDeleteUris = uris
-                    }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Danger) }
+                    if (selectedAlbum != UNFILED_PATH) {
+                        IconButton(onClick = {
+                            val uris = photos.filter { it.uri.toString() in selectedUris }.map { it.uri }
+                            if (uris.isNotEmpty()) pendingDeleteUris = uris
+                        }) { Icon(Icons.Default.Delete, stringResource(R.string.gallery_delete_selected), tint = Danger) }
+                    }
                 }
             } else {
                 IconButton(onClick = ::handleGalleryBack) {
@@ -1158,6 +1178,7 @@ fun GalleryScreen(
                     text = when (selectedAlbum) {
                         ALL_PHOTOS_PATH -> stringResource(R.string.gallery_all_photos)
                         FAVORITES_PATH -> stringResource(R.string.gallery_favorites)
+                        UNFILED_PATH -> stringResource(R.string.gallery_unfiled_title)
                         null -> stringResource(R.string.gallery_title)
                         else -> manualCollectionId(selectedAlbum)?.let { id ->
                             manualCollections.firstOrNull { it.id == id }?.name
@@ -1277,6 +1298,79 @@ fun GalleryScreen(
                         }
                     }) {
                         Icon(Icons.Default.SortByAlpha, stringResource(R.string.gallery_sort, sortLabel), tint = OnSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        if (selectionMode && selectedAlbum == UNFILED_PATH) {
+            val selectedMedia = selectedUris.mapNotNull { selectedUri ->
+                viewerPhotos.firstOrNull { it.uri.toString() == selectedUri }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SurfaceContainer)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { pendingCollectionSelection = null; showCollectionPicker = true },
+                        enabled = selectedMedia.isNotEmpty(),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Default.Folder, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.gallery_unfiled_file))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            noteEditorPhoto = selectedMedia.singleOrNull()
+                            selectedUris.clear()
+                        },
+                        enabled = selectedMedia.size == 1,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Default.Alarm, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.gallery_unfiled_remind))
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = selectedMedia.isNotEmpty(),
+                        onClick = {
+                            val identities = selectedMedia.map { ManualCollectionMedia(it.uri, it.dateAdded) }
+                            scope.launch {
+                                try {
+                                    collectionStore.markTriaged(identities)
+                                    selectedUris.clear()
+                                    reloadGeneration++
+                                    Toast.makeText(context, R.string.gallery_unfiled_kept, Toast.LENGTH_SHORT).show()
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, R.string.gallery_unfiled_keep_failed, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.gallery_unfiled_keep))
+                    }
+                    TextButton(
+                        enabled = selectedMedia.isNotEmpty(),
+                        onClick = {
+                            val uris = selectedMedia.map(Photo::uri)
+                            if (uris.isNotEmpty()) pendingDeleteUris = uris
+                        },
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = Danger),
+                    ) {
+                        Icon(Icons.Default.Delete, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.move_to_trash))
                     }
                 }
             }
@@ -1438,8 +1532,16 @@ fun GalleryScreen(
                 photos = viewerPhotos,
                 columns = gridColumns,
                 showDateHeaders = sortMode == SortMode.DATE,
-                emptyTitle = if (manualCollectionId(selectedAlbum) != null) stringResource(R.string.gallery_collection_empty_title) else stringResource(R.string.gallery_no_media_title),
-                emptySubtitle = if (manualCollectionId(selectedAlbum) != null) stringResource(R.string.gallery_collection_empty_subtitle) else stringResource(R.string.gallery_no_media_subtitle),
+                emptyTitle = when {
+                    selectedAlbum == UNFILED_PATH -> stringResource(R.string.gallery_unfiled_empty_title)
+                    manualCollectionId(selectedAlbum) != null -> stringResource(R.string.gallery_collection_empty_title)
+                    else -> stringResource(R.string.gallery_no_media_title)
+                },
+                emptySubtitle = when {
+                    selectedAlbum == UNFILED_PATH -> stringResource(R.string.gallery_unfiled_empty_subtitle)
+                    manualCollectionId(selectedAlbum) != null -> stringResource(R.string.gallery_collection_empty_subtitle)
+                    else -> stringResource(R.string.gallery_no_media_subtitle)
+                },
                 emptyActionLabel = if (searchQuery.isNotBlank() || galleryFilters.activeCount > 0) stringResource(R.string.gallery_clear_search_filters) else null,
                 onEmptyAction = if (searchQuery.isNotBlank() || galleryFilters.activeCount > 0) ({
                     searchQuery = ""
@@ -1799,6 +1901,7 @@ private fun AlbumGrid(
                 val smartAlbumCd = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle)
                 Card(
                     modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        .then(if (album.path == UNFILED_PATH) Modifier.testTag("gallery-unfiled-album") else Modifier)
                         .semantics { contentDescription = smartAlbumCd }
                         .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
@@ -1818,9 +1921,22 @@ private fun AlbumGrid(
                                 .padding(horizontal = 7.dp, vertical = 4.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.PhoneAndroid, null, tint = Tertiary, modifier = Modifier.size(13.dp))
+                                Icon(
+                                    if (album.path == UNFILED_PATH) Icons.Default.Folder else Icons.Default.PhoneAndroid,
+                                    null,
+                                    tint = Tertiary,
+                                    modifier = Modifier.size(13.dp),
+                                )
                                 Spacer(Modifier.width(4.dp))
-                                Text(stringResource(R.string.gallery_auto_badge), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    stringResource(
+                                        if (album.path == UNFILED_PATH) R.string.gallery_unfiled_title
+                                        else R.string.gallery_auto_badge
+                                    ),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
                             }
                         }
                         Box(Modifier.fillMaxWidth().align(Alignment.BottomCenter)
@@ -1830,7 +1946,11 @@ private fun AlbumGrid(
                                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(album.subtitle, color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)
-                                Text(stringResource(R.string.gallery_matched_count, album.count), color = Tertiary, fontSize = 11.sp,
+                                Text(stringResource(
+                                    if (album.path == UNFILED_PATH) R.string.gallery_unfiled_count
+                                    else R.string.gallery_matched_count,
+                                    album.count,
+                                ), color = Tertiary, fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium)
                             }
                         }

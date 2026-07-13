@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Unfiled screenshot inbox (v6.86.0).**
+
+- Gallery now derives a deterministic Unfiled inbox from current screenshot
+  images that have not been filed, deferred by a future reminder, or explicitly
+  reviewed. File, Remind me, Keep unfiled, and Android's recoverable Trash stay
+  available as labeled 48 dp actions without moving or duplicating media.
+- Exact URI/date identities prevent recycled MediaStore URIs from inheriting old
+  decisions. Room migration 8 preserves durable inbox triage independently of
+  index rebuilds, and collection filing replaces stale same-URI membership
+  atomically.
+- Recoverable Trash preserves app metadata until Android confirms the result;
+  permanent pre-Android-11 deletion still cleans immediately. Generated corpus,
+  migration, coordinator, host, lint, rendered emulator, accessibility, and the
+  complete 25-test Android suite cover the new path.
+
 **Testable state and I/O boundaries (v6.85.0).**
 
 - Gallery album/photo loading now publishes typed snapshots from an independent

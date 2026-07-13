@@ -31,7 +31,7 @@ class GalleryLoadCoordinatorTest {
 
         assertEquals(1, result.albums.size)
         assertEquals(3, result.albums.single().count)
-        assertEquals(source.smartAlbums, result.smartAlbums)
+        assertEquals(listOf(source.unfiledAlbum) + source.smartAlbums, result.smartAlbums)
         assertTrue(result.index.isEmpty())
         assertEquals(listOf(GalleryFailureSource.INDEX_DATABASE), result.failures.map { it.source })
         assertEquals(emptyMap<String, ScreenshotIndexEntry>(), source.smartIndex)
@@ -55,6 +55,7 @@ class GalleryLoadCoordinatorTest {
         assertEquals(0, source.imageAlbumCalls)
         assertEquals(0, source.videoAlbumCalls)
         assertEquals(0, source.smartAlbumCalls)
+        assertEquals(0, source.unfiledAlbumCalls)
     }
 
     @Test
@@ -101,6 +102,31 @@ class GalleryLoadCoordinatorTest {
     }
 
     @Test
+    fun unfiledFailureIsTypedAndDoesNotHideOtherAlbums() = runBlocking {
+        val source = FakeSource().apply {
+            unfiledError = IllegalStateException("triage unavailable")
+            smartAlbums = listOf(album("Receipts", "${SMART_ALBUM_PREFIX}receipts", 2))
+        }
+
+        val result = GalleryLoadCoordinator.overview(source, false, true, false)
+
+        assertEquals(source.smartAlbums, result.smartAlbums)
+        assertEquals(listOf(GalleryFailureSource.TRIAGE_DATABASE), result.failures.map { it.source })
+    }
+
+    @Test
+    fun unfiledAlbumUsesItsExactImageOnlySnapshot() = runBlocking {
+        val older = photo(1, 10)
+        val newer = photo(2, 20)
+        val source = FakeSource().apply { imagePhotos = listOf(older, newer) }
+
+        val result = GalleryLoadCoordinator.album(source, UNFILED_PATH, true, true)
+
+        assertEquals(listOf(newer, older), result.photos)
+        assertTrue(source.photoKinds.isEmpty())
+    }
+
+    @Test
     fun cancellationAlwaysEscapesInsteadOfBecomingFailureState() = runBlocking {
         val cancellation = CancellationException("screen left")
         val overviewSource = FakeSource().apply { indexError = cancellation }
@@ -138,9 +164,11 @@ class GalleryLoadCoordinatorTest {
         var indexError: Throwable? = null
         var collectionError: Throwable? = null
         var photoError: Throwable? = null
+        var unfiledError: Throwable? = null
         var imageAlbums = emptyList<Album>()
         var videoAlbums = emptyList<Album>()
         var smartAlbums = emptyList<Album>()
+        var unfiledAlbum = Album("Unfiled", UNFILED_PATH, Uri.EMPTY, 0, isSmart = true)
         var imagePhotos = emptyList<Photo>()
         var videoPhotos = emptyList<Photo>()
         var smartIndex: Map<String, ScreenshotIndexEntry>? = null
@@ -148,6 +176,7 @@ class GalleryLoadCoordinatorTest {
         var imageAlbumCalls = 0
         var videoAlbumCalls = 0
         var smartAlbumCalls = 0
+        var unfiledAlbumCalls = 0
         val photoKinds = mutableListOf<Pair<Boolean, Boolean>>()
         val photoMemberInputs = mutableListOf<Set<ManualCollectionMedia>>()
 
@@ -171,6 +200,17 @@ class GalleryLoadCoordinatorTest {
             smartAlbumCalls += 1
             smartIndex = index
             return smartAlbums
+        }
+
+        override suspend fun loadUnfiledAlbum(): Album {
+            unfiledAlbumCalls += 1
+            unfiledError?.let { throw it }
+            return unfiledAlbum
+        }
+
+        override suspend fun loadUnfiledPhotos(): List<Photo> {
+            unfiledError?.let { throw it }
+            return imagePhotos
         }
 
         override suspend fun loadCollectionMembers(id: Long): Set<ManualCollectionMedia> {

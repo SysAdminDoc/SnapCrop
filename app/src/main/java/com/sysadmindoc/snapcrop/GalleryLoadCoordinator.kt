@@ -44,9 +44,14 @@ internal object GalleryLoadCoordinator {
         } else {
             emptyList()
         }
+        val unfiledAlbum = if (canReadImages) {
+            load<Album?>(GalleryFailureSource.TRIAGE_DATABASE, null) { source.loadUnfiledAlbum() }
+        } else {
+            null
+        }
         return GalleryOverviewLoad(
             albums = mergeAlbumSources(imageAlbums, videoAlbums),
-            smartAlbums = smartAlbums,
+            smartAlbums = listOfNotNull(unfiledAlbum) + smartAlbums,
             index = index,
             failures = failures,
         )
@@ -82,12 +87,20 @@ internal object GalleryLoadCoordinator {
                 emptyList()
             }
 
-        val images = if (canReadImages) {
+        val images = if (canReadImages && path == UNFILED_PATH) {
+            try {
+                source.loadUnfiledPhotos()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                failures += GalleryLoadFailure(GalleryFailureSource.TRIAGE_DATABASE, error)
+                emptyList()
+            }
+        } else if (canReadImages) {
             load(GalleryFailureSource.IMAGE_QUERY, images = true, videos = false)
         } else {
             emptyList()
         }
-        val videos = if (canReadVideos && !path.startsWith(SMART_ALBUM_PREFIX)) {
+        val videos = if (canReadVideos && path != UNFILED_PATH && !path.startsWith(SMART_ALBUM_PREFIX)) {
             load(GalleryFailureSource.VIDEO_QUERY, images = false, videos = true)
         } else {
             emptyList()
@@ -103,6 +116,8 @@ internal object GalleryLoadCoordinator {
         fun loadImageAlbums(): List<Album>
         fun loadVideoAlbums(): List<Album>
         fun loadSmartAlbums(index: Map<String, ScreenshotIndexEntry>): List<Album>
+        suspend fun loadUnfiledAlbum(): Album
+        suspend fun loadUnfiledPhotos(): List<Photo>
         suspend fun loadCollectionMembers(id: Long): Set<ManualCollectionMedia>
         fun loadPhotos(
             path: String,
@@ -132,6 +147,32 @@ internal class AndroidGalleryLoadSource(
 
     override fun loadSmartAlbums(index: Map<String, ScreenshotIndexEntry>): List<Album> =
         loadSmartAlbums(resolver, screenWidth, screenHeight, index, includeImages = true)
+
+    override suspend fun loadUnfiledAlbum(): Album {
+        val photos = loadUnfiledPhotos()
+        return Album(
+            name = appContext.getString(R.string.gallery_unfiled_title),
+            path = UNFILED_PATH,
+            coverUri = photos.firstOrNull()?.uri ?: android.net.Uri.EMPTY,
+            count = photos.size,
+            isSmart = true,
+            subtitle = appContext.getString(R.string.gallery_unfiled_subtitle),
+        )
+    }
+
+    override suspend fun loadUnfiledPhotos(): List<Photo> = UnfiledInbox.photos(
+        candidates = loadPhotoSource(
+            resolver = resolver,
+            path = ALL_PHOTOS_PATH,
+            screenW = screenWidth,
+            screenH = screenHeight,
+            favoriteKeys = emptySet(),
+            members = emptySet(),
+            includeImages = true,
+            includeVideos = false,
+        ),
+        exclusions = store.unfiledExclusions(),
+    )
 
     override suspend fun loadCollectionMembers(id: Long): Set<ManualCollectionMedia> =
         store.collectionItems(id)
