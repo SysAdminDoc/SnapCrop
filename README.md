@@ -178,7 +178,10 @@ are blocked behind explicit opt-in and evaluation gates.
   after its encoder writes a non-empty file and Android confirms the pending row;
   failed rows are removed instead of being reported as successful.
 - **Formats:** PNG, JPEG, or WebP with quality slider
-- **Target file size:** Set a KB budget, SnapCrop auto-adjusts quality to hit it
+- **Enforced target file size:** JPEG/WebP exports adjust quality to meet the KB
+  budget or fail without publishing an oversized file. Resolution reduction is a
+  separate opt-in, preserves aspect ratio, and stops at 320 px per side; metadata
+  growth is checked before Save or Share completes.
 - **Custom filenames:** Templates with `%timestamp%`, `%date%`, `%time%`, `%counter%`
 - **Batch rename:** Gallery-selected screenshots can use `%app%`, `%date%`,
   `%time%`, `%timestamp%`, `%counter%`, and `%profile%` templates

@@ -587,6 +587,9 @@ class SettingsActivity : ComponentActivity() {
                     // Target file size
                     var targetSizeEnabled by remember { mutableStateOf(prefs.getBoolean("target_size_enabled", false)) }
                     var targetSizeKb by remember { mutableIntStateOf(prefs.getInt("target_size_kb", 500).coerceIn(50, 5000)) }
+                    var targetSizeAllowResize by remember {
+                        mutableStateOf(prefs.getBoolean("target_size_allow_resize", false))
+                    }
                     SettingToggle(
                         title = stringResource(R.string.settings_target_size_title),
                         subtitle = if (lossyFormat)
@@ -622,6 +625,15 @@ class SettingsActivity : ComponentActivity() {
                                 )
                             )
                         }
+                        SettingToggle(
+                            title = stringResource(R.string.settings_target_resize_title),
+                            subtitle = stringResource(R.string.settings_target_resize_subtitle),
+                            checked = targetSizeAllowResize,
+                            onCheckedChange = {
+                                targetSizeAllowResize = it
+                                prefs.edit().putBoolean("target_size_allow_resize", it).apply()
+                            },
+                        )
                     }
 
                     Spacer(Modifier.height(8.dp))

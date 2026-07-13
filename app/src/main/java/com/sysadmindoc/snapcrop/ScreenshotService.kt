@@ -449,6 +449,7 @@ class ScreenshotService : Service() {
                 val savePath = actionRule?.let { ConditionalAutoActions.savePath(prefs, it) }
                     ?: exportSettings.savePath
                 val displayName = ExportPresetStore.nextFilename(prefs, exportSettings)
+                var targetFailure: TargetCompressionResult? = null
 
                 val publication = MediaStoreImageWriter.write(
                     resolver = contentResolver,
@@ -459,13 +460,21 @@ class ScreenshotService : Service() {
                     ),
                 ) { output ->
                     if (exportSettings.targetSizeEnabled && fmt != Bitmap.CompressFormat.PNG) {
-                        val (bytes, _) = ExportPresetRenderer.compressToTarget(
+                        when (val result = ExportPresetRenderer.compressToTarget(
                             requireNotNull(cropped),
                             fmt,
                             exportSettings.targetSizeKb,
-                        )
-                        output.write(bytes)
-                        bytes.isNotEmpty()
+                            exportSettings.targetDownscalePolicy(),
+                        )) {
+                            is TargetCompressionResult.WithinBudget -> {
+                                output.write(result.bytes)
+                                true
+                            }
+                            else -> {
+                                targetFailure = result
+                                false
+                            }
+                        }
                     } else {
                         requireNotNull(cropped).compress(fmt, quality, output)
                     }
@@ -496,9 +505,16 @@ class ScreenshotService : Service() {
                     is MediaStoreImageWriter.Result.Failure -> {
                         OperationJournal.record(
                             this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.SAVE,
-                            DiagnosticResult.FAILED, journalStarted, DiagnosticCode.PUBLISH_FAILURE,
+                            DiagnosticResult.FAILED, journalStarted,
+                            if (targetFailure != null) DiagnosticCode.ENCODE_FAILURE else DiagnosticCode.PUBLISH_FAILURE,
                             publication.cause,
                         )
+                        val message = when (targetFailure) {
+                            is TargetCompressionResult.CannotMeetWithoutResize -> getString(R.string.target_size_unmet)
+                            is TargetCompressionResult.EncoderFailure -> getString(R.string.target_size_encode_failed)
+                            else -> getString(R.string.toast_quick_save_failed)
+                        }
+                        handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_LONG).show() }
                     }
                 }
             } catch (error: Exception) {

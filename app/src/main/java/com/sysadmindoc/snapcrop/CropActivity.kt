@@ -1512,15 +1512,27 @@ class CropActivity : ComponentActivity() {
             val isWebp = shareFmt.isWebpFormat()
             val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
+            val useTargetSize = exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG
+            val targetBytes = exportSettings.targetSizeKb.coerceIn(50, 5000).toLong() * 1024L
             val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
             val shareFile = File(shareDir, "${resolveFilename(exportSettings)}.$ext")
             try {
                 if (shareFile.exists() && !shareFile.delete()) {
                     throw IOException("Could not replace the previous share export")
                 }
-                if (exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG) {
-                    val (bytes, _) = ExportPresetRenderer.compressToTarget(out, shareFmt, exportSettings.targetSizeKb)
-                    shareFile.writeBytes(bytes)
+                if (useTargetSize) {
+                    when (val result = ExportPresetRenderer.compressToTarget(
+                        out,
+                        shareFmt,
+                        exportSettings.targetSizeKb,
+                        exportSettings.targetDownscalePolicy(),
+                    )) {
+                        is TargetCompressionResult.WithinBudget -> shareFile.writeBytes(result.bytes)
+                        is TargetCompressionResult.CannotMeetWithoutResize ->
+                            throw IOException(getString(R.string.target_size_unmet))
+                        is TargetCompressionResult.EncoderFailure ->
+                            throw IOException(getString(R.string.target_size_encode_failed), result.cause)
+                    }
                 } else {
                     val encoded = shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
                     if (!encoded) throw IOException("Could not encode share export")
@@ -1532,6 +1544,9 @@ class CropActivity : ComponentActivity() {
                         shareFile.delete()
                         throw IOException("Could not apply selected metadata policy")
                     }
+                }
+                if (useTargetSize && shareFile.length() !in 1L..targetBytes) {
+                    throw IOException(getString(R.string.target_size_unmet))
                 }
                 withContext(Dispatchers.Main) {
                     startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
@@ -1547,9 +1562,13 @@ class CropActivity : ComponentActivity() {
             } catch (e: Exception) {
                 shareFile.delete()
                 withContext(Dispatchers.Main) {
+                    val message = when (e.message) {
+                        getString(R.string.target_size_unmet), getString(R.string.target_size_encode_failed) -> e.message
+                        else -> getString(R.string.share_metadata_export_failed)
+                    }
                     Toast.makeText(
                         this@CropActivity,
-                        getString(R.string.share_metadata_export_failed),
+                        message,
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -1760,8 +1779,11 @@ class CropActivity : ComponentActivity() {
         val targetSizeEnabled = exportSettings.targetSizeEnabled
         val targetSizeKb = exportSettings.targetSizeKb
         val useTargetSize = targetSizeEnabled && !forcePng && format != Bitmap.CompressFormat.PNG
+        val targetBytes = targetSizeKb.coerceIn(50, 5000).toLong() * 1024L
 
         var targetQuality: Int? = null
+        var targetFinalSize: Long? = null
+        var targetFailure: TargetCompressionResult? = null
         val publication = MediaStoreImageWriter.write(
             resolver = contentResolver,
             request = MediaStoreImageWriter.Request(
@@ -1771,13 +1793,30 @@ class CropActivity : ComponentActivity() {
             ),
             beforePublish = { uri ->
                 sourceUri?.let { src -> ExifTransfer.copyExif(contentResolver, src, uri, stripExif) }
+                if (useTargetSize) {
+                    val measuredSize = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+                    if (measuredSize !in 1L..targetBytes) throw IOException(getString(R.string.target_size_unmet))
+                    targetFinalSize = measuredSize
+                }
             },
         ) { output ->
             if (useTargetSize) {
-                val (bytes, usedQuality) = ExportPresetRenderer.compressToTarget(bitmap, format, targetSizeKb)
-                targetQuality = usedQuality
-                output.write(bytes)
-                bytes.isNotEmpty()
+                when (val result = ExportPresetRenderer.compressToTarget(
+                    bitmap,
+                    format,
+                    targetSizeKb,
+                    exportSettings.targetDownscalePolicy(),
+                )) {
+                    is TargetCompressionResult.WithinBudget -> {
+                        targetQuality = result.quality
+                        output.write(result.bytes)
+                        true
+                    }
+                    else -> {
+                        targetFailure = result
+                        false
+                    }
+                }
             } else {
                 bitmap.compress(format, quality, output)
             }
@@ -1787,7 +1826,15 @@ class CropActivity : ComponentActivity() {
                 this, DiagnosticOperation.EXPORT, DiagnosticStage.SAVE, DiagnosticResult.FAILED,
                 journalStarted, DiagnosticCode.PUBLISH_FAILURE, publication.cause,
             )
-            runOnUiThread { Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show() }
+            val message = when (targetFailure) {
+                is TargetCompressionResult.CannotMeetWithoutResize -> getString(R.string.target_size_unmet)
+                is TargetCompressionResult.EncoderFailure -> getString(R.string.target_size_encode_failed)
+                else -> when (publication.cause?.message) {
+                    getString(R.string.target_size_unmet) -> getString(R.string.target_size_unmet)
+                    else -> getString(R.string.toast_save_failed)
+                }
+            }
+            runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
             return
         }
         val success = publication as MediaStoreImageWriter.Result.Success
@@ -1795,7 +1842,7 @@ class CropActivity : ComponentActivity() {
 
         try {
             val baseMessage = if (useTargetSize) {
-                val sizeKb = success.bytesWritten / 1024
+                val sizeKb = checkNotNull(targetFinalSize) / 1024
                 getString(R.string.crop_saved_size, "${sizeKb}KB", checkNotNull(targetQuality))
             } else {
                 if (deleteOriginal) getString(R.string.crop_saved_path, savePath)

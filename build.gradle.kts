@@ -57,5 +57,5 @@ tasks.register("verifyBuildCacheSecurity") {
 
 allprojects {
     group = "com.sysadmindoc"
-    version = "6.72.0"
+    version = "6.73.0"
 }

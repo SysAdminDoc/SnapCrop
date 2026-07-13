@@ -33,6 +33,7 @@ internal object SettingsPreferenceSchema {
         boolean("ocr_text_sidecars"),
         boolean("app_crop_profiles"),
         boolean("target_size_enabled"),
+        boolean("target_size_allow_resize"),
         boolean("strip_exif"),
         boolean(NetworkExportSettings.PREF_ENABLED),
         boolean("watermark_enabled"),

@@ -33,6 +33,7 @@ class ExportPresetStoreTest {
             .putInt("jpeg_quality", 88)
             .putBoolean("target_size_enabled", true)
             .putInt("target_size_kb", 750)
+            .putBoolean("target_size_allow_resize", true)
             .putInt("border_size", 24)
             .putInt("border_color", 3)
             .putBoolean("watermark_enabled", true)
@@ -46,6 +47,7 @@ class ExportPresetStoreTest {
         assertEquals(ExportImageFormat.JPEG, preset.settings.format)
         assertEquals(88, preset.settings.quality)
         assertEquals(750, preset.settings.targetSizeKb)
+        assertTrue(preset.settings.targetSizeAllowResize)
         assertEquals(24, preset.settings.borderSize)
         assertEquals("Internal", preset.settings.watermarkText)
         assertEquals("Ticket_%counter%", preset.settings.filenameTemplate)
@@ -57,6 +59,7 @@ class ExportPresetStoreTest {
         assertTrue(prefs.getBoolean("use_jpeg", false))
         assertFalse(prefs.getBoolean("use_webp", false))
         assertEquals(88, prefs.getInt("jpeg_quality", 0))
+        assertTrue(prefs.getBoolean("target_size_allow_resize", false))
         assertEquals("Downloads/SnapCrop", prefs.getString("save_path", null))
     }
 
@@ -112,13 +115,15 @@ class ExportPresetStoreTest {
         val source = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val bordered = ExportPresetRenderer.applyBorder(source, settings)
         val watermarked = ExportPresetRenderer.applyWatermark(bordered, settings)
-        val (bytes, quality) = ExportPresetRenderer.compressToTarget(watermarked, Bitmap.CompressFormat.JPEG, 50)
+        val compression = ExportPresetRenderer.compressToTarget(watermarked, Bitmap.CompressFormat.JPEG, 50)
+        assertTrue(compression is TargetCompressionResult.WithinBudget)
+        compression as TargetCompressionResult.WithinBudget
 
         assertEquals(70, bordered.width)
         assertEquals(Color.WHITE, bordered.getPixel(0, 0))
         assertNotSame(bordered, watermarked)
-        assertTrue(bytes.size <= 50 * 1024)
-        assertTrue(quality in 10..100)
+        assertTrue(compression.bytes.size <= 50 * 1024)
+        assertTrue(compression.quality in 10..100)
         val filename = ExportPresetStore.nextFilename(prefs, settings, 1_700_000_000_000L)
         assertTrue(filename.matches(Regex("^Ticket_\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}_0001$")))
 

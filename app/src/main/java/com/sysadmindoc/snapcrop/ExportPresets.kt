@@ -7,7 +7,6 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,6 +26,7 @@ data class ExportSettings(
     val quality: Int = 95,
     val targetSizeEnabled: Boolean = false,
     val targetSizeKb: Int = 500,
+    val targetSizeAllowResize: Boolean = false,
     val borderSize: Int = 0,
     val borderColor: Int = 0,
     val watermarkEnabled: Boolean = false,
@@ -57,6 +57,7 @@ object ExportPresetStore {
             quality = prefs.getInt("jpeg_quality", 95),
             targetSizeEnabled = prefs.getBoolean("target_size_enabled", false),
             targetSizeKb = prefs.getInt("target_size_kb", 500),
+            targetSizeAllowResize = prefs.getBoolean("target_size_allow_resize", false),
             borderSize = prefs.getInt("border_size", 0),
             borderColor = prefs.getInt("border_color", 0),
             watermarkEnabled = prefs.getBoolean("watermark_enabled", false),
@@ -126,6 +127,7 @@ object ExportPresetStore {
             .putInt("jpeg_quality", value.quality)
             .putBoolean("target_size_enabled", value.targetSizeEnabled)
             .putInt("target_size_kb", value.targetSizeKb)
+            .putBoolean("target_size_allow_resize", value.targetSizeAllowResize)
             .putInt("border_size", value.borderSize)
             .putInt("border_color", value.borderColor)
             .putBoolean("watermark_enabled", value.watermarkEnabled)
@@ -169,6 +171,8 @@ object ExportPresetStore {
         quality = settings.quality.coerceIn(50, 100),
         targetSizeEnabled = settings.targetSizeEnabled && settings.format != ExportImageFormat.PNG,
         targetSizeKb = settings.targetSizeKb.coerceIn(50, 5000),
+        targetSizeAllowResize = settings.targetSizeAllowResize && settings.targetSizeEnabled &&
+            settings.format != ExportImageFormat.PNG,
         borderSize = settings.borderSize.coerceIn(0, 100),
         borderColor = settings.borderColor.coerceIn(0, 5),
         watermarkText = settings.watermarkText.take(120),
@@ -192,6 +196,7 @@ object ExportPresetStore {
         .put("quality", quality)
         .put("targetSizeEnabled", targetSizeEnabled)
         .put("targetSizeKb", targetSizeKb)
+        .put("targetSizeAllowResize", targetSizeAllowResize)
         .put("borderSize", borderSize)
         .put("borderColor", borderColor)
         .put("watermarkEnabled", watermarkEnabled)
@@ -204,6 +209,7 @@ object ExportPresetStore {
         quality = optInt("quality", 95),
         targetSizeEnabled = optBoolean("targetSizeEnabled", false),
         targetSizeKb = optInt("targetSizeKb", 500),
+        targetSizeAllowResize = optBoolean("targetSizeAllowResize", false),
         borderSize = optInt("borderSize", 0),
         borderColor = optInt("borderColor", 0),
         watermarkEnabled = optBoolean("watermarkEnabled", false),
@@ -259,29 +265,10 @@ object ExportPresetRenderer {
         return result
     }
 
-    fun compressToTarget(bitmap: Bitmap, format: Bitmap.CompressFormat, targetKb: Int): Pair<ByteArray, Int> {
-        var low = 10
-        var high = 100
-        var best: ByteArray? = null
-        var bestQuality = 10
-        while (low <= high) {
-            val quality = (low + high) / 2
-            val output = ByteArrayOutputStream()
-            bitmap.compress(format, quality, output)
-            val bytes = output.toByteArray()
-            if (bytes.size <= targetKb.coerceIn(50, 5000) * 1024) {
-                best = bytes
-                bestQuality = quality
-                low = quality + 1
-            } else {
-                high = quality - 1
-            }
-        }
-        if (best == null) {
-            val output = ByteArrayOutputStream()
-            bitmap.compress(format, 10, output)
-            best = output.toByteArray()
-        }
-        return requireNotNull(best) to bestQuality
-    }
+    internal fun compressToTarget(
+        bitmap: Bitmap,
+        format: Bitmap.CompressFormat,
+        targetKb: Int,
+        downscalePolicy: TargetDownscalePolicy = TargetDownscalePolicy.Never,
+    ): TargetCompressionResult = TargetSizeCompression.compress(bitmap, format, targetKb, downscalePolicy)
 }

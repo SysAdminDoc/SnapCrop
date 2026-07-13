@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Enforced target-size exports (v6.73.0).**
+
+- Replaced best-effort target compression with typed within-budget,
+  cannot-meet, and encoder-failure outcomes. Save, Share, and Quick Crop publish
+  only verified payloads and recheck the final size after metadata changes.
+- Added an explicit resolution-reduction opt-in that preserves aspect ratio,
+  never reduces either side below 320 px, and remains disabled by default.
+- Bounded every compression attempt to the configured byte budget in memory.
+  Native noisy JPEG/WebP, alpha PNG, impossible-budget, minimum-dimension,
+  format-preservation, and failing/throwing encoder tests cover the contract.
+
 **Bounded batch image intake (v6.72.0).**
 
 - Routed Home/Gallery batch auto-crop and resize through one shared intake policy:

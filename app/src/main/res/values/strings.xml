@@ -309,10 +309,14 @@
     <string name="settings_quality">Quality: %1$d%%</string>
     <string name="settings_quality_cd">Image quality, %1$d percent</string>
     <string name="settings_target_size_title">Target file size</string>
-    <string name="settings_target_size_lossy">Auto-adjust quality to meet a file size budget</string>
+    <string name="settings_target_size_lossy">Meet this budget or fail safely instead of saving a larger file</string>
     <string name="settings_target_size_unavailable">Available when JPEG or WebP is selected</string>
     <string name="settings_target_kb">Target: %1$dKB</string>
     <string name="settings_target_kb_cd">Target file size, %1$d kilobytes</string>
+    <string name="settings_target_resize_title">Allow resizing to meet budget</string>
+    <string name="settings_target_resize_subtitle">Preserve aspect ratio and never reduce either side below 320 px</string>
+    <string name="target_size_unmet">The file size budget could not be met with the allowed resolution</string>
+    <string name="target_size_encode_failed">The image could not be encoded for the file size budget</string>
     <string name="settings_strip_title">Prefer stripped metadata</string>
     <string name="share_metadata_title">Metadata privacy</string>
     <string name="share_metadata_summary">Detected categories: %1$s. Values stay hidden.</string>
