@@ -468,10 +468,14 @@ tasks.register("verifyOfficialRelease") {
         ) { "Optional OCR delivery report is incomplete" }
         val sbomText = sbom.readText()
         listOf("chinese", "japanese", "korean", "devanagari").forEach { script ->
-            check(!sbomText.contains("com.google.mlkit:text-recognition-$script")) {
+            check(!sbomText.contains("pkg:maven/com.google.mlkit/text-recognition-$script@")) {
                 "Bundled $script OCR dependency returned"
             }
-            check(sbomText.contains("com.google.android.gms:play-services-mlkit-text-recognition-$script")) {
+            check(
+                sbomText.contains(
+                    "pkg:maven/com.google.android.gms/play-services-mlkit-text-recognition-$script@"
+                )
+            ) {
                 "Thin $script OCR dependency is missing"
             }
         }

@@ -21,7 +21,10 @@ class ReleaseArtifactContractTest {
         assertTrue(build.contains("\"schemaVersion\": 3"))
         assertTrue(build.contains("sizeDeltaBytes"))
         assertTrue(build.contains("Bundled optional OCR assets remain"))
-        assertTrue(build.contains("com.google.android.gms:play-services-mlkit-text-recognition-"))
+        assertTrue(
+            build.contains("pkg:maven/com.google.android.gms/play-services-mlkit-text-recognition-")
+        )
+        assertTrue(build.contains("pkg:maven/com.google.mlkit/text-recognition-"))
         assertTrue(sourceFile("gradle/release-size-baseline.json").contains("241660484"))
     }
 
