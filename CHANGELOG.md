@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Signed architecture-specific release APKs (v6.79.0).**
+
+- Official distribution now publishes production-signed arm64-v8a,
+  armeabi-v7a, x86, and x86_64 APKs beside the stable universal asset while
+  ordinary debug builds keep their existing single-APK path.
+- Provenance schema 2 binds all five APK hashes, sizes, versions, certificates,
+  and ABIs to one hashed CycloneDX SBOM. The release gate rejects missing or
+  stale assets, mixed manifests/certificates, incorrect native payloads,
+  compressed ELF libraries, weak size reductions, or failed 16 KB alignment.
+- The in-app updater remains pinned to the exact universal filename. Obtainium
+  users can opt into documented exact per-ABI filters without x86/x86_64
+  ambiguity.
+
 **Renderer parity and side-effect regression gates (v6.78.0).**
 
 - Before/after now renders asynchronously through the exact Save/Copy/Share

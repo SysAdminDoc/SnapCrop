@@ -228,7 +228,7 @@ are blocked behind explicit opt-in and evaluation gates.
 
 ## Download
 
-Grab the latest versioned APK from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Each release also includes a CycloneDX JSON SBOM and a provenance JSON file. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
+Grab the latest universal `SnapCrop-<version>.apk` from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Smaller production-signed APKs are also published for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`; choose one only when the device ABI is known. Each release includes a shared CycloneDX JSON SBOM and a provenance JSON file covering every APK. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
 
 ### Automatic sideload updates with Obtainium
 
@@ -242,6 +242,14 @@ Grab the latest versioned APK from [**Releases**](https://github.com/SysAdminDoc
 Official release assets always use `SnapCrop-<version>.apk`; the in-app update
 checker opens that exact asset when GitHub publishes it and falls back to the
 release page if the expected name or trusted URL is absent.
+
+To let Obtainium download a smaller architecture-specific APK, replace the
+universal filter with exactly one of these patterns:
+
+- arm64-v8a: `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+-arm64-v8a\.apk$`
+- armeabi-v7a: `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+-armeabi-v7a\.apk$`
+- x86_64: `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+-x86_64\.apk$`
+- x86: `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+-x86\.apk$`
 
 **Requirements:**
 - Android 10+ (API 29)
@@ -343,9 +351,11 @@ cd SnapCrop
 ```
 
 Stable release artifacts are written to `app/build/outputs/provenance/` as
-`SnapCrop-<version>.apk`, `SnapCrop-<version>-sbom.json`, and
-`SnapCrop-<version>-provenance.json`. The manifest records the exact APK hash,
-certificate fingerprint, version metadata, source commit/state, and build command.
+the universal `SnapCrop-<version>.apk`, four `SnapCrop-<version>-<abi>.apk`
+assets, `SnapCrop-<version>-sbom.json`, and
+`SnapCrop-<version>-provenance.json`. The schema-2 manifest records every APK's
+ABI, byte size, hash, certificate fingerprint, synchronized version, shared SBOM
+hash, source commit/state, and build command.
 Gradle also verifies the pinned wrapper distribution/JAR and all resolved plugin,
 test, and release-runtime artifacts by SHA-256 against
 `gradle/verification-metadata.xml`; PGP signer records are retained for audit.
@@ -354,8 +364,10 @@ rejects Gradle/Kotlin build-cache or incremental-cache opt-ins for
 CVE-2026-53914. Trusted commands state the safe cache flags explicitly; normal
 dependency downloads remain cached and checksum-verified.
 The official-release task additionally requires the production keystore and
-pinned certificate, a clean worktree, synchronized app/root/SBOM versions,
-uncompressed ELF libraries, and successful 16 KB `zipalign` verification.
+pinned certificate, the exact five-APK asset set, a clean worktree, synchronized
+app/root/manifest/SBOM versions, correct native ABI contents, materially smaller
+split assets, uncompressed ELF libraries, and successful 16 KB `zipalign`
+verification for every APK.
 
 > Requires JDK 17 and the Android SDK. Official releases must show
 > `"sourceState": "clean"` and use the published certificate fingerprint.

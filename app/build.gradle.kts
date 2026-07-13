@@ -4,6 +4,7 @@ import java.time.Instant
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import groovy.json.JsonSlurper
 import org.cyclonedx.model.Component
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -29,6 +30,16 @@ val releaseStoreFile = rootProject.file(releaseStorePath)
 val hasReleaseKeystore = releaseStoreFile.exists()
         && signingValue("storePassword", "SNAPCROP_KEYSTORE_PASSWORD") != null
         && signingValue("keyPassword", "SNAPCROP_KEY_PASSWORD") != null
+val releaseAbis = listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+val releaseAbiSplitsEnabled = providers.gradleProperty("snapcrop.releaseAbiSplits")
+    .map { it.toBooleanStrict() }
+    .getOrElse(
+        gradle.startParameter.taskNames.any { taskName ->
+            taskName.contains("assembleRelease", ignoreCase = true) ||
+                    taskName.contains("generateReleaseProvenance", ignoreCase = true) ||
+                    taskName.contains("verifyOfficialRelease", ignoreCase = true)
+        }
+    )
 
 android {
     namespace = "com.sysadmindoc.snapcrop"
@@ -45,8 +56,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 130
-        versionName = "6.78.0"
+        versionCode = 131
+        versionName = "6.79.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -78,6 +89,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+    }
+
+    splits {
+        abi {
+            isEnable = releaseAbiSplitsEnabled
+            reset()
+            include(*releaseAbis.toTypedArray())
+            isUniversalApk = true
         }
     }
 
@@ -190,9 +210,9 @@ tasks.register("generateReleaseProvenance") {
     )
 
     val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
-    val releaseApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
+    val releaseApkDirectory = layout.buildDirectory.dir("outputs/apk/release")
     val releaseSbom = layout.buildDirectory.file("reports/cyclonedx-direct/bom.json")
-    inputs.file(releaseApk)
+    inputs.dir(releaseApkDirectory)
     inputs.file(releaseSbom)
     outputs.dir(provenanceDirectory)
 
@@ -200,15 +220,31 @@ tasks.register("generateReleaseProvenance") {
         val versionName = android.defaultConfig.versionName
             ?: error("versionName is required for release provenance")
         val versionCode = android.defaultConfig.versionCode
-        val sourceApk = releaseApk.get().asFile
+        val sourceApks = linkedMapOf(
+            "universal" to releaseApkDirectory.get().asFile.resolve("app-universal-release.apk"),
+        ).apply {
+            releaseAbis.forEach { abi ->
+                put(abi, releaseApkDirectory.get().asFile.resolve("app-$abi-release.apk"))
+            }
+        }
         val sourceSbom = releaseSbom.get().asFile
-        require(sourceApk.isFile) { "Release APK was not produced: $sourceApk" }
+        sourceApks.forEach { (abi, sourceApk) ->
+            require(sourceApk.isFile) { "Release APK was not produced for $abi: $sourceApk" }
+        }
         require(sourceSbom.isFile) { "CycloneDX JSON SBOM was not produced: $sourceSbom" }
 
-        val outputDir = provenanceDirectory.get().asFile.apply { mkdirs() }
-        val stableApk = outputDir.resolve("SnapCrop-$versionName.apk")
+        val outputDir = provenanceDirectory.get().asFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val stableApks = sourceApks.mapValuesTo(linkedMapOf()) { (abi, sourceApk) ->
+            val suffix = if (abi == "universal") "" else "-$abi"
+            outputDir.resolve("SnapCrop-$versionName$suffix.apk").also { stableApk ->
+                sourceApk.copyTo(stableApk, overwrite = true)
+            }
+        }
+        val stableApk = stableApks.getValue("universal")
         val stableSbom = outputDir.resolve("SnapCrop-$versionName-sbom.json")
-        sourceApk.copyTo(stableApk, overwrite = true)
         sourceSbom.copyTo(stableSbom, overwrite = true)
 
         fun sha256(file: File): String {
@@ -247,15 +283,21 @@ tasks.register("generateReleaseProvenance") {
             }
         )
         require(apksigner.isFile) { "apksigner was not found: $apksigner" }
-        val signerOutput = providers.exec {
-            commandLine(apksigner.absolutePath, "verify", "--print-certs", stableApk.absolutePath)
-        }.standardOutput.asText.get()
-        val certificateDigest = Regex(
-            "certificate SHA-256 digest: ([0-9a-fA-F]+)"
-        ).find(signerOutput)?.groupValues?.get(1)
-            ?: error("apksigner did not report a SHA-256 certificate digest")
-        val certificateFingerprint = certificateDigest.chunked(2)
-            .joinToString(":").uppercase(Locale.ROOT)
+        fun signingCertificate(file: File): String {
+            val signerOutput = providers.exec {
+                commandLine(apksigner.absolutePath, "verify", "--print-certs", file.absolutePath)
+            }.standardOutput.asText.get()
+            val certificateDigest = Regex(
+                "certificate SHA-256 digest: ([0-9a-fA-F]+)"
+            ).find(signerOutput)?.groupValues?.get(1)
+                ?: error("apksigner did not report a SHA-256 certificate digest for ${file.name}")
+            return certificateDigest.chunked(2).joinToString(":").uppercase(Locale.ROOT)
+        }
+        val artifactCertificates = stableApks.mapValues { (_, file) -> signingCertificate(file) }
+        val certificateFingerprint = artifactCertificates.getValue("universal")
+        require(artifactCertificates.values.toSet() == setOf(certificateFingerprint)) {
+            "Release APKs were signed by different certificates"
+        }
 
         val sourceCommit = providers.exec {
             commandLine("git", "rev-parse", "HEAD")
@@ -265,11 +307,27 @@ tasks.register("generateReleaseProvenance") {
             commandLine("git", "status", "--porcelain")
         }.standardOutput.asText.get().trim().let { if (it.isEmpty()) "clean" else "dirty" }
         val command = ".\\gradlew.bat --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:generateReleaseProvenance --console=plain"
+        val artifactsJson = stableApks.entries.joinToString(",\n") { (abi, file) ->
+            """
+                {
+                  "abi": "$abi",
+                  "kind": "${if (abi == "universal") "universal" else "abi"}",
+                  "apk": "${file.name}",
+                  "apkSha256": "${sha256(file)}",
+                  "sizeBytes": ${file.length()},
+                  "versionName": "$versionName",
+                  "versionCode": $versionCode,
+                  "signingCertificateSha256": "${artifactCertificates.getValue(abi)}",
+                  "sbom": "${stableSbom.name}",
+                  "sbomSha256": "${sha256(stableSbom)}"
+                }
+            """.trimIndent()
+        }.prependIndent("    ")
         val provenance = outputDir.resolve("SnapCrop-$versionName-provenance.json")
         provenance.writeText(
             """
             {
-              "schemaVersion": 1,
+              "schemaVersion": 2,
               "project": "SnapCrop",
               "versionName": "$versionName",
               "versionCode": $versionCode,
@@ -277,10 +335,14 @@ tasks.register("generateReleaseProvenance") {
               "apkSha256": "${sha256(stableApk)}",
               "signingCertificateSha256": "$certificateFingerprint",
               "sbom": "${stableSbom.name}",
+              "sbomSha256": "${sha256(stableSbom)}",
               "sourceCommit": "$sourceCommit",
               "sourceState": "$sourceState",
               "buildCommand": "${command.replace("\\", "\\\\")}",
-              "generatedAtUtc": "${Instant.now()}"
+              "generatedAtUtc": "${Instant.now()}",
+              "artifacts": [
+$artifactsJson
+              ]
             }
             """.trimIndent() + "\n"
         )
@@ -298,42 +360,75 @@ tasks.register("verifyOfficialRelease") {
             "Official release requires keystore.properties or SNAPCROP_KEYSTORE_* production credentials"
         }
         val versionName = android.defaultConfig.versionName ?: error("versionName is required")
+        val versionCode = android.defaultConfig.versionCode
         val outputDir = layout.buildDirectory.dir("outputs/provenance").get().asFile
-        val apk = outputDir.resolve("SnapCrop-$versionName.apk")
+        val stableApks = linkedMapOf(
+            "universal" to outputDir.resolve("SnapCrop-$versionName.apk"),
+        ).apply {
+            releaseAbis.forEach { abi -> put(abi, outputDir.resolve("SnapCrop-$versionName-$abi.apk")) }
+        }
         val sbom = outputDir.resolve("SnapCrop-$versionName-sbom.json")
         val provenance = outputDir.resolve("SnapCrop-$versionName-provenance.json")
-        check(apk.isFile && sbom.isFile && provenance.isFile) { "Versioned release artifacts are missing" }
-        val json = provenance.readText()
-        fun jsonValue(name: String): String = Regex("\\\"$name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
-            .find(json)?.groupValues?.get(1) ?: error("Missing provenance field: $name")
+        val expectedFiles = stableApks.values.mapTo(mutableSetOf()) { it.name }.apply {
+            add(sbom.name)
+            add(provenance.name)
+        }
+        val actualFiles = outputDir.listFiles()?.filter(File::isFile)?.mapTo(mutableSetOf()) { it.name }.orEmpty()
+        check(actualFiles == expectedFiles) {
+            "Official release asset set mismatch: expected $expectedFiles, got $actualFiles"
+        }
+        check(stableApks.values.all(File::isFile) && sbom.isFile && provenance.isFile) {
+            "Versioned release artifacts are missing"
+        }
+
+        val provenanceData = JsonSlurper().parse(provenance) as? Map<*, *>
+            ?: error("Release provenance root must be an object")
+        fun field(map: Map<*, *>, name: String): Any = map[name]
+            ?: error("Missing provenance field: $name")
+        fun normalizeCertificate(value: Any): String = value.toString().replace(":", "").uppercase(Locale.ROOT)
+        fun sha256(file: File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
         val expectedCertificate = providers.gradleProperty("snapcrop.releaseCertificateSha256")
             .orNull?.replace(":", "")?.uppercase(Locale.ROOT)
             ?: error("snapcrop.releaseCertificateSha256 must be pinned in gradle.properties")
-        val actualCertificate = jsonValue("signingCertificateSha256").replace(":", "").uppercase(Locale.ROOT)
+        val actualCertificate = normalizeCertificate(field(provenanceData, "signingCertificateSha256"))
         check(actualCertificate == expectedCertificate) {
             "Signing certificate mismatch: expected $expectedCertificate, got $actualCertificate"
         }
-        check(jsonValue("versionName") == versionName) { "Provenance versionName is not synchronized" }
+        check(field(provenanceData, "schemaVersion").toString().toInt() == 2) {
+            "Official release requires provenance schema 2"
+        }
+        check(field(provenanceData, "versionName") == versionName) { "Provenance versionName is not synchronized" }
+        check(field(provenanceData, "versionCode").toString().toInt() == versionCode) {
+            "Provenance versionCode is not synchronized"
+        }
         check(rootProject.version.toString() == versionName) { "Root and app versions are not synchronized" }
+        val universalApk = stableApks.getValue("universal")
+        check(field(provenanceData, "apk") == universalApk.name &&
+                field(provenanceData, "apkSha256") == sha256(universalApk)) {
+            "Legacy universal APK provenance is not synchronized"
+        }
+        val sbomHash = sha256(sbom)
+        check(field(provenanceData, "sbom") == sbom.name && field(provenanceData, "sbomSha256") == sbomHash) {
+            "Provenance SBOM identity or hash is not synchronized"
+        }
         val sbomVersion = Regex("\\\"name\\\"\\s*:\\s*\\\"app\\\"\\s*,\\s*\\\"version\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
             .find(sbom.readText())?.groupValues?.get(1)
             ?: error("SBOM application version is missing")
         check(sbomVersion == versionName) { "SBOM and app versions are not synchronized" }
         val allowDirty = providers.gradleProperty("allowDirtyOfficialVerification").orNull == "true"
-        check(allowDirty || jsonValue("sourceState") == "clean") {
+        check(allowDirty || field(provenanceData, "sourceState") == "clean") {
             "Official releases require a clean Git worktree"
-        }
-
-        ZipFile(apk).use { zip ->
-            val nativeEntries = zip.entries().asSequence().filter { it.name.startsWith("lib/") && it.name.endsWith(".so") }.toList()
-            check(nativeEntries.isNotEmpty()) { "No native libraries found for 16 KB compatibility verification" }
-            nativeEntries.forEach { entry ->
-                check(entry.method == ZipEntry.STORED) { "Native library is compressed: ${entry.name}" }
-                val magic = zip.getInputStream(entry).use { it.readNBytes(4) }
-                check(magic.contentEquals(byteArrayOf(0x7F, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte()))) {
-                    "Native entry is not ELF: ${entry.name}"
-                }
-            }
         }
 
         val localProperties = Properties().apply {
@@ -346,12 +441,107 @@ tasks.register("verifyOfficialRelease") {
             ?.filter(File::isDirectory)
             ?.maxByOrNull { dir -> dir.name.split('.').joinToString("") { it.padStart(4, '0') } }
             ?: error("Android build-tools not found")
+        val windows = System.getProperty("os.name").startsWith("Windows", true)
+        val apksigner = buildToolsDir.resolve(if (windows) "apksigner.bat" else "apksigner")
         val zipalign = buildToolsDir.resolve(if (System.getProperty("os.name").startsWith("Windows", true)) "zipalign.exe" else "zipalign")
+        val apkanalyzerName = if (windows) "apkanalyzer.bat" else "apkanalyzer"
+        val apkanalyzer = sdkDirectory.resolve("cmdline-tools").walkTopDown()
+            .firstOrNull { it.isFile && it.name.equals(apkanalyzerName, ignoreCase = windows) }
+            ?: error("apkanalyzer not found under ${sdkDirectory.resolve("cmdline-tools")}")
+        check(apksigner.isFile) { "apksigner not found: $apksigner" }
         check(zipalign.isFile) { "zipalign not found: $zipalign" }
-        providers.exec {
-            commandLine(zipalign.absolutePath, "-c", "-P", "16", "-v", "4", apk.absolutePath)
-        }.result.get().assertNormalExitValue()
-        logger.lifecycle("Official release gate passed: ${apk.absolutePath}")
+        fun toolOutput(tool: File, vararg args: String): String = providers.exec {
+            commandLine(tool.absolutePath, *args)
+        }.standardOutput.asText.get().trim()
+
+        val artifactList = field(provenanceData, "artifacts") as? List<*>
+            ?: error("Provenance artifacts must be an array")
+        val artifactEntries = artifactList.map { entry ->
+            entry as? Map<*, *> ?: error("Every provenance artifact must be an object")
+        }
+        val artifactsByAbi = artifactEntries.associateBy { field(it, "abi").toString() }
+        check(artifactEntries.size == stableApks.size && artifactsByAbi.keys == stableApks.keys) {
+            "Provenance ABI set mismatch: expected ${stableApks.keys}, got ${artifactsByAbi.keys}"
+        }
+
+        val manifestMinSdks = mutableSetOf<String>()
+        val manifestTargetSdks = mutableSetOf<String>()
+        stableApks.forEach { (abi, apk) ->
+            val artifact = artifactsByAbi.getValue(abi)
+            val expectedKind = if (abi == "universal") "universal" else "abi"
+            check(field(artifact, "kind") == expectedKind) { "Incorrect artifact kind for $abi" }
+            check(field(artifact, "apk") == apk.name) { "Incorrect provenance filename for $abi" }
+            check(field(artifact, "apkSha256") == sha256(apk)) { "APK hash mismatch for ${apk.name}" }
+            check(field(artifact, "sizeBytes").toString().toLong() == apk.length()) {
+                "APK size mismatch for ${apk.name}"
+            }
+            check(field(artifact, "versionName") == versionName &&
+                    field(artifact, "versionCode").toString().toInt() == versionCode) {
+                "Provenance version mismatch for ${apk.name}"
+            }
+            check(normalizeCertificate(field(artifact, "signingCertificateSha256")) == expectedCertificate) {
+                "Provenance certificate mismatch for ${apk.name}"
+            }
+            check(field(artifact, "sbom") == sbom.name && field(artifact, "sbomSha256") == sbomHash) {
+                "SBOM binding mismatch for ${apk.name}"
+            }
+
+            val signerOutput = toolOutput(apksigner, "verify", "--verbose", "--print-certs", apk.absolutePath)
+            val signedCertificate = Regex("certificate SHA-256 digest: ([0-9a-fA-F]+)")
+                .find(signerOutput)?.groupValues?.get(1)?.uppercase(Locale.ROOT)
+                ?: error("apksigner did not report a certificate for ${apk.name}")
+            check(signedCertificate == expectedCertificate) { "APK certificate mismatch for ${apk.name}" }
+
+            check(toolOutput(apkanalyzer, "manifest", "application-id", apk.absolutePath) == android.namespace) {
+                "Application ID mismatch for ${apk.name}"
+            }
+            check(toolOutput(apkanalyzer, "manifest", "version-name", apk.absolutePath) == versionName) {
+                "Manifest versionName mismatch for ${apk.name}"
+            }
+            check(toolOutput(apkanalyzer, "manifest", "version-code", apk.absolutePath) == versionCode.toString()) {
+                "Manifest versionCode mismatch for ${apk.name}"
+            }
+            manifestMinSdks += toolOutput(apkanalyzer, "manifest", "min-sdk", apk.absolutePath)
+            manifestTargetSdks += toolOutput(apkanalyzer, "manifest", "target-sdk", apk.absolutePath)
+
+            ZipFile(apk).use { zip ->
+                val nativeEntries = zip.entries().asSequence()
+                    .filter { it.name.startsWith("lib/") && it.name.endsWith(".so") }
+                    .toList()
+                check(nativeEntries.isNotEmpty()) {
+                    "No native libraries found for 16 KB compatibility verification in ${apk.name}"
+                }
+                val nativeAbis = nativeEntries.mapTo(mutableSetOf()) {
+                    it.name.substringAfter("lib/").substringBefore('/')
+                }
+                val expectedAbis = if (abi == "universal") releaseAbis.toSet() else setOf(abi)
+                check(nativeAbis == expectedAbis) {
+                    "Native ABI set mismatch for ${apk.name}: expected $expectedAbis, got $nativeAbis"
+                }
+                nativeEntries.forEach { entry ->
+                    check(entry.method == ZipEntry.STORED) { "Native library is compressed: ${entry.name}" }
+                    val magic = zip.getInputStream(entry).use { it.readNBytes(4) }
+                    check(magic.contentEquals(byteArrayOf(0x7F, 'E'.code.toByte(), 'L'.code.toByte(), 'F'.code.toByte()))) {
+                        "Native entry is not ELF: ${entry.name}"
+                    }
+                }
+            }
+
+            providers.exec {
+                commandLine(zipalign.absolutePath, "-c", "-P", "16", "-v", "4", apk.absolutePath)
+            }.result.get().assertNormalExitValue()
+        }
+        check(manifestMinSdks == setOf("29") && manifestTargetSdks == setOf("37")) {
+            "Manifest SDK levels are inconsistent: min=$manifestMinSdks target=$manifestTargetSdks"
+        }
+        val universalSize = universalApk.length()
+        releaseAbis.forEach { abi ->
+            val splitSize = stableApks.getValue(abi).length()
+            check(splitSize <= universalSize * 0.8) {
+                "${stableApks.getValue(abi).name} is not materially smaller than the universal APK"
+            }
+        }
+        logger.lifecycle("Official release gate passed for ${stableApks.size} APKs in ${outputDir.absolutePath}")
     }
 }
 
