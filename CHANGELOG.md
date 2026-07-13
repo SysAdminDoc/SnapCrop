@@ -16,7 +16,7 @@ All notable changes to SnapCrop will be documented in this file.
   comes from ML Kit's model inventory rather than stale preferences.
 - Release provenance schema 3 records the v6.82 universal/per-ABI size baseline,
   reports each APK delta, rejects bundled optional-script assets, and enforces at
-  least a 1.5 MB reduction. The thin build removes about 2.38 MB from every APK.
+  least a 1.5 MB reduction. The thin build removes 2,330,760 bytes from every APK.
 - Host contracts, accessibility routing, and error-path tests pass. The Android 17
   preview emulator's current Play services module installer returns
   `INTERNAL_ERROR`; that single live-download assertion is an explicit assumption
