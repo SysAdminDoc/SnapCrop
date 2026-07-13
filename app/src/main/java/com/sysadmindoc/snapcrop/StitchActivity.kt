@@ -307,7 +307,7 @@ private fun StitchScreen(
         ) {
             val verticalCd = stringResource(
                 R.string.stitch_vertical_cd,
-                if (isVertical) stringResource(R.string.selected_suffix) else ""
+                ""
             )
             FilterChip(
                 selected = isVertical,
@@ -323,7 +323,7 @@ private fun StitchScreen(
             )
             val horizontalCd = stringResource(
                 R.string.stitch_horizontal_cd,
-                if (!isVertical) stringResource(R.string.selected_suffix) else ""
+                ""
             )
             FilterChip(
                 selected = !isVertical,
@@ -383,7 +383,7 @@ private fun StitchScreen(
                             if (index > 0) {
                                 IconButton(
                                     onClick = { onMoveUp(index) },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(48.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                 ) { Icon(Icons.Default.ArrowUpward, stringResource(R.string.stitch_move_up_cd, index + 1), tint = OnMediaSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
@@ -391,14 +391,14 @@ private fun StitchScreen(
                             if (index < uris.size - 1) {
                                 IconButton(
                                     onClick = { onMoveDown(index) },
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(48.dp)
                                         .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
                                 ) { Icon(Icons.Default.ArrowDownward, stringResource(R.string.stitch_move_down_cd, index + 1), tint = OnMediaSurface, modifier = Modifier.size(18.dp)) }
                                 Spacer(Modifier.width(4.dp))
                             }
                             IconButton(
                                 onClick = { onRemoveImage(index) },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(48.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Danger, modifier = Modifier.size(18.dp)) }
                         }
@@ -425,7 +425,7 @@ private fun StitchScreen(
                         Column(Modifier.align(Alignment.TopEnd).padding(4.dp)) {
                             IconButton(
                                 onClick = { onRemoveImage(index) },
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(48.dp)
                                     .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) { Icon(Icons.Default.Close, stringResource(R.string.stitch_remove_cd, index + 1), tint = Danger, modifier = Modifier.size(18.dp)) }
                         }

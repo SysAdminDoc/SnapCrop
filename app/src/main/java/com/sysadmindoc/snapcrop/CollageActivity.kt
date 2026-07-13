@@ -31,6 +31,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -395,8 +398,7 @@ private fun CollageScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(layouts, key = { it.name }) { l ->
-                val selectedSuffix = if (layout == l) stringResource(R.string.selected_suffix) else ""
-                val layoutCd = stringResource(R.string.collage_layout_cd, l.name, l.slots, selectedSuffix)
+                val layoutCd = stringResource(R.string.collage_layout_cd, l.name, l.slots, "")
                 FilterChip(
                     selected = layout == l,
                     onClick = { onLayoutChange(l) },
@@ -415,7 +417,7 @@ private fun CollageScreen(
         // Spacing slider
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            val gapCd = stringResource(R.string.collage_gap_cd, spacing)
+            val gapCd = stringResource(R.string.collage_gap)
             Text(stringResource(R.string.collage_gap_px, spacing), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(56.dp))
             Slider(
                 value = spacing.toFloat(), onValueChange = { onSpacingChange(it.toInt()) },
@@ -437,7 +439,7 @@ private fun CollageScreen(
                 val aspectCd = stringResource(
                     R.string.collage_aspect_cd,
                     label,
-                    if (isSelected) stringResource(R.string.selected_suffix) else ""
+                    ""
                 )
                 FilterChip(
                     selected = isSelected,
@@ -466,14 +468,16 @@ private fun CollageScreen(
                 val bgCd = stringResource(
                     R.string.collage_background_cd,
                     name,
-                    if (i == bgColorIdx) stringResource(R.string.selected_suffix) else ""
+                    ""
                 )
                 Box(
-                    Modifier.size(36.dp)
+                    Modifier.size(48.dp)
                         .semantics {
                             contentDescription = bgCd
+                            selected = i == bgColorIdx
+                            role = Role.RadioButton
                         }
-                        .clickable { onBgColorChange(i) }
+                        .clickable(role = Role.RadioButton) { onBgColorChange(i) }
                 ) {
                     Box(
                         Modifier
@@ -530,11 +534,10 @@ private fun CollageScreen(
                                         .semantics {
                                             contentDescription = cellCd
                                         }
-                                        .clickable {
-                                            // Occupied cell: long-press would remove, single-tap is no-op
-                                            // to prevent accidental edits. Empty cell appends new images.
-                                            if (!occupied) onAddImage()
-                                        },
+                                        .then(
+                                            if (!occupied) Modifier.clickable(role = Role.Button, onClick = onAddImage)
+                                            else Modifier,
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (occupied) {
@@ -546,7 +549,7 @@ private fun CollageScreen(
                                         )
                                         IconButton(
                                             onClick = { onRemoveImage(idx) },
-                                            modifier = Modifier.align(Alignment.TopEnd).size(36.dp)
+                                            modifier = Modifier.align(Alignment.TopEnd).size(48.dp)
                                                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
                                         ) {
                                             Icon(Icons.Default.Close, removeCellDescription,

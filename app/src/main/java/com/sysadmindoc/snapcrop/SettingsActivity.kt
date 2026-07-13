@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -784,7 +786,7 @@ class SettingsActivity : ComponentActivity() {
                                     stylePresets.removeAt(idx)
                                     DrawStylePresetStore.save(prefs, stylePresets.toList())
                                     if (styleDefault == preset.name) { styleDefault = null; DrawStylePresetStore.setDefault(prefs, null) }
-                                }, modifier = Modifier.size(36.dp)) {
+                                }, modifier = Modifier.size(48.dp)) {
                                     Icon(Icons.Default.Delete, stringResource(R.string.delete) + " ${preset.name}", tint = Danger, modifier = Modifier.size(16.dp))
                                 }
                             }
@@ -1154,11 +1156,16 @@ class SettingsActivity : ComponentActivity() {
                                     Text(stringResource(R.string.settings_border_color), color = OnSurfaceVariant, fontSize = 11.sp)
                                     borderColors.forEachIndexed { i, (color, name) ->
                                         Box(
-                                            Modifier.size(36.dp)
+                                            Modifier.size(48.dp)
                                                 .semantics {
-                                                    contentDescription = "$name border color${if (i == borderColorIdx) ", selected" else ""}"
+                                                    contentDescription = "$name border color"
+                                                    selected = i == borderColorIdx
+                                                    role = Role.RadioButton
                                                 }
-                                                .clickable { borderColorIdx = i; prefs.edit().putInt("border_color", i).apply() }
+                                                .clickable(role = Role.RadioButton) {
+                                                    borderColorIdx = i
+                                                    prefs.edit().putInt("border_color", i).apply()
+                                                }
                                         ) {
                                             Box(
                                                 Modifier

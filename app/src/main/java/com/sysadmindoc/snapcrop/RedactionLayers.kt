@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,7 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,10 +124,6 @@ internal fun RedactionLayerPanel(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelectRegion(actualIndex) }
-                            .semantics {
-                                contentDescription = "$categoryLabel redaction, $stateLabel, $styleLabel"
-                            }
                             .background(
                                 when {
                                     isSelected -> Secondary.copy(alpha = 0.22f)
@@ -134,32 +135,47 @@ internal fun RedactionLayerPanel(
                             .padding(start = 8.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            Modifier.size(18.dp)
-                                .background(redactionStyleColor(region.style), RoundedCornerShape(4.dp))
-                                .border(1.dp, OnSurfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                categoryLabel,
-                                color = if (region.enabled) OnSurface else OnSurfaceVariant,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .selectable(
+                                    selected = isSelected,
+                                    role = Role.RadioButton,
+                                    onClick = { onSelectRegion(actualIndex) },
+                                )
+                                .semantics {
+                                    contentDescription = "$categoryLabel redaction, $stateLabel, $styleLabel"
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier.size(18.dp)
+                                    .background(redactionStyleColor(region.style), RoundedCornerShape(4.dp))
+                                    .border(1.dp, OnSurfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
                             )
-                            Text(
-                                stringResource(R.string.redactions_region_subtitle, actualIndex + 1, styleLabel, stateLabel),
-                                color = OnSurfaceVariant,
-                                fontSize = 10.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    categoryLabel,
+                                    color = if (region.enabled) OnSurface else OnSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    stringResource(R.string.redactions_region_subtitle, actualIndex + 1, styleLabel, stateLabel),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                         IconButton(
                             onClick = { onToggleRegion(actualIndex) },
-                            modifier = Modifier.size(36.dp).semantics {
+                            modifier = Modifier.size(48.dp).semantics {
                                 contentDescription = if (region.enabled) "Disable $categoryLabel redaction" else "Enable $categoryLabel redaction"
                             }
                         ) {
@@ -172,7 +188,7 @@ internal fun RedactionLayerPanel(
                         }
                         IconButton(
                             onClick = { onDeleteRegion(actualIndex) },
-                            modifier = Modifier.size(36.dp).semantics {
+                            modifier = Modifier.size(48.dp).semantics {
                                 contentDescription = "Delete $categoryLabel redaction"
                             }
                         ) {

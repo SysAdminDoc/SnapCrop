@@ -2846,7 +2846,7 @@ private fun HomeScreen(
                 color = SurfaceContainer,
                 shape = RoundedCornerShape(10.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
-                modifier = Modifier.size(44.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     Icons.Default.CropOriginal,
@@ -2870,10 +2870,10 @@ private fun HomeScreen(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onOpenHelp, modifier = Modifier.size(44.dp)) {
+            IconButton(onClick = onOpenHelp, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.AutoMirrored.Filled.HelpOutline, stringResource(R.string.help_content_description), tint = OnSurfaceVariant)
             }
-            IconButton(onClick = onOpenSettings, modifier = Modifier.size(44.dp)) {
+            IconButton(onClick = onOpenSettings, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.Settings, stringResource(R.string.home_settings), tint = OnSurfaceVariant)
             }
         }
@@ -3402,12 +3402,11 @@ private fun RecentCropTile(
         modifier = Modifier
             .size(84.dp, 144.dp)
             .clip(RoundedCornerShape(10.dp))
-            .clickable(onClick = onOpen)
     ) {
         Image(
             bitmap = crop.thumbBitmap,
             contentDescription = stringResource(R.string.home_open_crop_cd),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().clickable(role = Role.Button, onClick = onOpen),
             contentScale = ContentScale.Crop
         )
         Column(
@@ -3417,7 +3416,7 @@ private fun RecentCropTile(
             IconButton(
                 onClick = onCopy,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
             ) {
                 Icon(
@@ -3430,7 +3429,7 @@ private fun RecentCropTile(
             IconButton(
                 onClick = onDelete,
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(8.dp))
             ) {
                 Icon(

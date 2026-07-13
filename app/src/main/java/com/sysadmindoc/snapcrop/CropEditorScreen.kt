@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -1147,6 +1148,7 @@ fun CropEditorScreen(
             .imePadding()
     ) {
         val isWideLayout = editorLayoutClass(maxWidth.value, maxHeight.value) == EditorLayoutClass.Wide
+        val isShortLayout = maxHeight < 480.dp
         val sidePanelWidth = editorSidePanelWidthDp(maxWidth.value).dp
 
         @Composable
@@ -1175,7 +1177,10 @@ fun CropEditorScreen(
                     value = value,
                     onValueChange = onChange,
                     valueRange = range,
-                    modifier = Modifier.weight(1f).semantics { contentDescription = "$label, $valueLabel" },
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = label
+                        stateDescription = valueLabel
+                    },
                     colors = SliderDefaults.colors(
                         thumbColor = color,
                         activeTrackColor = color,
@@ -1207,6 +1212,7 @@ fun CropEditorScreen(
                                 FilterChip(
                                     selected = editMode == mode,
                                     onClick = { selectEditMode(mode) },
+                                    modifier = Modifier.height(48.dp),
                                     label = { Text(label, fontSize = 11.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = color.copy(alpha = 0.25f),
@@ -1276,7 +1282,7 @@ fun CropEditorScreen(
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier
-                                        .sizeIn(minWidth = 40.dp, minHeight = 44.dp)
+                                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                         .semantics { contentDescription = paletteCd }
                                         .clickable {
                                         val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -1337,7 +1343,7 @@ fun CropEditorScreen(
                             ),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(36.dp)) {
+                        IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
                         }
                     }
@@ -1455,19 +1461,25 @@ fun CropEditorScreen(
                                     shape = RoundedCornerShape(8.dp)
                                 )
                             }
-                            IconButton(onClick = { eyedropperActive = !eyedropperActive }, modifier = Modifier.size(36.dp)) {
+                            IconButton(
+                                onClick = { eyedropperActive = !eyedropperActive },
+                                modifier = Modifier.size(48.dp).semantics { selected = eyedropperActive },
+                            ) {
                                 Icon(Icons.Default.Colorize, stringResource(R.string.draw_eyedropper), tint = if (eyedropperActive) Primary else OnSurfaceVariant, modifier = Modifier.size(16.dp))
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val selectedSuffix = stringResource(R.string.selected_suffix)
                             drawColors.take(7).forEach { (color, name) ->
                                 val selected = drawColor == color
                                 Box(
                                     Modifier
-                                        .size(36.dp)
-                                        .semantics { contentDescription = "$name color${if (selected) selectedSuffix else ""}" }
-                                        .clickable { drawColor = color; eyedropperActive = false }
+                                        .size(48.dp)
+                                        .semantics {
+                                            contentDescription = "$name color"
+                                            this.selected = selected
+                                            role = Role.RadioButton
+                                        }
+                                        .clickable(role = Role.RadioButton) { drawColor = color; eyedropperActive = false }
                                 ) {
                                     Box(
                                         Modifier
@@ -1586,14 +1598,14 @@ fun CropEditorScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDiscard() }, modifier = Modifier.size(44.dp)) {
+                IconButton(onClick = { if (hasUnsavedChanges) showDiscardDialog = true else onDiscard() }, modifier = Modifier.size(48.dp)) {
                     Icon(Icons.Default.Close, stringResource(R.string.editor_close), tint = OnSurface, modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(44.dp)) {
+                IconButton(onClick = { undo() }, enabled = undoStack.isNotEmpty(), modifier = Modifier.size(48.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.Undo, stringResource(R.string.editor_undo),
                         tint = if (undoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(44.dp)) {
+                IconButton(onClick = { redo() }, enabled = redoStack.isNotEmpty(), modifier = Modifier.size(48.dp)) {
                     Icon(@Suppress("DEPRECATION") Icons.Default.Redo, stringResource(R.string.editor_redo),
                         tint = if (redoStack.isNotEmpty()) OnSurface else OnSurface.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
                 }
@@ -1601,7 +1613,7 @@ fun CropEditorScreen(
 
             // Info: dimensions + method + crop %
             Row(verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clickable { showCropInputDialog = true }) {
+                modifier = Modifier.heightIn(min = 48.dp).clickable(role = Role.Button) { showCropInputDialog = true }) {
                 if (methodLabel.isNotEmpty()) {
                     Surface(color = SurfaceVariant, shape = RoundedCornerShape(6.dp)) {
                         Text(methodLabel, Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -1618,12 +1630,15 @@ fun CropEditorScreen(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { previewMode = !previewMode }, modifier = Modifier.size(44.dp)) {
+                IconButton(
+                    onClick = { previewMode = !previewMode },
+                    modifier = Modifier.size(48.dp).semantics { selected = previewMode },
+                ) {
                     Icon(if (previewMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                         stringResource(R.string.crop_preview), tint = if (previewMode) Primary else OnSurface, modifier = Modifier.size(20.dp))
                 }
                 Box {
-                    IconButton(onClick = { showEditorMenu = true }, modifier = Modifier.size(44.dp)) {
+                    IconButton(onClick = { showEditorMenu = true }, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.Default.MoreVert, stringResource(R.string.more_actions), tint = OnSurface, modifier = Modifier.size(20.dp))
                     }
                     DropdownMenu(
@@ -1720,6 +1735,7 @@ fun CropEditorScreen(
                     FilterChip(
                         selected = editMode == mode,
                         onClick = { selectEditMode(mode) },
+                        modifier = Modifier.height(48.dp),
                         label = { Text(label, fontSize = 11.sp) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = color.copy(alpha = 0.25f), selectedLabelColor = color,
@@ -2045,7 +2061,7 @@ fun CropEditorScreen(
                     }
                     // Eyedropper
                     IconButton(onClick = { eyedropperActive = !eyedropperActive },
-                        modifier = Modifier.size(36.dp)) {
+                        modifier = Modifier.size(48.dp).semantics { selected = eyedropperActive }) {
                         Icon(Icons.Default.Colorize, stringResource(R.string.draw_eyedropper),
                             tint = if (eyedropperActive) Primary else OnSurfaceVariant,
                             modifier = Modifier.size(16.dp))
@@ -2061,12 +2077,11 @@ fun CropEditorScreen(
                     // Recent custom colors
                     recentColors.forEachIndexed { index, color ->
                         val hex = String.format("#%06X", color and 0xFFFFFF)
-                        val selectedSuffix = stringResource(R.string.selected_suffix)
                         val recentColorCd = stringResource(
                             R.string.draw_recent_color_cd,
                             index + 1,
                             hex,
-                            if (drawColor == color) selectedSuffix else ""
+                            ""
                         )
                         EditorColorSwatch(
                             color = color,
@@ -2080,9 +2095,12 @@ fun CropEditorScreen(
                     val currentDrawColorCd = stringResource(R.string.draw_current_color_cd)
                     Box(
                         Modifier
-                            .size(36.dp)
-                            .semantics { contentDescription = currentDrawColorCd }
-                            .clickable { showColorPicker = true }
+                            .size(48.dp)
+                            .semantics {
+                                contentDescription = currentDrawColorCd
+                                role = Role.Button
+                            }
+                            .clickable(role = Role.Button) { showColorPicker = true }
                     ) {
                         Box(
                             Modifier
@@ -2217,9 +2235,13 @@ fun CropEditorScreen(
                 ) {
                     commonEmojis.forEach { emoji ->
                         Surface(
-                            modifier = Modifier.size(36.dp)
-                                .semantics { contentDescription = "Emoji $emoji${if (selectedEmoji == emoji) ", selected" else ""}" }
-                                .clickable { selectedEmoji = emoji },
+                            modifier = Modifier.size(48.dp)
+                                .semantics {
+                                    contentDescription = "Emoji $emoji"
+                                    selected = selectedEmoji == emoji
+                                    role = Role.RadioButton
+                                }
+                                .clickable(role = Role.RadioButton) { selectedEmoji = emoji },
                             color = if (selectedEmoji == emoji) PrimaryContainer else SurfaceVariant,
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -3592,7 +3614,11 @@ fun CropEditorScreen(
         }
 
         // Bottom toolbar
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = if (isShortLayout) 2.dp else 6.dp)
+        ) {
             if (!isWideLayout) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                     FilledTonalButton(
@@ -3669,7 +3695,7 @@ fun CropEditorScreen(
                     paletteColors.forEach { pc ->
                         Column(horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
-                                .sizeIn(minWidth = 40.dp, minHeight = 48.dp)
+                                .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                                 .semantics { contentDescription = paletteCd }
                                 .clickable {
                                     val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -3686,7 +3712,7 @@ fun CropEditorScreen(
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(if (isShortLayout) 0.dp else 6.dp))
 
             if (exportPresets.isNotEmpty()) {
                 Row(
@@ -3716,23 +3742,27 @@ fun CropEditorScreen(
 
             // Action icons row
             val adj = exportAdjustments()
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.editor_delete), tint = Danger) }
-                IconButton(onClick = { showResizeDialog = true }) {
-                    Icon(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.adjust_resize_button), tint = OnSurface) }
-                IconButton(onClick = { onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
-                    Icon(Icons.Default.Share, stringResource(R.string.editor_share), tint = OnSurface) }
-                IconButton(onClick = { onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
-                    Icon(Icons.Default.ContentCopy, stringResource(R.string.editor_copy), tint = OnSurface) }
-                IconButton(onClick = onEditSourceContext) {
-                    Icon(
-                        Icons.Default.Link,
-                        stringResource(if (hasSourceContext) R.string.source_context_action_edit else R.string.source_context_action_add),
-                        tint = if (hasSourceContext) Primary else OnSurface
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                EditorActionButton(Icons.Default.Delete, stringResource(R.string.editor_delete), Danger, onDelete)
+                EditorActionButton(Icons.Default.PhotoSizeSelectLarge, stringResource(R.string.adjust_resize_button), OnSurface) { showResizeDialog = true }
+                EditorActionButton(Icons.Default.Share, stringResource(R.string.editor_share), OnSurface) {
+                    onShare(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle))
                 }
-                IconButton(onClick = { onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) }) {
-                    Icon(Icons.Default.Save, stringResource(R.string.crop_save_copy), tint = OnSurface) }
+                EditorActionButton(Icons.Default.ContentCopy, stringResource(R.string.editor_copy), OnSurface) {
+                    onCopyClipboard(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle))
+                }
+                EditorActionButton(
+                    Icons.Default.Link,
+                    stringResource(if (hasSourceContext) R.string.source_context_action_edit else R.string.source_context_action_add),
+                    if (hasSourceContext) Primary else OnSurface,
+                    onEditSourceContext,
+                )
+                EditorActionButton(Icons.Default.Save, stringResource(R.string.crop_save_copy), OnSurface) {
+                    onSaveCopy(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle))
+                }
             }
 
             // Main save button — full width
@@ -4338,6 +4368,27 @@ fun CropEditorScreen(
 }
 
 @Composable
+private fun EditorActionButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .semantics {
+                this.contentDescription = contentDescription
+                role = Role.Button
+            }
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(imageVector, null, tint = tint)
+    }
+}
+
+@Composable
 private fun EditorColorSwatch(
     color: Int,
     selected: Boolean,
@@ -4346,7 +4397,7 @@ private fun EditorColorSwatch(
 ) {
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(48.dp)
             .semantics {
                 this.contentDescription = contentDescription
                 this.selected = selected
@@ -4412,13 +4463,23 @@ private fun ColorSamplerDialog(
                     val apca = apcaContrast(color1, color2)
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.sampler_contrast), color = OnSurface, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    Text("WCAG 2.x: %.2f:1".format(ratio), color = OnSurfaceVariant, fontSize = 12.sp,
-                        modifier = Modifier.clickable { copyText("%.2f:1".format(ratio)) })
+                    TextButton(
+                        onClick = { copyText("%.2f:1".format(ratio)) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text("WCAG 2.x: %.2f:1".format(ratio), color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
                     val wcagAA = if (ratio >= 4.5) "Pass" else "Fail"
                     val wcagAAA = if (ratio >= 7.0) "Pass" else "Fail"
                     Text("AA (4.5:1): $wcagAA  |  AAA (7:1): $wcagAAA", color = OnSurfaceVariant, fontSize = 11.sp)
-                    Text("APCA Lc: %.1f".format(apca), color = OnSurfaceVariant, fontSize = 12.sp,
-                        modifier = Modifier.clickable { copyText("Lc %.1f".format(apca)) })
+                    TextButton(
+                        onClick = { copyText("Lc %.1f".format(apca)) },
+                        modifier = Modifier.heightIn(min = 48.dp),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                    ) {
+                        Text("APCA Lc: %.1f".format(apca), color = OnSurfaceVariant, fontSize = 12.sp)
+                    }
                 }
             }
         },
@@ -4460,7 +4521,7 @@ private fun ColorCopyButton(value: String, onCopy: (String) -> Unit) {
     TextButton(
         onClick = { onCopy(value) },
         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-        modifier = Modifier.heightIn(min = 36.dp)
+        modifier = Modifier.heightIn(min = 48.dp)
     ) {
         Text(value, color = OnSurfaceVariant, fontSize = 11.sp)
     }

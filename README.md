@@ -110,6 +110,8 @@ email/phone/card/IP/face regions, toggle whole categories, choose safe opaque Ba
 cosmetic Pixelate/Blur, and move or resize each region before it is flattened once.
 TalkBack and Switch Access users can place the current annotation or a redaction at the
 crop center and adjust selected layers/redactions through canvas accessibility actions.
+Compact icon and color controls reserve 48 dp interaction space, expose one localized
+action, and announce selection/toggle state without duplicate nested targets.
 Annotated saves include a same-name SVG sidecar for visible vector layers and reversible concealment rectangles.
 Editable project sidecars (`.snapcrop.json`) can also be saved next to exports,
 then reopened later to restore the crop, concealment masks, adjustment state, and draw

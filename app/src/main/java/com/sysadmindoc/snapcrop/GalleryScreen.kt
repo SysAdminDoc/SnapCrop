@@ -79,6 +79,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -946,37 +948,13 @@ fun GalleryScreen(
     }
 
     pendingDeleteUris?.let { uris ->
-        AlertDialog(
-            onDismissRequest = { pendingDeleteUris = null },
-            title = { Text(stringResource(R.string.gallery_trash_title), color = OnSurface) },
-            text = {
-                Text(
-                    stringResource(
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.gallery_trash_body
-                        else R.string.gallery_trash_body_legacy,
-                        uris.size
-                    ),
-                    color = OnSurfaceVariant
-                )
+        GalleryDeleteDialog(
+            itemCount = uris.size,
+            onConfirm = {
+                pendingDeleteUris = null
+                onDeleteUris(uris)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pendingDeleteUris = null
-                        onDeleteUris(uris)
-                    },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Danger)
-                ) { Text(stringResource(
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
-                    else R.string.delete_permanently
-                )) }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteUris = null }) {
-                    Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
-                }
-            },
-            containerColor = SurfaceVariant
+            onDismiss = { pendingDeleteUris = null },
         )
     }
 
@@ -1792,7 +1770,7 @@ private fun AlbumGrid(
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(album.coverUri).crossfade(true).size(300, 300).build(),
-                                contentDescription = album.name,
+                                contentDescription = null,
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
@@ -1835,7 +1813,7 @@ private fun AlbumGrid(
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(album.coverUri).crossfade(true).size(300, 300).build(),
-                            contentDescription = album.name,
+                            contentDescription = null,
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
@@ -1891,7 +1869,7 @@ private fun AlbumGrid(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(album.coverUri).crossfade(true).size(300, 300).build(),
-                        contentDescription = album.name,
+                        contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -2011,20 +1989,26 @@ private fun PhotoItem(
         if (photo.isScreenshot && !photo.isVideo) append(", screenshot")
         if (!photo.noteReminder?.note.isNullOrEmpty()) append(", $hasNoteLabel")
         if (photo.noteReminder?.reminderAt != null) append(", $hasReminderLabel")
-        if (isSelected) append(", selected")
     }
-    Box(Modifier.semantics { contentDescription = photoLabel }) {
+    Box(
+        Modifier
+            .semantics {
+                contentDescription = photoLabel
+                selected = isSelected
+                role = Role.Button
+            }
+            .combinedClickable(
+                onClick = { onPhotoClick(photo, index) },
+                onLongClick = { onPhotoLongClick(photo) },
+            ),
+    ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(photo.uri).crossfade(true).size(250, 250).build(),
             contentDescription = null,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .clip(RoundedCornerShape(2.dp))
-                .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier)
-                .combinedClickable(
-                    onClick = { onPhotoClick(photo, index) },
-                    onLongClick = { onPhotoLongClick(photo) }
-                ),
+                .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier),
             contentScale = ContentScale.Crop
         )
         if (photo.isVideo) {
@@ -2200,9 +2184,50 @@ private fun formatReminderTime(value: Long): String = java.text.DateFormat.getDa
     java.text.DateFormat.SHORT
 ).format(java.util.Date(value))
 
+@Composable
+internal fun GalleryDeleteDialog(
+    itemCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.gallery_trash_title), color = OnSurface) },
+        text = {
+            Text(
+                stringResource(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.gallery_trash_body
+                    else R.string.gallery_trash_body_legacy,
+                    itemCount,
+                ),
+                color = OnSurfaceVariant,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = Danger),
+            ) {
+                Text(
+                    stringResource(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) R.string.move_to_trash
+                        else R.string.delete_permanently,
+                    )
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+            }
+        },
+        containerColor = SurfaceVariant,
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PhotoViewer(
+internal fun PhotoViewer(
     photos: List<Photo>,
     initialIndex: Int,
     onCurrentPhotoChanged: (Photo) -> Unit,
@@ -2218,6 +2243,7 @@ private fun PhotoViewer(
 ) {
     val pagerState = rememberPagerState(initialPage = initialIndex) { photos.size }
     val context = LocalContext.current
+    val mediaItemLabel = stringResource(R.string.gallery_media_item)
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     var showInfo by remember { mutableStateOf(false) }
@@ -2306,7 +2332,7 @@ private fun PhotoViewer(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(photos[page].uri).crossfade(true).build(),
-                contentDescription = null,
+                contentDescription = photos[page].name.ifBlank { mediaItemLabel },
                 modifier = Modifier.fillMaxSize()
                     .graphicsLayer(
                         scaleX = viewerZoom, scaleY = viewerZoom,
@@ -2404,7 +2430,10 @@ private fun PhotoViewer(
                         )
                     }
                 }
-                IconButton(onClick = { showInfo = !showInfo }) {
+                IconButton(
+                    onClick = { showInfo = !showInfo },
+                    modifier = Modifier.semantics { selected = showInfo },
+                ) {
                     Icon(Icons.Default.Info, stringResource(R.string.gallery_info), tint = if (showInfo) Primary else Color.White)
                 }
             }
@@ -2418,9 +2447,12 @@ private fun PhotoViewer(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            IconButton(onClick = {
-                photos.getOrNull(pagerState.currentPage)?.let { isFav = onToggleFavorite(it) }
-            }) {
+            IconButton(
+                onClick = {
+                    photos.getOrNull(pagerState.currentPage)?.let { isFav = onToggleFavorite(it) }
+                },
+                modifier = Modifier.semantics { selected = isFav },
+            ) {
                 Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     stringResource(R.string.gallery_favorite), tint = if (isFav) Tertiary else Color.White)
             }

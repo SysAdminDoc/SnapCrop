@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -405,46 +406,12 @@ class CropActivity : ComponentActivity() {
                     }
 
                     projectLoadError.value?.let { message ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Black)
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Surface(
-                                color = SurfaceVariant,
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(20.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        stringResource(R.string.crop_project_unavailable),
-                                        color = OnSurface,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(
-                                        message,
-                                        color = OnSurfaceVariant,
-                                        fontSize = 13.sp,
-                                        lineHeight = 18.sp
-                                    )
-                                    Spacer(Modifier.height(16.dp))
-                                    if (projectCanRelink.value) {
-                                        TextButton(onClick = { projectSourcePicker.launch(arrayOf("image/*")) }) {
-                                            Text(stringResource(R.string.crop_choose_source), color = Primary)
-                                        }
-                                    }
-                                    TextButton(onClick = { finish() }) {
-                                        Text(stringResource(R.string.close), color = Primary)
-                                    }
-                                }
-                            }
-                        }
+                        ProjectLoadErrorPanel(
+                            message = message,
+                            canRelink = projectCanRelink.value,
+                            onRelink = { projectSourcePicker.launch(arrayOf("image/*")) },
+                            onClose = { finish() },
+                        )
                     }
 
                     // Saving overlay
@@ -2059,5 +2026,54 @@ class CropActivity : ComponentActivity() {
         originalBitmap?.recycle()
         originalBitmap = null; bitmapState.value = null
         super.onDestroy()
+    }
+}
+
+@Composable
+internal fun ProjectLoadErrorPanel(
+    message: String,
+    canRelink: Boolean,
+    onRelink: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Black)
+            .padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            color = SurfaceVariant,
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    stringResource(R.string.crop_project_unavailable),
+                    color = OnSurface,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    message,
+                    color = OnSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                )
+                Spacer(Modifier.height(16.dp))
+                if (canRelink) {
+                    TextButton(onClick = onRelink) {
+                        Text(stringResource(R.string.crop_choose_source), color = Primary)
+                    }
+                }
+                TextButton(onClick = onClose) {
+                    Text(stringResource(R.string.close), color = Primary)
+                }
+            }
+        }
     }
 }

@@ -4,6 +4,17 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Accessible interaction semantics (v6.77.0).**
+
+- Compact icon, swatch, layer, redaction, Gallery, stitch, collage, Home, and
+  Settings actions now reserve 48 dp interaction space while retaining their
+  existing visual density. Nested actions are siblings, and selected/toggle state
+  is announced exactly once on the actionable node.
+- Low-height landscape and tablet-wide editor layouts retain complete action
+  targets. Production Home, Gallery empty/filter/viewer/permission/delete,
+  project-error, Settings, and compact/wide editor surfaces now run through the
+  Android Accessibility Test Framework on a headless API-37 emulator.
+
 **Workflow restoration and hierarchical Back (v6.76.0).**
 
 - Stitch, Collage, Device Mockup, video, and Web Capture now restore URI/order,
