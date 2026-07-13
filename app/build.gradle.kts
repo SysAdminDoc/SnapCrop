@@ -60,8 +60,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 133
-        versionName = "6.81.0"
+        versionCode = 134
+        versionName = "6.82.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

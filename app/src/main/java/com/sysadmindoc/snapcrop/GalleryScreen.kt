@@ -399,6 +399,7 @@ fun GalleryScreen(
     notificationPermissionRecovery: PermissionRecoveryState = PermissionRecoveryState.REQUESTABLE,
     onRequestNotificationAccess: () -> Unit = {},
     onRequestOverlayForPin: (Uri) -> Unit = {},
+    onManageIndex: () -> Unit = {},
     openRequest: GalleryOpenRequest? = null,
     onOpenRequestConsumed: () -> Unit = {},
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
@@ -1344,6 +1345,7 @@ fun GalleryScreen(
                 indexFailed = GalleryFailureSource.INDEX_DATABASE in galleryFailures,
                 onRetry = { reloadGeneration++ },
                 onRebuild = { rebuildIndex() },
+                onManage = onManageIndex,
             )
         }
 
@@ -1494,6 +1496,7 @@ private fun GalleryIndexHealthCard(
     indexFailed: Boolean,
     onRetry: () -> Unit,
     onRebuild: () -> Unit,
+    onManage: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1541,6 +1544,9 @@ private fun GalleryIndexHealthCard(
                 )
             }
             Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onManage) {
+                    Text(stringResource(R.string.gallery_manage_index))
+                }
                 TextButton(onClick = onRetry, enabled = health.pendingCount == 0) {
                     Text(stringResource(R.string.gallery_retry))
                 }

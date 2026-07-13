@@ -23,6 +23,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +45,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -52,6 +57,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.sysadmindoc.snapcrop.ui.theme.*
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -131,12 +138,51 @@ class SettingsActivity : ComponentActivity() {
                 var recentWorkflowsEnabled by remember {
                     mutableStateOf(RecentWorkflowStore.isEnabled(recentWorkflowPrefs))
                 }
+                val settingsEntries = remember { SettingsRegistry.entries(this@SettingsActivity) }
+                val settingsRequesters = remember {
+                    SettingsDestination.entries.associateWith { BringIntoViewRequester() }
+                }
+                val focusManager = LocalFocusManager.current
+                var settingsQuery by rememberSaveable { mutableStateOf("") }
+                var revealedDestination by remember {
+                    mutableStateOf(SettingsRegistry.destination(intent))
+                }
+                var requestedDestination by remember {
+                    mutableStateOf(SettingsRegistry.destination(intent))
+                }
+                var highlightedDestination by remember { mutableStateOf<SettingsDestination?>(null) }
+                val openDestination: (SettingsDestination) -> Unit = { destination ->
+                    settingsQuery = ""
+                    focusManager.clearFocus()
+                    revealedDestination = destination
+                    requestedDestination = destination
+                }
+
+                LaunchedEffect(requestedDestination) {
+                    val destination = requestedDestination ?: return@LaunchedEffect
+                    delay(160)
+                    highlightedDestination = destination
+                    val requester = settingsRequesters.getValue(destination)
+                    val broughtIntoView = runCatching { requester.bringIntoView() }.isSuccess
+                    if (!broughtIntoView && destination == SettingsDestination.LOCAL_NETWORK) {
+                        runCatching {
+                            settingsRequesters.getValue(SettingsDestination.NETWORK_EXPORTS).bringIntoView()
+                        }
+                    }
+                    delay(1800)
+                    if (highlightedDestination == destination) highlightedDestination = null
+                    requestedDestination = null
+                }
 
                 if (showHelp) {
                     LocalHelpDialog(
                         onOpenRoute = { route ->
-                            if (route != HelpRoute.SETTINGS_PROJECTS) {
-                                startActivity(Intent(this@SettingsActivity, MainActivity::class.java))
+                            when (route) {
+                                HelpRoute.SETTINGS_PROJECT_SIDECARS ->
+                                    openDestination(SettingsDestination.PROJECT_SIDECARS)
+                                HelpRoute.SETTINGS_SECURE_EDITOR ->
+                                    openDestination(SettingsDestination.SECURE_EDITOR)
+                                else -> startActivity(Intent(this@SettingsActivity, MainActivity::class.java))
                             }
                         },
                         onDismiss = { showHelp = false }
@@ -211,6 +257,26 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
 
+                    SettingsSearchPanel(
+                        query = settingsQuery,
+                        entries = settingsEntries,
+                        onQueryChange = { settingsQuery = it },
+                        onOpen = openDestination,
+                        onReset = { entry ->
+                            val reset = SettingsRegistry.reset(prefs, entry)
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                getString(
+                                    if (reset) R.string.settings_search_reset_done
+                                    else R.string.settings_search_reset_failed,
+                                    entry.title,
+                                ),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            if (reset) recreate()
+                        },
+                    )
+
                     Spacer(Modifier.height(16.dp))
 
                     Card(
@@ -243,7 +309,10 @@ class SettingsActivity : ComponentActivity() {
 
                     var themePref by remember { mutableStateOf(prefs.getString("theme", "dark") ?: "dark") }
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.THEME, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(10.dp)
                     ) {
@@ -286,6 +355,9 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.RECENT_WORKFLOWS, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_recent_workflows_title),
                         subtitle = stringResource(R.string.settings_recent_workflows_subtitle),
                         checked = recentWorkflowsEnabled,
@@ -302,6 +374,9 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.DELETE_ORIGINAL, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_replace_title),
                         subtitle = stringResource(R.string.settings_replace_subtitle),
                         checked = deleteOriginal,
@@ -313,6 +388,9 @@ class SettingsActivity : ComponentActivity() {
 
                     var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", false)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.PROJECT_SIDECARS, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_sidecar_title),
                         subtitle = stringResource(R.string.settings_sidecar_subtitle),
                         checked = projectSidecars,
@@ -324,6 +402,9 @@ class SettingsActivity : ComponentActivity() {
 
                     var ocrTextSidecars by remember { mutableStateOf(prefs.getBoolean("ocr_text_sidecars", false)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.OCR_TEXT_SIDECARS, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_ocr_text_sidecar_title),
                         subtitle = stringResource(R.string.settings_ocr_text_sidecar_subtitle),
                         checked = ocrTextSidecars,
@@ -335,6 +416,9 @@ class SettingsActivity : ComponentActivity() {
 
                     var appCropProfiles by remember { mutableStateOf(prefs.getBoolean("app_crop_profiles", true)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.APP_CROP_PROFILES, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_profiles_title),
                         subtitle = stringResource(R.string.settings_profiles_subtitle),
                         checked = appCropProfiles,
@@ -416,6 +500,9 @@ class SettingsActivity : ComponentActivity() {
                         }
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.SCREENSHOT_INDEX, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_index_title),
                         subtitle = stringResource(R.string.settings_index_subtitle),
                         checked = screenshotIndexEnabled,
@@ -426,7 +513,7 @@ class SettingsActivity : ComponentActivity() {
                             screenshotIndexStatus = if (it) indexEnabledStr else indexDisabledStr
                         }
                     )
-                    if (screenshotIndexEnabled) {
+                    if (screenshotIndexEnabled || revealedDestination == SettingsDestination.SCREENSHOT_INDEX) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
@@ -530,6 +617,9 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean(AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL, false))
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.SMART_ERASE, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_erase_title),
                         subtitle = AdvancedEraseBackendRegistry.statusSummary(prefs),
                         checked = allowAdvancedErase,
@@ -565,7 +655,12 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     // Image format selector
-                    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.IMAGE_FORMAT, settingsRequesters, highlightedDestination)
+                    ) {
                         Text(stringResource(R.string.settings_section_format), color = OnSurface, fontSize = 15.sp)
                         Spacer(Modifier.height(2.dp))
                         Text(stringResource(R.string.settings_format_hint), color = OnSurfaceVariant, fontSize = 12.sp)
@@ -634,6 +729,9 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean("target_size_allow_resize", false))
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.TARGET_SIZE, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_target_size_title),
                         subtitle = if (lossyFormat)
                             stringResource(R.string.settings_target_size_lossy)
@@ -683,6 +781,9 @@ class SettingsActivity : ComponentActivity() {
 
                     var stripExif by remember { mutableStateOf(prefs.getBoolean("strip_exif", false)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.STRIP_EXIF, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_strip_title),
                         subtitle = stringResource(R.string.settings_strip_subtitle),
                         checked = stripExif,
@@ -696,7 +797,10 @@ class SettingsActivity : ComponentActivity() {
 
                     var ocrScript by remember { mutableStateOf(OcrScript.fromKey(prefs.getString(OcrScript.PREF_KEY, null))) }
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.OCR_SCRIPT, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -727,7 +831,10 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getString("filename_template", "SnapCrop_%timestamp%") ?: "SnapCrop_%timestamp%")
                     }
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.FILENAME_TEMPLATE, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -760,7 +867,12 @@ class SettingsActivity : ComponentActivity() {
                     // Annotation presets section
                     val stylePresets = remember { mutableStateListOf<DrawStylePreset>().apply { addAll(DrawStylePresetStore.load(prefs)) } }
                     var styleDefault by remember { mutableStateOf(DrawStylePresetStore.defaultName(prefs)) }
-                    SettingsSectionHeader(stringResource(R.string.settings_section_presets))
+                    SettingsSectionHeader(
+                        stringResource(R.string.settings_section_presets),
+                        Modifier.settingsAnchor(
+                            SettingsDestination.ANNOTATION_PRESETS, settingsRequesters, highlightedDestination
+                        ),
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(stringResource(R.string.settings_presets_body), color = OnSurfaceVariant, fontSize = 12.sp)
                     Spacer(Modifier.height(8.dp))
@@ -865,6 +977,9 @@ class SettingsActivity : ComponentActivity() {
                     SettingsSectionHeader(stringResource(R.string.settings_section_network))
                     Spacer(Modifier.height(8.dp))
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.NETWORK_EXPORTS, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_network_title),
                         subtitle = stringResource(R.string.settings_network_subtitle),
                         checked = networkExportsEnabled,
@@ -888,7 +1003,9 @@ class SettingsActivity : ComponentActivity() {
                             modifier = Modifier.padding(top = 4.dp)
                         )
                     }
-                    if (networkExportsEnabled) {
+                    if (networkExportsEnabled || revealedDestination == SettingsDestination.NETWORK_EXPORTS ||
+                        revealedDestination == SettingsDestination.LOCAL_NETWORK
+                    ) {
                         Card(
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
@@ -1000,6 +1117,11 @@ class SettingsActivity : ComponentActivity() {
                                             color = OnSurface,
                                             fontWeight = FontWeight.Medium,
                                             fontSize = 13.sp,
+                                            modifier = Modifier.settingsAnchor(
+                                                SettingsDestination.LOCAL_NETWORK,
+                                                settingsRequesters,
+                                                highlightedDestination,
+                                            ),
                                         )
                                         Text(
                                             stringResource(R.string.settings_local_network_body),
@@ -1079,12 +1201,15 @@ class SettingsActivity : ComponentActivity() {
 
                     var watermarkEnabled by remember { mutableStateOf(prefs.getBoolean("watermark_enabled", false)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.WATERMARK, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_watermark_title),
                         subtitle = stringResource(R.string.settings_watermark_subtitle),
                         checked = watermarkEnabled,
                         onCheckedChange = { watermarkEnabled = it; prefs.edit().putBoolean("watermark_enabled", it).apply() }
                     )
-                    if (watermarkEnabled) {
+                    if (watermarkEnabled || revealedDestination == SettingsDestination.WATERMARK) {
                         var watermarkText by remember {
                             mutableStateOf(prefs.getString("watermark_text", "SnapCrop") ?: "SnapCrop")
                         }
@@ -1127,7 +1252,10 @@ class SettingsActivity : ComponentActivity() {
                         0xFFA6E3A1.toInt() to "Green", 0xFFF38BA8.toInt() to "Pink"
                     )
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.EXPORT_BORDER, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -1150,7 +1278,7 @@ class SettingsActivity : ComponentActivity() {
                                     colors = SliderDefaults.colors(thumbColor = Primary, activeTrackColor = Primary, inactiveTrackColor = SurfaceVariant)
                                 )
                             }
-                            if (borderSize > 0) {
+                            if (borderSize > 0 || revealedDestination == SettingsDestination.EXPORT_BORDER) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
                                     Text(stringResource(R.string.settings_border_color), color = OnSurfaceVariant, fontSize = 11.sp)
@@ -1188,7 +1316,10 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop")
                     }
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.SAVE_LOCATION, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -1213,7 +1344,10 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(12.dp))
 
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.EXPORT_PRESETS, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -1317,6 +1451,9 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
 
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.AUTO_START, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_autostart_title),
                         subtitle = stringResource(R.string.settings_autostart_subtitle),
                         checked = autoStart,
@@ -1330,6 +1467,9 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean("conditional_auto_actions", false))
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.CONDITIONAL_AUTO_ACTIONS, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_autoactions_title),
                         subtitle = stringResource(R.string.settings_autoactions_subtitle),
                         checked = conditionalAutoActions,
@@ -1343,6 +1483,9 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean("redact_on_share", true))
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.REDACT_ON_SHARE, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_redact_share_title),
                         subtitle = stringResource(R.string.settings_redact_share_subtitle),
                         checked = redactOnShare,
@@ -1353,32 +1496,38 @@ class SettingsActivity : ComponentActivity() {
                     )
 
                     Spacer(Modifier.height(8.dp))
-                    CustomRedactionPatternsPanel(
-                        patterns = customPatterns,
-                        storageError = customPatternsCorrupt,
-                        onSavePatterns = { updated ->
-                            val saved = CustomRedactionPatternStore.save(prefs, updated)
-                            if (saved) {
-                                customPatterns = updated
-                                customPatternsCorrupt = false
-                            }
-                            saved
-                        },
-                        onExport = { serialized ->
-                            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(
-                                ClipData.newPlainText(
-                                    getString(R.string.settings_custom_patterns_title),
-                                    serialized,
+                    Box(
+                        Modifier.settingsAnchor(
+                            SettingsDestination.CUSTOM_PATTERNS, settingsRequesters, highlightedDestination
+                        )
+                    ) {
+                        CustomRedactionPatternsPanel(
+                            patterns = customPatterns,
+                            storageError = customPatternsCorrupt,
+                            onSavePatterns = { updated ->
+                                val saved = CustomRedactionPatternStore.save(prefs, updated)
+                                if (saved) {
+                                    customPatterns = updated
+                                    customPatternsCorrupt = false
+                                }
+                                saved
+                            },
+                            onExport = { serialized ->
+                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText(
+                                        getString(R.string.settings_custom_patterns_title),
+                                        serialized,
+                                    )
                                 )
-                            )
-                            Toast.makeText(
-                                this@SettingsActivity,
-                                R.string.settings_custom_patterns_copied,
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        },
-                    )
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    R.string.settings_custom_patterns_copied,
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
+                    }
 
                     var redactionStyle by remember {
                         mutableStateOf(RedactionStyle.fromPreference(
@@ -1389,7 +1538,10 @@ class SettingsActivity : ComponentActivity() {
                         stringResource(R.string.settings_redaction_style_title),
                         color = OnSurface,
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.REDACTION_STYLE, settingsRequesters, highlightedDestination
+                        ),
                     )
                     Text(
                         stringResource(R.string.settings_redaction_style_subtitle),
@@ -1426,6 +1578,9 @@ class SettingsActivity : ComponentActivity() {
                         mutableStateOf(prefs.getBoolean(SecurePreviewPolicy.PREF_ENABLED, false))
                     }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.SECURE_EDITOR, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_secure_editor_title),
                         subtitle = stringResource(R.string.settings_secure_editor_subtitle),
                         checked = secureEditor,
@@ -1442,7 +1597,10 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
 
                     Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.STORAGE, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp),
                         onClick = {
@@ -1469,7 +1627,10 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // Settings backup / restore — survive reinstall (allowBackup=false).
-                    SettingsSectionHeader(stringResource(R.string.settings_section_backup))
+                    SettingsSectionHeader(
+                        stringResource(R.string.settings_section_backup),
+                        Modifier.settingsAnchor(SettingsDestination.BACKUP, settingsRequesters, highlightedDestination),
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.settings_backup_hint), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
@@ -1488,7 +1649,10 @@ class SettingsActivity : ComponentActivity() {
                     Spacer(Modifier.height(20.dp))
 
                     // About
-                    SettingsSectionHeader(stringResource(R.string.settings_section_about))
+                    SettingsSectionHeader(
+                        stringResource(R.string.settings_section_about),
+                        Modifier.settingsAnchor(SettingsDestination.ABOUT, settingsRequesters, highlightedDestination),
+                    )
                     Spacer(Modifier.height(8.dp))
                     Text(stringResource(R.string.settings_about_version, BuildConfig.VERSION_NAME), color = OnSurface, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
@@ -1539,6 +1703,9 @@ class SettingsActivity : ComponentActivity() {
                     }
                     var autoUpdate by remember { mutableStateOf(prefs.getBoolean(UpdateChecker.PREF_AUTO, false)) }
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.AUTO_UPDATE, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_update_auto_title),
                         subtitle = stringResource(R.string.settings_update_auto_subtitle),
                         checked = autoUpdate,
@@ -1623,6 +1790,9 @@ class SettingsActivity : ComponentActivity() {
                     var journalViewText by remember { mutableStateOf<String?>(null) }
                     Spacer(Modifier.height(12.dp))
                     SettingToggle(
+                        modifier = Modifier.settingsAnchor(
+                            SettingsDestination.OPERATION_JOURNAL, settingsRequesters, highlightedDestination
+                        ),
                         title = stringResource(R.string.settings_journal_title),
                         subtitle = stringResource(R.string.settings_journal_subtitle),
                         checked = journalEnabled,
@@ -1701,17 +1871,26 @@ class SettingsActivity : ComponentActivity() {
                     // Crash diagnostics — local only, nothing leaves the device unless shared.
                     var crashFiles by remember { mutableStateOf(CrashReporter.crashLogs(this@SettingsActivity)) }
                     var crashViewText by remember { mutableStateOf<String?>(null) }
-                    if (crashFiles.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text(stringResource(R.string.settings_crash_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                                Spacer(Modifier.height(2.dp))
-                                Text(stringResource(R.string.settings_crash_subtitle, crashFiles.size), color = OnSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .settingsAnchor(SettingsDestination.CRASH_LOGS, settingsRequesters, highlightedDestination),
+                        colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.settings_crash_title), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (crashFiles.isEmpty()) stringResource(R.string.settings_crash_empty)
+                                else stringResource(R.string.settings_crash_subtitle, crashFiles.size),
+                                color = OnSurfaceVariant,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp,
+                            )
+                            if (crashFiles.isNotEmpty()) {
                                 Spacer(Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = {
@@ -1874,10 +2053,121 @@ class SettingsActivity : ComponentActivity() {
         }
 }
 
+private fun Modifier.settingsAnchor(
+    destination: SettingsDestination,
+    requesters: Map<SettingsDestination, BringIntoViewRequester>,
+    highlightedDestination: SettingsDestination?,
+): Modifier = this
+    .bringIntoViewRequester(requesters.getValue(destination))
+    .testTag("settings-anchor-${destination.wireValue}")
+    .then(
+        if (highlightedDestination == destination) {
+            Modifier
+                .border(2.dp, Primary, RoundedCornerShape(10.dp))
+                .padding(2.dp)
+        } else {
+            Modifier
+        }
+    )
+
 @Composable
-private fun SettingsSectionHeader(title: String) {
-    Row(
+private fun SettingsSearchPanel(
+    query: String,
+    entries: List<SettingsSearchEntry>,
+    onQueryChange: (String) -> Unit,
+    onOpen: (SettingsDestination) -> Unit,
+    onReset: (SettingsSearchEntry) -> Unit,
+) {
+    val results = remember(entries, query) { SettingsRegistry.search(entries, query) }
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        label = { Text(stringResource(R.string.settings_search_label)) },
+        singleLine = true,
         modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .testTag("settings-search"),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Primary,
+            unfocusedBorderColor = Outline,
+            focusedTextColor = OnSurface,
+            unfocusedTextColor = OnSurface,
+            cursorColor = Primary,
+        ),
+        shape = RoundedCornerShape(10.dp),
+    )
+    if (query.isBlank()) return
+
+    Spacer(Modifier.height(8.dp))
+    if (results.isEmpty()) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("settings-search-empty"),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+            shape = RoundedCornerShape(10.dp),
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text(
+                    stringResource(R.string.settings_search_no_results, query),
+                    color = OnSurface,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    stringResource(R.string.settings_search_no_results_hint),
+                    color = OnSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = { onQueryChange("") }) {
+                    Text(stringResource(R.string.settings_search_clear), color = Primary)
+                }
+            }
+        }
+        return
+    }
+
+    results.forEach { entry ->
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 3.dp)
+                .testTag("settings-result-${entry.destination.wireValue}"),
+            colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+            shape = RoundedCornerShape(10.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button) { onOpen(entry.destination) }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(entry.title, color = OnSurface, style = MaterialTheme.typography.titleSmall)
+                    Text(entry.summary, color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (entry.resetKeys.isNotEmpty()) {
+                HorizontalDivider(color = Outline.copy(alpha = 0.45f))
+                TextButton(
+                    onClick = { onReset(entry) },
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                ) {
+                    Text(stringResource(R.string.settings_search_reset_section), color = OnSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
             .fillMaxWidth()
             .padding(top = 12.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1898,12 +2188,14 @@ private fun SettingToggle(
     subtitle: String,
     checked: Boolean,
     enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .then(modifier)
             .toggleable(
                 value = checked,
                 enabled = enabled,

@@ -596,7 +596,12 @@ class MainActivity : ComponentActivity() {
                         onOpenRoute = { route ->
                             when (route) {
                                 HelpRoute.GALLERY_FILTERS, HelpRoute.GALLERY_COLLECTIONS -> selectedTab = 1
-                                HelpRoute.SETTINGS_PROJECTS -> startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                                HelpRoute.SETTINGS_PROJECT_SIDECARS -> startActivity(
+                                    SettingsRegistry.intent(this@MainActivity, SettingsDestination.PROJECT_SIDECARS)
+                                )
+                                HelpRoute.SETTINGS_SECURE_EDITOR -> startActivity(
+                                    SettingsRegistry.intent(this@MainActivity, SettingsDestination.SECURE_EDITOR)
+                                )
                                 HelpRoute.EDITOR_SAVE_ACTIONS, HelpRoute.EDITOR_REDACTION, HelpRoute.SHARE_PRIVACY -> pickImageLauncher.launch("image/*")
                                 else -> selectedTab = 0
                             }
@@ -699,7 +704,9 @@ class MainActivity : ComponentActivity() {
                                 },
                                 hasOverlayPermission = hasOverlayPermission.value,
                                 onRequestOverlay = { openCapabilitySettings(PermissionCapability.OVERLAY) },
-                                onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
+                                onOpenSettings = {
+                                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                                },
                                 onOpenHelp = { showHelp = true },
                                 onViewAll = { selectedTab = 1 },
                                 onOpenCrop = { uri ->
@@ -738,6 +745,11 @@ class MainActivity : ComponentActivity() {
                                 onRequestNotificationAccess = { requestReminderNotificationAccess() },
                                 onRequestOverlayForPin = { uri ->
                                     runOrRequestPermissionAction(PendingPermissionAction.Pin(uri))
+                                },
+                                onManageIndex = {
+                                    startActivity(
+                                        SettingsRegistry.intent(this@MainActivity, SettingsDestination.SCREENSHOT_INDEX)
+                                    )
                                 },
                                 openRequest = galleryOpenRequest.value,
                                 onOpenRequestConsumed = { galleryOpenRequest.value = null },
@@ -1143,6 +1155,21 @@ class MainActivity : ComponentActivity() {
                                         color = OnSurfaceVariant,
                                         fontSize = 11.sp
                                     )
+                                }
+                                if (!networkSettings.isConfigured) {
+                                    TextButton(
+                                        onClick = {
+                                            showReportDialogState.value = false
+                                            startActivity(
+                                                SettingsRegistry.intent(
+                                                    this@MainActivity,
+                                                    SettingsDestination.NETWORK_EXPORTS,
+                                                )
+                                            )
+                                        },
+                                    ) {
+                                        Text(stringResource(R.string.settings_open_network_exports), color = Primary)
+                                    }
                                 }
                             }
                         },

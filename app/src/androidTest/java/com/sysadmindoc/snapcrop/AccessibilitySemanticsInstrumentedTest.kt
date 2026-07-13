@@ -12,9 +12,13 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.tryPerformAccessibilityChecks
 import androidx.compose.runtime.mutableIntStateOf
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
@@ -54,6 +58,19 @@ class SettingsAccessibilityInstrumentedTest {
         assumeTrue(Build.VERSION.SDK_INT >= 34)
         composeRule.enableAccessibilityChecks()
         composeRule.onRoot().tryPerformAccessibilityChecks()
+    }
+
+    @Test
+    fun settingsSearchShowsNoResultAndRoutesToExactConditionalControl() {
+        composeRule.onNodeWithTag("settings-search").performTextInput("no-such-setting-token")
+        composeRule.onNodeWithTag("settings-search-empty").assertIsDisplayed()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.settings_search_clear)).performClick()
+
+        composeRule.onNodeWithTag("settings-search").performTextClearance()
+        composeRule.onNodeWithTag("settings-search").performTextInput("local network")
+        composeRule.onNodeWithTag("settings-result-local_network").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings-anchor-local_network").assertIsDisplayed()
     }
 }
 

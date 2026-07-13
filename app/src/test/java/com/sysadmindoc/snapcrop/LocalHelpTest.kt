@@ -50,4 +50,20 @@ class LocalHelpTest {
     fun unmatchedQueryReturnsEmptyList() {
         assertTrue(LocalHelpCatalog.search("quantum-frobnicator").isEmpty())
     }
+
+    @Test
+    fun settingsHelpUsesTheExactMatchingControl() {
+        assertEquals(
+            HelpRoute.SETTINGS_PROJECT_SIDECARS,
+            LocalHelpCatalog.entries.single { it.id == "save-and-reopen-projects" }.route,
+        )
+        assertEquals(
+            HelpRoute.SETTINGS_SECURE_EDITOR,
+            LocalHelpCatalog.entries.single { it.id == "secure-preview-capture-conflict" }.route,
+        )
+        assertEquals(
+            HelpRoute.HOME_PERMISSIONS,
+            LocalHelpCatalog.entries.single { it.id == "troubleshoot-delayed-capture" }.route,
+        )
+    }
 }

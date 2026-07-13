@@ -47,6 +47,10 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Searchable offline Help & Tips opens the relevant workflow controls, and an
   optional Home row remembers only the IDs of up to six successfully started
   workflows—never media, filenames, paths, links, or recognized text.
+- Settings search uses localized control names and static keywords without
+  indexing filenames, endpoints, credentials, watermark text, presets, or other
+  current values. Results reveal conditional controls without enabling them,
+  scroll to an exact highlighted anchor, and offer allowlisted section resets.
 - Long screenshot capture via Accessibility: start from the dedicated Quick Settings tile, auto-scroll, review, retry if needed, save, then continue editing
 - Optional static web-page capture accepts an entered or shared public HTTPS URL. SnapCrop fetches only the bounded main HTML document over public-IP-pinned TLS, renders it in an isolated offline WebView with scripts and external resources blocked, and sends the full-page image to the editor without uploading page content.
 - Optional Quick Crop auto-actions can redact sensitive text from recognized app screenshots and save them into app-specific albums

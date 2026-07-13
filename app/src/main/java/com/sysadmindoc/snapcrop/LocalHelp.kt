@@ -12,7 +12,8 @@ enum class HelpRoute {
     HOME_STEP_CAPTURE,
     HOME_WEB_CAPTURE,
     SHARE_PRIVACY,
-    SETTINGS_PROJECTS,
+    SETTINGS_PROJECT_SIDECARS,
+    SETTINGS_SECURE_EDITOR,
     GALLERY_FILTERS,
     GALLERY_COLLECTIONS,
 }
@@ -54,7 +55,7 @@ object LocalHelpCatalog {
             title = "Understand project and OCR sidecars",
             summary = "Project and OCR-text sidecars are optional and may contain reversible layers or sensitive recognized text. If a requested sidecar fails, Save & Replace retains the original instead of deleting it.",
             keywords = setOf("save", "project", "ocr", "sidecar", "sensitive", "replace", "retain", "failure"),
-            route = HelpRoute.SETTINGS_PROJECTS,
+            route = HelpRoute.SETTINGS_PROJECT_SIDECARS,
         ),
         HelpEntry(
             id = "redact-safely",
@@ -89,7 +90,7 @@ object LocalHelpCatalog {
             title = "Fix blank protected previews",
             summary = "Protect media previews blocks screenshots, recording, Recents, overlays, and notification pixels. Disable it temporarily in Settings only when you intentionally need to capture SnapCrop itself.",
             keywords = setOf("secure", "protect", "blank", "preview", "screenshot", "recording", "recents"),
-            route = HelpRoute.HOME_PERMISSIONS,
+            route = HelpRoute.SETTINGS_SECURE_EDITOR,
         ),
         HelpEntry(
             id = "troubleshoot-step-capture",
@@ -117,7 +118,7 @@ object LocalHelpCatalog {
             title = "Save and reopen editable projects",
             summary = "Enable project sidecars before saving to keep crop, redaction, adjustment, and annotation state. Open the .snapcrop.json file later and relink only to a source with the expected fingerprint.",
             keywords = setOf("project", "sidecar", "reopen", "editable", "relink", "fingerprint", "json"),
-            route = HelpRoute.SETTINGS_PROJECTS,
+            route = HelpRoute.SETTINGS_PROJECT_SIDECARS,
         ),
         HelpEntry(
             id = "filter-gallery",

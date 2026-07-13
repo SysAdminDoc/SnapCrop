@@ -4,6 +4,20 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Searchable, anchored Settings and contextual routing (v6.82.0).**
+
+- A localized static registry covers 32 exact Settings controls without reading
+  current values or secrets. Search includes an accessible no-result/clear state;
+  results transiently reveal conditional controls, bring the exact control into
+  view, and highlight it without changing its saved toggle.
+- Allowlisted section resets are atomic and exclude credentials, rules, presets,
+  index data, journals, crash reports, and other user-owned content. Typed stable
+  destinations now connect project/privacy Help, Gallery index management, Home,
+  and report network recovery to the same control anchors.
+- Host tests lock stable IDs, search normalization, secret exclusion, reset
+  isolation, route coverage, and exact anchors. API-37 Compose tests exercise the
+  no-result and local-network paths and pass accessibility checks.
+
 **Incremental MediaStore index reconciliation (v6.81.0).**
 
 - The opt-in screenshot index now keeps atomic per-volume MediaStore version and
