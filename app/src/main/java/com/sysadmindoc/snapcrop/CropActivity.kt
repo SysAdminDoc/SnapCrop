@@ -1,9 +1,11 @@
 package com.sysadmindoc.snapcrop
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.app.RecoverableSecurityException
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -66,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
@@ -143,7 +146,7 @@ class CropActivity : ComponentActivity() {
     private var pendingProjectPolicy = SourceVerificationPolicy.REQUIRE_FINGERPRINT
     private val projectCanRelink = mutableStateOf(false)
 
-    private val sourceMutationLauncher = registerForActivityResult(
+    private val sourceTrashLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -168,6 +171,32 @@ class CropActivity : ComponentActivity() {
             verifyAndLoadProjectSource(uri, project, pendingProjectPolicy)
             withContext(Dispatchers.Main) { isLoading.value = false }
         }
+    }
+
+    private val sourceArchiveWriteLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            moveSourceToArchive(mayRequestLegacyAccess = false)
+        } else {
+            completeSourceMutation(false)
+        }
+    }
+
+    private val sourceArchiveMediaManagementLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (SourceArchiveManager.hasPromptFreeAccess(this)) {
+            continueSourceArchiveAccess()
+        } else {
+            completeSourceMutation(false)
+        }
+    }
+
+    private val sourceArchiveLocationLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) continueSourceArchiveAccess() else completeSourceMutation(false)
     }
 
     private fun handleIntent(incomingIntent: Intent) {
@@ -473,7 +502,7 @@ class CropActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     showDeleteConfirm.value = false
-                                    requestSourceTrash(SourceMutationPurpose.DELETE_FROM_EDITOR)
+                                    requestSourceMutation(SourceMutationPurpose.DELETE_FROM_EDITOR)
                                 },
                                 colors = ButtonDefaults.textButtonColors(contentColor = Danger)
                             ) {
@@ -1868,7 +1897,7 @@ class CropActivity : ComponentActivity() {
             runOnUiThread {
                 when {
                     deleteOriginal && requestedSidecarsSaved -> {
-                        requestSourceTrash(SourceMutationPurpose.REPLACE_AFTER_SAVE, detailMessage)
+                        requestSourceMutation(SourceMutationPurpose.REPLACE_AFTER_SAVE, detailMessage)
                     }
                     deleteOriginal -> {
                         Toast.makeText(this, R.string.crop_sidecar_failed_original_retained, Toast.LENGTH_LONG).show()
@@ -1897,7 +1926,7 @@ class CropActivity : ComponentActivity() {
         }
     }
 
-    private fun requestSourceTrash(
+    private fun requestSourceMutation(
         purpose: SourceMutationPurpose,
         exportMessage: String? = null
     ) {
@@ -1911,10 +1940,99 @@ class CropActivity : ComponentActivity() {
             completeSourceMutation(false)
             return
         }
+        when (purpose) {
+            SourceMutationPurpose.REPLACE_AFTER_SAVE -> requestSourceArchive()
+            SourceMutationPurpose.DELETE_FROM_EDITOR -> requestSourceTrash()
+        }
+    }
+
+    private fun requestSourceArchive() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_MEDIA_LOCATION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            sourceArchiveLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+            return
+        }
+        continueSourceArchiveAccess()
+    }
+
+    private fun continueSourceArchiveAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !SourceArchiveManager.hasPromptFreeAccess(this)
+        ) {
+            Toast.makeText(this, R.string.crop_archive_access_required, Toast.LENGTH_LONG).show()
+            runCatching {
+                sourceArchiveMediaManagementLauncher.launch(SourceArchiveManager.permissionIntent())
+            }.onFailure {
+                android.util.Log.w("SnapCrop", "Unable to open media management settings", it)
+                completeSourceMutation(false)
+            }
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // MANAGE_MEDIA is the one-time special access that authorizes this update.
+            // Launching createWriteRequest here shows a per-file system dialog and some
+            // OEM builds incorrectly apply trash semantics to the selected source.
+            moveSourceToArchive(mayRequestLegacyAccess = false)
+        } else {
+            launchSourceArchiveWriteRequest()
+        }
+    }
+
+    private fun launchSourceArchiveWriteRequest() {
+        val uri = sourceUri ?: run {
+            completeSourceMutation(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val pendingIntent = MediaStore.createWriteRequest(contentResolver, listOf(uri))
+                sourceArchiveWriteLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+            } catch (e: Exception) {
+                android.util.Log.w("SnapCrop", "Unable to request source archive access", e)
+                completeSourceMutation(false)
+            }
+        } else {
+            moveSourceToArchive(mayRequestLegacyAccess = true)
+        }
+    }
+
+    private fun moveSourceToArchive(mayRequestLegacyAccess: Boolean) {
+        val uri = sourceUri ?: run {
+            completeSourceMutation(false)
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val moved = SourceArchiveManager.moveToArchive(contentResolver, uri)
+                withContext(Dispatchers.Main) { completeSourceMutation(moved) }
+            } catch (recoverable: RecoverableSecurityException) {
+                if (mayRequestLegacyAccess) {
+                    withContext(Dispatchers.Main) {
+                        sourceArchiveWriteLauncher.launch(
+                            IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
+                        )
+                    }
+                } else {
+                    withContext(Dispatchers.Main) { completeSourceMutation(false) }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("SnapCrop", "Unable to move source into archive", e)
+                withContext(Dispatchers.Main) { completeSourceMutation(false) }
+            }
+        }
+    }
+
+    private fun requestSourceTrash() {
+        val uri = sourceUri ?: run {
+            completeSourceMutation(false)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 val pendingIntent = MediaStore.createTrashRequest(contentResolver, listOf(uri), true)
-                sourceMutationLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
+                sourceTrashLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
             } catch (e: Exception) {
                 android.util.Log.w("SnapCrop", "Unable to request scoped source trash", e)
                 completeSourceMutation(false)
@@ -1935,7 +2053,7 @@ class CropActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) { completeSourceMutation(deleted) }
             } catch (recoverable: RecoverableSecurityException) {
                 withContext(Dispatchers.Main) {
-                    sourceMutationLauncher.launch(
+                    sourceTrashLauncher.launch(
                         IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
                     )
                 }
@@ -1962,7 +2080,11 @@ class CropActivity : ComponentActivity() {
         pendingReplacedSourceDateAdded = -1L
         OperationJournal.enqueue(
             this,
-            DiagnosticOperation.DELETE,
+            if (purpose == SourceMutationPurpose.REPLACE_AFTER_SAVE) {
+                DiagnosticOperation.ARCHIVE
+            } else {
+                DiagnosticOperation.DELETE
+            },
             DiagnosticStage.COMPLETE,
             if (succeeded) DiagnosticResult.SUCCESS else DiagnosticResult.FAILED,
             mutationStartedAt,
@@ -2022,7 +2144,7 @@ class CropActivity : ComponentActivity() {
         when (purpose) {
             SourceMutationPurpose.REPLACE_AFTER_SAVE -> {
                 val message = if (succeeded) {
-                    listOfNotNull(exportMessage, getString(R.string.crop_original_trashed)).joinToString(". ")
+                    listOfNotNull(exportMessage, getString(R.string.crop_original_archived)).joinToString(". ")
                 } else {
                     getString(R.string.crop_copy_saved_original_retained)
                 }

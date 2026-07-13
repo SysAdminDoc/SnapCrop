@@ -68,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ColorFilter
@@ -1608,7 +1609,8 @@ fun CropEditorScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .background(Surface.copy(alpha = 0.96f))
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1737,8 +1739,12 @@ fun CropEditorScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(SurfaceContainer)
+                    .border(1.dp, Outline.copy(alpha = 0.62f), RoundedCornerShape(14.dp))
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1746,12 +1752,14 @@ fun CropEditorScreen(
                     FilterChip(
                         selected = editMode == mode,
                         onClick = { selectEditMode(mode) },
-                        modifier = Modifier.height(48.dp),
-                        label = { Text(label, fontSize = 11.sp) },
+                        modifier = Modifier.height(40.dp),
+                        label = { Text(label, fontSize = 11.sp, fontWeight = if (editMode == mode) FontWeight.SemiBold else FontWeight.Medium) },
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = color.copy(alpha = 0.25f), selectedLabelColor = color,
-                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
-                        shape = RoundedCornerShape(8.dp)
+                            selectedContainerColor = color,
+                            selectedLabelColor = OnPrimary,
+                            containerColor = Color.Transparent,
+                            labelColor = OnSurfaceVariant),
+                        shape = RoundedCornerShape(10.dp)
                     )
                 }
             }
@@ -1771,7 +1779,7 @@ fun CropEditorScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 4.dp),
+                .padding(horizontal = 12.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             AspectRatio.entries.forEach { ratio ->
@@ -1782,7 +1790,8 @@ fun CropEditorScreen(
                         selectedRatio = ratio
                         if (ratio.ratio != null) applyAspectRatio(ratio)
                     },
-                    label = { Text(ratio.label, fontSize = 12.sp) },
+                    modifier = Modifier.height(40.dp),
+                    label = { Text(ratio.label, fontSize = 11.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
@@ -3781,9 +3790,9 @@ fun CropEditorScreen(
 
             // Main save button — full width
             Button(onClick = { onSave(currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(), adj, CutoutEditState(cutBands, cutSeparatorStyle)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Primary),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Icon(Icons.Default.Crop, null, Modifier.size(18.dp), tint = OnPrimary)
                 Spacer(Modifier.width(8.dp))
@@ -3800,7 +3809,7 @@ fun CropEditorScreen(
                     if (replaceOriginalOnSave) stringResource(R.string.crop_save_replace) else stringResource(R.string.crop_save_copy),
                     color = OnPrimary,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(estLabel, color = OnPrimary.copy(alpha = 0.5f), fontSize = 10.sp)

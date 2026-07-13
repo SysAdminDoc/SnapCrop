@@ -4,6 +4,37 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+## [v6.89.0] - 2026-07-13
+
+**Capture-first redesign and prompt-free replacement.**
+
+- Save & Replace now writes and publishes the edited crop first, then moves the
+  source MediaStore item into the visible `Pictures/trashed/` album instead of
+  placing it in Android Trash. Manual Delete continues to use recoverable Trash.
+- Android 12+ uses one-time Media management and photo-location access so source
+  moves complete without a confirmation for every image. Settings shows whether
+  prompt-free archive access is ready and links to the exact system control;
+  denial or failure keeps the saved crop and explicitly retains the source.
+- Android 10-11 retains the platform confirmation fallback because the
+  prompt-free media-management special access is unavailable there.
+
+- Reworked the dark and light design tokens around graphite/navy surfaces with
+  distinct coral action, violet organization, and green readiness roles while
+  retaining automated normal-text contrast coverage.
+- Home now combines monitoring readiness and Edit image into one compact hero,
+  moves optional permission recovery below the primary workflow, condenses the
+  tool catalog into a scannable Workspace grid, and labels Gallery as Library.
+- Library now opens without a redundant Back control, hides stale keyboard
+  focus, pairs search with filters, and elevates Unfiled and All Photos into
+  full-width review lanes ahead of denser album cards.
+- Editor mode navigation is slimmer and segmented, uses the clearer Redact
+  label, gives the canvas more visual priority, and applies the new primary
+  action treatment to crop handles and save controls.
+- Added the generated three-surface design target and emulator-rendered visual
+  QA for Home, Library, and Editor under `docs/mockups/`.
+
+## [v6.88.0] - 2026-07-13
+
 **Release-size and dependency budgets (v6.88.0).**
 
 - Removed the unused Navigation Compose declaration, version-catalog alias, and

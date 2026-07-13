@@ -60,6 +60,8 @@ class DocumentationTrustContractTest {
             "READ_MEDIA_VIDEO",
             "POST_NOTIFICATIONS",
             "SYSTEM_ALERT_WINDOW",
+            "MANAGE_MEDIA",
+            "ACCESS_MEDIA_LOCATION",
             "ACCESS_LOCAL_NETWORK",
             "INTERNET",
         ).forEach { permission -> assertTrue(manifest.contains("android.permission.$permission")) }
@@ -67,6 +69,8 @@ class DocumentationTrustContractTest {
             "Photos/images",
             "Notifications",
             "display-over-apps",
+            "Media management",
+            "photo-location",
             "Accessibility",
             "Local network access",
             "api.github.com",
