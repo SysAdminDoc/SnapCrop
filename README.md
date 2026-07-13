@@ -187,6 +187,10 @@ are blocked behind explicit opt-in and evaluation gates.
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for collections, batch delete, share, resize, batch rename, or PDF report export
+- Select exactly two images for a private local Compare workspace with fitted swipe,
+  opacity overlay, paused blink, and difference-only modes. Original dimensions
+  stay explicit; Top-left, Center, or Bottom-left alignment never stretches
+  mismatched images; closing creates no copy.
 - Favorites, search, and sort by date/name/size
 - Rebuild or purge the local screenshot index from Settings
 - Home recent crops include explicit delete confirmation for safe cleanup

@@ -78,6 +78,22 @@ class WorkflowActivityStateRoundTripTest {
         assertBundleBounded(web)
     }
 
+    @Test
+    fun compareRoundTripsOnlyOrderedUrisAndControlState() {
+        val first = mediaFile("before.png")
+        val second = mediaFile("after.png")
+        val state = roundTrip(
+            CompareActivity::class.java,
+            CompareActivity.intent(RuntimeEnvironment.getApplication(), listOf(first, second)),
+        )
+
+        assertEquals(first.toString(), state.getString("compare_before_uri"))
+        assertEquals(second.toString(), state.getString("compare_after_uri"))
+        assertEquals(CompareMode.SWIPE.name, state.getString("compare_mode"))
+        assertEquals(CompareAlignment.TOP_LEFT.name, state.getString("compare_alignment"))
+        assertBundleBounded(state)
+    }
+
     private fun mediaFile(name: String): Uri {
         val file = File(RuntimeEnvironment.getApplication().cacheDir, name)
         file.writeBytes(byteArrayOf(1, 2, 3, 4))

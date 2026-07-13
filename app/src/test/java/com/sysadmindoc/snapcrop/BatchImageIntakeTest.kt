@@ -45,6 +45,24 @@ class BatchImageIntakeTest {
     }
 
     @Test
+    fun analysisDecodeReturnsPixelsForAnImageAlreadyWithinTarget() {
+        val bytes = png(120, 80)
+        val source = ByteSource(bytes, declaredLength = bytes.size.toLong())
+
+        val result = BatchImageIntake.decode(
+            source,
+            targetMaxDimension = 720,
+            skipAlreadyWithinTarget = false,
+        )
+
+        assertTrue(result is BatchImageIntakeResult.Ready)
+        result as BatchImageIntakeResult.Ready
+        assertEquals(120, result.bitmap.width)
+        assertEquals(80, result.bitmap.height)
+        result.bitmap.recycle()
+    }
+
+    @Test
     fun declaredAndStreamingByteLimitsRejectBeforeDecodeAllocation() {
         val declared = CountingSource(BatchImageIntake.MAX_ENCODED_BYTES + 1)
         assertTrue(BatchImageIntake.decode(declared) is BatchImageIntakeResult.Oversized)

@@ -14,6 +14,7 @@ class WorkflowStateRoutingTest {
             source("DeviceFrameActivity.kt"),
             source("VideoClipActivity.kt"),
             source("WebCaptureActivity.kt"),
+            source("CompareActivity.kt"),
         )
 
         files.forEach { code ->
@@ -26,6 +27,8 @@ class WorkflowStateRoutingTest {
         assertTrue(files[2].contains("ActivityResultContracts.OpenDocument()"))
         assertTrue(files[3].contains("ActivityResultContracts.OpenDocument()"))
         assertTrue(files[4].contains("inputUrl.take(WebCapturePolicy.MAX_URL_CHARS)"))
+        assertTrue(files[5].contains("putString(EXTRA_BEFORE_URI"))
+        assertTrue(files[5].contains("putString(EXTRA_AFTER_URI"))
     }
 
     @Test

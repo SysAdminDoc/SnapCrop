@@ -63,12 +63,30 @@ internal object BatchImageIntake {
             override fun openStream(): InputStream? = resolver.openInputStream(uri)
         },
         targetMaxDimension = targetMaxDimension,
+        skipAlreadyWithinTarget = true,
+        cancelled = cancelled,
+    )
+
+    /** Shared bounded decode for workflows that need pixels even when a source is already small. */
+    fun decodeForAnalysis(
+        resolver: ContentResolver,
+        uri: Uri,
+        targetMaxDimension: Int = 1_536,
+        cancelled: () -> Boolean = { false },
+    ): BatchImageIntakeResult = decode(
+        source = object : Source {
+            override val declaredLength: Long? = InboundShareContract.declaredSize(resolver, uri)
+            override fun openStream(): InputStream? = resolver.openInputStream(uri)
+        },
+        targetMaxDimension = targetMaxDimension,
+        skipAlreadyWithinTarget = false,
         cancelled = cancelled,
     )
 
     internal fun decode(
         source: Source,
         targetMaxDimension: Int? = null,
+        skipAlreadyWithinTarget: Boolean = true,
         cancelled: () -> Boolean = { false },
     ): BatchImageIntakeResult {
         if (cancelled()) return BatchImageIntakeResult.Cancelled
@@ -103,7 +121,7 @@ internal object BatchImageIntake {
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
             return BatchImageIntakeResult.Unreadable("image bounds could not be decoded")
         }
-        if (targetMaxDimension != null &&
+        if (skipAlreadyWithinTarget && targetMaxDimension != null &&
             bounds.outWidth <= targetMaxDimension && bounds.outHeight <= targetMaxDimension
         ) {
             return BatchImageIntakeResult.Skipped(BatchSkipReason.ALREADY_WITHIN_TARGET)

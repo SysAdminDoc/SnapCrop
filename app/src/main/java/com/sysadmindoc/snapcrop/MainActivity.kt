@@ -595,7 +595,8 @@ class MainActivity : ComponentActivity() {
                     LocalHelpDialog(
                         onOpenRoute = { route ->
                             when (route) {
-                                HelpRoute.GALLERY_FILTERS, HelpRoute.GALLERY_COLLECTIONS -> selectedTab = 1
+                                HelpRoute.GALLERY_FILTERS, HelpRoute.GALLERY_COLLECTIONS,
+                                HelpRoute.GALLERY_COMPARE -> selectedTab = 1
                                 HelpRoute.SETTINGS_PROJECT_SIDECARS -> startActivity(
                                     SettingsRegistry.intent(this@MainActivity, SettingsDestination.PROJECT_SIDECARS)
                                 )
@@ -763,6 +764,9 @@ class MainActivity : ComponentActivity() {
                                     })
                                 },
                                 onShareUris = { uris -> shareImages(uris) },
+                                onCompareUris = { uris ->
+                                    startActivity(CompareActivity.intent(this@MainActivity, uris))
+                                },
                                 onDeleteUris = { uris -> requestDeleteUris(uris) },
                                 onExportPdf = { uris -> showReportDialog(uris) },
                                 onBatchResize = { uris -> showResizeDialog(uris) },

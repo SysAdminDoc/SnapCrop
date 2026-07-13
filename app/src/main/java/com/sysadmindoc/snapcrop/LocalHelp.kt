@@ -16,6 +16,7 @@ enum class HelpRoute {
     SETTINGS_SECURE_EDITOR,
     GALLERY_FILTERS,
     GALLERY_COLLECTIONS,
+    GALLERY_COMPARE,
 }
 
 data class HelpEntry(
@@ -133,6 +134,13 @@ object LocalHelpCatalog {
             summary = "Select supported screenshots and add them to a named collection. Membership organizes the existing media without moving or duplicating its files.",
             keywords = setOf("gallery", "collection", "album", "organize", "select", "membership", "move", "duplicate"),
             route = HelpRoute.GALLERY_COLLECTIONS,
+        ),
+        HelpEntry(
+            id = "compare-two-screenshots",
+            title = "Compare two screenshots locally",
+            summary = "Select exactly two Gallery images, then use Compare for a fitted swipe, opacity overlay, paused blink, or visible-difference view. Different sizes align without stretching, and closing creates no copy.",
+            keywords = setOf("gallery", "compare", "difference", "overlay", "blink", "before", "after", "local"),
+            route = HelpRoute.GALLERY_COMPARE,
         ),
     )
 

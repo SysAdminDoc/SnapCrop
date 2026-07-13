@@ -15,6 +15,7 @@ class ThemeSurfaceGuardTest {
             "StitchActivity.kt",
             "CollageActivity.kt",
             "DeviceFrameActivity.kt",
+            "CompareActivity.kt",
             "VideoClipActivity.kt"
         )
         roots.forEach { name ->

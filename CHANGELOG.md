@@ -4,6 +4,23 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Private two-screenshot comparison (v6.84.0).**
+
+- Gallery selection now preserves selection order and enables Compare only for
+  exactly two distinct images. The unexported secure workspace labels A/Before
+  and B/After and creates no file, share, upload, or publication path.
+- Swipe uses the fitted shared canvas rather than the viewport; Overlay exposes
+  image-B opacity; Blink is paused by default; Difference reports deterministic
+  changed analysis pixels and at most 32 grouped regions with overflow retained.
+- Top-left, Center, and Bottom-left alignment never stretches mismatched images;
+  unmatched edges count as changed. The shared bounded intake path enforces the
+  existing 64 MiB/48 MP source and 12 MP/48 MiB working limits, then analysis uses
+  one original-coordinate scale and a 1.5 MP cap.
+- Pure fixtures cover threshold boundaries, transparent hidden RGB, independently
+  sampled sources, union denominators, mismatches, fragmented-region overflow,
+  selection order, routing, saved state, and decoder behavior. A headless Android
+  17 run exercised all four modes, alignment, recreation, and accessibility checks.
+
 **User-managed optional ML delivery (v6.83.0).**
 
 - Latin OCR remains bundled and fail-closed privacy scans stay immediately

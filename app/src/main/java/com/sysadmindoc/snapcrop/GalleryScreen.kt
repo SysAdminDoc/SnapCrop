@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FilterList
@@ -379,6 +380,13 @@ internal fun collectionSelection(photos: List<Photo>, selectedUris: Set<String>)
     )
 }
 
+internal fun compareSelection(photos: List<Photo>, selectedUris: List<String>): List<Uri>? {
+    if (selectedUris.size != 2 || selectedUris.distinct().size != 2) return null
+    val byUri = photos.associateBy { it.uri.toString() }
+    val selected = selectedUris.mapNotNull(byUri::get)
+    return selected.takeIf { it.size == 2 && it.none(Photo::isVideo) }?.map(Photo::uri)
+}
+
 @Composable
 fun GalleryScreen(
     onOpenEditor: (Uri) -> Unit,
@@ -402,6 +410,7 @@ fun GalleryScreen(
     onManageIndex: () -> Unit = {},
     openRequest: GalleryOpenRequest? = null,
     onOpenRequestConsumed: () -> Unit = {},
+    onCompareUris: (List<Uri>) -> Unit = {},
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
     val canReadImages = imageAccess != MediaAccess.NONE
@@ -1109,15 +1118,47 @@ fun GalleryScreen(
         ) {
             if (selectionMode) {
                 // Selection mode bar
+                val selectedMedia = selectedUris.mapNotNull { selectedUri ->
+                    viewerPhotos.firstOrNull { it.uri.toString() == selectedUri }
+                }
+                val compareUris = compareSelection(viewerPhotos, selectedUris)
                 IconButton(onClick = { selectedUris.clear() }) {
                     Icon(Icons.Default.Close, stringResource(R.string.cancel), tint = OnSurface)
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(stringResource(R.string.gallery_selected_count, selectedUris.size), color = OnSurface, fontSize = 16.sp,
                         fontWeight = FontWeight.Medium)
-                    Text(stringResource(R.string.gallery_selected_actions), color = OnSurfaceVariant, fontSize = 11.sp)
+                    Text(
+                        stringResource(
+                            when {
+                                selectedMedia.any(Photo::isVideo) -> R.string.gallery_compare_images_only
+                                selectedUris.size == 1 -> R.string.gallery_compare_select_one_more
+                                compareUris != null -> R.string.gallery_compare_ready
+                                selectedUris.size > 2 -> R.string.gallery_compare_exactly_two
+                                else -> R.string.gallery_selected_actions
+                            }
+                        ),
+                        color = OnSurfaceVariant,
+                        fontSize = 11.sp,
+                    )
                 }
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    IconButton(
+                        enabled = compareUris != null,
+                        onClick = {
+                            compareUris?.let(onCompareUris)
+                            selectedUris.clear()
+                        },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.CompareArrows,
+                            stringResource(
+                                if (compareUris != null) R.string.gallery_compare
+                                else R.string.gallery_compare_exactly_two
+                            ),
+                            tint = if (compareUris != null) Primary else OnSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = {
                         selectedUris.clear()
                         selectedUris.addAll(viewerPhotos.map { it.uri.toString() })
