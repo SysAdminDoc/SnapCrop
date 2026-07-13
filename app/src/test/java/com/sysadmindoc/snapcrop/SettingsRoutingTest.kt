@@ -29,6 +29,7 @@ class SettingsRoutingTest {
     fun everySearchDestinationHasAnExactComposeAnchor() {
         val registry = source("SettingsRegistry.kt")
         val settings = source("SettingsActivity.kt")
+        val searchUi = source("SettingsSearchUi.kt")
         val destinations = Regex("^    ([A-Z][A-Z0-9_]*)\\(\"", RegexOption.MULTILINE)
             .findAll(registry)
             .map { it.groupValues[1] }
@@ -37,8 +38,8 @@ class SettingsRoutingTest {
         destinations.forEach { destination ->
             assertTrue("Missing anchor for $destination", settings.contains("SettingsDestination.$destination"))
         }
-        assertTrue(settings.contains("bringIntoViewRequester"))
-        assertTrue(settings.contains("settings-anchor-"))
+        assertTrue(searchUi.contains("bringIntoViewRequester"))
+        assertTrue(searchUi.contains("settings-anchor-"))
     }
 
     private fun source(name: String): String =

@@ -47,6 +47,29 @@ class SettingsRegistryTest {
     }
 
     @Test
+    fun navigationStatePreservesDeepLinksAndRejectsStaleCompletion() {
+        val initial = SettingsNavigationState.initial(SettingsDestination.LOCAL_NETWORK)
+        assertEquals(SettingsDestination.LOCAL_NETWORK, initial.revealedDestination)
+        assertEquals(SettingsDestination.LOCAL_NETWORK, initial.requestedDestination)
+        assertNull(initial.highlightedDestination)
+
+        val firstHighlight = initial.highlight(SettingsDestination.LOCAL_NETWORK)
+        assertEquals(SettingsDestination.LOCAL_NETWORK, firstHighlight.highlightedDestination)
+
+        val newer = firstHighlight.open(SettingsDestination.SECURE_EDITOR)
+        assertEquals(SettingsDestination.SECURE_EDITOR, newer.revealedDestination)
+        assertEquals(SettingsDestination.SECURE_EDITOR, newer.requestedDestination)
+        assertEquals(firstHighlight.highlightedDestination, newer.highlightedDestination)
+
+        assertEquals(newer, newer.complete(SettingsDestination.LOCAL_NETWORK))
+        val completed = newer.highlight(SettingsDestination.SECURE_EDITOR)
+            .complete(SettingsDestination.SECURE_EDITOR)
+        assertNull(completed.requestedDestination)
+        assertNull(completed.highlightedDestination)
+        assertEquals(SettingsDestination.SECURE_EDITOR, completed.revealedDestination)
+    }
+
+    @Test
     fun searchIsCaseAccentAndTokenInsensitiveButRequiresEveryToken() {
         val entries = SettingsRegistry.entries(context)
 

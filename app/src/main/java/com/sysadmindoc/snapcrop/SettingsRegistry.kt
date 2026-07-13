@@ -58,6 +58,34 @@ data class SettingsSearchEntry(
     internal val searchableText: String = normalizeSearchText("$title $summary $keywords")
 }
 
+internal data class SettingsNavigationState(
+    val revealedDestination: SettingsDestination? = null,
+    val requestedDestination: SettingsDestination? = null,
+    val highlightedDestination: SettingsDestination? = null,
+) {
+    fun open(destination: SettingsDestination): SettingsNavigationState = copy(
+        revealedDestination = destination,
+        requestedDestination = destination,
+    )
+
+    fun highlight(destination: SettingsDestination): SettingsNavigationState =
+        if (requestedDestination == destination) copy(highlightedDestination = destination) else this
+
+    fun complete(destination: SettingsDestination): SettingsNavigationState =
+        if (requestedDestination == destination) {
+            copy(requestedDestination = null, highlightedDestination = null)
+        } else {
+            this
+        }
+
+    companion object {
+        fun initial(destination: SettingsDestination?): SettingsNavigationState = SettingsNavigationState(
+            revealedDestination = destination,
+            requestedDestination = destination,
+        )
+    }
+}
+
 object SettingsRegistry {
     const val EXTRA_DESTINATION = "com.sysadmindoc.snapcrop.extra.SETTINGS_DESTINATION"
 
