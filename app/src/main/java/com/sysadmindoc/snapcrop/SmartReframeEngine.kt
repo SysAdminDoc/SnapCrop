@@ -15,7 +15,7 @@ object SmartReframeEngine {
             val focusRects = mutableListOf<Rect>()
             val objectRect = SmartCropEngine.detect(bitmap)
             if (!objectRect.isFullImage(bitmap)) focusRects.add(objectRect)
-            focusRects.addAll(TextExtractor.extract(bitmap).map { it.bounds })
+            focusRects.addAll(TextExtractor.extractBestEffort(bitmap).map { it.bounds })
             focusRects.addAll(FaceDetector.detect(bitmap))
 
             val focus = if (focusRects.isEmpty()) {

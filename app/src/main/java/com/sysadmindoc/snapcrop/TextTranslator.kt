@@ -88,11 +88,14 @@ object TextTranslator {
         val translator = Translation.getClient(options)
         return try {
             val conditions = DownloadConditions.Builder().requireWifi().build()
-            if (context?.let { !MlKitStatusStore.isTranslationModelReady(it, sourceLanguage, target.language) } != false) {
+            val missingLanguages = listOf(sourceLanguage, target.language)
+                .distinct()
+                .filter { it != TranslateLanguage.ENGLISH }
+                .filterNot { TranslationModelManager.isInstalled(it) }
+            if (missingLanguages.isNotEmpty()) {
                 onProgress(context?.let { MlKitStatus.translationDownloadMessage(it, target.label) } ?: "Downloading the ${target.label} translation model…")
             }
             translator.downloadModelIfNeeded(conditions).awaitResult()
-            context?.let { MlKitStatusStore.markTranslationModelReady(it, sourceLanguage, target.language) }
             onProgress(context?.getString(MlKitStatus.TRANSLATION_TRANSLATING) ?: "Translating on device…")
             val translated = translator.translate(original).awaitResult()
             TextTranslation(

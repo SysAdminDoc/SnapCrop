@@ -304,7 +304,9 @@ disclosed below; optional exports and automatic update checks are off by default
 - Sensitive-text Quick Crop/share scans use the OCR script selected in Settings,
   detect strict developer-secret shapes, support bounded local custom RE2 patterns,
   expose each region for review, and fail closed when recognition or configured
-  pattern validation fails. Official local releases run a fixed
+  pattern validation fails. Latin OCR is immediately available; selecting an
+  optional script without its model opens the exact on-device model control
+  instead of silently skipping the scan. Official local releases run a fixed
   synthetic light/dark corpus across every supported OCR script and sensitive
   category; fixture values are reserved examples, never real personal data.
 - SnapCrop does not request all-files access. On Android 11+, removals use
@@ -350,12 +352,15 @@ disclosed below; optional exports and automatic update checks are off by default
   encrypted in transit and is not transferred to third parties. See
   [ML Kit Terms & Privacy](https://developers.google.com/ml-kit/terms) and the
   [ML Kit Android data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
-- Object detection, Latin/Chinese/Japanese/Korean/Devanagari OCR, face detection,
-  barcode scanning, and language identification models are bundled with the app.
-  Subject segmentation is delivered through Google Play services. Translation
-  and entity-extraction models download on demand; translation requires Wi-Fi,
-  while entity extraction may use the active network on first use. Model storage
-  and updates follow ML Kit's documented
+- Object detection, Latin OCR, face detection, barcode scanning, and language
+  identification models are bundled with the app. Chinese, Japanese, Korean, and
+  Devanagari OCR are optional Google Play services modules; Subject segmentation
+  is also delivered through Google Play services. Translation and
+  entity-extraction models download on demand. Settings → On-device models shows
+  live readiness and lets users download/retry/remove optional OCR and translation
+  models over Wi-Fi; OCR removal is best effort when Play services shares a module
+  with another app. Entity extraction may use the active network on first use.
+  Model storage and updates follow ML Kit's documented
   [installation paths](https://developers.google.com/ml-kit/tips/installation-paths).
 - A manual update check—or the disabled-by-default launch check—requests only
   public release metadata from `api.github.com` with a static app user agent;

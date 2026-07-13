@@ -60,8 +60,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 134
-        versionName = "6.82.0"
+        versionCode = 135
+        versionName = "6.83.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -174,6 +174,7 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
+    implementation(libs.play.services.base)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.exifinterface)
     implementation(libs.re2j)
@@ -216,8 +217,10 @@ tasks.register("generateReleaseProvenance") {
     val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
     val releaseApkDirectory = layout.buildDirectory.dir("outputs/apk/release")
     val releaseSbom = layout.buildDirectory.file("reports/cyclonedx-direct/bom.json")
+    val releaseSizeBaseline = rootProject.layout.projectDirectory.file("gradle/release-size-baseline.json")
     inputs.dir(releaseApkDirectory)
     inputs.file(releaseSbom)
+    inputs.file(releaseSizeBaseline)
     outputs.dir(provenanceDirectory)
 
     doLast {
@@ -232,6 +235,13 @@ tasks.register("generateReleaseProvenance") {
             }
         }
         val sourceSbom = releaseSbom.get().asFile
+        val baselineData = JsonSlurper().parse(releaseSizeBaseline.asFile) as Map<*, *>
+        val baselineVersion = baselineData["baselineVersion"]?.toString()
+            ?: error("Release-size baseline version is missing")
+        val baselineSizes = baselineData["artifacts"] as? Map<*, *>
+            ?: error("Release-size baseline artifacts are missing")
+        fun baselineSize(abi: String): Long = baselineSizes[abi]?.toString()?.toLong()
+            ?: error("Release-size baseline is missing $abi")
         sourceApks.forEach { (abi, sourceApk) ->
             require(sourceApk.isFile) { "Release APK was not produced for $abi: $sourceApk" }
         }
@@ -319,6 +329,7 @@ tasks.register("generateReleaseProvenance") {
                   "apk": "${file.name}",
                   "apkSha256": "${sha256(file)}",
                   "sizeBytes": ${file.length()},
+                  "sizeDeltaBytes": ${file.length() - baselineSize(abi)},
                   "versionName": "$versionName",
                   "versionCode": $versionCode,
                   "signingCertificateSha256": "${artifactCertificates.getValue(abi)}",
@@ -331,7 +342,7 @@ tasks.register("generateReleaseProvenance") {
         provenance.writeText(
             """
             {
-              "schemaVersion": 2,
+              "schemaVersion": 3,
               "project": "SnapCrop",
               "versionName": "$versionName",
               "versionCode": $versionCode,
@@ -344,6 +355,14 @@ tasks.register("generateReleaseProvenance") {
               "sourceState": "$sourceState",
               "buildCommand": "${command.replace("\\", "\\\\")}",
               "generatedAtUtc": "${Instant.now()}",
+              "sizeBaselineVersion": "$baselineVersion",
+              "mlDelivery": {
+                "bundledOcrScripts": ["latin"],
+                "playServicesOcrScripts": ["chinese", "japanese", "korean", "devanagari"],
+                "optionalOcrApproxApkBytesPerScriptArchitecture": 260000,
+                "optionalOcrApproxInstalledBytesPerScript": 4000000,
+                "translationApproxInstalledBytesPerLanguage": 30000000
+              },
               "artifacts": [
 $artifactsJson
               ]
@@ -387,6 +406,8 @@ tasks.register("verifyOfficialRelease") {
 
         val provenanceData = JsonSlurper().parse(provenance) as? Map<*, *>
             ?: error("Release provenance root must be an object")
+        val sizeBaseline = JsonSlurper().parse(rootProject.file("gradle/release-size-baseline.json")) as? Map<*, *>
+            ?: error("Release-size baseline root must be an object")
         fun field(map: Map<*, *>, name: String): Any = map[name]
             ?: error("Missing provenance field: $name")
         fun normalizeCertificate(value: Any): String = value.toString().replace(":", "").uppercase(Locale.ROOT)
@@ -409,8 +430,8 @@ tasks.register("verifyOfficialRelease") {
         check(actualCertificate == expectedCertificate) {
             "Signing certificate mismatch: expected $expectedCertificate, got $actualCertificate"
         }
-        check(field(provenanceData, "schemaVersion").toString().toInt() == 2) {
-            "Official release requires provenance schema 2"
+        check(field(provenanceData, "schemaVersion").toString().toInt() == 3) {
+            "Official release requires provenance schema 3"
         }
         check(field(provenanceData, "versionName") == versionName) { "Provenance versionName is not synchronized" }
         check(field(provenanceData, "versionCode").toString().toInt() == versionCode) {
@@ -430,6 +451,30 @@ tasks.register("verifyOfficialRelease") {
             .find(sbom.readText())?.groupValues?.get(1)
             ?: error("SBOM application version is missing")
         check(sbomVersion == versionName) { "SBOM and app versions are not synchronized" }
+        val baselineVersion = field(sizeBaseline, "baselineVersion").toString()
+        val baselineSizes = field(sizeBaseline, "artifacts") as? Map<*, *>
+            ?: error("Release-size baseline artifacts must be an object")
+        check(field(provenanceData, "sizeBaselineVersion") == baselineVersion) {
+            "Provenance release-size baseline is not synchronized"
+        }
+        val mlDelivery = field(provenanceData, "mlDelivery") as? Map<*, *>
+            ?: error("Provenance ML delivery report must be an object")
+        check(field(mlDelivery, "bundledOcrScripts") == listOf("latin")) {
+            "Only Latin OCR may be bundled"
+        }
+        check(
+            field(mlDelivery, "playServicesOcrScripts") ==
+                listOf("chinese", "japanese", "korean", "devanagari")
+        ) { "Optional OCR delivery report is incomplete" }
+        val sbomText = sbom.readText()
+        listOf("chinese", "japanese", "korean", "devanagari").forEach { script ->
+            check(!sbomText.contains("com.google.mlkit:text-recognition-$script")) {
+                "Bundled $script OCR dependency returned"
+            }
+            check(sbomText.contains("com.google.android.gms:play-services-mlkit-text-recognition-$script")) {
+                "Thin $script OCR dependency is missing"
+            }
+        }
         val allowDirty = providers.gradleProperty("allowDirtyOfficialVerification").orNull == "true"
         check(allowDirty || field(provenanceData, "sourceState") == "clean") {
             "Official releases require a clean Git worktree"
@@ -479,6 +524,15 @@ tasks.register("verifyOfficialRelease") {
             check(field(artifact, "sizeBytes").toString().toLong() == apk.length()) {
                 "APK size mismatch for ${apk.name}"
             }
+            val baselineBytes = baselineSizes[abi]?.toString()?.toLong()
+                ?: error("Release-size baseline is missing $abi")
+            val deltaBytes = apk.length() - baselineBytes
+            check(field(artifact, "sizeDeltaBytes").toString().toLong() == deltaBytes) {
+                "APK size delta mismatch for ${apk.name}"
+            }
+            check(deltaBytes <= -1_500_000L) {
+                "${apk.name} did not shed the bundled optional OCR payload: delta=$deltaBytes"
+            }
             check(field(artifact, "versionName") == versionName &&
                     field(artifact, "versionCode").toString().toInt() == versionCode) {
                 "Provenance version mismatch for ${apk.name}"
@@ -509,6 +563,17 @@ tasks.register("verifyOfficialRelease") {
             manifestTargetSdks += toolOutput(apkanalyzer, "manifest", "target-sdk", apk.absolutePath)
 
             ZipFile(apk).use { zip ->
+                val entryNames = zip.entries().asSequence().map(ZipEntry::getName).toList()
+                check(entryNames.any { "/Latn_ctc/" in it }) {
+                    "Bundled Latin OCR assets are missing from ${apk.name}"
+                }
+                val forbiddenOcrTokens = listOf(
+                    "/Deva_ctc/", "/Hani_ctc/", "/Jpan_ctc/", "/Kore_ctc/",
+                    "gocrdevanagari", "gocrchinese", "gocrjapanese", "gocrkorean",
+                )
+                check(entryNames.none { name -> forbiddenOcrTokens.any(name::contains) }) {
+                    "Bundled optional OCR assets remain in ${apk.name}"
+                }
                 val nativeEntries = zip.entries().asSequence()
                     .filter { it.name.startsWith("lib/") && it.name.endsWith(".so") }
                     .toList()

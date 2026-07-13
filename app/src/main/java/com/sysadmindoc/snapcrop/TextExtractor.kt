@@ -99,27 +99,31 @@ enum class OcrScript(val key: String, val label: String) {
 
 object TextExtractor {
 
-    private val recognizers = mutableMapOf<OcrScript, TextRecognizer>()
-
     private fun recognizer(script: OcrScript): TextRecognizer {
-        return recognizers.getOrPut(script) {
-            TextRecognition.getClient(
-                when (script) {
-                    OcrScript.LATIN -> TextRecognizerOptions.DEFAULT_OPTIONS
-                    OcrScript.CHINESE -> ChineseTextRecognizerOptions.Builder().build()
-                    OcrScript.JAPANESE -> JapaneseTextRecognizerOptions.Builder().build()
-                    OcrScript.KOREAN -> KoreanTextRecognizerOptions.Builder().build()
-                    OcrScript.DEVANAGARI -> DevanagariTextRecognizerOptions.Builder().build()
-                }
-            )
+        return TextRecognition.getClient(
+            when (script) {
+                OcrScript.LATIN -> TextRecognizerOptions.DEFAULT_OPTIONS
+                OcrScript.CHINESE -> ChineseTextRecognizerOptions.Builder().build()
+                OcrScript.JAPANESE -> JapaneseTextRecognizerOptions.Builder().build()
+                OcrScript.KOREAN -> KoreanTextRecognizerOptions.Builder().build()
+                OcrScript.DEVANAGARI -> DevanagariTextRecognizerOptions.Builder().build()
+            }
+        )
+    }
+
+    private suspend fun requireModel(script: OcrScript) {
+        if (script != OcrScript.LATIN) {
+            OcrModelManager.requireInstalled(SnapCropApp.appContext, script)
         }
     }
 
     suspend fun extract(bitmap: Bitmap, script: OcrScript = OcrScript.LATIN): List<TextBlock> {
         if (bitmap.isRecycled) return emptyList()
+        requireModel(script)
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
-            recognizer(script).process(image)
+            val recognizer = recognizer(script)
+            recognizer.process(image)
                 .addOnSuccessListener { result ->
                     if (cont.isActive) {
                         val blocks = result.textBlocks.mapNotNull { block ->
@@ -129,16 +133,24 @@ object TextExtractor {
                         cont.resume(blocks)
                     }
                 }
-                .addOnFailureListener { if (cont.isActive) cont.resume(emptyList()) }
+                .addOnFailureListener { error -> if (cont.isActive) cont.resumeWithException(error) }
+                .addOnCanceledListener { if (cont.isActive) cont.cancel() }
+                .addOnCompleteListener { recognizer.close() }
         }
     }
+
+    /** Explicitly optional Latin-only heuristic path; requested script failures must stay visible. */
+    internal suspend fun extractBestEffort(bitmap: Bitmap): List<TextBlock> =
+        runCatching { extract(bitmap, OcrScript.LATIN) }.getOrDefault(emptyList())
 
     /** Privacy-sensitive scans must distinguish recognition failure from a clean image. */
     internal suspend fun extractOrThrow(bitmap: Bitmap, script: OcrScript): List<TextBlock> {
         check(!bitmap.isRecycled) { "Cannot scan a recycled bitmap" }
+        requireModel(script)
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
-            recognizer(script).process(image)
+            val recognizer = recognizer(script)
+            recognizer.process(image)
                 .addOnSuccessListener { result ->
                     if (cont.isActive) {
                         cont.resume(
@@ -153,6 +165,7 @@ object TextExtractor {
                     if (cont.isActive) cont.resumeWithException(error)
                 }
                 .addOnCanceledListener { if (cont.isActive) cont.cancel() }
+                .addOnCompleteListener { recognizer.close() }
         }
     }
 
@@ -170,9 +183,11 @@ object TextExtractor {
             if (failOnError) error("Cannot scan a recycled bitmap")
             return emptyList()
         }
+        requireModel(script)
         return suspendCancellableCoroutine { cont ->
             val image = InputImage.fromBitmap(bitmap, 0)
-            recognizer(script).process(image)
+            val recognizer = recognizer(script)
+            recognizer.process(image)
                 .addOnSuccessListener { result ->
                     if (cont.isActive) {
                         cont.resume(
@@ -205,6 +220,7 @@ object TextExtractor {
                     }
                 }
                 .addOnCanceledListener { if (cont.isActive) cont.cancel() }
+                .addOnCompleteListener { recognizer.close() }
         }
     }
 }

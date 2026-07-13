@@ -813,8 +813,27 @@ class SettingsActivity : ComponentActivity() {
                                     FilterChip(
                                         selected = ocrScript == script,
                                         onClick = {
-                                            ocrScript = script
-                                            prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
+                                            if (script == OcrScript.LATIN) {
+                                                ocrScript = script
+                                                prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
+                                            } else {
+                                                lifecycleScope.launch {
+                                                    val installed = runCatching {
+                                                        OcrModelManager.isInstalled(this@SettingsActivity, script)
+                                                    }.getOrDefault(false)
+                                                    if (installed) {
+                                                        ocrScript = script
+                                                        prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
+                                                    } else {
+                                                        Toast.makeText(
+                                                            this@SettingsActivity,
+                                                            getString(R.string.ml_model_ocr_missing, script.label),
+                                                            Toast.LENGTH_LONG,
+                                                        ).show()
+                                                        openDestination(SettingsDestination.ML_MODELS)
+                                                    }
+                                                }
+                                            }
                                         },
                                         label = { Text(script.label, fontSize = 11.sp) },
                                         shape = RoundedCornerShape(8.dp)
@@ -823,6 +842,14 @@ class SettingsActivity : ComponentActivity() {
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    MlModelManagerPanel(
+                        Modifier.settingsAnchor(
+                            SettingsDestination.ML_MODELS, settingsRequesters, highlightedDestination
+                        )
+                    )
 
                     Spacer(Modifier.height(8.dp))
 

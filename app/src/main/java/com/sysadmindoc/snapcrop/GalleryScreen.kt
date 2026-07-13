@@ -2480,10 +2480,25 @@ internal fun PhotoViewer(
                 if (!summaryLoading && photo != null) {
                     summaryLoading = true
                     scope.launch {
-                        val result = ScreenshotSummarizer.summarize(context, photo.uri)
-                        summaryText = result.description
-                        summaryLoading = false
-                        showSummary = true
+                        try {
+                            val result = ScreenshotSummarizer.summarize(context, photo.uri)
+                            summaryText = result.description
+                            showSummary = true
+                        } catch (error: Exception) {
+                            if (error is OcrModelUnavailableException) {
+                                context.startActivity(
+                                    SettingsRegistry.intent(context, SettingsDestination.ML_MODELS)
+                                )
+                            }
+                            android.widget.Toast.makeText(
+                                context,
+                                if (error is OcrModelUnavailableException) error.message
+                                else MlKitStatus.userMessage(context, MlKitFeature.TEXT_RECOGNITION, error),
+                                android.widget.Toast.LENGTH_LONG,
+                            ).show()
+                        } finally {
+                            summaryLoading = false
+                        }
                     }
                 }
             }) {

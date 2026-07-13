@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import android.webkit.WebView
 import coil3.ImageLoader
@@ -17,10 +18,13 @@ class SnapCropApp : Application(), SingletonImageLoader.Factory {
         const val CHANNEL_STEP_CAPTURE = "snapcrop_step_capture"
         const val CHANNEL_REMINDERS = "snapcrop_reminders"
         const val BACKGROUND_IMAGE_CACHE_PERCENT = 0.25
+        internal lateinit var appContext: Context
+            private set
     }
 
     override fun onCreate() {
         super.onCreate()
+        appContext = applicationContext
         if (Application.getProcessName().endsWith(":web_capture")) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 WebView.setDataDirectorySuffix("web_capture")

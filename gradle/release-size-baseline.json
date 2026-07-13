@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "baselineVersion": "6.82.0",
+  "artifacts": {
+    "universal": 241660484,
+    "arm64-v8a": 79232739,
+    "armeabi-v7a": 59489159,
+    "x86": 85585531,
+    "x86_64": 85076579
+  }
+}

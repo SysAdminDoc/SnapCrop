@@ -522,7 +522,14 @@ class ScreenshotService : Service() {
                     this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.PROCESS,
                     DiagnosticResult.FAILED, journalStarted, DiagnosticCode.INTERNAL, error
                 )
-                handler.post { Toast.makeText(this@ScreenshotService, getString(R.string.toast_quick_save_failed), Toast.LENGTH_SHORT).show() }
+                handler.post {
+                    Toast.makeText(
+                        this@ScreenshotService,
+                        if (error is OcrModelUnavailableException) error.message
+                        else getString(R.string.toast_quick_save_failed),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
             } finally {
                 cropped?.recycle()
                 bitmap?.recycle()

@@ -4,6 +4,24 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**User-managed optional ML delivery (v6.83.0).**
+
+- Latin OCR remains bundled and fail-closed privacy scans stay immediately
+  available, while Chinese, Japanese, Korean, and Devanagari OCR now use thin
+  Google Play services delivery. Missing requested scripts route to the exact
+  Settings model control instead of producing an empty result.
+- The searchable On-device models panel reports live OCR and translation model
+  readiness, installed-size guidance, download progress where Play services
+  exposes it, Wi-Fi-only download/retry, and removal. Translation readiness now
+  comes from ML Kit's model inventory rather than stale preferences.
+- Release provenance schema 3 records the v6.82 universal/per-ABI size baseline,
+  reports each APK delta, rejects bundled optional-script assets, and enforces at
+  least a 1.5 MB reduction. The thin build removes about 2.38 MB from every APK.
+- Host contracts, accessibility routing, and error-path tests pass. The Android 17
+  preview emulator's current Play services module installer returns
+  `INTERNAL_ERROR`; that single live-download assertion is an explicit assumption
+  skip while all app-side model lifecycle and packaging contracts remain strict.
+
 **Searchable, anchored Settings and contextual routing (v6.82.0).**
 
 - A localized static registry covers 32 exact Settings controls without reading

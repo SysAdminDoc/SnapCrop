@@ -72,6 +72,16 @@ class SettingsAccessibilityInstrumentedTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("settings-anchor-local_network").assertIsDisplayed()
     }
+
+    @Test
+    fun settingsSearchRoutesToLiveModelInventory() {
+        composeRule.onNodeWithTag("settings-search").performTextInput("on-device models")
+        composeRule.onNodeWithTag("settings-result-ml_models").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("settings-anchor-ml_models").assertIsDisplayed()
+        composeRule.onNodeWithText(composeRule.activity.getString(R.string.ml_models_ocr_title)).assertIsDisplayed()
+        composeRule.onRoot().tryPerformAccessibilityChecks()
+    }
 }
 
 @OptIn(ExperimentalTestApi::class)

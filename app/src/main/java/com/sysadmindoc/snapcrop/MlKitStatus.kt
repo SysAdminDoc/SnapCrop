@@ -58,18 +58,6 @@ object MlKitStatusStore {
     private const val KEY_SUBJECT_SEGMENTATION_READY = "subject_segmentation_ready"
     private const val KEY_SUBJECT_SEGMENTATION_LAST_ERROR = "subject_segmentation_last_error"
 
-    fun isTranslationModelReady(context: Context, sourceLanguage: String, targetLanguage: String): Boolean {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(translationKey(sourceLanguage, targetLanguage), false)
-    }
-
-    fun markTranslationModelReady(context: Context, sourceLanguage: String, targetLanguage: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(translationKey(sourceLanguage, targetLanguage), true)
-            .apply()
-    }
-
     fun markSubjectSegmentationReady(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -92,7 +80,4 @@ object MlKitStatusStore {
     fun subjectSegmentationLastError(context: Context): String =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_SUBJECT_SEGMENTATION_LAST_ERROR, "").orEmpty()
-
-    private fun translationKey(sourceLanguage: String, targetLanguage: String): String =
-        "translation_model_${sourceLanguage}_$targetLanguage"
 }

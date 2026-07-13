@@ -1075,26 +1075,45 @@ class MainActivity : ComponentActivity() {
                                             if (preparingOcr) return@TextButton
                                             preparingOcr = true
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                val prepared = linkedMapOf<String, List<TextBlock>>()
-                                                reportUris.value.forEach { uri ->
-                                                    val reportBitmap = decodeReportBitmap(uri)
-                                                    prepared[uri.toString()] = if (reportBitmap == null) {
-                                                        emptyList()
-                                                    } else {
-                                                        try {
-                                                            TextExtractor.extract(reportBitmap, OcrScript.fromContext(this@MainActivity))
-                                                                .map(TextBlock::deepCopy)
-                                                        } catch (_: Exception) {
+                                                try {
+                                                    val prepared = linkedMapOf<String, List<TextBlock>>()
+                                                    reportUris.value.forEach { uri ->
+                                                        val reportBitmap = decodeReportBitmap(uri)
+                                                        prepared[uri.toString()] = if (reportBitmap == null) {
                                                             emptyList()
-                                                        } finally {
-                                                            reportBitmap.recycle()
+                                                        } else {
+                                                            try {
+                                                                TextExtractor.extract(reportBitmap, OcrScript.fromContext(this@MainActivity))
+                                                                    .map(TextBlock::deepCopy)
+                                                            } catch (error: OcrModelUnavailableException) {
+                                                                throw error
+                                                            } catch (_: Exception) {
+                                                                emptyList()
+                                                            } finally {
+                                                                reportBitmap.recycle()
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                withContext(Dispatchers.Main) {
-                                                    reviewedOcr = prepared
-                                                    preparingOcr = false
-                                                    showOcrReview = true
+                                                    withContext(Dispatchers.Main) {
+                                                        reviewedOcr = prepared
+                                                        preparingOcr = false
+                                                        showOcrReview = true
+                                                    }
+                                                } catch (error: OcrModelUnavailableException) {
+                                                    withContext(Dispatchers.Main) {
+                                                        preparingOcr = false
+                                                        Toast.makeText(
+                                                            this@MainActivity,
+                                                            error.message,
+                                                            Toast.LENGTH_LONG,
+                                                        ).show()
+                                                        startActivity(
+                                                            SettingsRegistry.intent(
+                                                                this@MainActivity,
+                                                                SettingsDestination.ML_MODELS,
+                                                            )
+                                                        )
+                                                    }
                                                 }
                                             }
                                         },

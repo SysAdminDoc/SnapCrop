@@ -745,10 +745,14 @@ fun CropEditorScreen(
                     else context.getString(R.string.toast_redacted_text_blocks, detected.size),
                     android.widget.Toast.LENGTH_SHORT
                 ).show()
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                if (error is OcrModelUnavailableException) {
+                    context.startActivity(SettingsRegistry.intent(context, SettingsDestination.ML_MODELS))
+                }
                 android.widget.Toast.makeText(
                     context,
-                    context.getString(R.string.toast_redaction_scan_failed),
+                    if (error is OcrModelUnavailableException) error.message
+                    else context.getString(R.string.toast_redaction_scan_failed),
                     android.widget.Toast.LENGTH_LONG
                 ).show()
             } finally {
@@ -1100,22 +1104,36 @@ fun CropEditorScreen(
         if (mode == EditMode.OCR && !ocrScanCompleted && !ocrLoading) {
             ocrLoading = true
             scope.launch {
-                val ocrScript = OcrScript.fromContext(context)
-                val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap, ocrScript) }
-                val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
-                pushUndo()
-                ocrBlocks = textDeferred.await().map(TextBlock::deepCopy)
-                scannedCodes = codeDeferred.await()
-                ocrScanCompleted = true
-                onOcrChanged(ocrBlocks)
-                onOcrReviewedChanged(true)
-                if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
-                    onOcrIndexed(
-                        ocrBlocks.joinToString("\n") { it.text },
-                        scannedCodes.map { it.rawValue }
-                    )
+                try {
+                    val ocrScript = OcrScript.fromContext(context)
+                    val textDeferred = async(Dispatchers.IO) { TextExtractor.extract(bitmap, ocrScript) }
+                    val codeDeferred = async(Dispatchers.IO) { BarcodeScanner.scan(bitmap) }
+                    pushUndo()
+                    ocrBlocks = textDeferred.await().map(TextBlock::deepCopy)
+                    scannedCodes = codeDeferred.await()
+                    ocrScanCompleted = true
+                    onOcrChanged(ocrBlocks)
+                    onOcrReviewedChanged(true)
+                    if (ocrBlocks.isNotEmpty() || scannedCodes.isNotEmpty()) {
+                        onOcrIndexed(
+                            ocrBlocks.joinToString("\n") { it.text },
+                            scannedCodes.map { it.rawValue }
+                        )
+                    }
+                } catch (error: Exception) {
+                    ocrScanCompleted = false
+                    if (error is OcrModelUnavailableException) {
+                        context.startActivity(SettingsRegistry.intent(context, SettingsDestination.ML_MODELS))
+                    }
+                    android.widget.Toast.makeText(
+                        context,
+                        if (error is OcrModelUnavailableException) error.message
+                        else MlKitStatus.userMessage(context, MlKitFeature.TEXT_RECOGNITION, error),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                } finally {
+                    ocrLoading = false
                 }
-                ocrLoading = false
             }
         }
     }
