@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
@@ -77,6 +78,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -419,6 +422,8 @@ fun GalleryScreen(
     val canReadImages = imageAccess != MediaAccess.NONE
     val canReadVideos = videoAccess != MediaAccess.NONE
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE) }
     val collectionStore = remember { ScreenshotIndexStore(context) }
@@ -453,6 +458,11 @@ fun GalleryScreen(
     var encodedFilters by rememberSaveable { mutableStateOf(GalleryFilterState().encode()) }
     val galleryFilters = remember(encodedFilters) { GalleryFilterState.decode(encodedFilters) }
     var showFilters by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
     var pendingDeleteUris by remember { mutableStateOf<List<Uri>?>(null) }
     var showCollectionPicker by remember { mutableStateOf(false) }
     var collectionEditorId by remember { mutableStateOf<Long?>(null) }
@@ -1170,9 +1180,13 @@ fun GalleryScreen(
                     }
                 }
             } else {
-                IconButton(onClick = ::handleGalleryBack) {
-                    @Suppress("DEPRECATION")
-                    Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
+                if (selectedAlbum != null) {
+                    IconButton(onClick = ::handleGalleryBack) {
+                        @Suppress("DEPRECATION")
+                        Icon(Icons.Default.ArrowBack, stringResource(R.string.back), tint = OnSurface)
+                    }
+                } else {
+                    Spacer(Modifier.width(12.dp))
                 }
                 Text(
                     text = when (selectedAlbum) {
@@ -1186,20 +1200,13 @@ fun GalleryScreen(
                         } ?: smartAlbumRuleFor(selectedAlbum!!)?.title
                             ?: selectedAlbum!!.trimEnd('/').substringAfterLast("/")
                     },
-                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = OnSurface,
+                    fontSize = if (selectedAlbum == null) 24.sp else 20.sp,
+                    fontWeight = FontWeight.Bold, color = OnSurface,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 if (selectedAlbum == null) {
-                    Text(stringResource(R.string.gallery_photo_count, albums.sumOf { it.count }), color = OnSurfaceVariant,
-                        fontSize = 13.sp, modifier = Modifier.padding(end = 12.dp))
-                    IconButton(onClick = {
-                        openAlbum(ALL_PHOTOS_PATH)
-                        showFilters = true
-                    }) {
-                        Icon(Icons.Default.FilterList, stringResource(R.string.gallery_filters_inactive), tint = OnSurfaceVariant)
-                    }
                     IconButton(onClick = {
                         collectionName = ""
                         collectionError = null
@@ -1434,27 +1441,55 @@ fun GalleryScreen(
 
         // Search bar
         if (!selectionMode && ((selectedAlbum == null && (albums.isNotEmpty() || smartAlbums.isNotEmpty())) || selectedAlbum != null)) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = {
-                    Text(
-                        if (selectedAlbum == null) stringResource(R.string.gallery_search_albums)
-                        else stringResource(R.string.gallery_search_photos),
-                        color = OnSurfaceVariant,
-                        fontSize = 14.sp
-                    )
-                },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Primary, unfocusedBorderColor = Outline,
-                    focusedTextColor = OnSurface, unfocusedTextColor = OnSurface,
-                    cursorColor = Primary
-                ),
-                shape = RoundedCornerShape(12.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            if (selectedAlbum == null) stringResource(R.string.gallery_search_albums)
+                            else stringResource(R.string.gallery_search_photos),
+                            color = OnSurfaceVariant,
+                            fontSize = 14.sp
+                        )
+                    },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = OnSurfaceVariant, modifier = Modifier.size(18.dp)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = SurfaceContainer,
+                        unfocusedContainerColor = SurfaceContainer,
+                        focusedBorderColor = Primary,
+                        unfocusedBorderColor = Outline.copy(alpha = 0.72f),
+                        focusedTextColor = OnSurface,
+                        unfocusedTextColor = OnSurface,
+                        cursorColor = Primary
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                Surface(
+                    modifier = Modifier.size(56.dp).clickable {
+                        if (selectedAlbum == null) openAlbum(ALL_PHOTOS_PATH)
+                        showFilters = true
+                    },
+                    color = SurfaceContainer,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    BadgedBox(
+                        modifier = Modifier.padding(16.dp),
+                        badge = {
+                            if (galleryFilters.activeCount > 0) Badge { Text(galleryFilters.activeCount.toString()) }
+                        },
+                    ) {
+                        Icon(Icons.Default.FilterList, stringResource(R.string.gallery_filters_inactive), tint = OnSurfaceVariant)
+                    }
+                }
+            }
         }
 
         if (!selectionMode && selectedAlbum != null && galleryFilters.activeCount > 0) {
@@ -1674,7 +1709,13 @@ private fun GalleryCapabilityBanner(title: String, body: String, action: String,
         ) {
             Column(Modifier.weight(1f)) {
                 Text(title, color = OnSurface, style = MaterialTheme.typography.titleSmall)
-                Text(body, color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    body,
+                    color = OnSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             TextButton(onClick = onClick, modifier = Modifier.heightIn(min = 44.dp)) {
                 Text(action, color = Primary, style = MaterialTheme.typography.labelLarge)
@@ -1791,29 +1832,78 @@ private fun AlbumGrid(
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(2),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        val unfiledAlbum = smartAlbums.firstOrNull { it.path == UNFILED_PATH }
+        if (unfiledAlbum != null) {
+            item(key = "featured-unfiled", span = { GridItemSpan(maxLineSpan) }, contentType = "featured-unfiled") {
+                val unfiledCd = stringResource(
+                    R.string.gallery_smart_album_cd,
+                    unfiledAlbum.name,
+                    unfiledAlbum.count,
+                    unfiledAlbum.subtitle,
+                )
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("gallery-unfiled-album")
+                        .semantics { contentDescription = unfiledCd }
+                        .clickable { onAlbumClick(unfiledAlbum) },
+                    colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.11f)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Tertiary.copy(alpha = 0.72f)),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(color = Tertiary.copy(alpha = 0.16f), shape = RoundedCornerShape(11.dp)) {
+                            Icon(Icons.Default.Folder, null, tint = Tertiary, modifier = Modifier.padding(10.dp).size(22.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(unfiledAlbum.name, color = OnSurface, style = MaterialTheme.typography.titleMedium)
+                            Text(unfiledAlbum.subtitle, color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text(
+                            unfiledAlbum.count.toString(),
+                            color = Tertiary,
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = Tertiary, modifier = Modifier.size(19.dp))
+                    }
+                }
+            }
+        }
+
         if (showLibraryCards) {
-            // "All Photos" card first
-            item(key = "library-all-photos", contentType = "library-card") {
+            item(key = "library-all-photos", span = { GridItemSpan(maxLineSpan) }, contentType = "library-card") {
                 val allPhotosLabel = stringResource(R.string.gallery_all_photos)
                 val allPhotosCd = stringResource(R.string.gallery_album_cd, allPhotosLabel, totalMediaCount)
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                    modifier = Modifier.fillMaxWidth()
                         .semantics { contentDescription = allPhotosCd }
                         .clickable { onAllPhotos() },
-                    colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
-                    shape = RoundedCornerShape(12.dp)
+                    colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.62f)),
+                    shape = RoundedCornerShape(16.dp)
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Photo, null, Modifier.size(40.dp), tint = Primary)
-                            Spacer(Modifier.height(8.dp))
-                            Text(allPhotosLabel, color = OnSurface, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("$totalMediaCount", color = OnSurfaceVariant, fontSize = 12.sp)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(color = Primary.copy(alpha = 0.12f), shape = RoundedCornerShape(11.dp)) {
+                            Icon(Icons.Default.Photo, null, Modifier.padding(10.dp).size(22.dp), tint = Primary)
                         }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(allPhotosLabel, color = OnSurface, style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.gallery_photo_count, totalMediaCount), color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = OnSurfaceVariant, modifier = Modifier.size(19.dp))
                     }
                 }
             }
@@ -1824,11 +1914,11 @@ private fun AlbumGrid(
                     val favoritesLabel = stringResource(R.string.gallery_favorites)
                     val favoritesCd = stringResource(R.string.gallery_album_cd, favoritesLabel, favCount)
                     Card(
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1.45f)
                             .semantics { contentDescription = favoritesCd }
                             .clickable { onFavorites() },
                         colors = CardDefaults.cardColors(containerColor = Tertiary.copy(alpha = 0.15f)),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1856,11 +1946,11 @@ private fun AlbumGrid(
             items(manualAlbums, key = { it.path }, contentType = { "manual-collection" }) { album ->
                 val albumCd = stringResource(R.string.gallery_collection_cd, album.name, album.count)
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1.28f)
                         .semantics { contentDescription = albumCd }
                         .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = PrimaryContainer),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         if (album.coverUri != Uri.EMPTY) {
@@ -1887,7 +1977,8 @@ private fun AlbumGrid(
             }
         }
 
-        if (smartAlbums.isNotEmpty()) {
+        val remainingSmartAlbums = smartAlbums.filterNot { it.path == UNFILED_PATH }
+        if (remainingSmartAlbums.isNotEmpty()) {
             item(key = "smart-albums-header", span = { GridItemSpan(maxLineSpan) }, contentType = "section-header") {
                 Text(
                     stringResource(R.string.gallery_smart_albums),
@@ -1897,15 +1988,14 @@ private fun AlbumGrid(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                 )
             }
-            items(smartAlbums, key = { it.path }, contentType = { "smart-album" }) { album ->
+            items(remainingSmartAlbums, key = { it.path }, contentType = { "smart-album" }) { album ->
                 val smartAlbumCd = stringResource(R.string.gallery_smart_album_cd, album.name, album.count, album.subtitle)
                 Card(
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                        .then(if (album.path == UNFILED_PATH) Modifier.testTag("gallery-unfiled-album") else Modifier)
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1.28f)
                         .semantics { contentDescription = smartAlbumCd }
                         .clickable { onAlbumClick(album) },
                     colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(14.dp)
                 ) {
                     Box(Modifier.fillMaxSize()) {
                         AsyncImage(
@@ -1922,7 +2012,7 @@ private fun AlbumGrid(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    if (album.path == UNFILED_PATH) Icons.Default.Folder else Icons.Default.PhoneAndroid,
+                                    Icons.Default.PhoneAndroid,
                                     null,
                                     tint = Tertiary,
                                     modifier = Modifier.size(13.dp),
@@ -1930,8 +2020,7 @@ private fun AlbumGrid(
                                 Spacer(Modifier.width(4.dp))
                                 Text(
                                     stringResource(
-                                        if (album.path == UNFILED_PATH) R.string.gallery_unfiled_title
-                                        else R.string.gallery_auto_badge
+                                        R.string.gallery_auto_badge
                                     ),
                                     color = Color.White,
                                     fontSize = 10.sp,
@@ -1947,8 +2036,7 @@ private fun AlbumGrid(
                                 Text(album.subtitle, color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 13.sp)
                                 Text(stringResource(
-                                    if (album.path == UNFILED_PATH) R.string.gallery_unfiled_count
-                                    else R.string.gallery_matched_count,
+                                    R.string.gallery_matched_count,
                                     album.count,
                                 ), color = Tertiary, fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium)
@@ -1959,7 +2047,7 @@ private fun AlbumGrid(
             }
         }
 
-        if (albums.isNotEmpty() && smartAlbums.isNotEmpty()) {
+        if (albums.isNotEmpty() && remainingSmartAlbums.isNotEmpty()) {
             item(key = "albums-header", span = { GridItemSpan(maxLineSpan) }, contentType = "section-header") {
                 Text(
                     stringResource(R.string.gallery_albums),
@@ -1974,11 +2062,11 @@ private fun AlbumGrid(
         items(albums, key = { it.path }, contentType = { "album" }) { album ->
             val albumCd = stringResource(R.string.gallery_album_cd, album.name, album.count)
             Card(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                modifier = Modifier.fillMaxWidth().aspectRatio(1.28f)
                     .semantics { contentDescription = albumCd }
                     .clickable { onAlbumClick(album) },
                 colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Box(Modifier.fillMaxSize()) {
                     AsyncImage(

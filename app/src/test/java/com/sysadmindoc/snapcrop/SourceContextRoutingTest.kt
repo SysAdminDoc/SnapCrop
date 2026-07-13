@@ -31,12 +31,25 @@ class SourceContextRoutingTest {
         val journal = source("OperationJournal.kt")
 
         val persist = crop.indexOf("putSourceContext(uri, checkNotNull(savedDateAdded), contextValue)")
-        val replace = crop.indexOf("requestSourceTrash(SourceMutationPurpose.REPLACE_AFTER_SAVE")
+        val replace = crop.indexOf("requestSourceMutation(SourceMutationPurpose.REPLACE_AFTER_SAVE")
         assertTrue(persist >= 0 && replace > persist)
         assertTrue(index.contains("tableName = \"media_source_context\""))
         assertFalse(hints.contains("ExplicitSourceContext"))
         assertFalse(journal.contains("sourceUrl"))
         assertFalse(journal.contains("sourceContext"))
+    }
+
+    @Test
+    fun promptFreeArchiveBypassesPerFileWriteRequestOnAndroidTwelveAndLater() {
+        val crop = source("CropActivity.kt")
+        val routeStart = crop.indexOf("private fun continueSourceArchiveAccess()")
+        val routeEnd = crop.indexOf("private fun launchSourceArchiveWriteRequest()")
+        val route = crop.substring(routeStart, routeEnd)
+
+        assertTrue(route.contains("Build.VERSION.SDK_INT >= Build.VERSION_CODES.S"))
+        assertTrue(route.contains("moveSourceToArchive(mayRequestLegacyAccess = false)"))
+        assertTrue(route.contains("else {\n            launchSourceArchiveWriteRequest()"))
+        assertFalse(route.contains("MediaStore.createWriteRequest"))
     }
 
     private fun source(name: String): String =

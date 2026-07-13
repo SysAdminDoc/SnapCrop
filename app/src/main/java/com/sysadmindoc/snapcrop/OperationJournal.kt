@@ -23,6 +23,7 @@ internal enum class DiagnosticOperation {
     LONG_SCREENSHOT,
     STEP_CAPTURE,
     EXPORT,
+    ARCHIVE,
     DELETE,
     MODEL,
     WEB_CAPTURE,

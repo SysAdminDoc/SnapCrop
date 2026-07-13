@@ -6,10 +6,12 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -62,6 +64,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -78,6 +81,17 @@ class SettingsActivity : ComponentActivity() {
             SnapCropTheme {
                 var credentialStore by remember { mutableStateOf(initialCredentialStore) }
                 var deleteOriginal by remember { mutableStateOf(prefs.getBoolean("delete_original", true)) }
+                var archiveAccessGranted by remember {
+                    mutableStateOf(SourceArchiveManager.hasPromptFreeAccess(this@SettingsActivity))
+                }
+                var mediaLocationGranted by remember {
+                    mutableStateOf(
+                        ContextCompat.checkSelfPermission(
+                            this@SettingsActivity,
+                            Manifest.permission.ACCESS_MEDIA_LOCATION,
+                        ) == PackageManager.PERMISSION_GRANTED
+                    )
+                }
                 var useJpeg by remember { mutableStateOf(prefs.getBoolean("use_jpeg", false)) }
                 var useWebp by remember { mutableStateOf(prefs.getBoolean("use_webp", false)) }
                 var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", false)) }
@@ -128,6 +142,41 @@ class SettingsActivity : ComponentActivity() {
                 val backupImportLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocument()
                 ) { uri -> if (uri != null) importSettings(uri, prefs) }
+                val archiveManagementLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) {
+                    archiveAccessGranted = SourceArchiveManager.hasPromptFreeAccess(this@SettingsActivity)
+                }
+                val archiveLocationLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { granted ->
+                    mediaLocationGranted = granted
+                    if (granted) {
+                        runCatching {
+                            archiveManagementLauncher.launch(SourceArchiveManager.permissionIntent())
+                        }.onFailure {
+                            Toast.makeText(
+                                this@SettingsActivity,
+                                R.string.settings_archive_access_unavailable,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
+                }
+                DisposableEffect(Unit) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) {
+                            archiveAccessGranted =
+                                SourceArchiveManager.hasPromptFreeAccess(this@SettingsActivity)
+                            mediaLocationGranted = ContextCompat.checkSelfPermission(
+                                this@SettingsActivity,
+                                Manifest.permission.ACCESS_MEDIA_LOCATION,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        }
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
                 var pendingRuleDelete by remember { mutableStateOf<UserAppCropProfile?>(null) }
                 var showHelp by remember { mutableStateOf(false) }
                 val recentWorkflowPrefs = remember {
@@ -380,6 +429,28 @@ class SettingsActivity : ComponentActivity() {
                             prefs.edit().putBoolean("delete_original", it).apply()
                         }
                     )
+
+                    if (deleteOriginal) {
+                        SourceArchiveAccessCard(
+                            supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                            granted = archiveAccessGranted && mediaLocationGranted,
+                            onGrant = {
+                                if (!mediaLocationGranted) {
+                                    archiveLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
+                                } else {
+                                    runCatching {
+                                        archiveManagementLauncher.launch(SourceArchiveManager.permissionIntent())
+                                    }.onFailure {
+                                        Toast.makeText(
+                                            this@SettingsActivity,
+                                            R.string.settings_archive_access_unavailable,
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                }
+                            },
+                        )
+                    }
 
                     var projectSidecars by remember { mutableStateOf(prefs.getBoolean("project_sidecars", false)) }
                     SettingToggle(
@@ -2144,6 +2215,48 @@ private fun SettingToggle(
                     uncheckedTrackColor = SurfaceVariant
                 )
             )
+        }
+    }
+}
+
+@Composable
+private fun SourceArchiveAccessCard(
+    supported: Boolean,
+    granted: Boolean,
+    onGrant: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = SurfaceContainer),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Outline.copy(alpha = 0.72f)),
+        shape = RoundedCornerShape(10.dp),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Text(
+                stringResource(R.string.settings_archive_access_title),
+                color = OnSurface,
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                stringResource(
+                    when {
+                        !supported -> R.string.settings_archive_access_legacy
+                        granted -> R.string.settings_archive_access_ready
+                        else -> R.string.settings_archive_access_needed
+                    }
+                ),
+                color = if (granted) Success else OnSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (supported && !granted) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onGrant,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text(stringResource(R.string.settings_archive_access_action), color = Primary)
+                }
+            }
         }
     }
 }

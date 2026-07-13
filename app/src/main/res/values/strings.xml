@@ -37,7 +37,7 @@
 
     <!-- Navigation -->
     <string name="nav_home">Home</string>
-    <string name="nav_gallery">Gallery</string>
+    <string name="nav_gallery">Library</string>
     <string name="more_actions">More actions</string>
 
     <!-- Home screen -->
@@ -46,6 +46,8 @@
     <string name="home_permission_images_title">Automatic screenshot access off</string>
     <string name="home_permission_images_body">Full photo access is used only to find new screenshots automatically. Pick Image, Batch Crop, and images shared into SnapCrop still work through Android’s picker.</string>
     <string name="home_permission_images_grant">Allow photos for monitoring</string>
+    <string name="home_permission_allow_short">Allow</string>
+    <string name="home_permission_manage_short">Manage</string>
     <string name="home_permission_partial_title">Limited photo access</string>
     <string name="home_permission_partial_body">Selected-photo access works in the Gallery, but automatic monitoring cannot see future screenshots. Pickers and sharing still work. Tap below and choose “Allow all”.</string>
     <string name="home_permission_partial_grant">Allow all photos</string>
@@ -66,6 +68,7 @@
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
+    <string name="home_overlay_grant_short">Enable</string>
     <string name="home_monitor_title">Screenshot Monitor</string>
     <string name="home_monitor_active">Private and ready for your next screenshot</string>
     <string name="home_monitor_paused">Turn on monitoring to catch new screenshots</string>
@@ -73,12 +76,17 @@
     <string name="home_monitoring_off">Monitoring off</string>
     <string name="home_monitor_status_active">Active</string>
     <string name="home_monitor_status_paused">Paused</string>
+    <string name="home_monitor_ready_title">Ready for your next screenshot</string>
+    <string name="home_monitor_paused_title">Monitoring is paused</string>
+    <string name="home_monitor_active_short">Monitoring active · local and private</string>
+    <string name="home_monitor_paused_short">Tap the switch when you’re ready</string>
+    <string name="home_monitor_auto_detect">Auto-detect new screenshots</string>
     <string name="home_monitor_cd">Screenshot Monitor, %1$s</string>
     <string name="home_monitor_switch_cd">Screenshot Monitor switch, %1$s</string>
     <string name="home_workflows">Workflows</string>
     <string name="home_edit_image">Edit image</string>
     <string name="home_quick_actions">Quick actions</string>
-    <string name="home_your_tools">Your tools</string>
+    <string name="home_your_tools">Workspace</string>
     <string name="home_capture_short">Capture</string>
     <string name="home_long_short">Long shot</string>
     <string name="home_web_short">Web page</string>
@@ -87,7 +95,7 @@
     <string name="home_web_capture_title">Capture a web page</string>
     <string name="home_web_capture_subtitle">Load an HTTPS page locally and send a bounded full-page image to the editor.</string>
     <string name="home_crop_one_subtitle">Open the editor with auto-crop, redaction, OCR, and export tools.</string>
-    <string name="home_batch_title">Batch autocrop</string>
+    <string name="home_batch_title">Batch crop</string>
     <string name="home_batch_subtitle">Clean up to 50 screenshots, each up to 64 MiB / 48 MP.</string>
     <string name="home_delay_title">Delayed capture</string>
     <string name="home_delay_subtitle">Start a timed screenshot.</string>
@@ -101,9 +109,9 @@
     <string name="home_stitch_subtitle">Join images vertically or horizontally.</string>
     <string name="home_collage_title">Collage</string>
     <string name="home_collage_subtitle">Build a clean multi-image layout.</string>
-    <string name="home_mockup_title">Device mockup</string>
+    <string name="home_mockup_title">Device frame</string>
     <string name="home_mockup_subtitle">Wrap a screenshot in a polished phone frame.</string>
-    <string name="home_video_title">Video frame</string>
+    <string name="home_video_title">Video frames</string>
     <string name="home_video_subtitle">Trim recordings or grab a frame to edit.</string>
     <string name="home_crop_count">%1$d screenshots cropped</string>
     <string name="home_recent">Recent</string>
@@ -279,7 +287,7 @@
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_export_defaults">Export defaults</string>
-    <string name="settings_export_summary_replace">%1$s output - Save replaces the source screenshot</string>
+    <string name="settings_export_summary_replace">%1$s output - Save archives the source screenshot</string>
     <string name="settings_export_summary_keep">%1$s output - Save keeps the source screenshot</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme_title">Theme</string>
@@ -288,7 +296,13 @@
     <string name="settings_theme_system">System</string>
     <string name="settings_section_save">Save behavior</string>
     <string name="settings_replace_title">Replace original on Save</string>
-    <string name="settings_replace_subtitle">When ON (default), manual Save deletes the screenshot you cropped from. Android may ask you to confirm deletion.</string>
+    <string name="settings_replace_subtitle">When ON (default), manual Save moves the source screenshot to Pictures/trashed after the edited copy is safely written.</string>
+    <string name="settings_archive_access_title">Prompt-free archive access</string>
+    <string name="settings_archive_access_needed">Allow one-time Media management access so Save &amp; Replace can move originals without asking for every photo.</string>
+    <string name="settings_archive_access_ready">Ready - originals move to Pictures/trashed without per-photo prompts.</string>
+    <string name="settings_archive_access_legacy">Android 10-11 requires confirmation before SnapCrop can move a source it did not create.</string>
+    <string name="settings_archive_access_action">Allow prompt-free moves</string>
+    <string name="settings_archive_access_unavailable">Media management settings are unavailable on this device.</string>
     <string name="settings_sidecar_title">Editable project sidecars</string>
     <string name="settings_sidecar_subtitle">Save a .snapcrop.json file next to exports so crops, reversible concealment masks, OCR corrections, and layers can be reopened later. The file can contain sensitive recognized text; keeps the source image when enabled.</string>
     <string name="settings_ocr_text_sidecar_title">Corrected OCR text sidecars</string>
@@ -649,7 +663,7 @@
     <!-- CropActivity -->
     <string name="crop_project_unavailable">Project source unavailable</string>
     <string name="crop_saving_title">Saving export</string>
-    <string name="crop_saving_replace">Replacing the source after the crop is written</string>
+    <string name="crop_saving_replace">Saving the crop, then moving the source to Pictures/trashed</string>
     <string name="crop_saving_copy">Writing a separate copy to your save location</string>
     <string name="crop_delete_title">Remove original screenshot?</string>
     <string name="crop_delete_body">Android 11+ moves the source to Trash. Android 10 deletes it permanently. Saved copies and shared exports stay where they are.</string>
@@ -671,13 +685,14 @@
     <string name="crop_save_replace">Save &amp; Replace</string>
     <string name="crop_saved_path">Saved to %1$s</string>
     <string name="crop_copy_saved_path">Copy saved to %1$s</string>
-    <string name="crop_original_trashed">Original moved to Trash</string>
+    <string name="crop_original_archived">Original moved to Pictures/trashed</string>
+    <string name="crop_archive_access_required">To replace without per-photo prompts, allow SnapCrop under Media management apps. The saved crop is kept if you decline.</string>
     <string name="crop_copy_saved_original_retained">Copy saved; original retained</string>
     <string name="crop_sidecar_failed_original_retained">Image saved, but a requested sidecar could not be written. Original retained.</string>
     <string name="crop_saved_sidecar_omitted">Image saved; a requested sidecar could not be written.</string>
 
     <!-- Gallery screen -->
-    <string name="gallery_title">Gallery</string>
+    <string name="gallery_title">Library</string>
     <string name="gallery_all_photos">All Photos</string>
     <string name="gallery_favorites">Favorites</string>
     <string name="gallery_selected_count">%1$d selected</string>
@@ -744,7 +759,7 @@
     <string name="gallery_sort_date">Date</string>
     <string name="gallery_sort_name">Name</string>
     <string name="gallery_sort_size">Size</string>
-    <string name="gallery_search_albums">Search albums and smart groups…</string>
+    <string name="gallery_search_albums">Search library</string>
     <string name="gallery_search_photos">Search names, source hints, and indexed categories…</string>
     <string name="gallery_loading">Loading your media library</string>
     <string name="gallery_retry">Retry</string>
@@ -848,7 +863,7 @@
 
     <!-- Editor modes -->
     <string name="mode_crop">Crop</string>
-    <string name="mode_pixelate">Conceal</string>
+    <string name="mode_pixelate">Redact</string>
     <string name="mode_draw">Draw</string>
     <string name="mode_ocr">OCR</string>
     <string name="mode_adjust">Adjust</string>

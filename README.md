@@ -81,7 +81,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
   and Cut Out.
 - Live file size estimate
 - Adaptive wide editor layout with persistent side controls for tablets, foldables, and desktop-mode windows
-- Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
+- Explicit **Save & Replace** / **Save Copy** actions. Replace safely publishes
+  the crop before moving the source into `Pictures/trashed/`; Android 12+ can use
+  one-time Media management access instead of confirming every source move.
 
 **Cut Out**
 - Remove one or more irrelevant horizontal or vertical bands from long
@@ -317,10 +319,13 @@ disclosed below; optional exports and automatic update checks are off by default
   instead of silently skipping the scan. Official local releases run a fixed
   synthetic light/dark corpus across every supported OCR script and sensitive
   category; fixture values are reserved examples, never real personal data.
-- SnapCrop does not request all-files access. On Android 11+, removals use
-  Android's scoped Trash confirmation; the gallery updates only after approval.
-  If Save & Replace cannot move the source, the copy remains saved and the
-  original is explicitly retained.
+- SnapCrop does not request all-files access. Manual removals use Android's
+  scoped Trash confirmation. Save & Replace instead moves the source into the
+  visible `Pictures/trashed/` album after the crop is durably published.
+  Android 12+ can grant optional Media management and photo-location access once
+  to suppress per-image write confirmations; SnapCrop does not index, display,
+  upload, or otherwise use embedded location values. If access is denied or a
+  move fails, the copy remains saved and the original is explicitly retained.
 - The screenshot intelligence index is opt-in, local-only, and can be rebuilt
   or purged from Settings.
 - The bounded local operation journal keeps only typed workflow stage/result,
@@ -388,7 +393,9 @@ disclosed below; optional exports and automatic update checks are off by default
 
 - Photos/images enable screenshot monitoring and Gallery; video is requested
   only when Gallery video browsing needs it. Android's selected-photo picker
-  remains available without broad library access.
+  remains available without broad library access. Media management and photo-
+  location access are optional, user-started permissions used only to move a
+  replaced source into `Pictures/trashed/` without repeated confirmations.
 - Notifications support monitoring, countdowns, reminders, and recovery actions;
   display-over-apps is optional and Accessibility is enabled only through Android
   settings after separate Long Screenshot or Step Capture disclosures.
