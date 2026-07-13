@@ -4,6 +4,7 @@ import java.time.Instant
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import org.cyclonedx.model.Component
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -37,6 +38,7 @@ val releaseAbiSplitsEnabled = providers.gradleProperty("snapcrop.releaseAbiSplit
         gradle.startParameter.taskNames.any { taskName ->
             taskName.contains("assembleRelease", ignoreCase = true) ||
                     taskName.contains("generateReleaseProvenance", ignoreCase = true) ||
+                    taskName.contains("ReleaseSize", ignoreCase = true) ||
                     taskName.contains("verifyOfficialRelease", ignoreCase = true)
         }
     )
@@ -60,8 +62,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 139
-        versionName = "6.87.0"
+        versionCode = 140
+        versionName = "6.88.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -160,7 +162,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons)
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
     implementation(libs.mlkit.objectdetection)
     implementation(libs.mlkit.textrecognition)
@@ -204,11 +205,231 @@ tasks.cyclonedxDirectBom {
     skipConfigs.set(listOf(".*[Tt]est.*", "debug.*", "androidTest.*"))
 }
 
+val releaseSizeReportFile = layout.buildDirectory.file("reports/release-size.json")
+val releaseSizeBaselineFile = rootProject.layout.projectDirectory.file("gradle/release-size-baseline.json")
+val releaseSizeArtifactCompressedGrowthLimit = 256L * 1024L
+val releaseSizeArtifactUncompressedGrowthLimit = 512L * 1024L
+
+tasks.register("generateReleaseSizeReport") {
+    group = "verification"
+    description = "Measures compressed and expanded release APK, dependency, and native-library sizes."
+    dependsOn("assembleRelease")
+    outputs.file(releaseSizeReportFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        val versionName = android.defaultConfig.versionName ?: error("versionName is required")
+        val releaseApkDirectory = layout.buildDirectory.dir("outputs/apk/release").get().asFile
+        val apks = linkedMapOf(
+            "universal" to releaseApkDirectory.resolve("app-universal-release.apk"),
+        ).apply {
+            releaseAbis.forEach { abi -> put(abi, releaseApkDirectory.resolve("app-$abi-release.apk")) }
+        }
+        apks.forEach { (abi, apk) -> require(apk.isFile) { "Release APK is missing for $abi: $apk" } }
+
+        fun expandedBytes(file: File): Long = ZipFile(file).use { zip ->
+            zip.entries().asSequence().sumOf { entry -> entry.size.coerceAtLeast(0L) }
+        }
+        fun apkCategories(file: File): Map<String, Map<String, Long>> {
+            val totals = linkedMapOf<String, LongArray>()
+            ZipFile(file).use { zip ->
+                zip.entries().asSequence().filterNot(ZipEntry::isDirectory).forEach { entry ->
+                    val category = when {
+                        entry.name.endsWith(".dex") -> "dex"
+                        entry.name.startsWith("lib/") -> "native"
+                        entry.name.startsWith("assets/") -> "assets"
+                        entry.name.startsWith("res/") || entry.name == "resources.arsc" -> "resources"
+                        entry.name.startsWith("META-INF/") -> "metadata"
+                        else -> "other"
+                    }
+                    val values = totals.getOrPut(category) { longArrayOf(0, 0) }
+                    values[0] += entry.compressedSize.coerceAtLeast(0L)
+                    values[1] += entry.size.coerceAtLeast(0L)
+                }
+            }
+            return totals.mapValues { (_, values) ->
+                linkedMapOf("compressedBytes" to values[0], "uncompressedBytes" to values[1])
+            }
+        }
+        fun nativeRows(file: File): List<Map<String, Any>> = ZipFile(file).use { zip ->
+            zip.entries().asSequence()
+                .filter { it.name.startsWith("lib/") && it.name.endsWith(".so") }
+                .map { entry ->
+                    linkedMapOf<String, Any>(
+                        "abi" to entry.name.substringAfter("lib/").substringBefore('/'),
+                        "name" to entry.name.substringAfterLast('/'),
+                        "compressedBytes" to entry.compressedSize.coerceAtLeast(0L),
+                        "uncompressedBytes" to entry.size.coerceAtLeast(0L),
+                    )
+                }
+                .sortedWith(compareBy<Map<String, Any>> { it.getValue("abi").toString() }
+                    .thenBy { it.getValue("name").toString() })
+                .toList()
+        }
+
+        val universalNative = nativeRows(apks.getValue("universal"))
+        releaseAbis.forEach { abi ->
+            val expected = universalNative.filter { it.getValue("abi") == abi }
+            val actual = nativeRows(apks.getValue(abi))
+            check(actual == expected) { "Native-library payload for $abi does not match the universal APK" }
+        }
+        val artifactRows = apks.mapValues { (_, apk) ->
+            linkedMapOf<String, Any>(
+                "compressedBytes" to apk.length(),
+                "uncompressedBytes" to expandedBytes(apk),
+                "categories" to apkCategories(apk),
+            )
+        }
+        val dependencyRows = configurations.getByName("releaseRuntimeClasspath")
+            .resolvedConfiguration.resolvedArtifacts
+            .map { artifact ->
+                val id = artifact.moduleVersion.id
+                linkedMapOf<String, Any>(
+                    "coordinate" to "${id.group}:${id.name}:${id.version}",
+                    "artifact" to artifact.file.name,
+                    "compressedBytes" to artifact.file.length(),
+                    "uncompressedBytes" to expandedBytes(artifact.file),
+                )
+            }
+            .distinctBy { row -> "${row.getValue("coordinate")}|${row.getValue("artifact")}" }
+            .sortedWith(compareBy<Map<String, Any>> { it.getValue("coordinate").toString() }
+                .thenBy { it.getValue("artifact").toString() })
+
+        val report = linkedMapOf<String, Any>(
+            "schemaVersion" to 2,
+            "measuredVersion" to versionName,
+            "generatedAtUtc" to Instant.now().toString(),
+            "artifacts" to artifactRows,
+            "dependencies" to dependencyRows,
+            "nativeLibraries" to universalNative,
+        )
+        releaseSizeReportFile.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(JsonOutput.prettyPrint(JsonOutput.toJson(report)) + "\n")
+        }
+        logger.lifecycle("Release-size report: ${releaseSizeReportFile.get().asFile.absolutePath}")
+    }
+}
+
+tasks.register("updateReleaseSizeBaseline") {
+    group = "verification"
+    description = "Intentionally replaces the release-size baseline; requires -Psnapcrop.sizeBaselineReason."
+    dependsOn("generateReleaseSizeReport")
+
+    doLast {
+        val reason = providers.gradleProperty("snapcrop.sizeBaselineReason").orNull?.trim().orEmpty()
+        require(reason.isNotEmpty()) {
+            "Updating the release-size baseline requires -Psnapcrop.sizeBaselineReason=<reason>"
+        }
+        val measured = JsonSlurper().parse(releaseSizeReportFile.get().asFile) as? Map<*, *>
+            ?: error("Release-size report root must be an object")
+        val baseline = linkedMapOf<String, Any>(
+            "schemaVersion" to 2,
+            "baselineVersion" to (android.defaultConfig.versionName ?: error("versionName is required")),
+            "rationale" to reason,
+            "limits" to linkedMapOf(
+                "artifactCompressedGrowthBytes" to releaseSizeArtifactCompressedGrowthLimit,
+                "artifactUncompressedGrowthBytes" to releaseSizeArtifactUncompressedGrowthLimit,
+                "dependencyCompressedGrowthBytes" to 0,
+                "dependencyUncompressedGrowthBytes" to 0,
+                "nativeCompressedGrowthBytes" to 0,
+                "nativeUncompressedGrowthBytes" to 0,
+            ),
+            "artifacts" to requireNotNull(measured["artifacts"]),
+            "dependencies" to requireNotNull(measured["dependencies"]),
+            "nativeLibraries" to requireNotNull(measured["nativeLibraries"]),
+        )
+        releaseSizeBaselineFile.asFile.writeText(
+            JsonOutput.prettyPrint(JsonOutput.toJson(baseline)) + "\n"
+        )
+        logger.lifecycle("Release-size baseline updated: ${releaseSizeBaselineFile.asFile.absolutePath}")
+    }
+}
+
+tasks.register("verifyReleaseSizeBudget") {
+    group = "verification"
+    description = "Fails on unexplained release APK, dependency, or native-library size regressions."
+    dependsOn("generateReleaseSizeReport")
+    inputs.file(releaseSizeBaselineFile)
+
+    doLast {
+        val measured = JsonSlurper().parse(releaseSizeReportFile.get().asFile) as? Map<*, *>
+            ?: error("Release-size report root must be an object")
+        val baseline = JsonSlurper().parse(releaseSizeBaselineFile.asFile) as? Map<*, *>
+            ?: error("Release-size baseline root must be an object")
+        fun objectField(source: Map<*, *>, name: String): Map<*, *> = source[name] as? Map<*, *>
+            ?: error("Release-size $name must be an object")
+        fun listField(source: Map<*, *>, name: String): List<Map<*, *>> = (source[name] as? List<*>)
+            ?.map { it as? Map<*, *> ?: error("Release-size $name entries must be objects") }
+            ?: error("Release-size $name must be an array")
+        fun longField(source: Map<*, *>, name: String): Long = source[name]?.toString()?.toLongOrNull()
+            ?: error("Release-size $name must be an integer")
+        check(longField(baseline, "schemaVersion") == 2L) { "Release-size baseline schema 2 is required" }
+        check(baseline["rationale"]?.toString()?.isNotBlank() == true) {
+            "Release-size baseline rationale is required"
+        }
+        val limits = objectField(baseline, "limits")
+        val measuredArtifacts = objectField(measured, "artifacts")
+        val baselineArtifacts = objectField(baseline, "artifacts")
+        val expectedAbis = linkedSetOf("universal") + releaseAbis
+        check(measuredArtifacts.keys == expectedAbis && baselineArtifacts.keys == expectedAbis) {
+            "Release-size artifact set mismatch: measured=${measuredArtifacts.keys} baseline=${baselineArtifacts.keys}"
+        }
+        measuredArtifacts.forEach { (abi, measuredValue) ->
+            val current = measuredValue as? Map<*, *> ?: error("Measured artifact $abi must be an object")
+            val previous = baselineArtifacts[abi] as? Map<*, *> ?: error("Baseline artifact $abi must be an object")
+            val compressedDelta = longField(current, "compressedBytes") - longField(previous, "compressedBytes")
+            val uncompressedDelta = longField(current, "uncompressedBytes") - longField(previous, "uncompressedBytes")
+            check(compressedDelta <= longField(limits, "artifactCompressedGrowthBytes")) {
+                "$abi APK compressed size grew by $compressedDelta bytes"
+            }
+            check(uncompressedDelta <= longField(limits, "artifactUncompressedGrowthBytes")) {
+                "$abi APK expanded size grew by $uncompressedDelta bytes"
+            }
+        }
+        fun verifyExactRows(name: String, keys: List<String>, compressedLimit: String, uncompressedLimit: String) {
+            fun indexed(source: Map<*, *>): Map<String, Map<*, *>> {
+                val rows = listField(source, name)
+                val indexed = rows.associateBy { row ->
+                    keys.joinToString("|") { key -> row[key]?.toString() ?: error("$name entry is missing $key") }
+                }
+                check(indexed.size == rows.size) { "$name contains duplicate identity rows" }
+                return indexed
+            }
+            val current = indexed(measured)
+            val previous = indexed(baseline)
+            check(current.keys == previous.keys) {
+                "$name set changed: added=${current.keys - previous.keys}, removed=${previous.keys - current.keys}"
+            }
+            current.forEach { (key, row) ->
+                val old = previous.getValue(key)
+                val compressedDelta = longField(row, "compressedBytes") - longField(old, "compressedBytes")
+                val uncompressedDelta = longField(row, "uncompressedBytes") - longField(old, "uncompressedBytes")
+                check(compressedDelta <= longField(limits, compressedLimit)) {
+                    "$name $key compressed size grew by $compressedDelta bytes"
+                }
+                check(uncompressedDelta <= longField(limits, uncompressedLimit)) {
+                    "$name $key expanded size grew by $uncompressedDelta bytes"
+                }
+            }
+        }
+        verifyExactRows(
+            "dependencies", listOf("coordinate", "artifact"),
+            "dependencyCompressedGrowthBytes", "dependencyUncompressedGrowthBytes",
+        )
+        verifyExactRows(
+            "nativeLibraries", listOf("abi", "name"),
+            "nativeCompressedGrowthBytes", "nativeUncompressedGrowthBytes",
+        )
+        logger.lifecycle("Release-size budget passed against ${baseline["baselineVersion"]}")
+    }
+}
+
 tasks.register("generateReleaseProvenance") {
     group = "distribution"
     description = "Builds stable release artifacts and a machine-readable provenance manifest."
     dependsOn(
-        "assembleRelease",
+        "verifyReleaseSizeBudget",
         "cyclonedxDirectBom",
         rootProject.tasks.named("verifyWrapperJar"),
         rootProject.tasks.named("verifyBuildCacheSecurity"),
@@ -240,8 +461,15 @@ tasks.register("generateReleaseProvenance") {
             ?: error("Release-size baseline version is missing")
         val baselineSizes = baselineData["artifacts"] as? Map<*, *>
             ?: error("Release-size baseline artifacts are missing")
-        fun baselineSize(abi: String): Long = baselineSizes[abi]?.toString()?.toLong()
-            ?: error("Release-size baseline is missing $abi")
+        val measuredSizeData = JsonSlurper().parse(releaseSizeReportFile.get().asFile) as? Map<*, *>
+            ?: error("Release-size report root must be an object")
+        val measuredSizes = measuredSizeData["artifacts"] as? Map<*, *>
+            ?: error("Release-size report artifacts are missing")
+        fun sizeRow(source: Map<*, *>, abi: String): Map<*, *> = source[abi] as? Map<*, *>
+            ?: error("Release-size data is missing $abi")
+        fun sizeValue(source: Map<*, *>, abi: String, field: String): Long =
+            sizeRow(source, abi)[field]?.toString()?.toLongOrNull()
+                ?: error("Release-size $field is missing for $abi")
         sourceApks.forEach { (abi, sourceApk) ->
             require(sourceApk.isFile) { "Release APK was not produced for $abi: $sourceApk" }
         }
@@ -329,7 +557,9 @@ tasks.register("generateReleaseProvenance") {
                   "apk": "${file.name}",
                   "apkSha256": "${sha256(file)}",
                   "sizeBytes": ${file.length()},
-                  "sizeDeltaBytes": ${file.length() - baselineSize(abi)},
+                  "sizeDeltaBytes": ${file.length() - sizeValue(baselineSizes, abi, "compressedBytes")},
+                  "uncompressedSizeBytes": ${sizeValue(measuredSizes, abi, "uncompressedBytes")},
+                  "uncompressedSizeDeltaBytes": ${sizeValue(measuredSizes, abi, "uncompressedBytes") - sizeValue(baselineSizes, abi, "uncompressedBytes")},
                   "versionName": "$versionName",
                   "versionCode": $versionCode,
                   "signingCertificateSha256": "${artifactCertificates.getValue(abi)}",
@@ -342,7 +572,7 @@ tasks.register("generateReleaseProvenance") {
         provenance.writeText(
             """
             {
-              "schemaVersion": 3,
+              "schemaVersion": 4,
               "project": "SnapCrop",
               "versionName": "$versionName",
               "versionCode": $versionCode,
@@ -408,6 +638,8 @@ tasks.register("verifyOfficialRelease") {
             ?: error("Release provenance root must be an object")
         val sizeBaseline = JsonSlurper().parse(rootProject.file("gradle/release-size-baseline.json")) as? Map<*, *>
             ?: error("Release-size baseline root must be an object")
+        val sizeReport = JsonSlurper().parse(releaseSizeReportFile.get().asFile) as? Map<*, *>
+            ?: error("Release-size report root must be an object")
         fun field(map: Map<*, *>, name: String): Any = map[name]
             ?: error("Missing provenance field: $name")
         fun normalizeCertificate(value: Any): String = value.toString().replace(":", "").uppercase(Locale.ROOT)
@@ -430,8 +662,8 @@ tasks.register("verifyOfficialRelease") {
         check(actualCertificate == expectedCertificate) {
             "Signing certificate mismatch: expected $expectedCertificate, got $actualCertificate"
         }
-        check(field(provenanceData, "schemaVersion").toString().toInt() == 3) {
-            "Official release requires provenance schema 3"
+        check(field(provenanceData, "schemaVersion").toString().toInt() == 4) {
+            "Official release requires provenance schema 4"
         }
         check(field(provenanceData, "versionName") == versionName) { "Provenance versionName is not synchronized" }
         check(field(provenanceData, "versionCode").toString().toInt() == versionCode) {
@@ -454,6 +686,8 @@ tasks.register("verifyOfficialRelease") {
         val baselineVersion = field(sizeBaseline, "baselineVersion").toString()
         val baselineSizes = field(sizeBaseline, "artifacts") as? Map<*, *>
             ?: error("Release-size baseline artifacts must be an object")
+        val measuredSizes = field(sizeReport, "artifacts") as? Map<*, *>
+            ?: error("Release-size report artifacts must be an object")
         check(field(provenanceData, "sizeBaselineVersion") == baselineVersion) {
             "Provenance release-size baseline is not synchronized"
         }
@@ -528,14 +762,24 @@ tasks.register("verifyOfficialRelease") {
             check(field(artifact, "sizeBytes").toString().toLong() == apk.length()) {
                 "APK size mismatch for ${apk.name}"
             }
-            val baselineBytes = baselineSizes[abi]?.toString()?.toLong()
+            val baselineArtifact = baselineSizes[abi] as? Map<*, *>
                 ?: error("Release-size baseline is missing $abi")
+            val measuredArtifact = measuredSizes[abi] as? Map<*, *>
+                ?: error("Release-size report is missing $abi")
+            val baselineBytes = field(baselineArtifact, "compressedBytes").toString().toLong()
             val deltaBytes = apk.length() - baselineBytes
             check(field(artifact, "sizeDeltaBytes").toString().toLong() == deltaBytes) {
                 "APK size delta mismatch for ${apk.name}"
             }
-            check(deltaBytes <= -1_500_000L) {
-                "${apk.name} did not shed the bundled optional OCR payload: delta=$deltaBytes"
+            check(field(measuredArtifact, "compressedBytes").toString().toLong() == apk.length()) {
+                "Release-size report compressed bytes mismatch for ${apk.name}"
+            }
+            val uncompressedBytes = field(measuredArtifact, "uncompressedBytes").toString().toLong()
+            val uncompressedDelta = uncompressedBytes -
+                field(baselineArtifact, "uncompressedBytes").toString().toLong()
+            check(field(artifact, "uncompressedSizeBytes").toString().toLong() == uncompressedBytes &&
+                    field(artifact, "uncompressedSizeDeltaBytes").toString().toLong() == uncompressedDelta) {
+                "Expanded APK size provenance mismatch for ${apk.name}"
             }
             check(field(artifact, "versionName") == versionName &&
                     field(artifact, "versionCode").toString().toInt() == versionCode) {

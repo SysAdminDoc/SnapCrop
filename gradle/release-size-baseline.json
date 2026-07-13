@@ -1,11 +1,1243 @@
 {
-  "schemaVersion": 1,
-  "baselineVersion": "6.82.0",
-  "artifacts": {
-    "universal": 241660484,
-    "arm64-v8a": 79232739,
-    "armeabi-v7a": 59489159,
-    "x86": 85585531,
-    "x86_64": 85076579
-  }
+    "schemaVersion": 2,
+    "baselineVersion": "6.88.0",
+    "rationale": "v6.88 removes unused Navigation Compose and establishes reusable size budgets",
+    "limits": {
+        "artifactCompressedGrowthBytes": 262144,
+        "artifactUncompressedGrowthBytes": 524288,
+        "dependencyCompressedGrowthBytes": 0,
+        "dependencyUncompressedGrowthBytes": 0,
+        "nativeCompressedGrowthBytes": 0,
+        "nativeUncompressedGrowthBytes": 0
+    },
+    "artifacts": {
+        "universal": {
+            "compressedBytes": 239412897,
+            "uncompressedBytes": 240077785,
+            "categories": {
+                "metadata": {
+                    "compressedBytes": 22316,
+                    "uncompressedBytes": 61833
+                },
+                "assets": {
+                    "compressedBytes": 9288932,
+                    "uncompressedBytes": 10088795
+                },
+                "dex": {
+                    "compressedBytes": 9855444,
+                    "uncompressedBytes": 9855444
+                },
+                "native": {
+                    "compressedBytes": 218838540,
+                    "uncompressedBytes": 218838540
+                },
+                "other": {
+                    "compressedBytes": 54334,
+                    "uncompressedBytes": 118545
+                },
+                "resources": {
+                    "compressedBytes": 1051720,
+                    "uncompressedBytes": 1114628
+                }
+            }
+        },
+        "arm64-v8a": {
+            "compressedBytes": 76985152,
+            "uncompressedBytes": 77828581,
+            "categories": {
+                "metadata": {
+                    "compressedBytes": 22316,
+                    "uncompressedBytes": 61833
+                },
+                "assets": {
+                    "compressedBytes": 9288932,
+                    "uncompressedBytes": 10088795
+                },
+                "dex": {
+                    "compressedBytes": 9855444,
+                    "uncompressedBytes": 9855444
+                },
+                "native": {
+                    "compressedBytes": 56589336,
+                    "uncompressedBytes": 56589336
+                },
+                "other": {
+                    "compressedBytes": 54334,
+                    "uncompressedBytes": 118545
+                },
+                "resources": {
+                    "compressedBytes": 1051720,
+                    "uncompressedBytes": 1114628
+                }
+            }
+        },
+        "armeabi-v7a": {
+            "compressedBytes": 57241572,
+            "uncompressedBytes": 58096349,
+            "categories": {
+                "metadata": {
+                    "compressedBytes": 22316,
+                    "uncompressedBytes": 61833
+                },
+                "assets": {
+                    "compressedBytes": 9288932,
+                    "uncompressedBytes": 10088795
+                },
+                "dex": {
+                    "compressedBytes": 9855444,
+                    "uncompressedBytes": 9855444
+                },
+                "native": {
+                    "compressedBytes": 36857104,
+                    "uncompressedBytes": 36857104
+                },
+                "other": {
+                    "compressedBytes": 54334,
+                    "uncompressedBytes": 118545
+                },
+                "resources": {
+                    "compressedBytes": 1051720,
+                    "uncompressedBytes": 1114628
+                }
+            }
+        },
+        "x86": {
+            "compressedBytes": 83337944,
+            "uncompressedBytes": 84195297,
+            "categories": {
+                "metadata": {
+                    "compressedBytes": 22316,
+                    "uncompressedBytes": 61833
+                },
+                "assets": {
+                    "compressedBytes": 9288932,
+                    "uncompressedBytes": 10088795
+                },
+                "dex": {
+                    "compressedBytes": 9855444,
+                    "uncompressedBytes": 9855444
+                },
+                "native": {
+                    "compressedBytes": 62956052,
+                    "uncompressedBytes": 62956052
+                },
+                "other": {
+                    "compressedBytes": 54334,
+                    "uncompressedBytes": 118545
+                },
+                "resources": {
+                    "compressedBytes": 1051720,
+                    "uncompressedBytes": 1114628
+                }
+            }
+        },
+        "x86_64": {
+            "compressedBytes": 82828992,
+            "uncompressedBytes": 83675293,
+            "categories": {
+                "metadata": {
+                    "compressedBytes": 22316,
+                    "uncompressedBytes": 61833
+                },
+                "assets": {
+                    "compressedBytes": 9288932,
+                    "uncompressedBytes": 10088795
+                },
+                "dex": {
+                    "compressedBytes": 9855444,
+                    "uncompressedBytes": 9855444
+                },
+                "native": {
+                    "compressedBytes": 62436048,
+                    "uncompressedBytes": 62436048
+                },
+                "other": {
+                    "compressedBytes": 54334,
+                    "uncompressedBytes": 118545
+                },
+                "resources": {
+                    "compressedBytes": 1051720,
+                    "uncompressedBytes": 1114628
+                }
+            }
+        }
+    },
+    "dependencies": [
+        {
+            "coordinate": "androidx.activity:activity-compose:1.13.0",
+            "artifact": "activity-compose-1.13.0.aar",
+            "compressedBytes": 144321,
+            "uncompressedBytes": 164676
+        },
+        {
+            "coordinate": "androidx.activity:activity-ktx:1.13.0",
+            "artifact": "activity-ktx-1.13.0.aar",
+            "compressedBytes": 5745,
+            "uncompressedBytes": 10877
+        },
+        {
+            "coordinate": "androidx.activity:activity:1.13.0",
+            "artifact": "activity-1.13.0.aar",
+            "compressedBytes": 222940,
+            "uncompressedBytes": 267641
+        },
+        {
+            "coordinate": "androidx.annotation:annotation-experimental:1.5.0",
+            "artifact": "annotation-experimental-1.5.0.aar",
+            "compressedBytes": 45139,
+            "uncompressedBytes": 54487
+        },
+        {
+            "coordinate": "androidx.annotation:annotation-jvm:1.9.1",
+            "artifact": "annotation-jvm-1.9.1.jar",
+            "compressedBytes": 60577,
+            "uncompressedBytes": 93414
+        },
+        {
+            "coordinate": "androidx.appcompat:appcompat-resources:1.7.1",
+            "artifact": "appcompat-resources-1.7.1.aar",
+            "compressedBytes": 63997,
+            "uncompressedBytes": 72453
+        },
+        {
+            "coordinate": "androidx.appcompat:appcompat:1.7.1",
+            "artifact": "appcompat-1.7.1.aar",
+            "compressedBytes": 1148656,
+            "uncompressedBytes": 1710689
+        },
+        {
+            "coordinate": "androidx.arch.core:core-common:2.2.0",
+            "artifact": "core-common-2.2.0.jar",
+            "compressedBytes": 11657,
+            "uncompressedBytes": 23183
+        },
+        {
+            "coordinate": "androidx.arch.core:core-runtime:2.2.0",
+            "artifact": "core-runtime-2.2.0.aar",
+            "compressedBytes": 7577,
+            "uncompressedBytes": 7290
+        },
+        {
+            "coordinate": "androidx.autofill:autofill:1.0.0",
+            "artifact": "autofill-1.0.0.aar",
+            "compressedBytes": 4280,
+            "uncompressedBytes": 10979
+        },
+        {
+            "coordinate": "androidx.collection:collection-jvm:1.5.0",
+            "artifact": "collection-jvm-1.5.0.jar",
+            "compressedBytes": 877998,
+            "uncompressedBytes": 2191698
+        },
+        {
+            "coordinate": "androidx.collection:collection-ktx:1.5.0",
+            "artifact": "collection-ktx-1.5.0.jar",
+            "compressedBytes": 4799,
+            "uncompressedBytes": 10280
+        },
+        {
+            "coordinate": "androidx.compose.animation:animation-android:1.11.1",
+            "artifact": "animation.aar",
+            "compressedBytes": 618207,
+            "uncompressedBytes": 680874
+        },
+        {
+            "coordinate": "androidx.compose.animation:animation-core-android:1.11.1",
+            "artifact": "animation-core.aar",
+            "compressedBytes": 420866,
+            "uncompressedBytes": 460464
+        },
+        {
+            "coordinate": "androidx.compose.foundation:foundation-android:1.11.1",
+            "artifact": "foundation.aar",
+            "compressedBytes": 4234243,
+            "uncompressedBytes": 4601772
+        },
+        {
+            "coordinate": "androidx.compose.foundation:foundation-layout-android:1.11.1",
+            "artifact": "foundation-layout.aar",
+            "compressedBytes": 681902,
+            "uncompressedBytes": 742864
+        },
+        {
+            "coordinate": "androidx.compose.material3:material3-android:1.4.0",
+            "artifact": "material3.aar",
+            "compressedBytes": 5167765,
+            "uncompressedBytes": 5990807
+        },
+        {
+            "coordinate": "androidx.compose.material:material-icons-core-android:1.7.8",
+            "artifact": "material-icons-core-release.aar",
+            "compressedBytes": 823515,
+            "uncompressedBytes": 870271
+        },
+        {
+            "coordinate": "androidx.compose.material:material-icons-extended-android:1.7.8",
+            "artifact": "material-icons-extended-release.aar",
+            "compressedBytes": 35720998,
+            "uncompressedBytes": 37426423
+        },
+        {
+            "coordinate": "androidx.compose.material:material-ripple-android:1.11.1",
+            "artifact": "material-ripple.aar",
+            "compressedBytes": 93869,
+            "uncompressedBytes": 106393
+        },
+        {
+            "coordinate": "androidx.compose.runtime:runtime-android:1.11.1",
+            "artifact": "runtime.aar",
+            "compressedBytes": 1989342,
+            "uncompressedBytes": 2230658
+        },
+        {
+            "coordinate": "androidx.compose.runtime:runtime-annotation-android:1.11.1",
+            "artifact": "runtime-annotation.aar",
+            "compressedBytes": 8883,
+            "uncompressedBytes": 15635
+        },
+        {
+            "coordinate": "androidx.compose.runtime:runtime-retain-android:1.11.1",
+            "artifact": "runtime-retain.aar",
+            "compressedBytes": 106871,
+            "uncompressedBytes": 122825
+        },
+        {
+            "coordinate": "androidx.compose.runtime:runtime-saveable-android:1.11.1",
+            "artifact": "runtime-saveable.aar",
+            "compressedBytes": 103640,
+            "uncompressedBytes": 119308
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-android:1.11.1",
+            "artifact": "ui.aar",
+            "compressedBytes": 4331974,
+            "uncompressedBytes": 4716958
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-geometry-android:1.11.1",
+            "artifact": "ui-geometry.aar",
+            "compressedBytes": 59123,
+            "uncompressedBytes": 67326
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-graphics-android:1.11.1",
+            "artifact": "ui-graphics.aar",
+            "compressedBytes": 738357,
+            "uncompressedBytes": 840444
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-text-android:1.11.1",
+            "artifact": "ui-text.aar",
+            "compressedBytes": 817036,
+            "uncompressedBytes": 894156
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-tooling-preview-android:1.11.1",
+            "artifact": "ui-tooling-preview.aar",
+            "compressedBytes": 23174,
+            "uncompressedBytes": 33060
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-unit-android:1.11.1",
+            "artifact": "ui-unit.aar",
+            "compressedBytes": 99725,
+            "uncompressedBytes": 112309
+        },
+        {
+            "coordinate": "androidx.compose.ui:ui-util-android:1.11.1",
+            "artifact": "ui-util.aar",
+            "compressedBytes": 22864,
+            "uncompressedBytes": 30391
+        },
+        {
+            "coordinate": "androidx.concurrent:concurrent-futures-ktx:1.1.0",
+            "artifact": "concurrent-futures-ktx-1.1.0.jar",
+            "compressedBytes": 5605,
+            "uncompressedBytes": 9615
+        },
+        {
+            "coordinate": "androidx.concurrent:concurrent-futures:1.1.0",
+            "artifact": "concurrent-futures-1.1.0.jar",
+            "compressedBytes": 25987,
+            "uncompressedBytes": 54425
+        },
+        {
+            "coordinate": "androidx.core:core-ktx:1.18.0",
+            "artifact": "core-ktx-1.18.0.aar",
+            "compressedBytes": 184113,
+            "uncompressedBytes": 207801
+        },
+        {
+            "coordinate": "androidx.core:core-viewtree:1.0.0",
+            "artifact": "core-viewtree-1.0.0.aar",
+            "compressedBytes": 6980,
+            "uncompressedBytes": 12653
+        },
+        {
+            "coordinate": "androidx.core:core:1.18.0",
+            "artifact": "core-1.18.0.aar",
+            "compressedBytes": 1364590,
+            "uncompressedBytes": 1548475
+        },
+        {
+            "coordinate": "androidx.cursoradapter:cursoradapter:1.0.0",
+            "artifact": "cursoradapter-1.0.0.aar",
+            "compressedBytes": 10591,
+            "uncompressedBytes": 12340
+        },
+        {
+            "coordinate": "androidx.customview:customview-poolingcontainer:1.0.0",
+            "artifact": "customview-poolingcontainer-1.0.0.aar",
+            "compressedBytes": 6608,
+            "uncompressedBytes": 6365
+        },
+        {
+            "coordinate": "androidx.customview:customview:1.0.0",
+            "artifact": "customview-1.0.0.aar",
+            "compressedBytes": 33238,
+            "uncompressedBytes": 40743
+        },
+        {
+            "coordinate": "androidx.documentfile:documentfile:1.0.0",
+            "artifact": "documentfile-1.0.0.aar",
+            "compressedBytes": 11221,
+            "uncompressedBytes": 12113
+        },
+        {
+            "coordinate": "androidx.drawerlayout:drawerlayout:1.0.0",
+            "artifact": "drawerlayout-1.0.0.aar",
+            "compressedBytes": 32470,
+            "uncompressedBytes": 39380
+        },
+        {
+            "coordinate": "androidx.dynamicanimation:dynamicanimation:1.0.0",
+            "artifact": "dynamicanimation-1.0.0.aar",
+            "compressedBytes": 32597,
+            "uncompressedBytes": 45290
+        },
+        {
+            "coordinate": "androidx.emoji2:emoji2-views-helper:1.4.0",
+            "artifact": "emoji2-views-helper-1.4.0.aar",
+            "compressedBytes": 22560,
+            "uncompressedBytes": 23996
+        },
+        {
+            "coordinate": "androidx.emoji2:emoji2:1.4.0",
+            "artifact": "emoji2-1.4.0.aar",
+            "compressedBytes": 143546,
+            "uncompressedBytes": 157897
+        },
+        {
+            "coordinate": "androidx.exifinterface:exifinterface:1.4.1",
+            "artifact": "exifinterface-1.4.1.aar",
+            "compressedBytes": 75523,
+            "uncompressedBytes": 82461
+        },
+        {
+            "coordinate": "androidx.fragment:fragment:1.5.4",
+            "artifact": "fragment-1.5.4.aar",
+            "compressedBytes": 337572,
+            "uncompressedBytes": 406307
+        },
+        {
+            "coordinate": "androidx.graphics:graphics-path:1.0.1",
+            "artifact": "graphics-path-1.0.1.aar",
+            "compressedBytes": 39380,
+            "uncompressedBytes": 58067
+        },
+        {
+            "coordinate": "androidx.interpolator:interpolator:1.0.0",
+            "artifact": "interpolator-1.0.0.aar",
+            "compressedBytes": 7669,
+            "uncompressedBytes": 8496
+        },
+        {
+            "coordinate": "androidx.legacy:legacy-support-core-utils:1.0.0",
+            "artifact": "legacy-support-core-utils-1.0.0.aar",
+            "compressedBytes": 4104,
+            "uncompressedBytes": 9164
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-common-java8:2.10.0",
+            "artifact": "lifecycle-common-java8-2.10.0.jar",
+            "compressedBytes": 4839,
+            "uncompressedBytes": 10280
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-common-jvm:2.10.0",
+            "artifact": "lifecycle-common-jvm-2.10.0.jar",
+            "compressedBytes": 60791,
+            "uncompressedBytes": 122425
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-extensions:2.1.0",
+            "artifact": "lifecycle-extensions-2.1.0.aar",
+            "compressedBytes": 4960,
+            "uncompressedBytes": 11366
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-livedata-core-ktx:2.10.0",
+            "artifact": "lifecycle-livedata-core-ktx-2.10.0.aar",
+            "compressedBytes": 5834,
+            "uncompressedBytes": 10924
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-livedata-core:2.10.0",
+            "artifact": "lifecycle-livedata-core-2.10.0.aar",
+            "compressedBytes": 34341,
+            "uncompressedBytes": 45117
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-livedata:2.10.0",
+            "artifact": "lifecycle-livedata-2.10.0.aar",
+            "compressedBytes": 55037,
+            "uncompressedBytes": 65878
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-process:2.10.0",
+            "artifact": "lifecycle-process-2.10.0.aar",
+            "compressedBytes": 19845,
+            "uncompressedBytes": 30240
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-runtime-android:2.10.0",
+            "artifact": "lifecycle-runtime.aar",
+            "compressedBytes": 80161,
+            "uncompressedBytes": 101130
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-runtime-compose-android:2.10.0",
+            "artifact": "lifecycle-runtime-compose.aar",
+            "compressedBytes": 1051246,
+            "uncompressedBytes": 1158912
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-runtime-ktx-android:2.10.0",
+            "artifact": "lifecycle-runtime-ktx.aar",
+            "compressedBytes": 5337,
+            "uncompressedBytes": 10835
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-runtime:2.10.0",
+            "artifact": "lifecycle-runtime-2.10.0.aar",
+            "compressedBytes": 4558,
+            "uncompressedBytes": 10396
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-service:2.10.0",
+            "artifact": "lifecycle-service-2.10.0.aar",
+            "compressedBytes": 9951,
+            "uncompressedBytes": 15741
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-viewmodel-android:2.10.0",
+            "artifact": "lifecycle-viewmodel.aar",
+            "compressedBytes": 64099,
+            "uncompressedBytes": 77290
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-viewmodel-ktx:2.10.0",
+            "artifact": "lifecycle-viewmodel-ktx-2.10.0.aar",
+            "compressedBytes": 5812,
+            "uncompressedBytes": 10912
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-viewmodel-savedstate-android:2.10.0",
+            "artifact": "lifecycle-viewmodel-savedstate.aar",
+            "compressedBytes": 56701,
+            "uncompressedBytes": 66537
+        },
+        {
+            "coordinate": "androidx.lifecycle:lifecycle-viewmodel:2.10.0",
+            "artifact": "lifecycle-viewmodel-2.10.0.aar",
+            "compressedBytes": 4568,
+            "uncompressedBytes": 10398
+        },
+        {
+            "coordinate": "androidx.loader:loader:1.0.0",
+            "artifact": "loader-1.0.0.aar",
+            "compressedBytes": 33445,
+            "uncompressedBytes": 42289
+        },
+        {
+            "coordinate": "androidx.localbroadcastmanager:localbroadcastmanager:1.0.0",
+            "artifact": "localbroadcastmanager-1.0.0.aar",
+            "compressedBytes": 6808,
+            "uncompressedBytes": 7719
+        },
+        {
+            "coordinate": "androidx.navigationevent:navigationevent-android:1.0.0",
+            "artifact": "navigationevent.aar",
+            "compressedBytes": 45507,
+            "uncompressedBytes": 55258
+        },
+        {
+            "coordinate": "androidx.navigationevent:navigationevent-compose-android:1.0.0",
+            "artifact": "navigationevent-compose.aar",
+            "compressedBytes": 29998,
+            "uncompressedBytes": 38092
+        },
+        {
+            "coordinate": "androidx.print:print:1.0.0",
+            "artifact": "print-1.0.0.aar",
+            "compressedBytes": 15782,
+            "uncompressedBytes": 16854
+        },
+        {
+            "coordinate": "androidx.profileinstaller:profileinstaller:1.4.1",
+            "artifact": "profileinstaller-1.4.1.aar",
+            "compressedBytes": 54044,
+            "uncompressedBytes": 64100
+        },
+        {
+            "coordinate": "androidx.resourceinspection:resourceinspection-annotation:1.0.1",
+            "artifact": "resourceinspection-annotation-1.0.1.jar",
+            "compressedBytes": 2336,
+            "uncompressedBytes": 2110
+        },
+        {
+            "coordinate": "androidx.room:room-common-jvm:2.8.4",
+            "artifact": "room-common-jvm-2.8.4.jar",
+            "compressedBytes": 62722,
+            "uncompressedBytes": 106704
+        },
+        {
+            "coordinate": "androidx.room:room-ktx:2.8.4",
+            "artifact": "room-ktx-2.8.4.aar",
+            "compressedBytes": 6061,
+            "uncompressedBytes": 11491
+        },
+        {
+            "coordinate": "androidx.room:room-runtime-android:2.8.4",
+            "artifact": "room-runtime.aar",
+            "compressedBytes": 568456,
+            "uncompressedBytes": 618328
+        },
+        {
+            "coordinate": "androidx.savedstate:savedstate-android:1.4.0",
+            "artifact": "savedstate.aar",
+            "compressedBytes": 136412,
+            "uncompressedBytes": 153535
+        },
+        {
+            "coordinate": "androidx.savedstate:savedstate-compose-android:1.4.0",
+            "artifact": "savedstate-compose.aar",
+            "compressedBytes": 15893,
+            "uncompressedBytes": 23894
+        },
+        {
+            "coordinate": "androidx.savedstate:savedstate-ktx:1.4.0",
+            "artifact": "savedstate-ktx-1.4.0.aar",
+            "compressedBytes": 5764,
+            "uncompressedBytes": 10886
+        },
+        {
+            "coordinate": "androidx.security:security-crypto:1.1.0-alpha06",
+            "artifact": "security-crypto-1.1.0-alpha06.aar",
+            "compressedBytes": 32306,
+            "uncompressedBytes": 34374
+        },
+        {
+            "coordinate": "androidx.sqlite:sqlite-android:2.6.2",
+            "artifact": "sqlite.aar",
+            "compressedBytes": 38190,
+            "uncompressedBytes": 47880
+        },
+        {
+            "coordinate": "androidx.sqlite:sqlite-framework-android:2.6.2",
+            "artifact": "sqlite-framework.aar",
+            "compressedBytes": 60894,
+            "uncompressedBytes": 72678
+        },
+        {
+            "coordinate": "androidx.startup:startup-runtime:1.1.1",
+            "artifact": "startup-runtime-1.1.1.aar",
+            "compressedBytes": 19371,
+            "uncompressedBytes": 21147
+        },
+        {
+            "coordinate": "androidx.tracing:tracing-ktx:1.2.0",
+            "artifact": "tracing-ktx-1.2.0.aar",
+            "compressedBytes": 6007,
+            "uncompressedBytes": 5229
+        },
+        {
+            "coordinate": "androidx.tracing:tracing:1.2.0",
+            "artifact": "tracing-1.2.0.aar",
+            "compressedBytes": 6060,
+            "uncompressedBytes": 5193
+        },
+        {
+            "coordinate": "androidx.transition:transition:1.6.0",
+            "artifact": "transition-1.6.0.aar",
+            "compressedBytes": 195762,
+            "uncompressedBytes": 217898
+        },
+        {
+            "coordinate": "androidx.vectordrawable:vectordrawable-animated:1.1.0",
+            "artifact": "vectordrawable-animated-1.1.0.aar",
+            "compressedBytes": 34496,
+            "uncompressedBytes": 44180
+        },
+        {
+            "coordinate": "androidx.vectordrawable:vectordrawable:1.1.0",
+            "artifact": "vectordrawable-1.1.0.aar",
+            "compressedBytes": 33236,
+            "uncompressedBytes": 42413
+        },
+        {
+            "coordinate": "androidx.versionedparcelable:versionedparcelable:1.1.1",
+            "artifact": "versionedparcelable-1.1.1.aar",
+            "compressedBytes": 31061,
+            "uncompressedBytes": 33130
+        },
+        {
+            "coordinate": "androidx.viewpager:viewpager:1.0.0",
+            "artifact": "viewpager-1.0.0.aar",
+            "compressedBytes": 53513,
+            "uncompressedBytes": 62413
+        },
+        {
+            "coordinate": "androidx.window:window-core-android:1.5.0",
+            "artifact": "window-core.aar",
+            "compressedBytes": 18779,
+            "uncompressedBytes": 25963
+        },
+        {
+            "coordinate": "androidx.window:window:1.5.0",
+            "artifact": "window-1.5.0.aar",
+            "compressedBytes": 485264,
+            "uncompressedBytes": 537589
+        },
+        {
+            "coordinate": "androidx.work:work-runtime-ktx:2.11.2",
+            "artifact": "work-runtime-ktx-2.11.2.aar",
+            "compressedBytes": 6103,
+            "uncompressedBytes": 11508
+        },
+        {
+            "coordinate": "androidx.work:work-runtime:2.11.2",
+            "artifact": "work-runtime-2.11.2.aar",
+            "compressedBytes": 1915957,
+            "uncompressedBytes": 1995740
+        },
+        {
+            "coordinate": "com.google.accompanist:accompanist-drawablepainter:0.37.3",
+            "artifact": "accompanist-drawablepainter-0.37.3.aar",
+            "compressedBytes": 11349,
+            "uncompressedBytes": 12506
+        },
+        {
+            "coordinate": "com.google.android.datatransport:transport-api:2.2.1",
+            "artifact": "transport-api-2.2.1.aar",
+            "compressedBytes": 4879,
+            "uncompressedBytes": 13305
+        },
+        {
+            "coordinate": "com.google.android.datatransport:transport-backend-cct:2.3.3",
+            "artifact": "transport-backend-cct-2.3.3.aar",
+            "compressedBytes": 35697,
+            "uncompressedBytes": 141182
+        },
+        {
+            "coordinate": "com.google.android.datatransport:transport-runtime:2.2.6",
+            "artifact": "transport-runtime-2.2.6.aar",
+            "compressedBytes": 97859,
+            "uncompressedBytes": 464909
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-base:18.10.0",
+            "artifact": "play-services-base-18.10.0.aar",
+            "compressedBytes": 601027,
+            "uncompressedBytes": 1067190
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-basement:18.10.0",
+            "artifact": "play-services-basement-18.10.0.aar",
+            "compressedBytes": 412544,
+            "uncompressedBytes": 676204
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1",
+            "artifact": "play-services-mlkit-barcode-scanning-18.3.1.aar",
+            "compressedBytes": 519271,
+            "uncompressedBytes": 1406178
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-face-detection:17.1.0",
+            "artifact": "play-services-mlkit-face-detection-17.1.0.aar",
+            "compressedBytes": 338205,
+            "uncompressedBytes": 1053524
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1",
+            "artifact": "play-services-mlkit-subject-segmentation-16.0.0-beta1.aar",
+            "compressedBytes": 403661,
+            "uncompressedBytes": 1285327
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition-chinese:16.0.1",
+            "artifact": "play-services-mlkit-text-recognition-chinese-16.0.1.aar",
+            "compressedBytes": 78105,
+            "uncompressedBytes": 798386
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition-common:19.1.0",
+            "artifact": "play-services-mlkit-text-recognition-common-19.1.0.aar",
+            "compressedBytes": 437936,
+            "uncompressedBytes": 1316077
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition-devanagari:16.0.1",
+            "artifact": "play-services-mlkit-text-recognition-devanagari-16.0.1.aar",
+            "compressedBytes": 78128,
+            "uncompressedBytes": 798443
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition-japanese:16.0.1",
+            "artifact": "play-services-mlkit-text-recognition-japanese-16.0.1.aar",
+            "compressedBytes": 78117,
+            "uncompressedBytes": 798407
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition-korean:16.0.1",
+            "artifact": "play-services-mlkit-text-recognition-korean-16.0.1.aar",
+            "compressedBytes": 78103,
+            "uncompressedBytes": 798371
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-mlkit-text-recognition:19.0.1",
+            "artifact": "play-services-mlkit-text-recognition-19.0.1.aar",
+            "compressedBytes": 78045,
+            "uncompressedBytes": 798117
+        },
+        {
+            "coordinate": "com.google.android.gms:play-services-tasks:18.4.1",
+            "artifact": "play-services-tasks-18.4.1.aar",
+            "compressedBytes": 72086,
+            "uncompressedBytes": 290599
+        },
+        {
+            "coordinate": "com.google.android.odml:image:1.0.0-beta1",
+            "artifact": "image-1.0.0-beta1.aar",
+            "compressedBytes": 23893,
+            "uncompressedBytes": 479914
+        },
+        {
+            "coordinate": "com.google.code.gson:gson:2.8.9",
+            "artifact": "gson-2.8.9.jar",
+            "compressedBytes": 258075,
+            "uncompressedBytes": 498975
+        },
+        {
+            "coordinate": "com.google.crypto.tink:tink-android:1.8.0",
+            "artifact": "tink-android-1.8.0.jar",
+            "compressedBytes": 2318211,
+            "uncompressedBytes": 6111321
+        },
+        {
+            "coordinate": "com.google.firebase:firebase-annotations:16.0.0",
+            "artifact": "firebase-annotations-16.0.0.jar",
+            "compressedBytes": 921,
+            "uncompressedBytes": 471
+        },
+        {
+            "coordinate": "com.google.firebase:firebase-components:16.1.0",
+            "artifact": "firebase-components-16.1.0.aar",
+            "compressedBytes": 30176,
+            "uncompressedBytes": 113780
+        },
+        {
+            "coordinate": "com.google.firebase:firebase-encoders-json:17.1.0",
+            "artifact": "firebase-encoders-json-17.1.0.aar",
+            "compressedBytes": 9451,
+            "uncompressedBytes": 32251
+        },
+        {
+            "coordinate": "com.google.firebase:firebase-encoders:16.1.0",
+            "artifact": "firebase-encoders-16.1.0.jar",
+            "compressedBytes": 17847,
+            "uncompressedBytes": 14653
+        },
+        {
+            "coordinate": "com.google.guava:listenablefuture:1.0",
+            "artifact": "listenablefuture-1.0.jar",
+            "compressedBytes": 3149,
+            "uncompressedBytes": 2788
+        },
+        {
+            "coordinate": "com.google.mlkit:barcode-scanning-common:17.0.0",
+            "artifact": "barcode-scanning-common-17.0.0.aar",
+            "compressedBytes": 63153,
+            "uncompressedBytes": 690624
+        },
+        {
+            "coordinate": "com.google.mlkit:barcode-scanning:17.3.0",
+            "artifact": "barcode-scanning-17.3.0.aar",
+            "compressedBytes": 9898786,
+            "uncompressedBytes": 22653132
+        },
+        {
+            "coordinate": "com.google.mlkit:common:18.11.0",
+            "artifact": "common-18.11.0.aar",
+            "compressedBytes": 434066,
+            "uncompressedBytes": 1275860
+        },
+        {
+            "coordinate": "com.google.mlkit:entity-extraction:16.0.0-beta6",
+            "artifact": "entity-extraction-16.0.0-beta6.aar",
+            "compressedBytes": 8365645,
+            "uncompressedBytes": 18103213
+        },
+        {
+            "coordinate": "com.google.mlkit:face-detection:16.1.7",
+            "artifact": "face-detection-16.1.7.aar",
+            "compressedBytes": 17726863,
+            "uncompressedBytes": 39560390
+        },
+        {
+            "coordinate": "com.google.mlkit:language-id-common:16.1.0",
+            "artifact": "language-id-common-16.1.0.aar",
+            "compressedBytes": 249537,
+            "uncompressedBytes": 928117
+        },
+        {
+            "coordinate": "com.google.mlkit:language-id:17.0.6",
+            "artifact": "language-id-17.0.6.aar",
+            "compressedBytes": 2335810,
+            "uncompressedBytes": 5628828
+        },
+        {
+            "coordinate": "com.google.mlkit:object-detection-common:18.0.0",
+            "artifact": "object-detection-common-18.0.0.aar",
+            "compressedBytes": 1058897,
+            "uncompressedBytes": 2147457
+        },
+        {
+            "coordinate": "com.google.mlkit:object-detection:17.0.2",
+            "artifact": "object-detection-17.0.2.aar",
+            "compressedBytes": 1844275,
+            "uncompressedBytes": 4011692
+        },
+        {
+            "coordinate": "com.google.mlkit:text-recognition-bundled-common:17.0.0",
+            "artifact": "text-recognition-bundled-common-17.0.0.aar",
+            "compressedBytes": 17960748,
+            "uncompressedBytes": 44414594
+        },
+        {
+            "coordinate": "com.google.mlkit:text-recognition:16.0.1",
+            "artifact": "text-recognition-16.0.1.aar",
+            "compressedBytes": 1383148,
+            "uncompressedBytes": 3881315
+        },
+        {
+            "coordinate": "com.google.mlkit:translate:17.0.3",
+            "artifact": "translate-17.0.3.aar",
+            "compressedBytes": 27684160,
+            "uncompressedBytes": 64545545
+        },
+        {
+            "coordinate": "com.google.mlkit:vision-common:17.3.0",
+            "artifact": "vision-common-17.3.0.aar",
+            "compressedBytes": 269178,
+            "uncompressedBytes": 1002582
+        },
+        {
+            "coordinate": "com.google.mlkit:vision-interfaces:16.3.0",
+            "artifact": "vision-interfaces-16.3.0.aar",
+            "compressedBytes": 73882,
+            "uncompressedBytes": 710127
+        },
+        {
+            "coordinate": "com.google.mlkit:vision-internal-vkp:18.2.3",
+            "artifact": "vision-internal-vkp-18.2.3.aar",
+            "compressedBytes": 19175568,
+            "uncompressedBytes": 46074430
+        },
+        {
+            "coordinate": "com.google.re2j:re2j:1.8",
+            "artifact": "re2j-1.8.jar",
+            "compressedBytes": 114335,
+            "uncompressedBytes": 231039
+        },
+        {
+            "coordinate": "com.squareup.okhttp3:okhttp:3.12.1",
+            "artifact": "okhttp-3.12.1.jar",
+            "compressedBytes": 422787,
+            "uncompressedBytes": 763184
+        },
+        {
+            "coordinate": "com.squareup.okio:okio-jvm:3.15.0",
+            "artifact": "okio-jvm-3.15.0.jar",
+            "compressedBytes": 376949,
+            "uncompressedBytes": 812324
+        },
+        {
+            "coordinate": "io.coil-kt.coil3:coil-android:3.3.0",
+            "artifact": "coil-release.aar",
+            "compressedBytes": 8762,
+            "uncompressedBytes": 9159
+        },
+        {
+            "coordinate": "io.coil-kt.coil3:coil-compose-android:3.3.0",
+            "artifact": "coil-compose-release.aar",
+            "compressedBytes": 13529,
+            "uncompressedBytes": 14041
+        },
+        {
+            "coordinate": "io.coil-kt.coil3:coil-compose-core-android:3.3.0",
+            "artifact": "coil-compose-core-release.aar",
+            "compressedBytes": 134177,
+            "uncompressedBytes": 163203
+        },
+        {
+            "coordinate": "io.coil-kt.coil3:coil-core-android:3.3.0",
+            "artifact": "coil-core-release.aar",
+            "compressedBytes": 471284,
+            "uncompressedBytes": 560545
+        },
+        {
+            "coordinate": "javax.inject:javax.inject:1",
+            "artifact": "javax.inject-1.jar",
+            "compressedBytes": 2497,
+            "uncompressedBytes": 2311
+        },
+        {
+            "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0",
+            "artifact": "kotlin-stdlib-jdk7-1.8.0.jar",
+            "compressedBytes": 963,
+            "uncompressedBytes": 482
+        },
+        {
+            "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.3.21",
+            "artifact": "kotlin-stdlib-2.3.21.jar",
+            "compressedBytes": 1804721,
+            "uncompressedBytes": 4468394
+        },
+        {
+            "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2",
+            "artifact": "kotlinx-coroutines-android-1.10.2.jar",
+            "compressedBytes": 17826,
+            "uncompressedBytes": 30254
+        },
+        {
+            "coordinate": "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2",
+            "artifact": "kotlinx-coroutines-core-jvm-1.10.2.jar",
+            "compressedBytes": 1479317,
+            "uncompressedBytes": 3249023
+        },
+        {
+            "coordinate": "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1",
+            "artifact": "kotlinx-serialization-core-jvm-1.8.1.jar",
+            "compressedBytes": 391821,
+            "uncompressedBytes": 862146
+        },
+        {
+            "coordinate": "org.jetbrains:annotations:23.0.0",
+            "artifact": "annotations-23.0.0.jar",
+            "compressedBytes": 29371,
+            "uncompressedBytes": 32075
+        },
+        {
+            "coordinate": "org.jspecify:jspecify:1.0.0",
+            "artifact": "jspecify-1.0.0.jar",
+            "compressedBytes": 3819,
+            "uncompressedBytes": 2847
+        }
+    ],
+    "nativeLibraries": [
+        {
+            "abi": "arm64-v8a",
+            "name": "libandroidx.graphics.path.so",
+            "compressedBytes": 10096,
+            "uncompressedBytes": 10096
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libbarhopper_v3.so",
+            "compressedBytes": 4946720,
+            "uncompressedBytes": 4946720
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libface_detector_v2_jni.so",
+            "compressedBytes": 8520960,
+            "uncompressedBytes": 8520960
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "liblanguage_id_l2c_jni.so",
+            "compressedBytes": 1019552,
+            "uncompressedBytes": 1019552
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libmlkit_google_ocr_pipeline.so",
+            "compressedBytes": 11064544,
+            "uncompressedBytes": 11064544
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libmlkitcommonpipeline.so",
+            "compressedBytes": 10989136,
+            "uncompressedBytes": 10989136
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libtextclassifier3_jni_tclib.so",
+            "compressedBytes": 3677296,
+            "uncompressedBytes": 3677296
+        },
+        {
+            "abi": "arm64-v8a",
+            "name": "libtranslate_jni.so",
+            "compressedBytes": 16361032,
+            "uncompressedBytes": 16361032
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libandroidx.graphics.path.so",
+            "compressedBytes": 7252,
+            "uncompressedBytes": 7252
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libbarhopper_v3.so",
+            "compressedBytes": 3244440,
+            "uncompressedBytes": 3244440
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libface_detector_v2_jni.so",
+            "compressedBytes": 5388224,
+            "uncompressedBytes": 5388224
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "liblanguage_id_l2c_jni.so",
+            "compressedBytes": 609628,
+            "uncompressedBytes": 609628
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libmlkit_google_ocr_pipeline.so",
+            "compressedBytes": 6781940,
+            "uncompressedBytes": 6781940
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libmlkitcommonpipeline.so",
+            "compressedBytes": 6928228,
+            "uncompressedBytes": 6928228
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libtextclassifier3_jni_tclib.so",
+            "compressedBytes": 2288596,
+            "uncompressedBytes": 2288596
+        },
+        {
+            "abi": "armeabi-v7a",
+            "name": "libtranslate_jni.so",
+            "compressedBytes": 11608796,
+            "uncompressedBytes": 11608796
+        },
+        {
+            "abi": "x86",
+            "name": "libandroidx.graphics.path.so",
+            "compressedBytes": 9284,
+            "uncompressedBytes": 9284
+        },
+        {
+            "abi": "x86",
+            "name": "libbarhopper_v3.so",
+            "compressedBytes": 6122368,
+            "uncompressedBytes": 6122368
+        },
+        {
+            "abi": "x86",
+            "name": "libface_detector_v2_jni.so",
+            "compressedBytes": 9658172,
+            "uncompressedBytes": 9658172
+        },
+        {
+            "abi": "x86",
+            "name": "liblanguage_id_l2c_jni.so",
+            "compressedBytes": 1359344,
+            "uncompressedBytes": 1359344
+        },
+        {
+            "abi": "x86",
+            "name": "libmlkit_google_ocr_pipeline.so",
+            "compressedBytes": 11561048,
+            "uncompressedBytes": 11561048
+        },
+        {
+            "abi": "x86",
+            "name": "libmlkitcommonpipeline.so",
+            "compressedBytes": 12514200,
+            "uncompressedBytes": 12514200
+        },
+        {
+            "abi": "x86",
+            "name": "libtextclassifier3_jni_tclib.so",
+            "compressedBytes": 4473636,
+            "uncompressedBytes": 4473636
+        },
+        {
+            "abi": "x86",
+            "name": "libtranslate_jni.so",
+            "compressedBytes": 17258000,
+            "uncompressedBytes": 17258000
+        },
+        {
+            "abi": "x86_64",
+            "name": "libandroidx.graphics.path.so",
+            "compressedBytes": 10760,
+            "uncompressedBytes": 10760
+        },
+        {
+            "abi": "x86_64",
+            "name": "libbarhopper_v3.so",
+            "compressedBytes": 5909280,
+            "uncompressedBytes": 5909280
+        },
+        {
+            "abi": "x86_64",
+            "name": "libface_detector_v2_jni.so",
+            "compressedBytes": 9685400,
+            "uncompressedBytes": 9685400
+        },
+        {
+            "abi": "x86_64",
+            "name": "liblanguage_id_l2c_jni.so",
+            "compressedBytes": 1324480,
+            "uncompressedBytes": 1324480
+        },
+        {
+            "abi": "x86_64",
+            "name": "libmlkit_google_ocr_pipeline.so",
+            "compressedBytes": 11626128,
+            "uncompressedBytes": 11626128
+        },
+        {
+            "abi": "x86_64",
+            "name": "libmlkitcommonpipeline.so",
+            "compressedBytes": 12129104,
+            "uncompressedBytes": 12129104
+        },
+        {
+            "abi": "x86_64",
+            "name": "libtextclassifier3_jni_tclib.so",
+            "compressedBytes": 4379280,
+            "uncompressedBytes": 4379280
+        },
+        {
+            "abi": "x86_64",
+            "name": "libtranslate_jni.so",
+            "compressedBytes": 17371616,
+            "uncompressedBytes": 17371616
+        }
+    ]
 }

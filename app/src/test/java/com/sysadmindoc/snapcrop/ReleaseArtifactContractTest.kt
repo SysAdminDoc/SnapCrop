@@ -18,14 +18,17 @@ class ReleaseArtifactContractTest {
         assertTrue(build.contains("manifest\", \"version-code"))
         assertTrue(build.contains("nativeAbis == expectedAbis"))
         assertTrue(build.contains("splitSize <= universalSize * 0.8"))
-        assertTrue(build.contains("\"schemaVersion\": 3"))
+        assertTrue(build.contains("\"schemaVersion\": 4"))
         assertTrue(build.contains("sizeDeltaBytes"))
+        assertTrue(build.contains("uncompressedSizeDeltaBytes"))
+        assertTrue(build.contains("verifyReleaseSizeBudget"))
+        assertTrue(build.contains("snapcrop.sizeBaselineReason"))
         assertTrue(build.contains("Bundled optional OCR assets remain"))
         assertTrue(
             build.contains("pkg:maven/com.google.android.gms/play-services-mlkit-text-recognition-")
         )
         assertTrue(build.contains("pkg:maven/com.google.mlkit/text-recognition-"))
-        assertTrue(sourceFile("gradle/release-size-baseline.json").contains("241660484"))
+        assertTrue(sourceFile("gradle/release-size-baseline.json").contains("\"schemaVersion\": 2"))
     }
 
     @Test
@@ -35,6 +38,7 @@ class ReleaseArtifactContractTest {
         assertTrue(build.contains("isEnable = releaseAbiSplitsEnabled"))
         assertTrue(build.contains("taskName.contains(\"assembleRelease\""))
         assertTrue(build.contains("taskName.contains(\"verifyOfficialRelease\""))
+        assertTrue(build.contains("taskName.contains(\"ReleaseSize\""))
     }
 
     private fun sourceFile(path: String): String {

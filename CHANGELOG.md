@@ -4,6 +4,22 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Release-size and dependency budgets (v6.88.0).**
+
+- Removed the unused Navigation Compose declaration, version-catalog alias, and
+  pinned verification entries while retaining Activity Compose's distinct
+  Navigation Event dependency. Release dependency insight now reports no
+  `androidx.navigation:navigation-compose` match.
+- A reason-gated schema-2 baseline records compressed and expanded bytes for the
+  universal APK, four ABI APKs, 147 resolved release artifacts, and 32 native
+  libraries. Release verification rejects dependency/native set or byte changes
+  and unexplained APK growth above 256 KiB compressed or 512 KiB expanded.
+- The v6.88 baseline measures 239,412,897 bytes for the universal APK; each APK
+  is 5,111 bytes smaller than v6.87 after graph cleanup. Provenance schema 4 now
+  binds compressed and expanded size/delta fields for all five signed artifacts,
+  while existing SBOM, thin-ML, certificate, ABI, and 16 KB alignment gates stay
+  enforced.
+
 **Measured screenshot-similarity guardrail (v6.87.0).**
 
 - A deterministic generated corpus now benchmarks 96 screenshot pairs across

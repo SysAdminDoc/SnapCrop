@@ -425,6 +425,7 @@ git clone https://github.com/SysAdminDoc/SnapCrop.git
 cd SnapCrop
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false clean :app:lintDebug :app:testDebugUnitTest --console=plain
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:benchmarkScreenshotSimilarity --console=plain
+./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:verifyReleaseSizeBudget --console=plain
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:generateReleaseProvenance --console=plain
 ./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:verifyOfficialRelease --console=plain
 ```
@@ -432,9 +433,10 @@ cd SnapCrop
 Stable release artifacts are written to `app/build/outputs/provenance/` as
 the universal `SnapCrop-<version>.apk`, four `SnapCrop-<version>-<abi>.apk`
 assets, `SnapCrop-<version>-sbom.json`, and
-`SnapCrop-<version>-provenance.json`. The schema-2 manifest records every APK's
-ABI, byte size, hash, certificate fingerprint, synchronized version, shared SBOM
-hash, source commit/state, and build command.
+`SnapCrop-<version>-provenance.json`. The schema-4 manifest records every APK's
+ABI, compressed/expanded byte size and baseline delta, hash, certificate
+fingerprint, synchronized version, shared SBOM hash, source commit/state, and
+build command.
 Gradle also verifies the pinned wrapper distribution/JAR and all resolved plugin,
 test, and release-runtime artifacts by SHA-256 against
 `gradle/verification-metadata.xml`; PGP signer records are retained for audit.
@@ -446,11 +448,16 @@ The screenshot-similarity benchmark generates a synthetic screenshot corpus and
 writes calibration/validation quality, latency, and memory measurements to
 `app/build/reports/screenshot-similarity/benchmark.json`; it never reads a user
 library or changes production duplicate matching automatically.
+The release-size gate measures the universal and four ABI APKs plus every
+resolved artifact and native library against `gradle/release-size-baseline.json`.
+APK growth is capped at 256 KiB compressed / 512 KiB expanded; dependency and
+native set or byte changes require an intentional baseline refresh with a
+nonblank `--project-prop=snapcrop.sizeBaselineReason="..."` rationale.
 The official-release task additionally requires the production keystore and
 pinned certificate, the exact five-APK asset set, a clean worktree, synchronized
 app/root/manifest/SBOM versions, correct native ABI contents, materially smaller
-split assets, uncompressed ELF libraries, and successful 16 KB `zipalign`
-verification for every APK.
+split assets, a passing release-size budget, uncompressed ELF libraries, and
+successful 16 KB `zipalign` verification for every APK.
 
 > Requires JDK 17 and the Android SDK. Official releases must show
 > `"sourceState": "clean"` and use the published certificate fingerprint.
