@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Public trust and ML Kit disclosure contract (v6.80.0).**
+
+- README privacy guidance now distinguishes SnapCrop's lack of an analytics
+  backend from ML Kit's documented operational collection. It names on-device
+  input handling, Google metrics/data categories, bundled versus downloaded
+  models, and every app-controlled network path with primary-source links.
+- The ignored security-policy link is replaced by an inline permission/support
+  policy and GitHub's private advisory route. Stale editor/filter/SDK claims are
+  synchronized with source, including six modes, 18 draw tools, 16 filter
+  effects, and target SDK 37.
+- Host checks now keep local README links, version history, feature counts,
+  sensitive permissions, and network disclosures synchronized with source.
+  Update settings state exactly what the disabled-by-default GitHub request does
+  and does not send.
+
 **Signed architecture-specific release APKs (v6.79.0).**
 
 - Official distribution now publishes production-signed arm64-v8a,

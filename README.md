@@ -2,7 +2,7 @@
 
 **The screenshot tool Android should have shipped with.**
 
-Auto-detect, auto-crop, annotate, redact, and share screenshots — all in one tap. Core editing works offline, with no ads or tracking.
+Auto-detect, auto-crop, annotate, redact, and share screenshots — all in one tap. Core editing works offline, with no ads, account, or SnapCrop-operated analytics service.
 
 [![Android](https://img.shields.io/badge/Android-10%2B-3ddc84?logo=android&logoColor=white)](https://github.com/SysAdminDoc/SnapCrop/releases/latest)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -54,15 +54,12 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Survives reboots — auto-starts with your device
 
 ### Smart Auto-Crop
-- **Cut Out / squeeze** — Remove one or more irrelevant horizontal or vertical
-  bands from long screenshots, edit the cuts non-destructively, and preview
-  straight, dashed, or torn seams before save/share/project export.
 - **System bar stripping** — Reads exact status/nav bar heights from Android (works on transparent bars too)
 - **Border detection** — Removes uniform borders from any screenshot, light or dark mode
 - **App crop profiles** — Optional built-in and user-created rules strip app chrome when source hints, OCR keywords, or visual templates match
 - **AI crop** — ML Kit object detection for content-aware cropping
 
-### Powerful Editor — 5 Modes
+### Powerful Editor — 6 Modes
 
 **Crop**
 - Drag corners/edges with edge magnetism (snaps to guides)
@@ -82,11 +79,17 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Adaptive wide editor layout with persistent side controls for tablets, foldables, and desktop-mode windows
 - Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
 
-**Draw — 17 Tools**
+**Cut Out**
+- Remove one or more irrelevant horizontal or vertical bands from long
+  screenshots, edit the cuts non-destructively, and preview straight, dashed,
+  or torn seams before save/share/project export
+
+**Draw — 18 Tools**
 | Tool | What it does |
 |------|-------------|
 | Pen | Smooth freehand with velocity-based stroke width |
 | Arrow | Line with arrowhead |
+| Curved Arrow | Curved line with arrowhead |
 | Line | Straight line between two points |
 | Rectangle | Optional fill |
 | Circle / Ellipse | Optional fill |
@@ -141,12 +144,14 @@ are blocked behind explicit opt-in and evaluation gates.
 - Scan QR codes and barcodes
 - Double-tap a text block to crop directly to it
 
-**Adjust — 13 Sliders + 17 Filters**
+**Adjust — 13 Sliders + 16 Filters**
 - Android 14+ Ultra HDR screenshots retain their gain map through editing and export
   as JPEG, including crop, perspective, redaction, annotations, borders, and watermarks.
 - Brightness, Contrast, Saturation, Warmth, Vignette, Sharpen, Highlights, Shadows, Tilt-Shift, Denoise
 - Per-channel RGB curves
-- 17 filters: Mono, Sepia, Cool, Warm, Vivid, Vintage, Noir, Fade, Invert, Polaroid, Grain, Red/Blue/Green Pop, Glitch + Auto-enhance
+- 16 filter effects: Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade,
+  Invert, Polaroid, Grain, Red/Blue/Green Pop, and Glitch; Auto-enhance is a
+  separate image-analysis action
 
 ### Gallery
 - Review duplicate screenshots locally with exact/perceptual matching, strict,
@@ -253,16 +258,17 @@ universal filter with exactly one of these patterns:
 
 **Requirements:**
 - Android 10+ (API 29)
-- Google Play Services (for ML Kit features)
+- Google Play services for model-delivered features such as Background Removal;
+  bundled editing and OCR features remain available offline
 
 ---
 
 ## Privacy and Permissions
 
-SnapCrop is local-first: no ads, no analytics SDKs, and no required network
-export path. Optional upload targets are off by default and must be configured
-in Settings. See [SECURITY.md](SECURITY.md) for the permission matrix and
-release/security policy.
+SnapCrop is local-first: no ads, account, or SnapCrop-owned analytics/telemetry
+backend. Core editing and bundled recognition run without a network.
+The app does include Google ML Kit SDKs, whose operational data handling is
+disclosed below; optional exports and automatic update checks are off by default.
 
 - Image, video, and notification grants are independent. Full image access alone
   enables automatic monitoring; selected media remains browsable, and video
@@ -323,6 +329,56 @@ release/security policy.
   credentials, transient capture state, screenshot notes, and reminders;
   migrates supported legacy keys; and reports unknown or invalid entries.
 
+### Network and ML Kit disclosure
+
+- ML Kit processes input images, recognized text, and inference results
+  on the device; Google states that those inputs and outputs are not sent to its
+  servers. ML Kit may contact Google for bug fixes, model updates, and hardware
+  accelerator compatibility data. Its Android SDKs also collect operational
+  device/app information, per-installation identifiers, performance/utilization
+  metrics, and feature-specific configuration such as identified or configured
+  languages for diagnostics and usage analytics. Google states that this data is
+  encrypted in transit and is not transferred to third parties. See
+  [ML Kit Terms & Privacy](https://developers.google.com/ml-kit/terms) and the
+  [ML Kit Android data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
+- Object detection, Latin/Chinese/Japanese/Korean/Devanagari OCR, face detection,
+  barcode scanning, and language identification models are bundled with the app.
+  Subject segmentation is delivered through Google Play services. Translation
+  and entity-extraction models download on demand; translation requires Wi-Fi,
+  while entity extraction may use the active network on first use. Model storage
+  and updates follow ML Kit's documented
+  [installation paths](https://developers.google.com/ml-kit/tips/installation-paths).
+- A manual update check—or the disabled-by-default launch check—requests only
+  public release metadata from `api.github.com` with a static app user agent;
+  installed version comparison remains local, and no screenshot or OCR content
+  is sent.
+- Static Web Capture fetches only the user-selected public HTTPS page's bounded
+  main document. The isolated renderer blocks scripts, subresources, cookies,
+  storage, downloads, private/local addresses, and navigation; page content is
+  not uploaded by SnapCrop.
+- Network exports run only after the user enables a target and initiates an
+  upload. Custom HTTP/WebDAV destinations are HTTPS-only; Imgur receives the
+  selected image; Android 17 requests Local network access only for a configured
+  LAN, link-local, or `.local` endpoint.
+
+### Permission and security policy
+
+- Photos/images enable screenshot monitoring and Gallery; video is requested
+  only when Gallery video browsing needs it. Android's selected-photo picker
+  remains available without broad library access.
+- Notifications support monitoring, countdowns, reminders, and recovery actions;
+  display-over-apps is optional and Accessibility is enabled only through Android
+  settings after separate Long Screenshot or Step Capture disclosures.
+- Internet/network-state permissions support only the paths listed above. Android
+  17 Local network access is requested at use time for eligible custom endpoints.
+  Foreground-service, boot, and vibration permissions support local capture
+  monitoring; SnapCrop never requests all-files access.
+- Only the latest production release receives fixes. Report vulnerabilities
+  privately through a [GitHub security advisory](https://github.com/SysAdminDoc/SnapCrop/security/advisories/new),
+  without attaching real screenshots, credentials, or recognized secrets to a
+  public issue. Official artifacts are production-signed and pass the local
+  provenance, SBOM, manifest, redaction-quality, and 16 KB alignment gates.
+
 ---
 
 ## Tech Stack
@@ -332,10 +388,9 @@ release/security policy.
 | **Language** | Kotlin |
 | **UI** | Jetpack Compose + Material 3 |
 | **Theme** | AMOLED black with Catppuccin Mocha accents |
-| **ML** | ML Kit (Object Detection, Text Recognition, Face Detection, Barcode Scanning, Subject Segmentation) |
+| **ML** | ML Kit (Object Detection, Text Recognition, Face Detection, Barcode Scanning, Subject Segmentation, Language ID, Translation, Entity Extraction) |
 | **Image Loading** | Coil 3.3 with a 25% background memory-cache cap |
 | **Min SDK** | 29 (Android 10) |
-| **Target SDK** | 36 |
 | **Compile / target SDK** | 37 |
 
 ---

@@ -523,7 +523,7 @@
     <string name="settings_update_current">You\'re on the latest version.</string>
     <string name="settings_update_failed">Couldn\'t reach GitHub. Check your connection and try again.</string>
     <string name="settings_update_auto_title">Auto-check for updates</string>
-    <string name="settings_update_auto_subtitle">On launch, anonymously check GitHub for a newer release. No account, no tracking — just a version query.</string>
+    <string name="settings_update_auto_subtitle">On launch, request GitHub’s public release metadata. No account, screenshot, OCR text, or installed version is sent.</string>
     <string name="settings_update_available">Update available — v%1$s</string>
     <string name="settings_update_download">Download</string>
     <string name="settings_update_body">SnapCrop v%1$s is available on GitHub.</string>
