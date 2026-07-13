@@ -392,26 +392,22 @@ class MainActivity : ComponentActivity() {
             val navBarPx = SystemBars.navigationBarHeight(resources)
             val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
             val userProfiles = UserAppProfileStore.load(prefs)
-            val total = uris.size
-            val accepted = uris.take(BatchImageIntake.MAX_ITEMS)
-            var saved = 0
-            var skipped = 0
-            var oversized = total - accepted.size
-            var unreadable = 0
-            var failed = 0
-
-            for ((index, uri) in accepted.withIndex()) {
-                if (batchCancelled.value) break
-                withContext(Dispatchers.Main) {
-                    batchProgress.value = getString(R.string.batch_cropping, index + 1, total)
-                    batchProgressFraction.floatValue = index.toFloat() / total
-                }
+            val summary = BatchWorkflowRunner.run(
+                uris = uris,
+                cancelled = { batchCancelled.value },
+                onProgress = { index, total ->
+                    withContext(Dispatchers.Main) {
+                        batchProgress.value = getString(R.string.batch_cropping, index + 1, total)
+                        batchProgressFraction.floatValue = index.toFloat() / total
+                    }
+                },
+                process = process@{ uri ->
                 when (val intake = BatchImageIntake.decode(contentResolver, uri) { batchCancelled.value }) {
-                    BatchImageIntakeResult.Cancelled -> break
-                    is BatchImageIntakeResult.Oversized -> oversized++
-                    is BatchImageIntakeResult.Unreadable -> unreadable++
-                    is BatchImageIntakeResult.Failed -> failed++
-                    is BatchImageIntakeResult.Skipped -> skipped++
+                    BatchImageIntakeResult.Cancelled -> BatchItemOutcome.CANCELLED
+                    is BatchImageIntakeResult.Oversized -> BatchItemOutcome.OVERSIZED
+                    is BatchImageIntakeResult.Unreadable -> BatchItemOutcome.UNREADABLE
+                    is BatchImageIntakeResult.Failed -> BatchItemOutcome.FAILED
+                    is BatchImageIntakeResult.Skipped -> BatchItemOutcome.SKIPPED
                     is BatchImageIntakeResult.Ready -> {
                         val bitmap = intake.bitmap
                         var derived: Bitmap? = null
@@ -438,7 +434,7 @@ class MainActivity : ComponentActivity() {
                                 Bitmap.createBitmap(bitmap, left, top, width, height)
                                     .also { derived = it }
                             }
-                            if (batchCancelled.value) continue
+                            if (batchCancelled.value) return@process BatchItemOutcome.CANCELLED
 
                             val (fmt, qual, ext) = getSaveFormat()
                             val mime = when (ext) {
@@ -458,24 +454,33 @@ class MainActivity : ComponentActivity() {
                             ) { output ->
                                 toSave.compress(fmt, qual, output)
                             }
-                            if (result is MediaStoreImageWriter.Result.Success) saved++ else failed++
+                            if (result is MediaStoreImageWriter.Result.Success) {
+                                BatchItemOutcome.SAVED
+                            } else {
+                                BatchItemOutcome.FAILED
+                            }
                         } catch (_: Exception) {
-                            failed++
+                            BatchItemOutcome.FAILED
                         } catch (_: OutOfMemoryError) {
-                            failed++
+                            BatchItemOutcome.FAILED
                         } finally {
                             derived?.takeIf { !it.isRecycled }?.recycle()
                             if (!bitmap.isRecycled) bitmap.recycle()
                         }
                     }
                 }
-            }
-            val cancelled = (total - saved - skipped - oversized - unreadable - failed).coerceAtLeast(0)
+                },
+            )
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
                 val msg = getString(
                     R.string.batch_result_summary,
-                    saved, skipped, oversized, unreadable, failed, cancelled,
+                    summary.saved,
+                    summary.skipped,
+                    summary.oversized,
+                    summary.unreadable,
+                    summary.failed,
+                    summary.cancelled,
                 )
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 loadRecentCrops()
@@ -1732,29 +1737,26 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
-            val total = uris.size
-            val accepted = uris.take(BatchImageIntake.MAX_ITEMS)
-            var saved = 0
-            var skipped = 0
-            var oversized = total - accepted.size
-            var unreadable = 0
-            var failed = 0
-            for ((index, uri) in accepted.withIndex()) {
-                if (batchCancelled.value) break
-                withContext(Dispatchers.Main) {
-                    batchProgress.value = getString(R.string.batch_resizing, index + 1, total)
-                    batchProgressFraction.floatValue = index.toFloat() / total
-                }
+            val summary = BatchWorkflowRunner.run(
+                uris = uris,
+                cancelled = { batchCancelled.value },
+                onProgress = { index, total ->
+                    withContext(Dispatchers.Main) {
+                        batchProgress.value = getString(R.string.batch_resizing, index + 1, total)
+                        batchProgressFraction.floatValue = index.toFloat() / total
+                    }
+                },
+                process = process@{ uri ->
                 when (val intake = BatchImageIntake.decode(
                     contentResolver,
                     uri,
                     targetMaxDimension = maxDim,
                 ) { batchCancelled.value }) {
-                    BatchImageIntakeResult.Cancelled -> break
-                    is BatchImageIntakeResult.Oversized -> oversized++
-                    is BatchImageIntakeResult.Unreadable -> unreadable++
-                    is BatchImageIntakeResult.Failed -> failed++
-                    is BatchImageIntakeResult.Skipped -> skipped++
+                    BatchImageIntakeResult.Cancelled -> BatchItemOutcome.CANCELLED
+                    is BatchImageIntakeResult.Oversized -> BatchItemOutcome.OVERSIZED
+                    is BatchImageIntakeResult.Unreadable -> BatchItemOutcome.UNREADABLE
+                    is BatchImageIntakeResult.Failed -> BatchItemOutcome.FAILED
+                    is BatchImageIntakeResult.Skipped -> BatchItemOutcome.SKIPPED
                     is BatchImageIntakeResult.Ready -> {
                         val bmp = intake.bitmap
                         var resized: Bitmap? = null
@@ -1764,7 +1766,7 @@ class MainActivity : ComponentActivity() {
                             val newHeight = (bmp.height * scale).toInt().coerceAtLeast(1)
                             val outputBitmap = Bitmap.createScaledBitmap(bmp, newWidth, newHeight, true)
                                 .also { resized = it }
-                            if (batchCancelled.value) continue
+                            if (batchCancelled.value) return@process BatchItemOutcome.CANCELLED
                             val (fmt, qual, ext) = getSaveFormat()
                             val mime = when (ext) {
                                 "jpg" -> "image/jpeg"
@@ -1783,24 +1785,33 @@ class MainActivity : ComponentActivity() {
                             ) { output ->
                                 outputBitmap.compress(fmt, qual, output)
                             }
-                            if (result is MediaStoreImageWriter.Result.Success) saved++ else failed++
+                            if (result is MediaStoreImageWriter.Result.Success) {
+                                BatchItemOutcome.SAVED
+                            } else {
+                                BatchItemOutcome.FAILED
+                            }
                         } catch (_: Exception) {
-                            failed++
+                            BatchItemOutcome.FAILED
                         } catch (_: OutOfMemoryError) {
-                            failed++
+                            BatchItemOutcome.FAILED
                         } finally {
                             resized?.takeIf { !it.isRecycled }?.recycle()
                             if (!bmp.isRecycled) bmp.recycle()
                         }
                     }
                 }
-            }
-            val cancelled = (total - saved - skipped - oversized - unreadable - failed).coerceAtLeast(0)
+                },
+            )
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
                 val msg = getString(
                     R.string.batch_result_summary,
-                    saved, skipped, oversized, unreadable, failed, cancelled,
+                    summary.saved,
+                    summary.skipped,
+                    summary.oversized,
+                    summary.unreadable,
+                    summary.failed,
+                    summary.cancelled,
                 )
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                 galleryRefreshKey.intValue++

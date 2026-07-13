@@ -9,21 +9,24 @@ class BatchImageIntakeRoutingTest {
     @Test
     fun cropAndResizeUseBoundedIntakeBeforeTransactionalPublication() {
         val main = sourceFile("app/src/main/java/com/sysadmindoc/snapcrop/MainActivity.kt")
+        val runner = sourceFile("app/src/main/java/com/sysadmindoc/snapcrop/BatchWorkflowRunner.kt")
         val crop = between(main, "private fun batchAutocrop", "override fun onCreate")
         val resize = between(main, "private fun batchResize", "private fun batchRename")
 
         listOf(crop, resize).forEach { workflow ->
+            assertTrue(workflow.contains("BatchWorkflowRunner.run("))
             val intake = workflow.indexOf("BatchImageIntake.decode(")
             val publication = workflow.indexOf("MediaStoreImageWriter.write(")
             assertTrue(intake >= 0)
             assertTrue(publication > intake)
-            assertTrue(workflow.contains("BatchImageIntake.MAX_ITEMS"))
             assertTrue(workflow.contains("BatchImageIntakeResult.Oversized"))
             assertTrue(workflow.contains("BatchImageIntakeResult.Unreadable"))
             assertTrue(workflow.contains("BatchImageIntakeResult.Cancelled"))
-            assertTrue(workflow.contains("if (batchCancelled.value) continue"))
+            assertTrue(workflow.contains("BatchItemOutcome.CANCELLED"))
             assertFalse(workflow.contains("BitmapFactory.decodeStream"))
         }
+        assertTrue(runner.contains("uris.take(BatchImageIntake.MAX_ITEMS)"))
+        assertTrue(runner.contains("BatchRunSummary("))
     }
 
     @Test
