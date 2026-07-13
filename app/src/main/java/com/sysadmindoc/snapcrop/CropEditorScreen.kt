@@ -2599,6 +2599,9 @@ fun CropEditorScreen(
                     cropTop = cropTop,
                     cropRight = cropRight,
                     cropBottom = cropBottom,
+                    redactions = redactions,
+                    drawPaths = drawPaths,
+                    adjustments = exportAdjustments(),
                     cutBands = cutBands,
                     cutSeparatorStyle = cutSeparatorStyle,
                     onDismiss = { previewMode = false }

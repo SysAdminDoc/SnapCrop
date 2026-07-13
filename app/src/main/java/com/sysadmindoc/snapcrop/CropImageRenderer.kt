@@ -656,17 +656,23 @@ internal object CropImageRenderer {
         adj: FloatArray = floatArrayOf(0f, 1f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
         cutout: CutoutEditState = CutoutEditState(),
     ): Bitmap {
-        // Redact source pixels before any geometric transform so rotate/perspective cannot move
-        // secrets away from an untransformed mask. Invalid enabled regions abort the export.
-        val redacted = applyRedactions(bitmap, redactions)
         // Apply free rotation before adjustments/crop. Straighten rotates within the original
         // editor coordinate frame (corners clipped) so the crop rect - expressed in source
         // coordinates - stays aligned with the preview instead of drifting onto an expanded canvas.
         val rotAngle = if (adj.size > 8) adj[8] else 0f
+        val hasPerspective = adj.size >= 25 && (adj[17] != 0f || adj[18] != 0f || adj[19] != 0f || adj[20] != 0f ||
+                adj[21] != 0f || adj[22] != 0f || adj[23] != 0f || adj[24] != 0f)
         require(cutout.bands.isEmpty() || rotAngle == 0f) { "Cut Out cannot be combined with free rotation" }
+        require(cutout.bands.isEmpty() || !hasPerspective) { "Cut Out cannot be combined with perspective" }
+
+        // Rotation happens before editor-space annotation geometry. Redact the source first only
+        // for that transform so secrets cannot rotate away from their mask, then composite every
+        // enabled redaction again after adjustments and annotations so concealment wins visually.
+        val protectedSource = if (rotAngle != 0f) applyRedactions(bitmap, redactions) else bitmap
         val rotated = if (rotAngle != 0f) {
-            createEditorSpaceStraightenedBitmap(redacted, rotAngle)
-        } else redacted
+            createEditorSpaceStraightenedBitmap(protectedSource, rotAngle)
+        } else protectedSource
+        if (rotated !== protectedSource && protectedSource !== bitmap) protectedSource.recycle()
     
         val adjusted = applyAdjustments(rotated, adj)
         preserveUltraHdrGainmap(rotated, adjusted)
@@ -674,11 +680,12 @@ internal object CropImageRenderer {
         val drawn = applyDraw(adjusted, drawPaths)
         preserveUltraHdrGainmap(adjusted, drawn)
         if (drawn !== adjusted && adjusted !== bitmap) adjusted.recycle()
+
+        val rendered = applyRedactions(drawn, redactions)
+        preserveUltraHdrGainmap(drawn, rendered)
+        if (rendered !== drawn && drawn !== bitmap) drawn.recycle()
     
         // Perspective warp: adj[17..24] = quad TL.x, TL.y, TR.x, TR.y, BR.x, BR.y, BL.x, BL.y
-        val hasPerspective = adj.size >= 25 && (adj[17] != 0f || adj[18] != 0f || adj[19] != 0f || adj[20] != 0f ||
-                adj[21] != 0f || adj[22] != 0f || adj[23] != 0f || adj[24] != 0f)
-        require(cutout.bands.isEmpty() || !hasPerspective) { "Cut Out cannot be combined with perspective" }
         if (hasPerspective) {
             val srcQuad = floatArrayOf(adj[17], adj[18], adj[19], adj[20], adj[21], adj[22], adj[23], adj[24])
             val topW = kotlin.math.sqrt(((srcQuad[2] - srcQuad[0]) * (srcQuad[2] - srcQuad[0]) + (srcQuad[3] - srcQuad[1]) * (srcQuad[3] - srcQuad[1])).toDouble())
@@ -689,26 +696,36 @@ internal object CropImageRenderer {
             val outH = maxOf(leftH, rightH).toInt().coerceAtLeast(1)
             val dstQuad = floatArrayOf(0f, 0f, outW.toFloat(), 0f, outW.toFloat(), outH.toFloat(), 0f, outH.toFloat())
             val warpMatrix = Matrix()
-            warpMatrix.setPolyToPoly(srcQuad, 0, dstQuad, 0, 4)
+            if (!warpMatrix.setPolyToPoly(srcQuad, 0, dstQuad, 0, 4)) {
+                if (rendered !== bitmap) rendered.recycle()
+                throw IllegalArgumentException("Perspective points do not define a valid transform")
+            }
             val warped = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
             val warpCanvas = Canvas(warped)
-            warpCanvas.drawBitmap(drawn, warpMatrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-            preserveUltraHdrGainmap(drawn, warped, warpMatrix)
-            if (drawn !== bitmap) drawn.recycle()
+            warpCanvas.drawBitmap(rendered, warpMatrix, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+            preserveUltraHdrGainmap(rendered, warped, warpMatrix)
+            if (rendered !== bitmap) rendered.recycle()
             return warped
         }
     
-        val cl = rect.left.coerceIn(0, drawn.width - 1)
-        val ct = rect.top.coerceIn(0, drawn.height - 1)
-        val cw = rect.width().coerceAtMost(drawn.width - cl).coerceAtLeast(1)
-        val ch = rect.height().coerceAtMost(drawn.height - ct).coerceAtLeast(1)
-        val initialCrop = Bitmap.createBitmap(drawn, cl, ct, cw, ch)
+        val cl = rect.left.coerceIn(0, rendered.width - 1)
+        val ct = rect.top.coerceIn(0, rendered.height - 1)
+        val cw = rect.width().coerceAtMost(rendered.width - cl).coerceAtLeast(1)
+        val ch = rect.height().coerceAtMost(rendered.height - ct).coerceAtLeast(1)
+        val croppedSubset = Bitmap.createBitmap(rendered, cl, ct, cw, ch)
+        // Bitmap.createBitmap may return the immutable source for a full subset. Every caller owns
+        // and recycles the render result, so pin that contract here and never expose the input.
+        val initialCrop = if (croppedSubset === bitmap) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        } else {
+            croppedSubset
+        }
         preserveUltraHdrGainmap(
-            drawn,
+            rendered,
             initialCrop,
             Matrix().apply { postTranslate(-cl.toFloat(), -ct.toFloat()) }
         )
-        if (drawn !== bitmap && drawn !== initialCrop) drawn.recycle()
+        if (rendered !== bitmap && rendered !== initialCrop) rendered.recycle()
         val cropped = if (cutout.bands.isEmpty()) {
             initialCrop
         } else {
@@ -856,7 +873,9 @@ internal object CropImageRenderer {
     
         // Gradient background fill for transparent areas (shape crops only)
         if (gradIdx > 0 && shapeType >= 1f) {
-            return applyGradientBackground(shaped, gradIdx)
+            return applyGradientBackground(shaped, gradIdx).also { gradient ->
+                if (gradient !== shaped) shaped.recycle()
+            }
         }
     
         return shaped

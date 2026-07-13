@@ -1,6 +1,8 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
+import android.graphics.PointF
+import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -8,10 +10,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -29,8 +34,34 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+import java.util.concurrent.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+internal fun renderEditorPreviewBitmap(
+    bitmap: Bitmap,
+    rect: Rect,
+    redactions: List<RedactionRegion>,
+    drawPaths: List<DrawPath>,
+    adjustments: FloatArray,
+    cutout: CutoutEditState,
+): Bitmap = CropImageRenderer.render(
+    bitmap = bitmap,
+    rect = Rect(rect),
+    redactions = redactions.map { it.copy(bounds = Rect(it.bounds)) },
+    drawPaths = drawPaths.map { path ->
+        path.copy(
+            points = path.points.map { PointF(it.x, it.y) },
+            controlPoint = path.controlPoint?.let { PointF(it.x, it.y) },
+        )
+    },
+    adj = adjustments.copyOf(),
+    cutout = cutout.copy(bands = cutout.bands.map { it.copy() }),
+)
 
 @Composable
 internal fun BeforeAfterPreview(
@@ -40,51 +71,72 @@ internal fun BeforeAfterPreview(
     cropTop: Int,
     cropRight: Int,
     cropBottom: Int,
+    redactions: List<RedactionRegion> = emptyList(),
+    drawPaths: List<DrawPath> = emptyList(),
+    adjustments: FloatArray = floatArrayOf(0f, 1f, 1f),
     cutBands: List<CutBand> = emptyList(),
     cutSeparatorStyle: CutSeparatorStyle = CutSeparatorStyle.STRAIGHT,
     onDismiss: () -> Unit
 ) {
-    val cropW = cropRight - cropLeft
-    val cropH = cropBottom - cropTop
-    val previewBitmap = remember(cropLeft, cropTop, cropRight, cropBottom, bitmap, cutBands, cutSeparatorStyle) {
+    val redactionSnapshot = redactions.map { it.copy(bounds = Rect(it.bounds)) }
+    val drawSnapshot = drawPaths.map { path ->
+        path.copy(
+            points = path.points.map { PointF(it.x, it.y) },
+            controlPoint = path.controlPoint?.let { PointF(it.x, it.y) },
+        )
+    }
+    val adjustmentSnapshot = adjustments.copyOf()
+    val adjustmentKey = adjustmentSnapshot.toList()
+    val cutoutSnapshot = CutoutEditState(cutBands.map { it.copy() }, cutSeparatorStyle)
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var previewFailed by remember { mutableStateOf(false) }
+    LaunchedEffect(
+        bitmap,
+        cropLeft,
+        cropTop,
+        cropRight,
+        cropBottom,
+        redactionSnapshot,
+        drawSnapshot,
+        adjustmentKey,
+        cutoutSnapshot,
+    ) {
+        previewBitmap = null
+        previewFailed = false
+        var candidate: Bitmap? = null
         try {
-            val cropped = Bitmap.createBitmap(
-                bitmap,
-                cropLeft.coerceAtLeast(0),
-                cropTop.coerceAtLeast(0),
-                cropW.coerceAtMost(bitmap.width - cropLeft.coerceAtLeast(0)),
-                cropH.coerceAtMost(bitmap.height - cropTop.coerceAtLeast(0))
-            )
-            if (cutBands.isEmpty()) {
-                cropped
-            } else {
-                val plan = CutoutSqueeze.createForCrop(
-                    bitmap.width,
-                    bitmap.height,
-                    cropLeft,
-                    cropTop,
-                    cropRight,
-                    cropBottom,
-                    cutBands,
-                    cutSeparatorStyle,
+            candidate = withContext(Dispatchers.Default) {
+                renderEditorPreviewBitmap(
+                    bitmap = bitmap,
+                    rect = Rect(cropLeft, cropTop, cropRight, cropBottom),
+                    redactions = redactionSnapshot,
+                    drawPaths = drawSnapshot,
+                    adjustments = adjustmentSnapshot,
+                    cutout = cutoutSnapshot,
                 )
-                CutoutBitmapRenderer.render(cropped, plan).also {
-                    if (it !== cropped) cropped.recycle()
-                }
             }
+            currentCoroutineContext().ensureActive()
+            previewBitmap = candidate
+            candidate = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
-            bitmap
+            previewFailed = true
+        } finally {
+            candidate?.takeIf { !it.isRecycled }?.recycle()
         }
     }
-    val croppedPreview = remember(previewBitmap) { previewBitmap.asImageBitmap() }
-    DisposableEffect(previewBitmap, bitmap) {
+    val croppedPreview = previewBitmap?.takeIf { !it.isRecycled }?.asImageBitmap()
+    DisposableEffect(previewBitmap) {
+        val ownedPreview = previewBitmap
         onDispose {
-            if (previewBitmap !== bitmap && !previewBitmap.isRecycled) previewBitmap.recycle()
+            ownedPreview?.takeIf { !it.isRecycled }?.recycle()
         }
     }
     var dividerX by remember { mutableFloatStateOf(0.5f) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (croppedPreview != null) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,5 +198,18 @@ internal fun BeforeAfterPreview(
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold
         )
+        } else if (previewFailed) {
+            Text(
+                stringResource(R.string.crop_preview_failed),
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                color = Color.White,
+                fontSize = 14.sp,
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = Color.White,
+            )
+        }
     }
 }

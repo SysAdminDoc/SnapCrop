@@ -21,7 +21,8 @@ class CutoutRoutingTest {
         assertTrue(activity.contains("buildProjectSidecarJson(rect, redactions, drawPaths, adj, cutout"))
         assertTrue(project.contains("private const val VERSION = 5"))
         assertTrue(project.contains(".put(\"cutout\""))
-        assertTrue(preview.contains("CutoutBitmapRenderer.render(cropped, plan)"))
+        assertTrue(preview.contains("cutout = cutout.copy(bands = cutout.bands.map { it.copy() })"))
+        assertTrue(preview.contains("): Bitmap = CropImageRenderer.render("))
     }
 
     @Test

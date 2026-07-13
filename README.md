@@ -75,7 +75,9 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Multi-select annotation layers to align against crop edges/centers, distribute
   equal gaps horizontally or vertically, and duplicate with a visible offset
 - Tap dimensions for exact pixel input
-- Before/after swipe comparison
+- Before/after swipe comparison uses the same composed renderer as Save, Copy,
+  and Share, including adjustments, annotations, concealment, shapes, perspective,
+  and Cut Out.
 - Live file size estimate
 - Adaptive wide editor layout with persistent side controls for tablets, foldables, and desktop-mode windows
 - Explicit **Save & Replace** / **Save Copy** actions, with confirmation before deleting the original screenshot
@@ -105,6 +107,8 @@ All tools support: custom colors (6 presets + full RGB picker + eyedropper), adj
 Draw annotations also appear in a reorderable Layers panel with per-layer visibility and delete controls.
 Named export presets capture format, quality or target size, border, watermark, filename,
 and destination; choose one in the editor for Save/Share or assign one to Quick Crop in Settings.
+Cache-backed Copy and Share artifacts publish only after a non-empty encode and successful
+clipboard/chooser dispatch; failed artifacts are removed instead of being exposed as success.
 Auto-detected and manual redactions remain editable until export: review individual
 email/phone/card/IP/face regions, toggle whole categories, choose safe opaque Bar or
 cosmetic Pixelate/Blur, and move or resize each region before it is flattened once.

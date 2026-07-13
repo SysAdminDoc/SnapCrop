@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -187,6 +188,7 @@ class EditorAccessibilityInstrumentedTest {
     fun compactEditorPassesAccessibilityChecks() {
         setEditorContent()
         composeRule.onRoot().tryPerformAccessibilityChecks()
+        openComposedPreviewAndCheck()
     }
 
     @Test
@@ -204,6 +206,21 @@ class EditorAccessibilityInstrumentedTest {
         )
         setEditorContent()
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.editor_inspector)).fetchSemanticsNode()
+        composeRule.onRoot().tryPerformAccessibilityChecks()
+        openComposedPreviewAndCheck()
+    }
+
+    private fun openComposedPreviewAndCheck() {
+        composeRule.onNodeWithContentDescription(
+            composeRule.activity.getString(R.string.crop_preview)
+        ).performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching {
+                composeRule.onNodeWithText(
+                    composeRule.activity.getString(R.string.crop_preview_after)
+                ).fetchSemanticsNode()
+            }.isSuccess
+        }
         composeRule.onRoot().tryPerformAccessibilityChecks()
     }
 

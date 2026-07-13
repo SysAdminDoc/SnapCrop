@@ -1204,7 +1204,6 @@ class CropActivity : ComponentActivity() {
                     exportSettings
                 )
                 val clipDir = File(cacheDir, "clipboard")
-                clipDir.mkdirs()
                 // Clipboard stays lossless PNG unless HDR forces JPEG (pre-Android 16). On API 36+
                 // the PNG codec carries the gain map, so HDR pastes keep PNG too.
                 val clipFormat = getExportFormat(
@@ -1213,15 +1212,36 @@ class CropActivity : ComponentActivity() {
                     settings = exportSettings
                 )
                 val file = File(clipDir, "clip.${clipFormat.ext}")
-                file.outputStream().use {
-                    cropped.compress(clipFormat.format, clipFormat.quality, it)
-                }
+                val result = CropCacheArtifactPublisher.publish(
+                    file = file,
+                    writer = { target ->
+                        target.outputStream().use { output ->
+                            cropped.compress(clipFormat.format, clipFormat.quality, output)
+                        }
+                    },
+                    dispatcher = { target ->
+                        withContext(Dispatchers.Main) {
+                            val clipUri = FileProvider.getUriForFile(
+                                this@CropActivity,
+                                "${packageName}.fileprovider",
+                                target,
+                            )
+                            val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
+                            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(clip)
+                        }
+                    },
+                )
                 withContext(Dispatchers.Main) {
-                    val clipUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", file)
-                    val clip = ClipData.newUri(contentResolver, "SnapCrop", clipUri)
-                    val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-                    cm.setPrimaryClip(clip)
-                    Toast.makeText(this@CropActivity, getString(R.string.toast_copied), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@CropActivity,
+                        if (result is CropCacheArtifactPublisher.Result.Success) {
+                            getString(R.string.toast_copied)
+                        } else {
+                            getString(R.string.toast_copy_failed)
+                        },
+                        Toast.LENGTH_SHORT,
+                    ).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -1481,53 +1501,88 @@ class CropActivity : ComponentActivity() {
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
             val useTargetSize = exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG
             val targetBytes = exportSettings.targetSizeKb.coerceIn(50, 5000).toLong() * 1024L
-            val shareDir = File(cacheDir, "shared_crops"); shareDir.mkdirs()
+            val shareDir = File(cacheDir, "shared_crops")
             val shareFile = File(shareDir, "${resolveFilename(exportSettings)}.$ext")
             try {
-                if (shareFile.exists() && !shareFile.delete()) {
-                    throw IOException("Could not replace the previous share export")
-                }
-                if (useTargetSize) {
-                    when (val result = ExportPresetRenderer.compressToTarget(
-                        out,
-                        shareFmt,
-                        exportSettings.targetSizeKb,
-                        exportSettings.targetDownscalePolicy(),
-                    )) {
-                        is TargetCompressionResult.WithinBudget -> shareFile.writeBytes(result.bytes)
-                        is TargetCompressionResult.CannotMeetWithoutResize ->
-                            throw IOException(getString(R.string.target_size_unmet))
-                        is TargetCompressionResult.EncoderFailure ->
-                            throw IOException(getString(R.string.target_size_encode_failed), result.cause)
-                    }
-                } else {
-                    val encoded = shareFile.outputStream().use { out.compress(shareFmt, shareQual, it) }
-                    if (!encoded) throw IOException("Could not encode share export")
-                }
-                val shareUri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", shareFile)
-                if (metadataPolicy != ShareMetadataPolicy.STRIP_ALL) {
-                    val source = sourceUri
-                    if (source == null || !ExifTransfer.copyForShare(contentResolver, source, shareUri, metadataPolicy)) {
-                        shareFile.delete()
-                        throw IOException("Could not apply selected metadata policy")
-                    }
-                }
-                if (useTargetSize && shareFile.length() !in 1L..targetBytes) {
-                    throw IOException(getString(R.string.target_size_unmet))
-                }
-                withContext(Dispatchers.Main) {
-                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                        type = mime
-                        putExtra(Intent.EXTRA_STREAM, shareUri)
-                        if (includeSourceLink) explicitSourceContext.value?.shareText?.let {
-                            putExtra(Intent.EXTRA_TEXT, it)
+                val result = CropCacheArtifactPublisher.publish(
+                    file = shareFile,
+                    writer = { target ->
+                        val encoded = if (useTargetSize) {
+                            when (val compressed = ExportPresetRenderer.compressToTarget(
+                                out,
+                                shareFmt,
+                                exportSettings.targetSizeKb,
+                                exportSettings.targetDownscalePolicy(),
+                            )) {
+                                is TargetCompressionResult.WithinBudget -> target.writeBytes(compressed.bytes)
+                                is TargetCompressionResult.CannotMeetWithoutResize ->
+                                    throw IOException(getString(R.string.target_size_unmet))
+                                is TargetCompressionResult.EncoderFailure ->
+                                    throw IOException(getString(R.string.target_size_encode_failed), compressed.cause)
+                            }
+                            true
+                        } else {
+                            target.outputStream().use { output -> out.compress(shareFmt, shareQual, output) }
                         }
-                        clipData = ClipData.newRawUri("SnapCrop shared image", shareUri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }, null))
+                        if (!encoded) {
+                            false
+                        } else {
+                            val shareUri = FileProvider.getUriForFile(
+                                this@CropActivity,
+                                "${packageName}.fileprovider",
+                                target,
+                            )
+                            if (metadataPolicy != ShareMetadataPolicy.STRIP_ALL) {
+                                val source = sourceUri
+                                if (source == null || !ExifTransfer.copyForShare(
+                                        contentResolver,
+                                        source,
+                                        shareUri,
+                                        metadataPolicy,
+                                    )
+                                ) {
+                                    throw IOException("Could not apply selected metadata policy")
+                                }
+                            }
+                            if (useTargetSize && target.length() !in 1L..targetBytes) {
+                                throw IOException(getString(R.string.target_size_unmet))
+                            }
+                            true
+                        }
+                    },
+                    dispatcher = { target ->
+                        val shareUri = FileProvider.getUriForFile(
+                            this@CropActivity,
+                            "${packageName}.fileprovider",
+                            target,
+                        )
+                        withContext(Dispatchers.Main) {
+                            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                type = mime
+                                putExtra(Intent.EXTRA_STREAM, shareUri)
+                                if (includeSourceLink) explicitSourceContext.value?.shareText?.let {
+                                    putExtra(Intent.EXTRA_TEXT, it)
+                                }
+                                clipData = ClipData.newRawUri("SnapCrop shared image", shareUri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }, null))
+                        }
+                    },
+                )
+                val failure = result as? CropCacheArtifactPublisher.Result.Failure
+                if (failure != null) {
+                    val errorMessage = failure.cause?.message
+                    withContext(Dispatchers.Main) {
+                        val message = when (errorMessage) {
+                            getString(R.string.target_size_unmet), getString(R.string.target_size_encode_failed) -> errorMessage
+                            else -> getString(R.string.share_metadata_export_failed)
+                        }
+                        Toast.makeText(this@CropActivity, message, Toast.LENGTH_LONG).show()
+                    }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
-                shareFile.delete()
                 withContext(Dispatchers.Main) {
                     val message = when (e.message) {
                         getString(R.string.target_size_unmet), getString(R.string.target_size_encode_failed) -> e.message

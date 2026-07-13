@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Renderer parity and side-effect regression gates (v6.78.0).**
+
+- Before/after now renders asynchronously through the exact Save/Copy/Share
+  composition path, including crop, rotation, perspective, Cut Out, adjustments,
+  annotations, concealment, alpha shapes, and gradients. Renderer outputs are
+  always caller-owned, source bitmaps survive no-op/shape exports, and opaque
+  concealment wins final composition.
+- Copy and Share now publish cache artifacts only after a successful non-empty
+  encode and successful clipboard/chooser dispatch; partial failures are deleted.
+  Generated native-graphics fixtures assert exact/tolerant pixels and preview/
+  export identity, while injected MediaStore/cache/clipboard/share failures prove
+  that each requested side effect fails independently.
+
 **Accessible interaction semantics (v6.77.0).**
 
 - Compact icon, swatch, layer, redaction, Gallery, stitch, collage, Home, and
