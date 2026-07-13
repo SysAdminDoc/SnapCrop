@@ -307,9 +307,9 @@ release/security policy.
 ```bash
 git clone https://github.com/SysAdminDoc/SnapCrop.git
 cd SnapCrop
-./gradlew clean :app:lintDebug :app:testDebugUnitTest --console=plain
-./gradlew :app:generateReleaseProvenance --console=plain
-./gradlew :app:verifyOfficialRelease --console=plain
+./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false clean :app:lintDebug :app:testDebugUnitTest --console=plain
+./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:generateReleaseProvenance --console=plain
+./gradlew --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:verifyOfficialRelease --console=plain
 ```
 
 Stable release artifacts are written to `app/build/outputs/provenance/` as
@@ -319,6 +319,10 @@ certificate fingerprint, version metadata, source commit/state, and build comman
 Gradle also verifies the pinned wrapper distribution/JAR and all resolved plugin,
 test, and release-runtime artifacts by SHA-256 against
 `gradle/verification-metadata.xml`; PGP signer records are retained for audit.
+Until stable Kotlin 2.4.20 or newer is reviewed and pinned, settings evaluation
+rejects Gradle/Kotlin build-cache or incremental-cache opt-ins for
+CVE-2026-53914. Trusted commands state the safe cache flags explicitly; normal
+dependency downloads remain cached and checksum-verified.
 The official-release task additionally requires the production keystore and
 pinned certificate, a clean worktree, synchronized app/root/SBOM versions,
 uncompressed ELF libraries, and successful 16 KB `zipalign` verification.

@@ -45,8 +45,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 122
-        versionName = "6.70.0"
+        versionCode = 123
+        versionName = "6.71.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -177,7 +177,12 @@ tasks.cyclonedxDirectBom {
 tasks.register("generateReleaseProvenance") {
     group = "distribution"
     description = "Builds stable release artifacts and a machine-readable provenance manifest."
-    dependsOn("assembleRelease", "cyclonedxDirectBom", rootProject.tasks.named("verifyWrapperJar"))
+    dependsOn(
+        "assembleRelease",
+        "cyclonedxDirectBom",
+        rootProject.tasks.named("verifyWrapperJar"),
+        rootProject.tasks.named("verifyBuildCacheSecurity"),
+    )
 
     val provenanceDirectory = layout.buildDirectory.dir("outputs/provenance")
     val releaseApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
@@ -254,7 +259,7 @@ tasks.register("generateReleaseProvenance") {
             isIgnoreExitValue = true
             commandLine("git", "status", "--porcelain")
         }.standardOutput.asText.get().trim().let { if (it.isEmpty()) "clean" else "dirty" }
-        val command = ".\\gradlew.bat :app:generateReleaseProvenance --console=plain"
+        val command = ".\\gradlew.bat --no-build-cache --no-configuration-cache --system-prop=kotlin.caching.enabled=false --project-prop=kotlin.incremental=false :app:generateReleaseProvenance --console=plain"
         val provenance = outputDir.resolve("SnapCrop-$versionName-provenance.json")
         provenance.writeText(
             """

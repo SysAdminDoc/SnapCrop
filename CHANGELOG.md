@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Kotlin build-cache containment (v6.71.0).**
+
+- Disabled reusable Gradle task-output, configuration, Kotlin build, and Kotlin
+  incremental caches in trusted commands while the pinned stable Kotlin 2.3.21
+  remains affected by CVE-2026-53914.
+- Added a fail-early settings gate that rejects task-output, Kotlin build, and
+  incremental cache opt-ins, rejects prerelease compiler versions, and permits cache
+  opt-in only after a stable Kotlin 2.4.20+ is deliberately pinned.
+- The official release path now depends on an auditable cache-security task. Safe
+  and hostile command-line probes, source guards, full host tests, lint, and a
+  clean signed release build cover the containment without disabling verified
+  dependency downloads.
+
 **Android 17 local-network compatibility (v6.70.0).**
 
 - Raised compile/target SDK to API 37 and added Android 17's scoped Local network

@@ -25,7 +25,37 @@ tasks.register("verifyWrapperJar") {
     }
 }
 
+tasks.register("verifyBuildCacheSecurity") {
+    group = "verification"
+    description = "Verifies the Kotlin build-cache containment policy for CVE-2026-53914."
+    doLast {
+        val kotlinVersion = gradle.extensions.extraProperties["snapcrop.kotlinVersion"] as String
+        val cacheDeserializationFixed =
+            gradle.extensions.extraProperties["snapcrop.cacheDeserializationFixed"] as Boolean
+        val kotlinBuildCacheRequested =
+            gradle.extensions.extraProperties["snapcrop.kotlinBuildCacheRequested"] as Boolean
+        val kotlinIncrementalCacheRequested =
+            gradle.extensions.extraProperties["snapcrop.kotlinIncrementalCacheRequested"] as Boolean
+        check(!gradle.startParameter.isBuildCacheEnabled || cacheDeserializationFixed) {
+            "Reusable Gradle build caches require stable Kotlin 2.4.20 or newer"
+        }
+        check(!kotlinBuildCacheRequested || cacheDeserializationFixed) {
+            "Reusable Kotlin build caches require stable Kotlin 2.4.20 or newer"
+        }
+        check(!kotlinIncrementalCacheRequested || cacheDeserializationFixed) {
+            "Kotlin incremental caches require stable Kotlin 2.4.20 or newer"
+        }
+        logger.lifecycle(
+            if (cacheDeserializationFixed) {
+                "Build-cache security gate: stable Kotlin $kotlinVersion permits explicit cache opt-in"
+            } else {
+                "Build-cache security gate: reusable Gradle/Kotlin caches disabled for Kotlin $kotlinVersion"
+            }
+        )
+    }
+}
+
 allprojects {
     group = "com.sysadmindoc"
-    version = "6.70.0"
+    version = "6.71.0"
 }
