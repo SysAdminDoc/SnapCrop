@@ -4,6 +4,21 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Progressive permission recovery (v6.74.0).**
+
+- Replaced the anonymous multi-permission callback and three unrelated pending
+  flags with one typed initiating action. Monitor, delayed capture, Quick Crop,
+  latest-image, Pin, Accessibility, and LAN-upload continuations resume at most
+  once and only after their matching capability becomes available.
+- First denial now keeps every unrelated editor/picker available and offers Try
+  again; repeated denial routes to exact app, notification, overlay, or
+  Accessibility settings instead of relaunching a dead prompt.
+- Requests are purpose-timed: image access for monitoring/library actions, video
+  access from Gallery, and notifications when capture/reminder behavior needs it.
+  Gallery reflects runtime and app/channel notification blocking.
+- Added policy, continuation-decision, settings-route, source-routing, and headless
+  API-37 rendered tests for retryable and settings-required states.
+
 **Enforced target-size exports (v6.73.0).**
 
 - Replaced best-effort target compression with typed within-budget,

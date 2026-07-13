@@ -348,10 +348,14 @@ fun GalleryScreen(
     onBack: () -> Unit,
     imageAccess: MediaAccess = MediaAccess.FULL,
     videoAccess: MediaAccess = MediaAccess.FULL,
+    imagePermissionRecovery: PermissionRecoveryState = PermissionRecoveryState.REQUESTABLE,
+    videoPermissionRecovery: PermissionRecoveryState = PermissionRecoveryState.REQUESTABLE,
     onRequestImageAccess: () -> Unit = {},
     onRequestVideoAccess: () -> Unit = {},
     notificationAccess: Boolean = true,
+    notificationPermissionRecovery: PermissionRecoveryState = PermissionRecoveryState.REQUESTABLE,
     onRequestNotificationAccess: () -> Unit = {},
+    onRequestOverlayForPin: (Uri) -> Unit = {},
     openRequest: GalleryOpenRequest? = null,
     onOpenRequestConsumed: () -> Unit = {},
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
@@ -678,6 +682,7 @@ fun GalleryScreen(
         NoteReminderDialog(
             current = noteReminders[photo.uri.toString() to photo.dateAdded],
             notificationsAvailable = notificationAccess && ScreenshotReminderScheduler.notificationsAvailable(context),
+            notificationPermissionRecovery = notificationPermissionRecovery,
             onRequestNotifications = onRequestNotificationAccess,
             onSave = { note, reminderAt ->
                 scope.launch {
@@ -867,6 +872,7 @@ fun GalleryScreen(
             onShare = { onShareUris(listOf(it.uri)) },
             onEditSource = { sourceEditorPhoto = it },
             onEditNote = { noteEditorPhoto = it },
+            onRequestOverlayForPin = onRequestOverlayForPin,
             onOpenSource = { photo -> openExplicitSource(context, photo.sourceContext) },
             onDelete = { photo ->
                 pendingDeleteUris = listOf(photo.uri)
@@ -1080,16 +1086,28 @@ fun GalleryScreen(
                 if (imageAccess != MediaAccess.FULL) {
                     GalleryCapabilityBanner(
                         title = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_images_partial_title else R.string.gallery_images_denied_title),
-                        body = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_images_partial_body else R.string.gallery_images_denied_body),
-                        action = stringResource(if (imageAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_images),
+                        body = permissionRecoveryBody(
+                            if (imageAccess == MediaAccess.SELECTED) R.string.gallery_images_partial_body else R.string.gallery_images_denied_body,
+                            imagePermissionRecovery,
+                        ),
+                        action = permissionRecoveryAction(
+                            if (imageAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_images,
+                            imagePermissionRecovery,
+                        ),
                         onClick = onRequestImageAccess
                     )
                 }
                 if (videoAccess != MediaAccess.FULL) {
                     GalleryCapabilityBanner(
                         title = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_videos_partial_title else R.string.gallery_videos_denied_title),
-                        body = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_videos_partial_body else R.string.gallery_videos_denied_body),
-                        action = stringResource(if (videoAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_videos),
+                        body = permissionRecoveryBody(
+                            if (videoAccess == MediaAccess.SELECTED) R.string.gallery_videos_partial_body else R.string.gallery_videos_denied_body,
+                            videoPermissionRecovery,
+                        ),
+                        action = permissionRecoveryAction(
+                            if (videoAccess == MediaAccess.SELECTED) R.string.gallery_manage_selection else R.string.gallery_allow_videos,
+                            videoPermissionRecovery,
+                        ),
                         onClick = onRequestVideoAccess
                     )
                 }
@@ -1694,6 +1712,7 @@ private fun PhotoItem(
 private fun NoteReminderDialog(
     current: ScreenshotNoteReminder?,
     notificationsAvailable: Boolean,
+    notificationPermissionRecovery: PermissionRecoveryState,
     onRequestNotifications: () -> Unit,
     onSave: (String, Long?) -> Unit,
     onDismiss: () -> Unit
@@ -1760,9 +1779,19 @@ private fun NoteReminderDialog(
                     Text(stringResource(R.string.gallery_note_future_required), color = Tertiary, fontSize = 12.sp)
                 }
                 if (reminderAt != null && !notificationsAvailable) {
-                    Text(stringResource(R.string.gallery_note_notifications_required), color = Tertiary, fontSize = 12.sp)
+                    Text(
+                        permissionRecoveryBody(
+                            R.string.gallery_note_notifications_required,
+                            notificationPermissionRecovery,
+                        ),
+                        color = Tertiary,
+                        fontSize = 12.sp,
+                    )
                     TextButton(onClick = onRequestNotifications) {
-                        Text(stringResource(R.string.gallery_note_allow_notifications))
+                        Text(permissionRecoveryAction(
+                            R.string.gallery_note_allow_notifications,
+                            notificationPermissionRecovery,
+                        ))
                     }
                 }
             }
@@ -1824,6 +1853,7 @@ private fun PhotoViewer(
     onShare: (Photo) -> Unit,
     onEditSource: (Photo) -> Unit,
     onEditNote: (Photo) -> Unit,
+    onRequestOverlayForPin: (Uri) -> Unit,
     onOpenSource: (Photo) -> Unit,
     onDelete: (Photo) -> Unit,
     onToggleFavorite: (Photo) -> Boolean // returns new state
@@ -2035,7 +2065,7 @@ private fun PhotoViewer(
                 when {
                     photo == null -> {}
                     Settings.canDrawOverlays(context) -> FloatingScreenshotService.pin(context, photo.uri)
-                    else -> Toast.makeText(context, context.getString(R.string.gallery_pin_no_permission), Toast.LENGTH_LONG).show()
+                    else -> onRequestOverlayForPin(photo.uri)
                 }
             }) {
                 Icon(Icons.Default.PushPin, stringResource(R.string.gallery_pin), tint = Color.White)

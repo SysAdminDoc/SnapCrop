@@ -98,6 +98,15 @@ private enum class LocalNetworkPermissionOutcome {
     OPEN_SETTINGS,
 }
 
+private sealed interface PendingPermissionAction {
+    data object StartMonitoring : PendingPermissionAction
+    data class DelayedCapture(val seconds: Int) : PendingPermissionAction
+    data object OpenLatest : PendingPermissionAction
+    data object RunLastAction : PendingPermissionAction
+    data class Pin(val uri: Uri) : PendingPermissionAction
+    data class Accessibility(val purpose: AccessibilityPurpose) : PendingPermissionAction
+}
+
 class MainActivity : ComponentActivity() {
     private companion object {
         const val MAX_REPORT_ITEMS = 100
@@ -119,9 +128,10 @@ class MainActivity : ComponentActivity() {
     private val mediaCapabilities = mutableStateOf(
         MediaCapabilities(MediaAccess.NONE, MediaAccess.NONE, notificationAccess = Build.VERSION.SDK_INT < 33)
     )
-    private var pendingMonitorStart = false
-    private var pendingDelayedCaptureSeconds: Int? = null
-    private var pendingWidgetOpenLatest = false
+    private val permissionRecoveryStates = mutableStateOf<Map<PermissionCapability, PermissionRecoveryState>>(emptyMap())
+    private var activePermissionCapability: PermissionCapability? = null
+    private var activeSettingsCapability: PermissionCapability? = null
+    private var pendingPermissionAction: PendingPermissionAction? = null
     private val hasOverlayPermission = mutableStateOf(false)
     private val longScreenshotReady = mutableStateOf(false)
     private val galleryRefreshKey = mutableIntStateOf(0)
@@ -138,6 +148,7 @@ class MainActivity : ComponentActivity() {
     private var pendingMutationRequested = 0
     private var pendingMutationStartedAt: Long? = null
     private var pendingLocalNetworkPermission: CompletableDeferred<LocalNetworkPermissionOutcome>? = null
+    private var pendingLocalNetworkSettings: CompletableDeferred<Boolean>? = null
 
     private val mediaMutationLauncher = registerForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -161,21 +172,25 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
         checkPermissions()
-        if (pendingMonitorStart && mediaCapabilities.value.canMonitorScreenshots) {
-            pendingMonitorStart = false
-            startMonitoring()
-            getSharedPreferences("snapcrop", MODE_PRIVATE).edit().putBoolean("auto_start", true).apply()
-        } else {
-            pendingMonitorStart = false
+        val capability = activePermissionCapability
+        if (capability != null) recordPermissionResult(capability)
+        activePermissionCapability = null
+        resumePendingPermissionAction(capability)
+    }
+
+    private val permissionSettingsLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        checkPermissions()
+        hasOverlayPermission.value = Settings.canDrawOverlays(this)
+        val capability = activeSettingsCapability
+        activeSettingsCapability = null
+        refreshPermissionRecoveryStates()
+        if (capability == PermissionCapability.LOCAL_NETWORK) {
+            pendingLocalNetworkSettings?.complete(permissionGranted(capability))
+            pendingLocalNetworkSettings = null
         }
-        pendingDelayedCaptureSeconds?.let { seconds ->
-            pendingDelayedCaptureSeconds = null
-            if (mediaCapabilities.value.canMonitorScreenshots) startDelayedCapture(seconds)
-        }
-        if (pendingWidgetOpenLatest) {
-            pendingWidgetOpenLatest = false
-            if (mediaCapabilities.value.canQueryImages) openLatestScreenshotFromWidget()
-        }
+        resumePendingPermissionAction(capability)
     }
 
     private val localNetworkPermissionLauncher = registerForActivityResult(
@@ -644,9 +659,13 @@ class MainActivity : ComponentActivity() {
                                 cropCount = cropCount.value,
                                 recentWorkflows = recentWorkflowIds.value,
                                 onToggleService = { toggleService() },
-                                onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
-                                onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
-                                onRequestNotificationAccess = { requestPermissions(MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)) },
+                                permissionRecoveryStates = permissionRecoveryStates.value,
+                                onRequestImageAccess = {
+                                    requestCapability(
+                                        PermissionCapability.IMAGES,
+                                        MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT),
+                                    )
+                                },
                                 onPickImage = { pickImageLauncher.launch("image/*") },
                                 onWebCapture = {
                                     startActivity(Intent(this@MainActivity, WebCaptureActivity::class.java))
@@ -669,12 +688,7 @@ class MainActivity : ComponentActivity() {
                                 longScreenshotReady = longScreenshotReady.value,
                                 onLongScreenshot = { requestLongScreenshot() },
                                 onDelayedCapture = { seconds ->
-                                    if (mediaCapabilities.value.canMonitorScreenshots) {
-                                        startDelayedCapture(seconds)
-                                    } else {
-                                        pendingDelayedCaptureSeconds = seconds
-                                        requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
-                                    }
+                                    runOrRequestPermissionAction(PendingPermissionAction.DelayedCapture(seconds))
                                 },
                                 batchProgress = batchProgress.value,
                                 batchFraction = batchProgressFraction.floatValue,
@@ -684,12 +698,7 @@ class MainActivity : ComponentActivity() {
                                     activeReportJob?.cancel()
                                 },
                                 hasOverlayPermission = hasOverlayPermission.value,
-                                onRequestOverlay = {
-                                    startActivity(Intent(
-                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                        Uri.parse("package:$packageName")
-                                    ))
-                                },
+                                onRequestOverlay = { openCapabilitySettings(PermissionCapability.OVERLAY) },
                                 onOpenSettings = { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) },
                                 onOpenHelp = { showHelp = true },
                                 onViewAll = { selectedTab = 1 },
@@ -703,10 +712,33 @@ class MainActivity : ComponentActivity() {
                                 refreshKey = galleryRefreshKey.intValue,
                                 imageAccess = mediaCapabilities.value.imageAccess,
                                 videoAccess = mediaCapabilities.value.videoAccess,
-                                onRequestImageAccess = { requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT)) },
-                                onRequestVideoAccess = { requestPermissions(MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT)) },
+                                imagePermissionRecovery = permissionRecoveryState(PermissionCapability.IMAGES),
+                                videoPermissionRecovery = permissionRecoveryState(PermissionCapability.VIDEOS),
+                                onRequestImageAccess = {
+                                    requestCapability(
+                                        PermissionCapability.IMAGES,
+                                        MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT),
+                                    )
+                                },
+                                onRequestVideoAccess = {
+                                    requestCapability(
+                                        PermissionCapability.VIDEOS,
+                                        MediaCapabilityResolver.videoRequest(Build.VERSION.SDK_INT),
+                                    )
+                                },
                                 notificationAccess = mediaCapabilities.value.notificationAccess,
+                                notificationPermissionRecovery = if (
+                                    mediaCapabilities.value.notificationAccess &&
+                                    !ScreenshotReminderScheduler.notificationsAvailable(this@MainActivity)
+                                ) {
+                                    PermissionRecoveryState.SETTINGS_REQUIRED
+                                } else {
+                                    permissionRecoveryState(PermissionCapability.NOTIFICATIONS)
+                                },
                                 onRequestNotificationAccess = { requestReminderNotificationAccess() },
+                                onRequestOverlayForPin = { uri ->
+                                    runOrRequestPermissionAction(PendingPermissionAction.Pin(uri))
+                                },
                                 openRequest = galleryOpenRequest.value,
                                 onOpenRequestConsumed = { galleryOpenRequest.value = null },
                                 onOpenEditor = { uri ->
@@ -1320,6 +1352,7 @@ class MainActivity : ComponentActivity() {
         applySecureWindow(this)
         checkPermissions()
         hasOverlayPermission.value = Settings.canDrawOverlays(this)
+        refreshPermissionRecoveryStates()
         refreshLongScreenshotState()
         recentWorkflowIds.value = RecentWorkflowStore.load(recentWorkflowPrefs())
 
@@ -1337,6 +1370,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         pendingLocalNetworkPermission?.cancel()
         pendingLocalNetworkPermission = null
+        pendingLocalNetworkSettings?.cancel()
+        pendingLocalNetworkSettings = null
         super.onDestroy()
     }
 
@@ -1369,15 +1404,15 @@ class MainActivity : ComponentActivity() {
             stopService(Intent(this, ScreenshotService::class.java))
             Toast.makeText(this, R.string.toast_monitor_stopped, Toast.LENGTH_SHORT).show()
         } else if (mediaCapabilities.value.canMonitorScreenshots) {
-            startMonitoring()
+            runOrRequestPermissionAction(PendingPermissionAction.StartMonitoring)
         } else {
-            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT), startMonitorAfter = true)
+            runOrRequestPermissionAction(PendingPermissionAction.StartMonitoring)
         }
     }
 
     private fun runLastActionFromShortcut() {
         if (!mediaCapabilities.value.canMonitorScreenshots) {
-            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
+            runOrRequestPermissionAction(PendingPermissionAction.RunLastAction)
             return
         }
         ContextCompat.startForegroundService(
@@ -1392,8 +1427,7 @@ class MainActivity : ComponentActivity() {
         val capabilities = MediaCapabilityResolver.current(this)
         mediaCapabilities.value = capabilities
         if (!capabilities.canQueryImages) {
-            pendingWidgetOpenLatest = true
-            requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT))
+            runOrRequestPermissionAction(PendingPermissionAction.OpenLatest)
             return
         }
         lifecycleScope.launch {
@@ -1428,25 +1462,181 @@ class MainActivity : ComponentActivity() {
         mediaCapabilities.value = MediaCapabilityResolver.current(this)
     }
 
-    private fun requestPermissions(permissions: Array<String>, startMonitorAfter: Boolean = false) {
-        if (permissions.isEmpty()) return
-        pendingMonitorStart = startMonitorAfter
+    private fun requestCapability(
+        capability: PermissionCapability,
+        permissions: Array<String>,
+        pendingAction: PendingPermissionAction? = null,
+    ) {
+        if (pendingAction != null) pendingPermissionAction = pendingAction
+        if (permissions.isEmpty()) {
+            resumePendingPermissionAction(capability)
+            return
+        }
+        if (permissionRecoveryState(capability) == PermissionRecoveryState.SETTINGS_REQUIRED) {
+            openCapabilitySettings(capability)
+            return
+        }
+        activePermissionCapability = capability
         permissionLauncher.launch(permissions)
+    }
+
+    private fun recordPermissionResult(capability: PermissionCapability) {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val requestedKey = PermissionRecoveryPolicy.requestedPreference(capability)
+        val state = PermissionRecoveryPolicy.afterRequest(
+            previouslyRequested = prefs.getBoolean(requestedKey, false),
+            granted = permissionGranted(capability),
+            shouldShowRationale = primaryPermission(capability)?.let(::shouldShowRequestPermissionRationale) == true,
+        )
+        prefs.edit()
+            .putBoolean(requestedKey, true)
+            .putString(PermissionRecoveryPolicy.statePreference(capability), state.storedValue)
+            .apply()
+        permissionRecoveryStates.value = permissionRecoveryStates.value + (capability to state)
+    }
+
+    private fun refreshPermissionRecoveryStates() {
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val editor = prefs.edit()
+        permissionRecoveryStates.value = PermissionCapability.entries.associateWith { capability ->
+            val granted = permissionGranted(capability)
+            if (granted && capability in setOf(
+                    PermissionCapability.IMAGES,
+                    PermissionCapability.VIDEOS,
+                    PermissionCapability.NOTIFICATIONS,
+                )
+            ) {
+                editor.putString(
+                    PermissionRecoveryPolicy.statePreference(capability),
+                    PermissionRecoveryState.GRANTED.storedValue,
+                )
+                editor.putBoolean(PermissionRecoveryPolicy.requestedPreference(capability), false)
+            }
+            PermissionRecoveryPolicy.restore(
+                prefs.getString(PermissionRecoveryPolicy.statePreference(capability), null),
+                granted,
+            )
+        }
+        editor.apply()
+    }
+
+    private fun permissionRecoveryState(capability: PermissionCapability): PermissionRecoveryState =
+        permissionRecoveryStates.value[capability] ?: PermissionRecoveryState.REQUESTABLE
+
+    private fun permissionGranted(capability: PermissionCapability): Boolean = when (capability) {
+        PermissionCapability.IMAGES -> mediaCapabilities.value.imageAccess == MediaAccess.FULL
+        PermissionCapability.VIDEOS -> mediaCapabilities.value.videoAccess == MediaAccess.FULL
+        PermissionCapability.NOTIFICATIONS -> mediaCapabilities.value.notificationAccess
+        PermissionCapability.OVERLAY -> Settings.canDrawOverlays(this)
+        PermissionCapability.ACCESSIBILITY ->
+            isAccessibilityPurposeReady(AccessibilityPurpose.LONG_SCREENSHOT) ||
+                isAccessibilityPurposeReady(AccessibilityPurpose.STEP_CAPTURE)
+        PermissionCapability.LOCAL_NETWORK -> Build.VERSION.SDK_INT < LocalNetworkEndpointPolicy.ANDROID_17_API ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_LOCAL_NETWORK) ==
+                PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun primaryPermission(capability: PermissionCapability): String? = when (capability) {
+        PermissionCapability.IMAGES -> if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.READ_MEDIA_IMAGES
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        PermissionCapability.VIDEOS -> if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.READ_MEDIA_VIDEO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        PermissionCapability.NOTIFICATIONS -> Manifest.permission.POST_NOTIFICATIONS
+        PermissionCapability.OVERLAY, PermissionCapability.ACCESSIBILITY -> null
+        PermissionCapability.LOCAL_NETWORK -> Manifest.permission.ACCESS_LOCAL_NETWORK
+    }
+
+    private fun openCapabilitySettings(capability: PermissionCapability) {
+        val route = PermissionSettingsRouteFactory.forCapability(capability)
+        val intent = Intent(route.action).apply {
+            if (route.includePackageUri) data = Uri.parse("package:$packageName")
+            if (route.includeAppPackageExtra) putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        }
+        activeSettingsCapability = capability
+        runCatching { permissionSettingsLauncher.launch(intent) }.onFailure {
+            activeSettingsCapability = null
+            pendingPermissionAction = null
+            if (capability == PermissionCapability.LOCAL_NETWORK) {
+                pendingLocalNetworkSettings?.complete(false)
+                pendingLocalNetworkSettings = null
+            }
+            Toast.makeText(this, R.string.permission_settings_open_failed, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun runOrRequestPermissionAction(action: PendingPermissionAction) {
+        pendingPermissionAction = action
+        resumePendingPermissionAction(null)
+    }
+
+    private fun resumePendingPermissionAction(completedCapability: PermissionCapability?) {
+        val action = pendingPermissionAction ?: return
+        val actionKind = when (action) {
+            PendingPermissionAction.StartMonitoring,
+            is PendingPermissionAction.DelayedCapture,
+            PendingPermissionAction.RunLastAction -> PendingPermissionActionKind.CAPTURE
+            PendingPermissionAction.OpenLatest -> PendingPermissionActionKind.OPEN_LATEST
+            is PendingPermissionAction.Pin -> PendingPermissionActionKind.PIN
+            is PendingPermissionAction.Accessibility -> PendingPermissionActionKind.ACCESSIBILITY
+        }
+        val decision = PendingPermissionPolicy.next(
+            action = actionKind,
+            canMonitorScreenshots = mediaCapabilities.value.canMonitorScreenshots,
+            canQueryImages = mediaCapabilities.value.canQueryImages,
+            notificationAccess = mediaCapabilities.value.notificationAccess,
+            overlayAccess = Settings.canDrawOverlays(this),
+            accessibilityReady = action is PendingPermissionAction.Accessibility &&
+                isAccessibilityPurposeReady(action.purpose),
+            notificationsRequireRuntimeGrant = Build.VERSION.SDK_INT >= 33,
+            completedCapability = completedCapability,
+        )
+        when (decision) {
+            PendingPermissionDecision.REQUEST_IMAGES -> requestCapability(
+                PermissionCapability.IMAGES,
+                MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT),
+                action,
+            )
+            PendingPermissionDecision.REQUEST_NOTIFICATIONS -> requestCapability(
+                PermissionCapability.NOTIFICATIONS,
+                MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT),
+                action,
+            )
+            PendingPermissionDecision.OPEN_OVERLAY_SETTINGS ->
+                openCapabilitySettings(PermissionCapability.OVERLAY)
+            PendingPermissionDecision.OPEN_ACCESSIBILITY_SETTINGS ->
+                openCapabilitySettings(PermissionCapability.ACCESSIBILITY)
+            PendingPermissionDecision.CANCEL -> pendingPermissionAction = null
+            PendingPermissionDecision.EXECUTE -> Unit
+        }
+        if (decision != PendingPermissionDecision.EXECUTE) return
+
+        pendingPermissionAction = null
+        when (action) {
+            PendingPermissionAction.StartMonitoring -> {
+                startMonitoring()
+                getSharedPreferences("snapcrop", MODE_PRIVATE).edit().putBoolean("auto_start", true).apply()
+            }
+            is PendingPermissionAction.DelayedCapture -> startDelayedCapture(action.seconds)
+            PendingPermissionAction.OpenLatest -> openLatestScreenshotFromWidget()
+            PendingPermissionAction.RunLastAction -> runLastActionFromShortcut()
+            is PendingPermissionAction.Pin -> FloatingScreenshotService.pin(this, action.uri)
+            is PendingPermissionAction.Accessibility -> executeAccessibilityPurpose(action.purpose)
+        }
     }
 
     private fun requestReminderNotificationAccess() {
         val request = MediaCapabilityResolver.notificationRequest(Build.VERSION.SDK_INT)
         if (!mediaCapabilities.value.notificationAccess && request.isNotEmpty()) {
-            requestPermissions(request)
+            requestCapability(PermissionCapability.NOTIFICATIONS, request)
             return
         }
-        runCatching {
-            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-            })
-        }.onFailure {
-            Toast.makeText(this, R.string.gallery_note_notifications_required, Toast.LENGTH_LONG).show()
-        }
+        openCapabilitySettings(PermissionCapability.NOTIFICATIONS)
     }
 
     private fun showResizeDialog(uris: List<Uri>) {
@@ -1756,15 +1946,14 @@ class MainActivity : ComponentActivity() {
             pending.await()
         }
 
-    private fun openLocalNetworkPermissionSettings() {
-        runCatching {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:$packageName")
-            })
-        }.onFailure {
-            Toast.makeText(this, R.string.local_network_settings_open_failed, Toast.LENGTH_SHORT).show()
+    private suspend fun openLocalNetworkPermissionSettings(): Boolean =
+        withContext(Dispatchers.Main.immediate) {
+            pendingLocalNetworkSettings?.let { return@withContext it.await() }
+            val pending = CompletableDeferred<Boolean>()
+            pendingLocalNetworkSettings = pending
+            openCapabilitySettings(PermissionCapability.LOCAL_NETWORK)
+            pending.await()
         }
-    }
 
     private suspend fun uploadReportArtifacts(
         displayName: String,
@@ -1800,14 +1989,17 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 LocalNetworkPermissionOutcome.OPEN_SETTINGS -> {
-                    withContext(Dispatchers.Main.immediate) { openLocalNetworkPermissionSettings() }
-                    return NetworkExportResult(
-                        false,
-                        settings.target,
-                        0,
-                        "LAN upload skipped. Allow Local network access in SnapCrop app settings, then retry.",
-                        failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
-                    )
+                    if (openLocalNetworkPermissionSettings()) {
+                        localNetworkAccess = AndroidLocalNetworkAccess.assess(this, settings)
+                    } else {
+                        return NetworkExportResult(
+                            false,
+                            settings.target,
+                            0,
+                            "LAN upload skipped. Local network access remains disabled.",
+                            failureReason = NetworkExportFailureReason.LOCAL_NETWORK_PERMISSION,
+                        )
+                    }
                 }
             }
         }
@@ -2329,13 +2521,7 @@ class MainActivity : ComponentActivity() {
             getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
                 .putBoolean("auto_start", false).apply()
         } else {
-            if (!mediaCapabilities.value.canMonitorScreenshots) {
-                requestPermissions(MediaCapabilityResolver.imageRequest(Build.VERSION.SDK_INT), startMonitorAfter = true)
-                return
-            }
-            startMonitoring()
-            getSharedPreferences("snapcrop", MODE_PRIVATE).edit()
-                .putBoolean("auto_start", true).apply()
+            runOrRequestPermissionAction(PendingPermissionAction.StartMonitoring)
         }
     }
 
@@ -2424,10 +2610,8 @@ class MainActivity : ComponentActivity() {
             ),
             Toast.LENGTH_LONG
         ).show()
-        runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
-            .onFailure {
-                Toast.makeText(this, R.string.toast_accessibility_settings_unavailable, Toast.LENGTH_LONG).show()
-            }
+        pendingPermissionAction = PendingPermissionAction.Accessibility(purpose)
+        openCapabilitySettings(PermissionCapability.ACCESSIBILITY)
     }
 
     private fun isScrollCaptureEnabled(): Boolean {
@@ -2563,6 +2747,23 @@ private fun SnapCropBottomBarItem(
 }
 
 @Composable
+internal fun permissionRecoveryBody(baseResource: Int, state: PermissionRecoveryState): String {
+    val base = stringResource(baseResource)
+    return when (state) {
+        PermissionRecoveryState.RETRYABLE -> stringResource(R.string.permission_denied_retry_body, base)
+        PermissionRecoveryState.SETTINGS_REQUIRED -> stringResource(R.string.permission_denied_settings_body, base)
+        else -> base
+    }
+}
+
+@Composable
+internal fun permissionRecoveryAction(defaultResource: Int, state: PermissionRecoveryState): String = when (state) {
+    PermissionRecoveryState.RETRYABLE -> stringResource(R.string.permission_try_again)
+    PermissionRecoveryState.SETTINGS_REQUIRED -> stringResource(R.string.permission_open_settings)
+    else -> stringResource(defaultResource)
+}
+
+@Composable
 private fun CapabilityCard(title: String, body: String, action: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -2594,9 +2795,8 @@ private fun HomeScreen(
     cropCount: Int,
     recentWorkflows: List<WorkflowId>,
     onToggleService: () -> Unit,
+    permissionRecoveryStates: Map<PermissionCapability, PermissionRecoveryState>,
     onRequestImageAccess: () -> Unit,
-    onRequestVideoAccess: () -> Unit,
-    onRequestNotificationAccess: () -> Unit,
     onPickImage: () -> Unit,
     onWebCapture: () -> Unit,
     onBatchCrop: () -> Unit,
@@ -2682,36 +2882,24 @@ private fun HomeScreen(
 
         // Permission warning
         if (!mediaCapabilities.canMonitorScreenshots) {
+            val recovery = permissionRecoveryStates[PermissionCapability.IMAGES]
+                ?: PermissionRecoveryState.REQUESTABLE
             CapabilityCard(
                 title = stringResource(
                     if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_title
                     else R.string.home_permission_images_title
                 ),
-                body = stringResource(
+                body = permissionRecoveryBody(
                     if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_body
-                    else R.string.home_permission_images_body
+                    else R.string.home_permission_images_body,
+                    recovery,
                 ),
-                action = stringResource(
+                action = permissionRecoveryAction(
                     if (mediaCapabilities.imageAccess == MediaAccess.SELECTED) R.string.home_permission_partial_grant
-                    else R.string.home_permission_images_grant
+                    else R.string.home_permission_images_grant,
+                    recovery,
                 ),
                 onClick = onRequestImageAccess
-            )
-        }
-        if (Build.VERSION.SDK_INT >= 33 && mediaCapabilities.videoAccess != MediaAccess.FULL) {
-            CapabilityCard(
-                title = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_title else R.string.home_permission_video_title),
-                body = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_body else R.string.home_permission_video_body),
-                action = stringResource(if (mediaCapabilities.videoAccess == MediaAccess.SELECTED) R.string.home_permission_video_partial_grant else R.string.home_permission_video_grant),
-                onClick = onRequestVideoAccess
-            )
-        }
-        if (Build.VERSION.SDK_INT >= 33 && !mediaCapabilities.notificationAccess) {
-            CapabilityCard(
-                title = stringResource(R.string.home_permission_notification_title),
-                body = stringResource(R.string.home_permission_notification_body),
-                action = stringResource(R.string.home_permission_notification_grant),
-                onClick = onRequestNotificationAccess
             )
         }
 

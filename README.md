@@ -242,6 +242,12 @@ release/security policy.
 - Image, video, and notification grants are independent. Full image access alone
   enables automatic monitoring; selected media remains browsable, and video
   denial hides only library videos. Android pickers remain usable in every state.
+- A first denial explains the reduced behavior and offers Try again; repeated
+  denial switches to the exact Android app, notification, overlay, or Accessibility
+  settings page. Returning resumes only the initiating monitor, capture, latest,
+  Pin, Accessibility, or LAN-upload action when its capability is now available.
+  Photo access is requested when monitoring/library work needs it, video access
+  only while browsing Gallery videos, and notifications only for capture/reminders.
 - Notification denial hides detected-screenshot, countdown, Edit, Share, and
   Quick Crop drawer actions without blocking Android’s foreground-service Task
   Manager entry or image/video access.

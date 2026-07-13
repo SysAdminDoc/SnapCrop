@@ -58,6 +58,11 @@
     <string name="home_permission_notification_title">Notification actions off</string>
     <string name="home_permission_notification_body">Screenshot monitoring can run, but detected-screenshot, countdown, Edit, Share, and Quick Crop notifications may not appear. Photo and video access are unaffected.</string>
     <string name="home_permission_notification_grant">Allow notifications</string>
+    <string name="permission_denied_retry_body">%1$s\n\nNot allowed. Other editing still works; retry when you’re ready.</string>
+    <string name="permission_denied_settings_body">%1$s\n\nAndroid will not show this prompt again. Open SnapCrop’s settings to allow it; other tools remain available.</string>
+    <string name="permission_try_again">Try again</string>
+    <string name="permission_open_settings">Open settings</string>
+    <string name="permission_settings_open_failed">Could not open the requested Android settings page.</string>
     <string name="home_overlay_title">Instant editor launch</string>
     <string name="home_overlay_body">Optional display-over-apps access lets the editor appear immediately. Without it, the screenshot notification still opens the editor.</string>
     <string name="home_overlay_grant">Grant display access</string>
