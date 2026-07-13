@@ -3,25 +3,29 @@ package com.sysadmindoc.snapcrop
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class IndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = syncMutex.withLock {
         val prefs = applicationContext.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) return Result.success()
+        if (!prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) return@withLock Result.success()
 
         val journalStarted = OperationJournal.start()
         IndexHealthStore.markStarted(applicationContext)
-        return try {
+        try {
             val store = ScreenshotIndexStore(applicationContext)
             val screenSize = getScreenSize(applicationContext)
             val favoriteKeys = FavoritesStore.getAllKeys(applicationContext)
-            val indexed = store.rebuildFromMediaStore(
+            val indexed = store.syncFromMediaStore(
                 applicationContext.contentResolver,
                 screenSize.first,
                 screenSize.second,
@@ -58,20 +62,38 @@ class IndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
 
     companion object {
         internal const val WORK_NAME = "snapcrop_index"
+        internal const val IMMEDIATE_WORK_NAME = "snapcrop_index_immediate"
         private const val MAX_ATTEMPTS = 3
+        private val syncMutex = Mutex()
 
         fun schedule(context: Context) {
             val enabled = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
                 .getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
-            sync(context, enabled)
+            if (enabled) schedulePeriodic(context) else cancelAll(context)
         }
 
         fun sync(context: Context, enabled: Boolean) {
-            val workManager = WorkManager.getInstance(context)
             if (!enabled) {
-                workManager.cancelUniqueWork(WORK_NAME)
+                cancelAll(context)
                 return
             }
+            requestImmediate(context)
+            schedulePeriodic(context)
+        }
+
+        fun requestImmediate(context: Context) {
+            val enabled = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
+                .getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
+            if (!enabled) return
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                IMMEDIATE_WORK_NAME,
+                ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<IndexWorker>().build(),
+            )
+        }
+
+        private fun schedulePeriodic(context: Context) {
+            val workManager = WorkManager.getInstance(context)
             val constraints = Constraints.Builder()
                 .setRequiresCharging(true)
                 .setRequiresDeviceIdle(true)
@@ -81,6 +103,13 @@ class IndexWorker(appContext: Context, params: WorkerParameters) : CoroutineWork
                 .setInitialDelay(30, TimeUnit.MINUTES)
                 .build()
             workManager.enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
+        }
+
+        private fun cancelAll(context: Context) {
+            WorkManager.getInstance(context).apply {
+                cancelUniqueWork(WORK_NAME)
+                cancelUniqueWork(IMMEDIATE_WORK_NAME)
+            }
         }
 
         internal fun failureDisposition(error: Throwable, runAttemptCount: Int): IndexFailureDisposition = when {

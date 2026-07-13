@@ -1459,7 +1459,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun checkPermissions() {
-        mediaCapabilities.value = MediaCapabilityResolver.current(this)
+        val previous = mediaCapabilities.value
+        val current = MediaCapabilityResolver.current(this)
+        mediaCapabilities.value = current
+        if (previous.imageAccess != current.imageAccess || previous.videoAccess != current.videoAccess) {
+            IndexWorker.requestImmediate(this)
+        }
     }
 
     private fun requestCapability(

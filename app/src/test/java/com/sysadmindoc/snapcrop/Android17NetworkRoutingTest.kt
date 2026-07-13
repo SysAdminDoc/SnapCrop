@@ -11,7 +11,8 @@ class Android17NetworkRoutingTest {
         val build = sourceFile("app/build.gradle.kts")
         val manifest = sourceFile("app/src/main/AndroidManifest.xml")
 
-        assertTrue(build.contains("compileSdk = 37"))
+        assertTrue(build.contains("version = release(37)"))
+        assertTrue(build.contains("minorApiLevel = 1"))
         assertTrue(build.contains("targetSdk = 37"))
         assertTrue(manifest.contains("android.permission.ACCESS_LOCAL_NETWORK"))
         assertTrue(manifest.contains("android.permission.ACCESS_NETWORK_STATE"))

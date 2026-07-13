@@ -35,7 +35,10 @@ class IndexWorkerTest {
     }
 
     @Test
-    fun uniquePeriodicWorkUpdatesAndCancelsWithIndexPreference() {
+    fun enabledIndexSchedulesImmediateAndPeriodicWorkAndDisableCancelsBoth() {
+        context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE).edit()
+            .putBoolean(ScreenshotIndexStore.PREF_ENABLED, true)
+            .commit()
         IndexWorker.sync(context, true)
         IndexWorker.sync(context, true)
 
@@ -45,10 +48,17 @@ class IndexWorkerTest {
         assertTrue(request.constraints.requiresCharging())
         assertTrue(request.constraints.requiresDeviceIdle())
         assertEquals(androidx.work.NetworkType.NOT_REQUIRED, request.constraints.requiredNetworkType)
+        val immediate = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(IndexWorker.IMMEDIATE_WORK_NAME).get()
+        assertTrue(immediate.isNotEmpty())
+        assertTrue(immediate.none { it.constraints.requiresCharging() || it.constraints.requiresDeviceIdle() })
 
         IndexWorker.sync(context, false)
         val cancelled = WorkManager.getInstance(context).getWorkInfosForUniqueWork(IndexWorker.WORK_NAME).get()
         assertTrue(cancelled.all { it.state == WorkInfo.State.CANCELLED })
+        val immediateAfterDisable = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(IndexWorker.IMMEDIATE_WORK_NAME).get()
+        assertTrue(immediateAfterDisable.none { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING })
     }
 
     @Test

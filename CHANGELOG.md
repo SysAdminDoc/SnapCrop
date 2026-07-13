@@ -4,6 +4,22 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Incremental MediaStore index reconciliation (v6.81.0).**
+
+- The opt-in screenshot index now keeps atomic per-volume MediaStore version and
+  generation watermarks. Stable full-access scopes query only bounded added or
+  modified metadata; Android 37.1/S-extension-23 deletion records remove missing
+  items without walking the library, with an exact ID-only fallback elsewhere.
+- Volume, version, generation rollback, permission kind, selected-media scope,
+  screen, or favorite changes force a full-equivalent scan. Image/video grants
+  are independent, trashed/pending rows are removed, and permission/version
+  races never advance a watermark.
+- Room v7 preserves collections, source context, notes/reminders, OCR payloads,
+  and duplicate dismissals while invalidating only changed derived fingerprints.
+  Immediate permission/toggle reconciliation is serialized with periodic/manual
+  work. A 10,000-row corpus, host planner/replay tests, 6→7 migration tests, and
+  real API-37 MediaStore add/modify/delete coverage verify convergence.
+
 **Public trust and ML Kit disclosure contract (v6.80.0).**
 
 - README privacy guidance now distinguishes SnapCrop's lack of an analytics

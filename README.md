@@ -164,6 +164,11 @@ are blocked behind explicit opt-in and evaluation gates.
   local index health card shows eligible/indexed work, pending or failed scans,
   the last successful scan, and direct Retry/Rebuild actions; filename/date
   browsing remains available when indexed metadata cannot be read.
+- The opt-in index reconciles exact MediaStore volumes incrementally from
+  version/generation watermarks. Android 37.1's deletion feed avoids full ID
+  walks when available; older systems use an ID-only set difference, and volume,
+  version, permission, selected-media, screen, or favorite changes force a
+  full-equivalent scan without deleting user collections, notes, or reminders.
 - Combine structured chips for media type, creator/source folder, indexed category,
   date, orientation/minimum dimensions, favorite state, and MIME format; filter
   state survives recreation and matching screenshots can seed a manual collection
@@ -391,7 +396,7 @@ disclosed below; optional exports and automatic update checks are off by default
 | **ML** | ML Kit (Object Detection, Text Recognition, Face Detection, Barcode Scanning, Subject Segmentation, Language ID, Translation, Entity Extraction) |
 | **Image Loading** | Coil 3.3 with a 25% background memory-cache cap |
 | **Min SDK** | 29 (Android 10) |
-| **Compile / target SDK** | 37 |
+| **Compile / target SDK** | 37.1 / 37 |
 
 ---
 

@@ -64,7 +64,8 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_2_3,
                 ScreenshotIndexMigrations.MIGRATION_3_4,
                 ScreenshotIndexMigrations.MIGRATION_4_5,
-                ScreenshotIndexMigrations.MIGRATION_5_6
+                ScreenshotIndexMigrations.MIGRATION_5_6,
+                ScreenshotIndexMigrations.MIGRATION_6_7,
             )
             .build()
         try {
@@ -111,7 +112,8 @@ class ScreenshotIndexDatabaseMigrationTest {
                 ScreenshotIndexMigrations.MIGRATION_2_3,
                 ScreenshotIndexMigrations.MIGRATION_3_4,
                 ScreenshotIndexMigrations.MIGRATION_4_5,
-                ScreenshotIndexMigrations.MIGRATION_5_6
+                ScreenshotIndexMigrations.MIGRATION_5_6,
+                ScreenshotIndexMigrations.MIGRATION_6_7,
             )
             .build()
         try {
@@ -149,7 +151,8 @@ class ScreenshotIndexDatabaseMigrationTest {
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_3_4,
                 ScreenshotIndexMigrations.MIGRATION_4_5,
-                ScreenshotIndexMigrations.MIGRATION_5_6
+                ScreenshotIndexMigrations.MIGRATION_5_6,
+                ScreenshotIndexMigrations.MIGRATION_6_7,
             )
             .build()
         try {
@@ -180,7 +183,8 @@ class ScreenshotIndexDatabaseMigrationTest {
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
             .addMigrations(
                 ScreenshotIndexMigrations.MIGRATION_4_5,
-                ScreenshotIndexMigrations.MIGRATION_5_6
+                ScreenshotIndexMigrations.MIGRATION_5_6,
+                ScreenshotIndexMigrations.MIGRATION_6_7,
             )
             .build()
         try {
@@ -234,7 +238,10 @@ class ScreenshotIndexDatabaseMigrationTest {
     fun versionFiveMigrationAddsDerivedFingerprintsAndDurableDismissals() = runBlocking<Unit> {
         helper.createDatabase(TEST_DB, 5).close()
         val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
-            .addMigrations(ScreenshotIndexMigrations.MIGRATION_5_6)
+            .addMigrations(
+                ScreenshotIndexMigrations.MIGRATION_5_6,
+                ScreenshotIndexMigrations.MIGRATION_6_7,
+            )
             .build()
         try {
             val dao = database.dao()
@@ -264,6 +271,44 @@ class ScreenshotIndexDatabaseMigrationTest {
             dao.deleteDuplicateFingerprints()
             assertTrue(dao.getDuplicateFingerprints().isEmpty())
             assertEquals(dismissal, dao.getDuplicateDismissals().single())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun versionSixMigrationAddsSyncWatermarksWithoutTouchingUserOwnedMetadata() = runBlocking<Unit> {
+        val uri = "content://media/external/images/media/42"
+        helper.createDatabase(TEST_DB, 6).apply {
+            execSQL(
+                """INSERT INTO screenshot_index (
+                    media_id, uri, name, album_path, width, height, date_added, size,
+                    is_video, is_screenshot, is_favorite, base_categories,
+                    recognized_categories, base_search_text, recognized_text,
+                    mime_type, owner_package, orientation, indexed_at
+                ) VALUES (42, '$uri', 'Screenshot_42.png', 'Pictures/Screenshots/',
+                    1080, 2400, 42, 1042, 0, 1, 0, 'screenshots', 'codes',
+                    'screenshot 42', 'reviewed text', 'image/png', '', 'portrait', 42)""".trimIndent()
+            )
+            execSQL("INSERT INTO manual_collection (collection_id, name, normalized_name, created_at, updated_at) VALUES (1, 'Work', 'work', 1, 1)")
+            execSQL("INSERT INTO manual_collection_item (collection_id, media_uri, media_date_added, added_at) VALUES (1, '$uri', 42, 2)")
+            execSQL("INSERT INTO media_source_context (media_uri, media_date_added, source_url, source_label, source_package, updated_at) VALUES ('$uri', 42, 'https://example.com', 'Example', 'com.example', 3)")
+            execSQL("INSERT INTO media_note_reminder (media_uri, media_date_added, note, reminder_at, reminder_token, created_at, updated_at) VALUES ('$uri', 42, 'Review', 1800000000000, 'token', 4, 4)")
+            execSQL("INSERT INTO duplicate_dismissal (first_fingerprint, second_fingerprint, created_at) VALUES ('first', 'second', 5)")
+            close()
+        }
+
+        val database = Room.databaseBuilder(context, ScreenshotIndexDatabase::class.java, TEST_DB)
+            .addMigrations(ScreenshotIndexMigrations.MIGRATION_6_7)
+            .build()
+        try {
+            val dao = database.dao()
+            assertEquals("reviewed text", dao.getByUri(uri)?.recognizedText)
+            assertEquals(uri, dao.getCollectionItems(1).single().mediaUri)
+            assertEquals("Example", dao.getSourceContext(uri, 42)?.sourceLabel)
+            assertEquals("Review", dao.getNoteReminder(uri, 42)?.note)
+            assertEquals("first", dao.getDuplicateDismissals().single().firstFingerprint)
+            assertTrue(dao.getMediaSyncStates().isEmpty())
         } finally {
             database.close()
         }

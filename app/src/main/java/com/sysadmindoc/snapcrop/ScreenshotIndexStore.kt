@@ -5,10 +5,13 @@ import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.ext.SdkExtensions
 import android.provider.MediaStore
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -24,8 +27,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
+import java.security.MessageDigest
 import java.util.Locale
 
 data class ScreenshotIndexEntry(
@@ -47,6 +53,72 @@ data class ScreenshotIndexEntry(
     val orientation: String = mediaOrientation(width, height),
     val indexedAt: Long = System.currentTimeMillis()
 )
+
+internal data class MediaVolumeSnapshot(
+    val volumeName: String,
+    val version: String,
+    val generation: Long,
+)
+
+internal data class MediaIndexSyncPlan(
+    val fullScan: Boolean,
+    val generationFloorByVolume: Map<String, Long>,
+)
+
+private data class MediaQueryDelta(
+    val entries: List<ScreenshotIndexEntry>,
+    val hiddenUris: Set<String>,
+)
+
+internal object MediaIndexSyncPlanner {
+    fun plan(
+        current: List<MediaVolumeSnapshot>,
+        stored: List<MediaSyncStateRow>,
+        scopeSignature: String,
+        generationSupported: Boolean,
+        partialAccess: Boolean,
+        forceFull: Boolean,
+    ): MediaIndexSyncPlan {
+        val currentByVolume = current.associateBy(MediaVolumeSnapshot::volumeName)
+        val storedByVolume = stored.associateBy(MediaSyncStateRow::volumeName)
+        val mustScanFully = forceFull || !generationSupported || partialAccess ||
+                currentByVolume.keys != storedByVolume.keys ||
+                currentByVolume.any { (volume, snapshot) ->
+                    val previous = storedByVolume[volume]
+                    previous == null || previous.storeVersion != snapshot.version ||
+                            previous.scopeSignature != scopeSignature ||
+                            snapshot.generation < previous.generation
+                }
+        return MediaIndexSyncPlan(
+            fullScan = mustScanFully,
+            generationFloorByVolume = if (mustScanFully) emptyMap() else
+                storedByVolume.mapValues { (_, state) -> state.generation },
+        )
+    }
+}
+
+internal data class DeletedMediaRecord(
+    val volumeName: String,
+    val mediaId: Long,
+    val mediaType: Int,
+    val generation: Long,
+)
+
+internal object DeletedMediaRecordFilter {
+    fun eligible(
+        records: List<DeletedMediaRecord>,
+        snapshots: List<MediaVolumeSnapshot>,
+        generationFloorByVolume: Map<String, Long>,
+        allowedMediaTypes: Set<Int>,
+    ): List<DeletedMediaRecord> {
+        val snapshotByVolume = snapshots.associateBy(MediaVolumeSnapshot::volumeName)
+        return records.filter { record ->
+            val floor = generationFloorByVolume[record.volumeName] ?: return@filter false
+            val ceiling = snapshotByVolume[record.volumeName]?.generation ?: return@filter false
+            record.mediaType in allowedMediaTypes && record.generation > floor && record.generation <= ceiling
+        }
+    }
+}
 
 internal fun mediaOrientation(width: Int, height: Int): String = when {
     width <= 0 || height <= 0 -> "unknown"
@@ -187,6 +259,53 @@ internal data class ScreenshotIndexRow(
     @ColumnInfo(name = "orientation") val orientation: String = "unknown",
     @ColumnInfo(name = "indexed_at") val indexedAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "media_sync_state")
+internal data class MediaSyncStateRow(
+    @PrimaryKey @ColumnInfo(name = "volume_name") val volumeName: String,
+    @ColumnInfo(name = "store_version") val storeVersion: String,
+    @ColumnInfo(name = "generation") val generation: Long,
+    @ColumnInfo(name = "scope_signature") val scopeSignature: String,
+    @ColumnInfo(name = "completed_at") val completedAt: Long,
+)
+
+internal data class IndexRowChanges(
+    val upserts: List<ScreenshotIndexRow>,
+    val deletes: List<ScreenshotIndexRow>,
+)
+
+internal object IndexRowReconciliation {
+    fun plan(
+        previousRows: List<ScreenshotIndexRow>,
+        changedRows: List<ScreenshotIndexRow>,
+        visibleUris: Set<String>?,
+        explicitlyRemovedUris: Set<String> = emptySet(),
+    ): IndexRowChanges {
+        val previousByUri = previousRows.associateBy(ScreenshotIndexRow::uri)
+        val upserts = changedRows
+            .filter { row -> row.uri !in explicitlyRemovedUris && (visibleUris == null || row.uri in visibleUris) }
+            .map { row ->
+            previousByUri[row.uri]
+                ?.takeIf { it.dateAdded == row.dateAdded }
+                ?.let { previous ->
+                    row.copy(
+                        recognizedCategories = previous.recognizedCategories,
+                        recognizedText = previous.recognizedText,
+                    )
+                }
+                ?: row
+        }
+        val removedUris = explicitlyRemovedUris + if (visibleUris == null) {
+            emptySet()
+        } else {
+            previousRows.asSequence().map(ScreenshotIndexRow::uri).filterNot(visibleUris::contains).toSet()
+        }
+        return IndexRowChanges(
+            upserts = upserts,
+            deletes = previousRows.filter { it.uri in removedUris },
+        )
+    }
+}
 
 @Entity(
     tableName = "manual_collection",
@@ -344,6 +463,9 @@ internal interface ScreenshotIndexDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<ScreenshotIndexRow>)
 
+    @Delete
+    suspend fun deleteRows(rows: List<ScreenshotIndexRow>)
+
     @Query("DELETE FROM screenshot_index")
     suspend fun deleteAll()
 
@@ -359,6 +481,41 @@ internal interface ScreenshotIndexDao {
                 )
             } ?: row
         })
+    }
+
+    @Query("SELECT * FROM media_sync_state ORDER BY volume_name")
+    suspend fun getMediaSyncStates(): List<MediaSyncStateRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMediaSyncStates(rows: List<MediaSyncStateRow>)
+
+    @Query("DELETE FROM media_sync_state")
+    suspend fun deleteMediaSyncStates()
+
+    @Transaction
+    suspend fun applyMediaSync(
+        changedRows: List<ScreenshotIndexRow>,
+        visibleUris: Set<String>?,
+        explicitlyRemovedUris: Set<String>,
+        syncStates: List<MediaSyncStateRow>,
+    ) {
+        val changes = IndexRowReconciliation.plan(
+            getAll(),
+            changedRows,
+            visibleUris,
+            explicitlyRemovedUris,
+        )
+        if (changes.upserts.isNotEmpty()) upsertAll(changes.upserts)
+        if (changes.deletes.isNotEmpty()) deleteRows(changes.deletes)
+        val invalidatedUris = (changes.upserts.asSequence().map(ScreenshotIndexRow::uri) +
+                changes.deletes.asSequence().map(ScreenshotIndexRow::uri)).toSet()
+        if (invalidatedUris.isNotEmpty()) {
+            getDuplicateFingerprints()
+                .filter { it.mediaUri in invalidatedUris }
+                .forEach { deleteDuplicateFingerprint(it.mediaUri, it.mediaDateAdded) }
+        }
+        deleteMediaSyncStates()
+        if (syncStates.isNotEmpty()) upsertMediaSyncStates(syncStates)
     }
 
     @Query("""SELECT c.collection_id, c.name, COUNT(i.media_uri) AS item_count,
@@ -475,9 +632,10 @@ internal interface ScreenshotIndexDao {
         MediaSourceContextRow::class,
         ScreenshotNoteReminderRow::class,
         DuplicateFingerprintRow::class,
-        DuplicateDismissalRow::class
+        DuplicateDismissalRow::class,
+        MediaSyncStateRow::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 internal abstract class ScreenshotIndexDatabase : RoomDatabase() {
@@ -628,6 +786,20 @@ internal object ScreenshotIndexMigrations {
             db.execSQL("CREATE INDEX IF NOT EXISTS `index_duplicate_dismissal_created_at` ON `duplicate_dismissal` (`created_at`)")
         }
     }
+
+    val MIGRATION_6_7 = object : Migration(6, 7) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """CREATE TABLE IF NOT EXISTS `media_sync_state` (
+                    `volume_name` TEXT NOT NULL,
+                    `store_version` TEXT NOT NULL,
+                    `generation` INTEGER NOT NULL,
+                    `scope_signature` TEXT NOT NULL,
+                    `completed_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`volume_name`))""".trimIndent()
+            )
+        }
+    }
 }
 
 /**
@@ -637,20 +809,126 @@ internal object ScreenshotIndexMigrations {
  * metadata cannot be silently erased if it is added alongside the derived MediaStore cache.
  */
 class ScreenshotIndexStore(context: Context) {
-    private val dao = database(context.applicationContext).dao()
+    private val appContext = context.applicationContext
+    private val dao = database(appContext).dao()
+
+    suspend fun syncFromMediaStore(
+        resolver: ContentResolver,
+        screenW: Int,
+        screenH: Int,
+        favoriteKeys: Set<String>,
+    ): Int = reconcileMediaStore(resolver, screenW, screenH, favoriteKeys, forceFull = false)
 
     suspend fun rebuildFromMediaStore(
         resolver: ContentResolver,
         screenW: Int,
         screenH: Int,
         favoriteKeys: Set<String>
+    ): Int = reconcileMediaStore(resolver, screenW, screenH, favoriteKeys, forceFull = true)
+
+    private suspend fun reconcileMediaStore(
+        resolver: ContentResolver,
+        screenW: Int,
+        screenH: Int,
+        favoriteKeys: Set<String>,
+        forceFull: Boolean,
     ): Int = withContext(Dispatchers.IO) {
-        val entries = buildList {
-            addAll(queryImages(resolver, screenW, screenH, favoriteKeys))
-            addAll(queryVideos(resolver, favoriteKeys))
+        indexSyncMutex.withLock {
+        val volumes = MediaStore.getExternalVolumeNames(appContext).sorted()
+        val generationSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        val capabilities = MediaCapabilityResolver.current(appContext)
+        val scopeSignature = scopeSignature(screenW, screenH, favoriteKeys, capabilities)
+        val snapshots = volumes.map { volume ->
+            MediaVolumeSnapshot(
+                volumeName = volume,
+                version = if (generationSupported) {
+                    MediaStore.getVersion(appContext, volume)
+                } else {
+                    MediaStore.getVersion(appContext)
+                },
+                generation = if (generationSupported) MediaStore.getGeneration(appContext, volume) else -1L,
+            )
         }
-        dao.replaceAll(entries.map { it.toRow() })
-        entries.size
+        val plan = MediaIndexSyncPlanner.plan(
+            current = snapshots,
+            stored = dao.getMediaSyncStates(),
+            scopeSignature = scopeSignature,
+            generationSupported = generationSupported,
+            partialAccess = capabilities.imageAccess == MediaAccess.SELECTED ||
+                    capabilities.videoAccess == MediaAccess.SELECTED,
+            forceFull = forceFull,
+        )
+        val canReadImages = capabilities.canQueryImages
+        val canReadVideos = capabilities.canQueryVideos
+        val deltas = buildList {
+            snapshots.forEach { snapshot ->
+                val generationFloor = plan.generationFloorByVolume[snapshot.volumeName]
+                if (canReadImages) {
+                    add(queryImages(
+                        resolver, snapshot.volumeName, screenW, screenH, favoriteKeys,
+                        generationFloor, snapshot.generation,
+                    ))
+                }
+                if (canReadVideos) {
+                    add(queryVideos(
+                        resolver, snapshot.volumeName, favoriteKeys, generationFloor, snapshot.generation,
+                    ))
+                }
+            }
+        }
+        val changedEntries = deltas.flatMap(MediaQueryDelta::entries)
+        val hiddenUris = deltas.flatMapTo(linkedSetOf(), MediaQueryDelta::hiddenUris)
+        val deletedUris = if (!plan.fullScan && supportsDeletedFiles()) {
+            queryDeletedUris(
+                resolver = resolver,
+                snapshots = snapshots,
+                generationFloorByVolume = plan.generationFloorByVolume,
+                includeImages = canReadImages,
+                includeVideos = canReadVideos,
+            )
+        } else {
+            null
+        }
+        val visibleUris = if (plan.fullScan) {
+            changedEntries.mapTo(linkedSetOf()) { it.uri.toString() }
+        } else if (deletedUris != null) {
+            null
+        } else {
+            queryVisibleUris(resolver, volumes, canReadImages, canReadVideos)
+        }
+        val completedAt = System.currentTimeMillis()
+        check(MediaStore.getExternalVolumeNames(appContext).toSet() == volumes.toSet()) {
+            "MediaStore volumes changed during index reconciliation"
+        }
+        check(snapshots.all { snapshot ->
+            val currentVersion = if (generationSupported) {
+                MediaStore.getVersion(appContext, snapshot.volumeName)
+            } else {
+                MediaStore.getVersion(appContext)
+            }
+            currentVersion == snapshot.version
+        }) { "MediaStore version changed during index reconciliation" }
+        check(scopeSignature(screenW, screenH, favoriteKeys, MediaCapabilityResolver.current(appContext)) == scopeSignature) {
+            "Media permission or classification inputs changed during index reconciliation"
+        }
+        dao.applyMediaSync(
+            changedRows = changedEntries.map { it.toRow() },
+            visibleUris = visibleUris,
+            explicitlyRemovedUris = hiddenUris + deletedUris.orEmpty().filterNotTo(hashSetOf()) { deletedUri ->
+                changedEntries.any { it.uri.toString() == deletedUri }
+            },
+            syncStates = snapshots.map { snapshot ->
+                MediaSyncStateRow(
+                    volumeName = snapshot.volumeName,
+                    storeVersion = snapshot.version,
+                    generation = snapshot.generation,
+                    scopeSignature = scopeSignature,
+                    completedAt = completedAt,
+                )
+            },
+        )
+            dao.count()
+        }
     }
 
     suspend fun loadEntryMap(): Map<String, ScreenshotIndexEntry> =
@@ -663,6 +941,7 @@ class ScreenshotIndexStore(context: Context) {
     suspend fun purge() {
         dao.deleteAll()
         dao.deleteDuplicateFingerprints()
+        dao.deleteMediaSyncStates()
     }
 
     suspend fun duplicateGroups(sensitivity: DuplicateSensitivity): List<DuplicateGroup> {
@@ -890,13 +1169,141 @@ class ScreenshotIndexStore(context: Context) {
         return deleted
     }
 
-    private fun queryImages(
-        resolver: ContentResolver,
+    private fun scopeSignature(
         screenW: Int,
         screenH: Int,
-        favoriteKeys: Set<String>
-    ): List<ScreenshotIndexEntry> {
+        favoriteKeys: Set<String>,
+        capabilities: MediaCapabilities,
+    ): String {
+        val favoriteDigest = MessageDigest.getInstance("SHA-256").apply {
+            favoriteKeys.sorted().forEach { key ->
+                update(key.toByteArray(Charsets.UTF_8))
+                update(0.toByte())
+            }
+        }.digest().joinToString("") { "%02x".format(it) }
+        val raw = buildString {
+            append("sdk=").append(Build.VERSION.SDK_INT)
+            append(";screen=").append(screenW).append('x').append(screenH)
+            append(";images=").append(capabilities.imageAccess.name)
+            append(";videos=").append(capabilities.videoAccess.name)
+            append(";favorites=").append(favoriteDigest)
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(raw.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    private fun canonicalMediaUri(isVideo: Boolean, id: Long): Uri = ContentUris.withAppendedId(
+        if (isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        id,
+    )
+
+    private fun supportsDeletedFiles(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 23
+
+    @android.annotation.SuppressLint("NewApi")
+    private fun queryDeletedUris(
+        resolver: ContentResolver,
+        snapshots: List<MediaVolumeSnapshot>,
+        generationFloorByVolume: Map<String, Long>,
+        includeImages: Boolean,
+        includeVideos: Boolean,
+    ): Set<String>? {
+        val minimumFloor = generationFloorByVolume.values.minOrNull() ?: return emptySet()
+        val maximumGeneration = snapshots.maxOfOrNull(MediaVolumeSnapshot::generation) ?: return emptySet()
+        val queryArgs = Bundle().apply {
+            putString(
+                ContentResolver.QUERY_ARG_SQL_SELECTION,
+                "${MediaStore.DeletedFiles.DeletedFilesColumns.DELETED_GENERATION} > ? AND " +
+                        "${MediaStore.DeletedFiles.DeletedFilesColumns.DELETED_GENERATION} <= ?",
+            )
+            putStringArray(
+                ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                arrayOf(minimumFloor.toString(), maximumGeneration.toString()),
+            )
+        }
+        return runCatching {
+            val cursor = MediaStore.queryDeletedFiles(resolver, queryArgs, null) ?: return null
+            cursor.use {
+                val idColumn = it.getColumnIndexOrThrow(MediaStore.DeletedFiles.DeletedFilesColumns._ID)
+                val typeColumn = it.getColumnIndexOrThrow(MediaStore.DeletedFiles.DeletedFilesColumns.MEDIA_TYPE)
+                val generationColumn = it.getColumnIndexOrThrow(MediaStore.DeletedFiles.DeletedFilesColumns.DELETED_GENERATION)
+                val volumeColumn = it.getColumnIndexOrThrow(MediaStore.DeletedFiles.DeletedFilesColumns.VOLUME_NAME)
+                val records = buildList {
+                    while (it.moveToNext()) {
+                        val volume = it.getString(volumeColumn) ?: continue
+                        add(DeletedMediaRecord(volume, it.getLong(idColumn), it.getInt(typeColumn), it.getLong(generationColumn)))
+                    }
+                }
+                val allowedTypes = buildSet {
+                    if (includeImages) add(MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE)
+                    if (includeVideos) add(MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO)
+                }
+                DeletedMediaRecordFilter.eligible(
+                    records,
+                    snapshots,
+                    generationFloorByVolume,
+                    allowedTypes,
+                ).mapTo(linkedSetOf()) { record ->
+                    canonicalMediaUri(
+                        isVideo = record.mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO,
+                        id = record.mediaId,
+                    ).toString()
+                }
+            }
+        }.getOrNull()
+    }
+
+    private fun queryVisibleUris(
+        resolver: ContentResolver,
+        volumes: List<String>,
+        includeImages: Boolean,
+        includeVideos: Boolean,
+    ): Set<String> =
+        buildSet {
+            volumes.forEach { volume ->
+                if (includeImages) {
+                    addAll(queryMediaIdentities(resolver, MediaStore.Images.Media.getContentUri(volume), isVideo = false))
+                }
+                if (includeVideos) {
+                    addAll(queryMediaIdentities(resolver, MediaStore.Video.Media.getContentUri(volume), isVideo = true))
+                }
+            }
+        }
+
+    private fun queryMediaIdentities(
+        resolver: ContentResolver,
+        collectionUri: Uri,
+        isVideo: Boolean,
+    ): Set<String> {
+        val values = linkedSetOf<String>()
+        val cursor = resolver.query(
+            collectionUri,
+            arrayOf(MediaStore.MediaColumns._ID),
+            null,
+            null,
+            null,
+        ) ?: error("MediaStore identity query returned no cursor for $collectionUri")
+        cursor.use {
+            val idColumn = it.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+            while (it.moveToNext()) {
+                values += canonicalMediaUri(isVideo, it.getLong(idColumn)).toString()
+            }
+        }
+        return values
+    }
+
+    private fun queryImages(
+        resolver: ContentResolver,
+        volumeName: String,
+        screenW: Int,
+        screenH: Int,
+        favoriteKeys: Set<String>,
+        generationFloor: Long?,
+        generationCeiling: Long,
+    ): MediaQueryDelta {
         val entries = mutableListOf<ScreenshotIndexEntry>()
+        val hiddenUris = linkedSetOf<String>()
         val projection = mutableListOf(
             MediaStore.Images.Media._ID,
             MediaStore.Images.Media.DATE_ADDED,
@@ -905,17 +1312,41 @@ class ScreenshotIndexStore(context: Context) {
             MediaStore.Images.Media.WIDTH,
             MediaStore.Images.Media.HEIGHT,
             MediaStore.Images.Media.RELATIVE_PATH,
-            MediaStore.Images.Media.MIME_TYPE
+            MediaStore.Images.Media.MIME_TYPE,
+            MediaStore.MediaColumns.IS_PENDING,
         ).apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+                add(MediaStore.MediaColumns.IS_TRASHED)
+            }
         }.toTypedArray()
-        resolver.query(
-            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+        val collectionUri = MediaStore.Images.Media.getContentUri(volumeName)
+        val generationSelection = generationFloor?.let {
+            "((${MediaStore.MediaColumns.GENERATION_ADDED} > ? AND ${MediaStore.MediaColumns.GENERATION_ADDED} <= ?) OR " +
+                    "(${MediaStore.MediaColumns.GENERATION_MODIFIED} > ? AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} <= ?))"
+        }
+        val queryArgs = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, generationSelection)
+            generationFloor?.let { floor ->
+                putStringArray(
+                    ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                    arrayOf(
+                        floor.toString(), generationCeiling.toString(),
+                        floor.toString(), generationCeiling.toString(),
+                    ),
+                )
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
+            putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.Images.Media.DATE_ADDED} DESC")
+        }
+        val cursor = resolver.query(
+            collectionUri,
             projection,
+            queryArgs,
             null,
-            null,
-            "${MediaStore.Images.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
+        ) ?: error("MediaStore image query returned no cursor for $collectionUri")
+        cursor.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -925,12 +1356,18 @@ class ScreenshotIndexStore(context: Context) {
             val pathCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.RELATIVE_PATH)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.MIME_TYPE)
             val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+            val pendingCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING)
+            val trashedCol = cursor.getColumnIndex(MediaStore.MediaColumns.IS_TRASHED)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
+                val uri = canonicalMediaUri(isVideo = false, id)
+                if (cursor.getInt(pendingCol) != 0 || (trashedCol >= 0 && cursor.getInt(trashedCol) != 0)) {
+                    hiddenUris += uri.toString()
+                    continue
+                }
                 val name = cursor.getString(nameCol) ?: ""
                 val width = cursor.getInt(wCol)
                 val height = cursor.getInt(hCol)
-                val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
                 entries.add(
                     ScreenshotIndexClassifier.buildEntry(
                         mediaId = id,
@@ -950,14 +1387,18 @@ class ScreenshotIndexStore(context: Context) {
                 )
             }
         }
-        return entries
+        return MediaQueryDelta(entries, hiddenUris)
     }
 
     private fun queryVideos(
         resolver: ContentResolver,
-        favoriteKeys: Set<String>
-    ): List<ScreenshotIndexEntry> {
+        volumeName: String,
+        favoriteKeys: Set<String>,
+        generationFloor: Long?,
+        generationCeiling: Long,
+    ): MediaQueryDelta {
         val entries = mutableListOf<ScreenshotIndexEntry>()
+        val hiddenUris = linkedSetOf<String>()
         val projection = mutableListOf(
             MediaStore.Video.Media._ID,
             MediaStore.Video.Media.DATE_ADDED,
@@ -967,17 +1408,41 @@ class ScreenshotIndexStore(context: Context) {
             MediaStore.Video.Media.RELATIVE_PATH,
             MediaStore.Video.Media.WIDTH,
             MediaStore.Video.Media.HEIGHT,
-            MediaStore.Video.Media.MIME_TYPE
+            MediaStore.Video.Media.MIME_TYPE,
+            MediaStore.MediaColumns.IS_PENDING,
         ).apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                add(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+                add(MediaStore.MediaColumns.IS_TRASHED)
+            }
         }.toTypedArray()
-        resolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+        val collectionUri = MediaStore.Video.Media.getContentUri(volumeName)
+        val generationSelection = generationFloor?.let {
+            "((${MediaStore.MediaColumns.GENERATION_ADDED} > ? AND ${MediaStore.MediaColumns.GENERATION_ADDED} <= ?) OR " +
+                    "(${MediaStore.MediaColumns.GENERATION_MODIFIED} > ? AND ${MediaStore.MediaColumns.GENERATION_MODIFIED} <= ?))"
+        }
+        val queryArgs = Bundle().apply {
+            putString(ContentResolver.QUERY_ARG_SQL_SELECTION, generationSelection)
+            generationFloor?.let { floor ->
+                putStringArray(
+                    ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                    arrayOf(
+                        floor.toString(), generationCeiling.toString(),
+                        floor.toString(), generationCeiling.toString(),
+                    ),
+                )
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
+            putString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER, "${MediaStore.Video.Media.DATE_ADDED} DESC")
+        }
+        val cursor = resolver.query(
+            collectionUri,
             projection,
+            queryArgs,
             null,
-            null,
-            "${MediaStore.Video.Media.DATE_ADDED} DESC"
-        )?.use { cursor ->
+        ) ?: error("MediaStore video query returned no cursor for $collectionUri")
+        cursor.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -987,10 +1452,16 @@ class ScreenshotIndexStore(context: Context) {
             val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
             val ownerCol = cursor.getColumnIndex(MediaStore.MediaColumns.OWNER_PACKAGE_NAME)
+            val pendingCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING)
+            val trashedCol = cursor.getColumnIndex(MediaStore.MediaColumns.IS_TRASHED)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
+                val uri = canonicalMediaUri(isVideo = true, id)
+                if (cursor.getInt(pendingCol) != 0 || (trashedCol >= 0 && cursor.getInt(trashedCol) != 0)) {
+                    hiddenUris += uri.toString()
+                    continue
+                }
                 val name = cursor.getString(nameCol) ?: ""
-                val uri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
                 entries.add(
                     ScreenshotIndexClassifier.buildEntry(
                         mediaId = id,
@@ -1010,7 +1481,7 @@ class ScreenshotIndexStore(context: Context) {
                 )
             }
         }
-        return entries
+        return MediaQueryDelta(entries, hiddenUris)
     }
 
     private fun ScreenshotIndexEntry.toRow(): ScreenshotIndexRow = ScreenshotIndexRow(
@@ -1086,6 +1557,7 @@ class ScreenshotIndexStore(context: Context) {
         private const val MAX_DUPLICATE_DISMISSALS = 20_000
         private const val DB_NAME = "screenshot_index_room.db"
         private const val LEGACY_DB_NAME = "screenshot_index.db"
+        private val indexSyncMutex = Mutex()
 
         @Volatile
         private var INSTANCE: ScreenshotIndexDatabase? = null
@@ -1098,7 +1570,8 @@ class ScreenshotIndexStore(context: Context) {
                         ScreenshotIndexMigrations.MIGRATION_2_3,
                         ScreenshotIndexMigrations.MIGRATION_3_4,
                         ScreenshotIndexMigrations.MIGRATION_4_5,
-                        ScreenshotIndexMigrations.MIGRATION_5_6
+                        ScreenshotIndexMigrations.MIGRATION_5_6,
+                        ScreenshotIndexMigrations.MIGRATION_6_7,
                     )
                     .build()
                     .also {

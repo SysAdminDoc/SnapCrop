@@ -43,7 +43,11 @@ val releaseAbiSplitsEnabled = providers.gradleProperty("snapcrop.releaseAbiSplit
 
 android {
     namespace = "com.sysadmindoc.snapcrop"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     androidResources {
         // Auto-generate locales_config.xml from values-* folders and wire android:localeConfig,
@@ -56,8 +60,8 @@ android {
         applicationId = "com.sysadmindoc.snapcrop"
         minSdk = 29
         targetSdk = 37
-        versionCode = 132
-        versionName = "6.80.0"
+        versionCode = 133
+        versionName = "6.81.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
