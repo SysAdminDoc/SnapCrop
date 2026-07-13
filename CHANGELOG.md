@@ -4,6 +4,19 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+**Testable state and I/O boundaries (v6.85.0).**
+
+- Gallery album/photo loading now publishes typed snapshots from an independent
+  coordinator, preserves partial image/video/index recovery, and propagates
+  coroutine cancellation instead of exposing stale failure state.
+- PDF, SVG, project, OCR-text, and image publication share one transactional
+  pending-row writer with byte accounting and rollback across MediaStore
+  collections. Batch crop/resize share cap, progress, outcome, and cancellation
+  accounting; Settings navigation rejects stale delayed completions.
+- Editor history now has a bounded tested controller for record, undo, redo, and
+  jump transitions. Full host tests, lint, debug builds, and each clean five-APK
+  signed release gate pass without changing public or visual behavior.
+
 **Private two-screenshot comparison (v6.84.0).**
 
 - Gallery selection now preserves selection order and enables Compare only for

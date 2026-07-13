@@ -398,17 +398,16 @@ fun CropEditorScreen(
         selectedCutBand = -1
     }
 
-    val undoStack = remember { mutableStateListOf<EditorSnapshot>() }
-    val redoStack = remember { mutableStateListOf<EditorSnapshot>() }
+    val history = remember { EditorHistoryController() }
+    val undoStack = history.undoSnapshots
+    val redoStack = history.redoSnapshots
 
     val hasUnsavedChanges by remember { derivedStateOf { undoStack.isNotEmpty() } }
 
     BackHandler(enabled = hasUnsavedChanges) { showDiscardDialog = true }
 
     fun pushUndo() {
-        undoStack.add(captureSnapshot())
-        redoStack.clear()
-        if (undoStack.size > 30) undoStack.removeAt(0)
+        history.record(captureSnapshot())
     }
 
     fun commitCutBands(updated: List<CutBand>) {
@@ -762,16 +761,14 @@ fun CropEditorScreen(
     }
 
     fun undo() {
-        if (undoStack.isEmpty()) return
-        redoStack.add(captureSnapshot())
-        restoreSnapshot(undoStack.removeAt(undoStack.lastIndex))
+        val snapshot = history.undo(captureSnapshot()) ?: return
+        restoreSnapshot(snapshot)
         haptic()
     }
 
     fun redo() {
-        if (redoStack.isEmpty()) return
-        undoStack.add(captureSnapshot())
-        restoreSnapshot(redoStack.removeAt(redoStack.lastIndex))
+        val snapshot = history.redo(captureSnapshot()) ?: return
+        restoreSnapshot(snapshot)
         haptic()
     }
 
@@ -1721,14 +1718,10 @@ fun CropEditorScreen(
                     FilterChip(
                         selected = false,
                         onClick = {
-                            // Jump to this snapshot: push current state onto redo, restore clicked
-                            redoStack.add(captureSnapshot())
-                            // Move everything after idx back to redo
-                            for (i in undoStack.size - 1 downTo idx + 1) {
-                                redoStack.add(undoStack.removeAt(i))
+                            history.jumpTo(idx, captureSnapshot())?.let { snapshot ->
+                                restoreSnapshot(snapshot)
+                                haptic()
                             }
-                            restoreSnapshot(undoStack.removeAt(idx))
-                            haptic()
                         },
                         label = { Text("${idx + 1}: $label", fontSize = 9.sp, maxLines = 1) },
                         colors = FilterChipDefaults.filterChipColors(
