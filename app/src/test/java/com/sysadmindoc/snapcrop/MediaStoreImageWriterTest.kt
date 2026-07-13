@@ -41,6 +41,34 @@ class MediaStoreImageWriterTest {
     }
 
     @Test
+    fun arbitraryCollectionAndUtf8PayloadReachTheTransactionalGateway() {
+        val gateway = FakeGateway()
+        val filesCollection = Uri.parse("content://media/external/file")
+        val artifactRequest = request.copy(
+            displayName = "report.txt",
+            mimeType = "text/plain",
+            collectionUri = filesCollection,
+        )
+
+        val result = MediaStoreImageWriter.writeUtf8(gateway, artifactRequest, "Résumé ✓")
+
+        assertEquals(MediaStoreImageWriter.Result.Success(gateway.uri, 12L), result)
+        assertEquals(artifactRequest, gateway.insertRequest)
+        assertEquals("Résumé ✓", gateway.output.toString(Charsets.UTF_8.name()))
+    }
+
+    @Test
+    fun emptyUtf8ArtifactDeletesItsPendingRow() {
+        val gateway = FakeGateway()
+
+        val result = MediaStoreImageWriter.writeUtf8(gateway, request, "")
+
+        assertFailure(result, MediaStoreImageWriter.Stage.EMPTY_OUTPUT)
+        assertEquals(1, gateway.deleteCalls)
+        assertEquals(0, gateway.publishCalls)
+    }
+
+    @Test
     fun bitmapGoldenPathProducesReadablePixels() {
         val gateway = FakeGateway()
         val bitmap = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
@@ -303,10 +331,12 @@ class MediaStoreImageWriterTest {
         var openCalls = 0
         var publishCalls = 0
         var deleteCalls = 0
+        var insertRequest: MediaStoreImageWriter.Request? = null
         private val insertedUri = insertedUri
 
         override fun insert(request: MediaStoreImageWriter.Request): Uri? {
             insertCalls++
+            insertRequest = request
             insertFailure?.let { throw it }
             return insertedUri
         }

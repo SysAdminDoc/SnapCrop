@@ -2239,30 +2239,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun savePdfFile(displayName: String, pdfFile: java.io.File): Boolean {
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-            put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "Documents/SnapCrop")
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        var pdfUri: Uri? = null
-        return try {
-            pdfUri = contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
-            val uri = pdfUri ?: return false
-            val opened = contentResolver.openOutputStream(uri)
-            if (opened == null) {
-                contentResolver.delete(uri, null, null)
-                return false
-            }
-            opened.use { output -> pdfFile.inputStream().buffered().use { it.copyTo(output, 64 * 1024) } }
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            check(contentResolver.update(uri, values, null, null) == 1) { "Could not publish PDF" }
+        val result = MediaStoreImageWriter.write(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = displayName,
+                mimeType = "application/pdf",
+                relativePath = "Documents/SnapCrop",
+                collectionUri = MediaStore.Files.getContentUri("external"),
+            ),
+        ) { output ->
+            pdfFile.inputStream().buffered().use { it.copyTo(output, 64 * 1024) }
             true
-        } catch (_: Exception) {
-            pdfUri?.let { try { contentResolver.delete(it, null, null) } catch (_: Exception) {} }
-            false
         }
+        return result is MediaStoreImageWriter.Result.Success
     }
 
     private fun mediaIdFromUri(uri: Uri): Long? = try {

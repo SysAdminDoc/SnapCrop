@@ -2,7 +2,6 @@ package com.sysadmindoc.snapcrop
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Intent
 import android.app.RecoverableSecurityException
 import android.graphics.Bitmap
@@ -1692,84 +1691,53 @@ class CropActivity : ComponentActivity() {
     }
 
     private fun saveSvgSidecar(name: String, savePath: String, svg: String): Boolean {
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.svg")
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/svg+xml")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = try {
-            contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
-        } catch (_: Exception) { null } ?: return false
-        return try {
-            val bytes = svg.toByteArray(Charsets.UTF_8)
-            if (bytes.isEmpty()) throw IOException("SVG sidecar is empty")
-            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                ?: throw IOException("Failed to open SVG output stream")
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            if (contentResolver.update(uri, values, null, null) != 1) {
-                throw IOException("Failed to publish SVG sidecar")
-            }
-            true
-        } catch (_: Exception) {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            false
-        }
+        return saveTextSidecar(
+            displayName = "$name.svg",
+            mimeType = "image/svg+xml",
+            relativePath = sidecarPath(savePath),
+            collectionUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+            text = svg,
+        )
     }
 
     private fun saveProjectSidecar(name: String, savePath: String, json: String): Boolean {
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.snapcrop.json")
-            put(MediaStore.MediaColumns.MIME_TYPE, SnapCropProjectSidecar.MIME_TYPE)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = try {
-            contentResolver.insert(MediaStore.Files.getContentUri("external"), values)
-        } catch (_: Exception) { null } ?: return false
-        return try {
-            val bytes = json.toByteArray(Charsets.UTF_8)
-            if (bytes.isEmpty()) throw IOException("Project sidecar is empty")
-            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                ?: throw IOException("Failed to open project output stream")
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            if (contentResolver.update(uri, values, null, null) != 1) {
-                throw IOException("Failed to publish project sidecar")
-            }
-            true
-        } catch (_: Exception) {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            false
-        }
+        return saveTextSidecar(
+            displayName = "$name.snapcrop.json",
+            mimeType = SnapCropProjectSidecar.MIME_TYPE,
+            relativePath = sidecarPath(savePath),
+            collectionUri = MediaStore.Files.getContentUri("external"),
+            text = json,
+        )
     }
 
     private fun saveOcrTextSidecar(name: String, savePath: String, text: String): Boolean {
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.txt")
-            put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, sidecarPath(savePath))
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = try {
-            contentResolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
-        } catch (_: Exception) { null } ?: return false
-        return try {
-            val bytes = text.take(ReviewedOcr.MAX_PLAIN_TEXT_CHARS).toByteArray(Charsets.UTF_8)
-            if (bytes.isEmpty()) throw IOException("OCR text sidecar is empty")
-            contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                ?: throw IOException("Failed to open OCR text output stream")
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            if (contentResolver.update(uri, values, null, null) != 1) {
-                throw IOException("Failed to publish OCR text sidecar")
-            }
-            true
-        } catch (_: Exception) {
-            try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
-            false
-        }
+        return saveTextSidecar(
+            displayName = "$name.txt",
+            mimeType = "text/plain",
+            relativePath = sidecarPath(savePath),
+            collectionUri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY),
+            text = text.take(ReviewedOcr.MAX_PLAIN_TEXT_CHARS),
+        )
+    }
+
+    private fun saveTextSidecar(
+        displayName: String,
+        mimeType: String,
+        relativePath: String,
+        collectionUri: Uri,
+        text: String,
+    ): Boolean {
+        val result = MediaStoreImageWriter.writeUtf8(
+            resolver = contentResolver,
+            request = MediaStoreImageWriter.Request(
+                displayName = displayName,
+                mimeType = mimeType,
+                relativePath = relativePath,
+                collectionUri = collectionUri,
+            ),
+            text = text,
+        )
+        return result is MediaStoreImageWriter.Result.Success
     }
 
     private suspend fun saveToGallery(

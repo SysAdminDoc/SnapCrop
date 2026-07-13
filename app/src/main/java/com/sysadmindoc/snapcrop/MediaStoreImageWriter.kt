@@ -20,6 +20,7 @@ internal object MediaStoreImageWriter {
         val displayName: String,
         val mimeType: String,
         val relativePath: String,
+        val collectionUri: Uri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
     )
 
     enum class Stage {
@@ -55,6 +56,21 @@ internal object MediaStoreImageWriter {
         beforePublish: (Uri) -> Unit = {},
         encoder: (OutputStream) -> Boolean,
     ): Result = write(ContentResolverGateway(resolver), request, beforePublish, encoder)
+
+    fun writeUtf8(
+        resolver: ContentResolver,
+        request: Request,
+        text: String,
+    ): Result = writeUtf8(ContentResolverGateway(resolver), request, text)
+
+    internal fun writeUtf8(
+        gateway: Gateway,
+        request: Request,
+        text: String,
+    ): Result = write(gateway, request) { output ->
+        output.write(text.toByteArray(Charsets.UTF_8))
+        true
+    }
 
     internal fun write(
         gateway: Gateway,
@@ -142,7 +158,7 @@ internal object MediaStoreImageWriter {
                 put(MediaStore.Images.Media.RELATIVE_PATH, request.relativePath)
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
-            return resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            return resolver.insert(request.collectionUri, values)
         }
 
         override fun openOutputStream(uri: Uri): OutputStream? =
