@@ -93,6 +93,34 @@ object ExportPresetStore {
         }
     }
 
+    internal fun validatedIdsForSettingsImport(raw: String): Set<String>? {
+        if (raw.isBlank() || raw.length > MAX_JSON_CHARS || StrictJsonValidator.validate(raw) != null) {
+            return null
+        }
+        return try {
+            val root = JSONObject(raw)
+            val version = (root.opt("version") as? Number)?.toDouble() ?: return null
+            if (!version.isFinite() || version % 1.0 != 0.0 || version.toInt() != SCHEMA_VERSION) return null
+            val array = root.opt("presets") as? JSONArray ?: return null
+            if (array.length() > MAX_PRESETS) return null
+            val ids = linkedSetOf<String>()
+            val names = mutableSetOf<String>()
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: return null
+                val id = item.opt("id") as? String ?: return null
+                val rawName = item.opt("name") as? String ?: return null
+                val name = normalizeName(rawName) ?: return null
+                val settings = item.optJSONObject("settings") ?: return null
+                if (!validId.matches(id) || rawName != name || !ids.add(id) ||
+                    !names.add(name.lowercase(Locale.US)) || !settings.isValidForImport()
+                ) return null
+            }
+            ids
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun upsertCurrent(prefs: SharedPreferences, name: String, presetId: String? = null): List<ExportPreset>? {
         val normalizedName = normalizeName(name) ?: return null
         val existing = load(prefs).toMutableList()
@@ -190,6 +218,40 @@ object ExportPresetStore {
         .take(96)
         .trim('.', ' ')
         .ifBlank { "SnapCrop_%timestamp%" }
+
+    private fun JSONObject.isValidForImport(): Boolean {
+        fun string(key: String): String? = opt(key) as? String
+        fun boolean(key: String): Boolean? = opt(key) as? Boolean
+        fun integer(key: String): Int? {
+            val number = (opt(key) as? Number)?.toDouble() ?: return null
+            if (!number.isFinite() || number % 1.0 != 0.0 || number !in Int.MIN_VALUE.toDouble()..Int.MAX_VALUE.toDouble()) {
+                return null
+            }
+            return number.toInt()
+        }
+
+        val format = string("format")?.let { value -> ExportImageFormat.entries.firstOrNull { it.key == value } }
+            ?: return false
+        val quality = integer("quality") ?: return false
+        val targetSizeEnabled = boolean("targetSizeEnabled") ?: return false
+        val targetSizeKb = integer("targetSizeKb") ?: return false
+        val targetSizeAllowResize = boolean("targetSizeAllowResize") ?: return false
+        val borderSize = integer("borderSize") ?: return false
+        val borderColor = integer("borderColor") ?: return false
+        boolean("watermarkEnabled") ?: return false
+        val watermarkText = string("watermarkText") ?: return false
+        val filenameTemplate = string("filenameTemplate") ?: return false
+        val savePath = string("savePath") ?: return false
+        return quality in 50..100 &&
+            targetSizeKb in 50..5_000 &&
+            borderSize in 0..100 &&
+            borderColor in 0..5 &&
+            watermarkText.length <= 120 && watermarkText.none(Char::isISOControl) &&
+            filenameTemplate.length <= 96 && sanitizeTemplate(filenameTemplate) == filenameTemplate &&
+            savePath in validPaths &&
+            (!targetSizeEnabled || format != ExportImageFormat.PNG) &&
+            (!targetSizeAllowResize || targetSizeEnabled && format != ExportImageFormat.PNG)
+    }
 
     private fun ExportSettings.toJson(): JSONObject = JSONObject()
         .put("format", format.key)

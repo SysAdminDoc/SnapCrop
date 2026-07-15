@@ -2060,41 +2060,68 @@ class SettingsActivity : ComponentActivity() {
     }
 
     private fun exportSettings(uri: Uri, prefs: SharedPreferences) {
-        try {
-            contentResolver.openOutputStream(uri)?.use { it.write(SettingsBackup.export(prefs).toString(2).toByteArray()) }
-                ?: throw IllegalStateException("no stream")
-            Toast.makeText(this, getString(R.string.settings_backup_done), Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {
-            Toast.makeText(this, getString(R.string.settings_backup_failed), Toast.LENGTH_LONG).show()
+        lifecycleScope.launch {
+            val exported = withContext(Dispatchers.IO) {
+                runCatching {
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(SettingsBackup.export(prefs).toString(2).toByteArray(Charsets.UTF_8))
+                    } ?: error("no stream")
+                }.isSuccess
+            }
+            Toast.makeText(
+                this@SettingsActivity,
+                if (exported) R.string.settings_backup_done else R.string.settings_backup_failed,
+                if (exported) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
     private fun importSettings(uri: Uri, prefs: SharedPreferences) {
-        try {
-            val text = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: throw IllegalStateException("no stream")
-            val report = SettingsBackup.importWithReport(prefs, org.json.JSONObject(text))
-            if (report == null) {
-                Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
-            } else {
-                RecentWorkflowStore.clear(
-                    getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
-                )
-                Toast.makeText(
-                    this,
-                    getString(
-                        R.string.settings_backup_restored_report,
-                        report.restoredCount,
-                        report.migratedCount,
-                        report.ignoredUnknownCount,
-                        report.ignoredInvalidCount
-                    ),
-                    Toast.LENGTH_LONG
-                ).show()
-                recreate()
+        lifecycleScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                try {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        SettingsBackup.importFromStream(prefs, input)
+                    } ?: SettingsBackup.ImportOutcome.Rejected(
+                        SettingsBackup.ImportRejectReason.IO_FAILURE,
+                        ignoredInvalidCount = 0,
+                    )
+                } catch (_: Exception) {
+                    SettingsBackup.ImportOutcome.Rejected(
+                        SettingsBackup.ImportRejectReason.IO_FAILURE,
+                        ignoredInvalidCount = 0,
+                    )
+                }
             }
-        } catch (_: Exception) {
-            Toast.makeText(this, getString(R.string.settings_backup_invalid), Toast.LENGTH_SHORT).show()
+            when (outcome) {
+                is SettingsBackup.ImportOutcome.Applied -> {
+                    val report = outcome.report
+                    RecentWorkflowStore.clear(
+                        getSharedPreferences(RecentWorkflowStore.PREF_NAME, MODE_PRIVATE)
+                    )
+                    Toast.makeText(
+                        this@SettingsActivity,
+                        getString(
+                            R.string.settings_backup_restored_report,
+                            report.restoredCount,
+                            report.migratedCount,
+                            report.ignoredUnknownCount,
+                            report.ignoredInvalidCount,
+                        ),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    recreate()
+                }
+                is SettingsBackup.ImportOutcome.Rejected -> Toast.makeText(
+                    this@SettingsActivity,
+                    getString(
+                        R.string.settings_backup_rejected_report,
+                        outcome.ignoredUnknownCount,
+                        outcome.ignoredInvalidCount,
+                    ),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
         }
     }
 

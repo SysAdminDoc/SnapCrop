@@ -493,13 +493,14 @@
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>
     <string name="settings_clear_cache_running">Removing stale temporary files…</string>
     <string name="settings_section_backup">Backup</string>
-    <string name="settings_backup_hint">Back up settings, presets, and app rules for reinstall. Network credentials, screenshot notes, reminders, and inbox decisions stay on this device.</string>
+    <string name="settings_backup_hint">Back up settings, presets, and app rules for reinstall. Imports are limited to 2 MiB and fully validated before anything changes. Network credentials, screenshot notes, reminders, and inbox decisions stay on this device.</string>
     <string name="settings_backup_export">Back up settings</string>
     <string name="settings_backup_import">Restore</string>
     <string name="settings_backup_done">Settings backed up.</string>
     <string name="settings_backup_failed">Backup failed.</string>
     <string name="settings_backup_restored_report">Restored %1$d settings; migrated %2$d and ignored %3$d unknown/%4$d invalid entries.</string>
     <string name="settings_backup_invalid">Not a valid SnapCrop settings backup.</string>
+    <string name="settings_backup_rejected_report">Restore rejected; ignored %1$d unknown and %2$d invalid entries. No settings changed.</string>
     <string name="screenshot_reminder_notification_title">Screenshot reminder</string>
     <string name="screenshot_reminder_notification_body">Tap to view the saved screenshot.</string>
     <string name="gallery_note_action">Note and reminder</string>

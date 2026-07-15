@@ -17,6 +17,9 @@ All notable changes to SnapCrop will be documented in this file.
   checkpoints; cold launches now offer validated recovery, preserve missing-source
   drafts for relinking, and quarantine interrupted or corrupt files without deleting
   the last committed edit.
+- Settings restore now streams strict UTF-8 under a 2 MiB limit on a worker thread,
+  rejects duplicate or invalid nested preset/profile data before mutation, validates
+  cross-references, and applies the complete staged preference set in one commit.
 
 ## [v6.89.0] - 2026-07-13
 

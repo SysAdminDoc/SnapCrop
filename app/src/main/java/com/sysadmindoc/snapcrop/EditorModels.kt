@@ -165,6 +165,9 @@ internal data class DrawStylePreset(
 internal object DrawStylePresetStore {
     internal const val KEY = "draw_style_presets"
     internal const val KEY_DEFAULT = "draw_style_default"
+    private const val MAX_SERIALIZED_CHARS = 64 * 1024
+    private const val MAX_PRESETS = 32
+    private const val MAX_NAME_CHARS = 40
 
     fun load(prefs: SharedPreferences): List<DrawStylePreset> {
         val json = prefs.getString(KEY, null) ?: return emptyList()
@@ -172,6 +175,36 @@ internal object DrawStylePresetStore {
             val arr = JSONArray(json)
             (0 until arr.length()).map { DrawStylePreset.fromJson(arr.getJSONObject(it)) }
         } catch (_: Exception) { emptyList() }
+    }
+
+    internal fun validatedNamesForSettingsImport(json: String): Set<String>? {
+        if (json.isBlank() || json.length > MAX_SERIALIZED_CHARS ||
+            StrictJsonValidator.validate(json) != null
+        ) return null
+        return try {
+            val array = JSONArray(json)
+            if (array.length() > MAX_PRESETS) return null
+            val names = linkedSetOf<String>()
+            val foldedNames = mutableSetOf<String>()
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: return null
+                val name = item.opt("name") as? String ?: return null
+                val colorValue = (item.opt("color") as? Number)?.toLong() ?: return null
+                val strokeWidth = (item.opt("strokeWidth") as? Number)?.toDouble() ?: return null
+                item.opt("dashed") as? Boolean ?: return null
+                val tool = item.opt("tool") as? String ?: return null
+                if (name.isBlank() || name != name.trim() || name.length > MAX_NAME_CHARS ||
+                    name.any(Char::isISOControl) || !foldedNames.add(name.lowercase()) ||
+                    colorValue !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() ||
+                    !strokeWidth.isFinite() || strokeWidth !in 2.0..20.0 ||
+                    DrawTool.entries.none { it.name == tool }
+                ) return null
+                names += name
+            }
+            names
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun save(prefs: SharedPreferences, presets: List<DrawStylePreset>) {

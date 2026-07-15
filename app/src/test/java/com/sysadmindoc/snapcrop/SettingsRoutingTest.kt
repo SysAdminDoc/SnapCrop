@@ -42,6 +42,19 @@ class SettingsRoutingTest {
         assertTrue(searchUi.contains("settings-anchor-"))
     }
 
+    @Test
+    fun settingsRestoreStreamsAndCommitsOnTheIoDispatcher() {
+        val settings = source("SettingsActivity.kt")
+        val backup = source("SettingsBackup.kt")
+
+        assertTrue(settings.contains("val outcome = withContext(Dispatchers.IO)"))
+        assertTrue(settings.contains("SettingsBackup.importFromStream(prefs, input)"))
+        assertTrue(backup.contains("const val MAX_IMPORT_BYTES = 2 * 1024 * 1024"))
+        assertTrue(backup.contains("onMalformedInput(CodingErrorAction.REPORT)"))
+        assertTrue(backup.contains("SettingsPreferenceSchema.removeRestorableKeys(editor)"))
+        assertTrue(backup.contains("if (!editor.commit())"))
+    }
+
     private fun source(name: String): String =
         File("src/main/java/com/sysadmindoc/snapcrop/$name").readText()
 }

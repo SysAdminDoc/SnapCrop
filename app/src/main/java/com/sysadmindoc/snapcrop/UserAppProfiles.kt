@@ -40,6 +40,11 @@ object UserAppProfileStore {
 
     private const val SCHEMA = "com.sysadmindoc.snapcrop.appProfiles"
     private const val VERSION = 1
+    private const val MAX_SERIALIZED_CHARS = 256 * 1024
+    private const val MAX_PROFILES = 100
+    private const val MAX_TOKENS_PER_LIST = 24
+    private const val MAX_TOKEN_CHARS = 80
+    private val validId = Regex("^[A-Za-z0-9._-]{1,80}$")
 
     fun load(prefs: SharedPreferences): List<UserAppCropProfile> {
         val json = prefs.getString(PREF_KEY, null) ?: return emptyList()
@@ -76,6 +81,67 @@ object UserAppProfileStore {
         return (0 until profiles.length()).mapNotNull { index ->
             profiles.optJSONObject(index)?.toUserProfile()
         }
+    }
+
+    internal fun validateForSettingsImport(json: String): Boolean {
+        if (json.isBlank() || json.length > MAX_SERIALIZED_CHARS ||
+            StrictJsonValidator.validate(json) != null
+        ) return false
+        return try {
+            val trimmed = json.trim()
+            val root = if (trimmed.startsWith("[")) {
+                JSONObject().put("profiles", JSONArray(trimmed))
+            } else {
+                JSONObject(trimmed)
+            }
+            if (root.has("schema") && root.optString("schema") != SCHEMA) return false
+            if (root.optInt("version", VERSION) != VERSION) return false
+            val profiles = root.opt("profiles") as? JSONArray ?: return false
+            if (profiles.length() > MAX_PROFILES) return false
+            val ids = mutableSetOf<String>()
+            for (index in 0 until profiles.length()) {
+                val item = profiles.optJSONObject(index) ?: return false
+                val id = item.opt("id") as? String ?: return false
+                val label = item.opt("label") as? String ?: return false
+                item.opt("enabled") as? Boolean ?: return false
+                val sourceHints = item.opt("sourceHints") as? JSONArray ?: return false
+                val ocrKeywords = item.opt("ocrKeywords") as? JSONArray ?: return false
+                val crop = item.optJSONObject("crop") ?: return false
+                val albumName = item.opt("albumName") as? String ?: return false
+                item.opt("redactSensitiveText") as? Boolean ?: return false
+                val exportFormat = item.opt("exportFormat") as? String ?: return false
+                if (!validId.matches(id) || !ids.add(id)) return false
+                if (label.isBlank() || label != label.trim() || label.length > 64 || label.any(Char::isISOControl)) {
+                    return false
+                }
+                if (!validTokens(sourceHints) || !validTokens(ocrKeywords)) return false
+                val fractions = listOf("left", "top", "right", "bottom").map { key ->
+                    (crop.opt(key) as? Number)?.toDouble() ?: return false
+                }
+                if (fractions.any { !it.isFinite() || it !in 0.0..0.45 }) return false
+                if (fractions[0] + fractions[2] >= 0.9 || fractions[1] + fractions[3] >= 0.9) return false
+                if (albumName.isBlank() || albumName.length > 48 || cleanAlbumName(albumName) != albumName) {
+                    return false
+                }
+                if (exportFormat !in setOf("default", "png", "jpeg", "webp")) return false
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun validTokens(array: JSONArray): Boolean {
+        if (array.length() > MAX_TOKENS_PER_LIST) return false
+        val seen = mutableSetOf<String>()
+        for (index in 0 until array.length()) {
+            val token = array.opt(index) as? String ?: return false
+            if (token.length !in 2..MAX_TOKEN_CHARS || token != token.trim() || token.any(Char::isISOControl)) {
+                return false
+            }
+            if (!seen.add(token.lowercase(Locale.US))) return false
+        }
+        return true
     }
 
     fun create(

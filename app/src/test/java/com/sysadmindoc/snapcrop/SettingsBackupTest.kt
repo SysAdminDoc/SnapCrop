@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.content.Context
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -154,6 +155,118 @@ class SettingsBackupTest {
             .put("schema", SettingsBackup.SCHEMA)
             .put("version", 1)
             .put("entries", JSONObject())))
+    }
+
+    @Test
+    fun streamImportRejectsOversizeMalformedDuplicateAndFutureDocumentsWithExactCounts() {
+        val target = preferences("bounded_stream_target")
+        target.edit().putString("save_path", "Downloads/SnapCrop").commit()
+
+        val oversized = SettingsBackup.importFromStream(
+            target,
+            ByteArrayInputStream(ByteArray(SettingsBackup.MAX_IMPORT_BYTES + 1) { 'x'.code.toByte() }),
+        ) as SettingsBackup.ImportOutcome.Rejected
+        val malformed = SettingsBackup.importFromStream(
+            target,
+            ByteArrayInputStream(byteArrayOf(0xC3.toByte(), 0x28)),
+        ) as SettingsBackup.ImportOutcome.Rejected
+        val duplicate = SettingsBackup.importFromStream(
+            target,
+            """{"schema":"${SettingsBackup.SCHEMA}","schema":"duplicate","version":2,"preferenceSchemaVersion":2,"entries":{}}"""
+                .byteInputStream(),
+        ) as SettingsBackup.ImportOutcome.Rejected
+        val future = SettingsBackup.importFromStream(
+            target,
+            JSONObject()
+                .put("schema", SettingsBackup.SCHEMA)
+                .put("version", SettingsBackup.VERSION + 1)
+                .put("entries", JSONObject())
+                .toString()
+                .byteInputStream(),
+        ) as SettingsBackup.ImportOutcome.Rejected
+
+        assertEquals(SettingsBackup.ImportRejectReason.TOO_LARGE, oversized.reason)
+        assertEquals(SettingsBackup.ImportRejectReason.MALFORMED, malformed.reason)
+        assertEquals(SettingsBackup.ImportRejectReason.DUPLICATE_KEY, duplicate.reason)
+        assertEquals(SettingsBackup.ImportRejectReason.UNSUPPORTED_VERSION, future.reason)
+        listOf(oversized, malformed, duplicate, future).forEach { report ->
+            assertEquals(0, report.ignoredUnknownCount)
+            assertEquals(1, report.ignoredInvalidCount)
+        }
+        assertEquals("Downloads/SnapCrop", target.getString("save_path", null))
+    }
+
+    @Test
+    fun invalidNestedProfileRejectsWholeRestoreAndReportsUnknownSeparately() {
+        val source = preferences("nested_profile_source")
+        source.edit()
+            .putString("save_path", "Pictures/SnapCrop")
+            .putString(
+                UserAppProfileStore.PREF_KEY,
+                """{"schema":"com.sysadmindoc.snapcrop.appProfiles","version":1,"profiles":[{"id":"same","label":"One","enabled":true,"sourceHints":[],"ocrKeywords":[],"crop":{"left":0,"top":0,"right":0,"bottom":0},"albumName":"One","redactSensitiveText":false,"exportFormat":"png"},{"id":"same","label":"Two","enabled":true,"sourceHints":[],"ocrKeywords":[],"crop":{"left":0,"top":0,"right":0,"bottom":0},"albumName":"Two","redactSensitiveText":false,"exportFormat":"png"}]}""",
+            )
+            .commit()
+        val backup = SettingsBackup.export(source)
+        backup.getJSONObject("entries")
+            .put("future_key", JSONObject().put("t", "s").put("v", "ignored"))
+        val target = preferences("nested_profile_target")
+        target.edit()
+            .putString("save_path", "Downloads/SnapCrop")
+            .putBoolean("delete_original", true)
+            .commit()
+
+        val outcome = SettingsBackup.importFromStream(target, backup.toString().byteInputStream())
+            as SettingsBackup.ImportOutcome.Rejected
+
+        assertEquals(SettingsBackup.ImportRejectReason.INVALID_STRUCTURED_VALUE, outcome.reason)
+        assertEquals(1, outcome.ignoredUnknownCount)
+        assertEquals(1, outcome.ignoredInvalidCount)
+        assertEquals("Downloads/SnapCrop", target.getString("save_path", null))
+        assertTrue(target.getBoolean("delete_original", false))
+    }
+
+    @Test
+    fun duplicateAndOutOfRangePresetPayloadsRejectAtomically() {
+        val target = preferences("preset_validation_target")
+        target.edit().putString("save_path", "Downloads/SnapCrop").commit()
+        val source = preferences("preset_validation_source")
+        source.edit()
+            .putString("save_path", "Pictures/SnapCrop")
+            .putString(
+                ExportPresetStore.PREF_PRESETS,
+                """{"version":1,"presets":[{"id":"preset-one","name":"Docs","settings":{"format":"jpeg","quality":101,"targetSizeEnabled":true,"targetSizeKb":500,"targetSizeAllowResize":true,"borderSize":0,"borderColor":0,"watermarkEnabled":false,"watermarkText":"SnapCrop","filenameTemplate":"SnapCrop_%timestamp%","savePath":"Pictures/SnapCrop"}}]}""",
+            )
+            .commit()
+
+        assertNull(SettingsBackup.importWithReport(target, SettingsBackup.export(source)))
+        assertEquals("Downloads/SnapCrop", target.getString("save_path", null))
+
+        source.edit().putString(
+            DrawStylePresetStore.KEY,
+            """[{"name":"Pen","color":-65536,"strokeWidth":6,"dashed":false,"tool":"PEN"},{"name":"pen","color":-65536,"strokeWidth":7,"dashed":false,"tool":"PEN"}]""",
+        ).commit()
+        assertNull(SettingsBackup.importWithReport(target, SettingsBackup.export(source)))
+        assertEquals("Downloads/SnapCrop", target.getString("save_path", null))
+    }
+
+    @Test
+    fun presetSelectionsMustResolveInsideTheStagedPayload() {
+        val source = preferences("preset_reference_source")
+        source.edit()
+            .putString(ExportPresetStore.PREF_EDITOR_PRESET_ID, "missing-preset")
+            .putString(DrawStylePresetStore.KEY_DEFAULT, "Missing pen")
+            .commit()
+        val target = preferences("preset_reference_target")
+        target.edit().putBoolean("delete_original", true).commit()
+
+        val outcome = SettingsBackup.importFromStream(
+            target,
+            SettingsBackup.export(source).toString().byteInputStream(),
+        ) as SettingsBackup.ImportOutcome.Rejected
+
+        assertEquals(SettingsBackup.ImportRejectReason.INVALID_STRUCTURED_VALUE, outcome.reason)
+        assertEquals(1, outcome.ignoredInvalidCount)
+        assertTrue(target.getBoolean("delete_original", false))
     }
 
     private fun preferences(name: String) =
