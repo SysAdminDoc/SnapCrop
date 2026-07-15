@@ -186,6 +186,12 @@ are blocked behind explicit opt-in and evaluation gates.
 - Add local multiline notes and schedule, change, or cancel one-time reminders;
   note text participates in Gallery search, reminder notifications reveal no
   screenshot content, and taps reopen only the exact original media identity
+- Export selected collections, notes/future reminders, and Unfiled inbox decisions
+  from Settings as a bounded versioned JSON document. Import first dry-runs
+  SHA-256/media-hint relinking and reports matched, ambiguous, missing, and
+  conflicting entries; confirmation merges atomically without overwriting local
+  note/reminder conflicts. Media, OCR text, source URLs, credentials, and reminder
+  tokens are never included.
 - Retain an explicit page/app source URL or label through edited copies and project
   reopen; add/edit/open it from the editor or Gallery, and choose per share whether
   the canonical link is included (off by default)
@@ -350,9 +356,10 @@ disclosed below; optional exports and automatic update checks are off by default
 - Android app-data backup is disabled so local paths, favorites, automation
   toggles, and export preferences are not silently backed up by SnapCrop. The
   manual Settings backup is a versioned, typed allowlist: it excludes network
-  credentials, transient capture state, screenshot notes, reminders, and local
-  Unfiled inbox decisions;
+  credentials, transient capture state, and Library organization;
   migrates supported legacy keys; and reports unknown or invalid entries.
+  Library organization has a separate explicit metadata export/import with a
+  read-only relinking preview and conflict-preserving atomic commit.
 
 ### Network and ML Kit disclosure
 

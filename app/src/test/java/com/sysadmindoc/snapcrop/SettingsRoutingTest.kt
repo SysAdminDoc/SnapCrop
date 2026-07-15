@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop
 
 import java.io.File
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -53,6 +54,26 @@ class SettingsRoutingTest {
         assertTrue(backup.contains("onMalformedInput(CodingErrorAction.REPORT)"))
         assertTrue(backup.contains("SettingsPreferenceSchema.removeRestorableKeys(editor)"))
         assertTrue(backup.contains("if (!editor.commit())"))
+    }
+
+    @Test
+    fun libraryMetadataUsesSeparatePickerPreviewAndCommitRoutes() {
+        val settings = source("SettingsActivity.kt")
+        val transfer = source("LibraryMetadataTransfer.kt")
+        val store = source("ScreenshotIndexStore.kt")
+
+        assertTrue(settings.contains("CreateDocument(LibraryMetadataCodec.MIME_TYPE)"))
+        assertTrue(settings.contains("libraryMetadataTransfer.prepareImport(uri)"))
+        assertTrue(settings.contains("libraryMetadataTransfer.commitImport(prepared)"))
+        assertTrue(settings.contains("prepared.report.ambiguous"))
+        assertTrue(settings.contains("prepared.report.conflicting"))
+        assertTrue(store.contains("db.withTransaction"))
+        assertTrue(store.contains("dao.applyLibraryMetadataPlan(plan, now)"))
+        assertTrue(transfer.contains("ScreenshotReminderScheduler.schedule"))
+        assertFalse(transfer.contains("recognizedText"))
+        assertFalse(transfer.contains("reminderToken"))
+        assertFalse(transfer.contains("sourceUrl"))
+        assertFalse(transfer.contains("NetworkCredentialStore"))
     }
 
     private fun source(name: String): String =

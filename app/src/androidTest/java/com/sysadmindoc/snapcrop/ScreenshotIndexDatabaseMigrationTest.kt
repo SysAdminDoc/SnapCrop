@@ -493,6 +493,89 @@ class ScreenshotIndexDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun libraryMetadataPlanAppliesAtomicallyAndReplansIdempotently() = runBlocking<Unit> {
+        val database = Room.inMemoryDatabaseBuilder(context, ScreenshotIndexDatabase::class.java).build()
+        try {
+            val dao = database.dao()
+            val media = LibraryMediaIdentity(
+                uri = "content://media/external/images/media/42",
+                dateAdded = 42,
+                name = "Screenshot_42.png",
+                albumPath = "Pictures/Screenshots/",
+                size = 1042,
+                width = 1080,
+                height = 2400,
+                mimeType = "image/png",
+            )
+            val document = LibraryMetadataDocument(
+                exportedAt = 100,
+                selection = LibraryMetadataSelection(),
+                media = listOf(
+                    LibraryMetadataMedia(
+                        "m1", media.uri, media.dateAdded, media.name, media.albumPath,
+                        media.size, media.width, media.height, media.mimeType, null,
+                    )
+                ),
+                collections = listOf(LibraryMetadataCollection("Research", 1, 2, listOf("m1"))),
+                notes = listOf(LibraryMetadataNote("m1", "Keep this", 10_000, 3, 4)),
+                triage = listOf(LibraryMetadataTriage("m1", 5)),
+            )
+            val empty = LibraryMetadataLocalSnapshot(
+                listOf(media), emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(),
+            )
+            val first = LibraryMetadataPlanner.plan(document, empty, now = 1_000)
+
+            dao.applyLibraryMetadataPlan(first, now = 1_000)
+
+            val collection = dao.getAllCollections().single()
+            val after = LibraryMetadataLocalSnapshot(
+                media = listOf(media),
+                collections = listOf(collection),
+                collectionItems = dao.getAllCollectionItems(),
+                notes = dao.getAllNoteReminders(),
+                triage = dao.getMediaTriage(),
+                exactSha256ByMedia = emptyMap(),
+            )
+            val second = LibraryMetadataPlanner.plan(document, after, now = 1_000)
+            assertEquals(0, second.report.changes)
+            assertEquals(1, dao.getAllCollectionItems().size)
+            assertEquals("Keep this", dao.getAllNoteReminders().single().note)
+            assertEquals(1, dao.getMediaTriage().size)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun failedLibraryMetadataPlanRollsBackEarlierRows() = runBlocking<Unit> {
+        val database = Room.inMemoryDatabaseBuilder(context, ScreenshotIndexDatabase::class.java).build()
+        try {
+            val dao = database.dao()
+            val plan = LibraryMetadataImportPlan(
+                report = LibraryMetadataImportReport(0, 0, 0, 0, 2, 0, 0, 0, 0),
+                collectionChanges = listOf(
+                    LibraryCollectionChange("Research", 1, 1, emptyList()),
+                    LibraryCollectionChange("Invalid\u0000name", 1, 1, emptyList()),
+                ),
+                noteChanges = emptyList(),
+                triageChanges = emptyList(),
+            )
+
+            var rejected = false
+            try {
+                dao.applyLibraryMetadataPlan(plan, now = 2)
+            } catch (_: IllegalArgumentException) {
+                rejected = true
+            }
+
+            assertTrue(rejected)
+            assertTrue(dao.getAllCollections().isEmpty())
+        } finally {
+            database.close()
+        }
+    }
+
     private fun sampleRow(id: Long) = ScreenshotIndexRow(
         mediaId = id,
         uri = "content://media/external/images/media/$id",

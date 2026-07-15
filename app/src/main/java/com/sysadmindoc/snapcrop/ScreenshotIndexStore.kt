@@ -22,6 +22,7 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.withTransaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -550,6 +551,9 @@ internal interface ScreenshotIndexDao {
     @Query("SELECT * FROM manual_collection WHERE normalized_name = :normalizedName LIMIT 1")
     suspend fun getCollectionByName(normalizedName: String): ManualCollectionRow?
 
+    @Query("SELECT * FROM manual_collection ORDER BY normalized_name")
+    suspend fun getAllCollections(): List<ManualCollectionRow>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCollection(row: ManualCollectionRow): Long
 
@@ -609,6 +613,50 @@ internal interface ScreenshotIndexDao {
     @Query("DELETE FROM manual_collection_item WHERE collection_id = :collectionId AND media_uri IN (:mediaUris)")
     suspend fun deleteCollectionItems(collectionId: Long, mediaUris: List<String>): Int
 
+    @Transaction
+    suspend fun applyLibraryMetadataPlan(plan: LibraryMetadataImportPlan, now: Long) {
+        plan.collectionChanges.forEach { change ->
+            val normalized = ManualCollectionNames.normalize(change.name)
+            val existing = getCollectionByName(normalized.key)
+            val collectionId = existing?.id ?: insertCollection(
+                ManualCollectionRow(
+                    name = normalized.display,
+                    normalizedName = normalized.key,
+                    createdAt = change.createdAt.coerceAtLeast(0),
+                    updatedAt = change.updatedAt.coerceAtLeast(change.createdAt.coerceAtLeast(0)),
+                )
+            )
+            if (change.items.isNotEmpty()) {
+                upsertCollectionItems(change.items.map { item ->
+                    ManualCollectionItemRow(
+                        collectionId = collectionId,
+                        mediaUri = item.uri,
+                        mediaDateAdded = item.dateAdded,
+                        addedAt = now,
+                    )
+                })
+            }
+        }
+        plan.noteChanges.forEach { change ->
+            upsertNoteReminder(
+                ScreenshotNoteReminderRow(
+                    mediaUri = change.media.uri,
+                    mediaDateAdded = change.media.dateAdded,
+                    note = change.note,
+                    reminderAt = change.reminderAt,
+                    reminderToken = change.reminderAt?.let { java.util.UUID.randomUUID().toString() },
+                    createdAt = change.createdAt,
+                    updatedAt = now,
+                )
+            )
+        }
+        if (plan.triageChanges.isNotEmpty()) {
+            upsertMediaTriage(plan.triageChanges.map { change ->
+                MediaTriageRow(change.media.uri, change.media.dateAdded, change.triagedAt)
+            })
+        }
+    }
+
     @Query("SELECT * FROM media_source_context ORDER BY updated_at DESC")
     fun observeSourceContexts(): Flow<List<MediaSourceContextRow>>
 
@@ -626,6 +674,9 @@ internal interface ScreenshotIndexDao {
 
     @Query("SELECT * FROM media_note_reminder ORDER BY updated_at DESC")
     fun observeNoteReminders(): Flow<List<ScreenshotNoteReminderRow>>
+
+    @Query("SELECT * FROM media_note_reminder ORDER BY updated_at DESC")
+    suspend fun getAllNoteReminders(): List<ScreenshotNoteReminderRow>
 
     @Query("SELECT * FROM media_note_reminder WHERE media_uri = :uri AND media_date_added = :dateAdded LIMIT 1")
     suspend fun getNoteReminder(uri: String, dateAdded: Long): ScreenshotNoteReminderRow?
@@ -895,7 +946,8 @@ internal object ScreenshotIndexMigrations {
  */
 class ScreenshotIndexStore(context: Context) {
     private val appContext = context.applicationContext
-    private val dao = database(appContext).dao()
+    private val db = database(appContext)
+    private val dao = db.dao()
 
     suspend fun syncFromMediaStore(
         resolver: ContentResolver,
@@ -1092,6 +1144,40 @@ class ScreenshotIndexStore(context: Context) {
     }
 
     suspend fun count(): Int = dao.count()
+
+    internal suspend fun libraryMetadataSnapshot(): LibraryMetadataLocalSnapshot =
+        db.withTransaction { libraryMetadataSnapshotLocked() }
+
+    internal suspend fun commitLibraryMetadata(
+        document: LibraryMetadataDocument,
+        localMedia: List<LibraryMediaIdentity>,
+        now: Long = System.currentTimeMillis(),
+    ): LibraryMetadataCommitResult = db.withTransaction {
+        val plan = LibraryMetadataPlanner.plan(
+            document = document,
+            local = libraryMetadataSnapshotLocked().copy(media = localMedia),
+            now = now,
+        )
+        dao.applyLibraryMetadataPlan(plan, now)
+        LibraryMetadataCommitResult(
+            report = plan.report,
+            remindersToSchedule = plan.noteChanges.filter { it.reminderAt != null }.mapNotNull { change ->
+                dao.getNoteReminder(change.media.uri, change.media.dateAdded)?.toNoteReminder()
+            },
+        )
+    }
+
+    private suspend fun libraryMetadataSnapshotLocked(): LibraryMetadataLocalSnapshot =
+        LibraryMetadataLocalSnapshot(
+            media = dao.getAll().map { row -> row.toLibraryMediaIdentity() },
+            collections = dao.getAllCollections(),
+            collectionItems = dao.getAllCollectionItems(),
+            notes = dao.getAllNoteReminders(),
+            triage = dao.getMediaTriage(),
+            exactSha256ByMedia = dao.getDuplicateFingerprints().mapNotNull { row ->
+                row.exactSha256?.let { (row.mediaUri to row.mediaDateAdded) to it }
+            }.toMap(),
+        )
 
     fun observeCollections(): Flow<List<ManualCollectionSummary>> = dao.observeCollections()
 

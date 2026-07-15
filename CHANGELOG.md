@@ -4,6 +4,11 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Added explicit, selective Library metadata export/import for collections,
+  notes, future reminders, and Unfiled inbox decisions. The bounded v1 document
+  excludes credentials, OCR, source context, reminder tokens, and media; import
+  dry-runs SHA-256/hint relinking with matched/ambiguous/missing/conflict counts,
+  then commits an idempotent conflict-preserving merge in one Room transaction.
 - External OCR dial, email, and browser handoffs plus Settings web links now
   verify a compatible handler before launch and report launched, unavailable,
   or failed outcomes. Unavailable/failed actions offer a localized Copy value

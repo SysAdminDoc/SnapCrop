@@ -124,6 +124,11 @@ class SettingsActivity : ComponentActivity() {
                 val testDefaultStr = stringResource(R.string.rules_test_default)
                 val testTestingStr = stringResource(R.string.rules_test_testing)
                 var appRuleTestStatus by remember { mutableStateOf(testDefaultStr) }
+                val libraryMetadataTransfer = remember { LibraryMetadataTransfer(this@SettingsActivity) }
+                var showMetadataExportDialog by remember { mutableStateOf(false) }
+                var metadataExportSelection by remember { mutableStateOf(LibraryMetadataSelection()) }
+                var preparedMetadataImport by remember { mutableStateOf<PreparedLibraryMetadataImport?>(null) }
+                var metadataTransferBusy by remember { mutableStateOf(false) }
                 val appRuleTestLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.GetContent()
                 ) { uri ->
@@ -142,6 +147,55 @@ class SettingsActivity : ComponentActivity() {
                 val backupImportLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocument()
                 ) { uri -> if (uri != null) importSettings(uri, prefs) }
+                val metadataExportLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.CreateDocument(LibraryMetadataCodec.MIME_TYPE)
+                ) { uri ->
+                    if (uri != null) {
+                        val selection = metadataExportSelection
+                        lifecycleScope.launch {
+                            metadataTransferBusy = true
+                            val outcome = runCatching { libraryMetadataTransfer.export(uri, selection) }
+                            metadataTransferBusy = false
+                            outcome.onSuccess { report ->
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    getString(
+                                        R.string.settings_library_metadata_export_done,
+                                        report.media,
+                                        report.collections,
+                                        report.notes,
+                                        report.reminders,
+                                        report.inboxDecisions,
+                                    ),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }.onFailure { error ->
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    libraryMetadataErrorMessage(error),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        }
+                    }
+                }
+                val metadataImportLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.OpenDocument()
+                ) { uri ->
+                    if (uri != null) lifecycleScope.launch {
+                        metadataTransferBusy = true
+                        val outcome = runCatching { libraryMetadataTransfer.prepareImport(uri) }
+                        metadataTransferBusy = false
+                        outcome.onSuccess { preparedMetadataImport = it }
+                            .onFailure { error ->
+                                Toast.makeText(
+                                    this@SettingsActivity,
+                                    libraryMetadataErrorMessage(error),
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                    }
+                }
                 val archiveManagementLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.StartActivityForResult()
                 ) {
@@ -288,6 +342,153 @@ class SettingsActivity : ComponentActivity() {
                     ExternalActionFallbackDialog(
                         fallback = fallback,
                         onDismiss = { externalActionFallback = null },
+                    )
+                }
+
+                if (showMetadataExportDialog) {
+                    AlertDialog(
+                        onDismissRequest = { if (!metadataTransferBusy) showMetadataExportDialog = false },
+                        title = { Text(stringResource(R.string.settings_library_metadata_export_title), color = OnSurface) },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Text(
+                                    stringResource(R.string.settings_library_metadata_export_disclosure),
+                                    color = OnSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                LibraryMetadataSelectionRow(
+                                    title = stringResource(R.string.settings_library_metadata_collections),
+                                    checked = metadataExportSelection.collections,
+                                    enabled = !metadataTransferBusy,
+                                    onCheckedChange = {
+                                        metadataExportSelection = metadataExportSelection.copy(collections = it)
+                                    },
+                                )
+                                LibraryMetadataSelectionRow(
+                                    title = stringResource(R.string.settings_library_metadata_notes),
+                                    checked = metadataExportSelection.notesAndReminders,
+                                    enabled = !metadataTransferBusy,
+                                    onCheckedChange = {
+                                        metadataExportSelection = metadataExportSelection.copy(notesAndReminders = it)
+                                    },
+                                )
+                                LibraryMetadataSelectionRow(
+                                    title = stringResource(R.string.settings_library_metadata_inbox),
+                                    checked = metadataExportSelection.inboxDecisions,
+                                    enabled = !metadataTransferBusy,
+                                    onCheckedChange = {
+                                        metadataExportSelection = metadataExportSelection.copy(inboxDecisions = it)
+                                    },
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !metadataExportSelection.isEmpty && !metadataTransferBusy,
+                                onClick = {
+                                    showMetadataExportDialog = false
+                                    metadataExportLauncher.launch("snapcrop-library-metadata-v1.json")
+                                },
+                            ) { Text(stringResource(R.string.settings_backup_export), color = Primary) }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                enabled = !metadataTransferBusy,
+                                onClick = { showMetadataExportDialog = false },
+                            ) { Text(stringResource(R.string.cancel), color = OnSurfaceVariant) }
+                        },
+                        containerColor = SurfaceVariant,
+                    )
+                }
+
+                preparedMetadataImport?.let { prepared ->
+                    AlertDialog(
+                        onDismissRequest = { if (!metadataTransferBusy) preparedMetadataImport = null },
+                        title = { Text(stringResource(R.string.settings_library_metadata_preview_title), color = OnSurface) },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState())) {
+                                Text(
+                                    stringResource(
+                                        R.string.settings_library_metadata_match_report,
+                                        prepared.report.matched,
+                                        prepared.report.ambiguous,
+                                        prepared.report.missing,
+                                        prepared.report.conflicting,
+                                    ),
+                                    color = OnSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    stringResource(
+                                        R.string.settings_library_metadata_change_report,
+                                        prepared.report.collectionsCreated,
+                                        prepared.report.membershipsAdded,
+                                        prepared.report.notesAdded,
+                                        prepared.report.remindersAdded,
+                                        prepared.report.inboxDecisionsAdded,
+                                    ),
+                                    color = OnSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                if (prepared.report.conflicting > 0) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        stringResource(R.string.settings_library_metadata_conflict_policy),
+                                        color = Warning,
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = prepared.report.changes > 0 && !metadataTransferBusy,
+                                onClick = {
+                                    lifecycleScope.launch {
+                                        metadataTransferBusy = true
+                                        val outcome = runCatching {
+                                            libraryMetadataTransfer.commitImport(prepared)
+                                        }
+                                        metadataTransferBusy = false
+                                        preparedMetadataImport = null
+                                        outcome.onSuccess { report ->
+                                            Toast.makeText(
+                                                this@SettingsActivity,
+                                                if (report.reminderSchedulingFailed == 0) {
+                                                    getString(
+                                                        R.string.settings_library_metadata_import_done,
+                                                        report.changes,
+                                                        report.conflicting,
+                                                    )
+                                                } else {
+                                                    getString(
+                                                        R.string.settings_library_metadata_import_reminder_failed,
+                                                        report.changes,
+                                                        report.conflicting,
+                                                        report.reminderSchedulingFailed,
+                                                    )
+                                                },
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }.onFailure { error ->
+                                            Toast.makeText(
+                                                this@SettingsActivity,
+                                                libraryMetadataErrorMessage(error),
+                                                Toast.LENGTH_LONG,
+                                            ).show()
+                                        }
+                                    }
+                                },
+                            ) { Text(stringResource(R.string.settings_library_metadata_import_confirm), color = Primary) }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                enabled = !metadataTransferBusy,
+                                onClick = { preparedMetadataImport = null },
+                            ) { Text(stringResource(R.string.cancel), color = OnSurfaceVariant) }
+                        },
+                        containerColor = SurfaceVariant,
                     )
                 }
 
@@ -1776,6 +1977,54 @@ class SettingsActivity : ComponentActivity() {
                         ) { Text(stringResource(R.string.settings_backup_import), fontSize = 13.sp) }
                     }
 
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        stringResource(R.string.settings_library_metadata_title),
+                        color = OnSurface,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                    )
+                    Text(
+                        stringResource(R.string.settings_library_metadata_hint),
+                        color = OnSurfaceVariant,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                        FilledTonalButton(
+                            enabled = !metadataTransferBusy,
+                            onClick = { showMetadataExportDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = PrimaryContainer,
+                                contentColor = Primary,
+                            ),
+                        ) { Text(stringResource(R.string.settings_library_metadata_export), fontSize = 13.sp) }
+                        FilledTonalButton(
+                            enabled = !metadataTransferBusy,
+                            onClick = { metadataImportLauncher.launch(arrayOf(LibraryMetadataCodec.MIME_TYPE)) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = SurfaceVariant,
+                                contentColor = OnSurface,
+                            ),
+                        ) { Text(stringResource(R.string.settings_library_metadata_import), fontSize = 13.sp) }
+                    }
+                    if (metadataTransferBusy) {
+                        Row(
+                            modifier = Modifier.padding(top = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Text(
+                                stringResource(R.string.settings_library_metadata_working),
+                                color = OnSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+
                     Spacer(Modifier.height(20.dp))
 
                     // About
@@ -2131,6 +2380,16 @@ class SettingsActivity : ComponentActivity() {
         }
     }
 
+    private fun libraryMetadataErrorMessage(error: Throwable): String = when (
+        (error as? LibraryMetadataFormatException)?.reason
+    ) {
+        LibraryMetadataFormatReason.TOO_LARGE -> getString(R.string.settings_library_metadata_error_too_large)
+        LibraryMetadataFormatReason.LEGACY_VERSION -> getString(R.string.settings_library_metadata_error_legacy)
+        LibraryMetadataFormatReason.FUTURE_VERSION -> getString(R.string.settings_library_metadata_error_future)
+        LibraryMetadataFormatReason.INVALID -> getString(R.string.settings_library_metadata_error_invalid)
+        null -> getString(R.string.settings_library_metadata_error_io)
+    }
+
     private fun exportSettings(uri: Uri, prefs: SharedPreferences) {
         lifecycleScope.launch {
             val exported = withContext(Dispatchers.IO) {
@@ -2283,6 +2542,31 @@ class SettingsActivity : ComponentActivity() {
 }
 
 private data class CrashSharePreview(val file: File, val report: String)
+
+@Composable
+private fun LibraryMetadataSelectionRow(
+    title: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onValueChange = onCheckedChange,
+            )
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null, enabled = enabled)
+        Spacer(Modifier.width(8.dp))
+        Text(title, color = if (enabled) OnSurface else OnSurfaceVariant)
+    }
+}
 
 @Composable
 internal fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
