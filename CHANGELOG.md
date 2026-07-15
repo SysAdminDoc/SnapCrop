@@ -13,6 +13,10 @@ All notable changes to SnapCrop will be documented in this file.
 - Unified Stitch, Collage, and Device Frame behind bounds-first 20 MP / 128 MiB
   raster budgets, typed per-input failures, explicit omission confirmation, direct
   one-source-at-a-time rendering, and transactional MediaStore publication.
+- Replaced editor draft overwrites with debounced, size-bounded, fsynced atomic
+  checkpoints; cold launches now offer validated recovery, preserve missing-source
+  drafts for relinking, and quarantine interrupted or corrupt files without deleting
+  the last committed edit.
 
 ## [v6.89.0] - 2026-07-13
 

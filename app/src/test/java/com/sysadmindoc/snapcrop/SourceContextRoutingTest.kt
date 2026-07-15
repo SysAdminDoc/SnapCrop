@@ -14,7 +14,8 @@ class SourceContextRoutingTest {
         val project = source("SnapCropProjectSidecar.kt")
 
         assertTrue(crop.contains("ExplicitSourceContext.fromIntent(incomingIntent, referrer)"))
-        assertTrue(crop.contains("sourceContext = explicitSourceContext.value"))
+        assertTrue(crop.contains("sourceSnapshot.context"))
+        assertTrue(crop.contains("explicitSourceContext.value"))
         assertTrue(project.contains("private const val VERSION = 5"))
         assertTrue(gallery.contains("observeSourceContexts()"))
         assertTrue(gallery.contains("GalleryFailureSource.SOURCE_CONTEXT_DATABASE"))

@@ -99,6 +99,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.BackHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.min
@@ -136,6 +137,7 @@ fun CropEditorScreen(
     onOcrReviewedChanged: (Boolean) -> Unit = {},
     onExportPresetChanged: (String?) -> Unit = {},
     registerStateProvider: ((() -> EditorDraft)?) -> Unit = {},
+    onDraftChanged: () -> Unit = {},
     replaceOriginalOnSave: Boolean
 ) {
     val imageBitmap = remember(bitmap) { bitmap.asImageBitmap() }
@@ -1045,20 +1047,27 @@ fun CropEditorScreen(
 
     fun currentCropRect() = Rect(cropLeft, cropTop, cropRight, cropBottom)
 
+    fun currentEditorDraft() = EditorDraft(
+        currentCropRect(),
+        redactions.map { it.copy() },
+        drawPaths.toList(),
+        exportAdjustments(),
+        ocrBlocks.map(TextBlock::deepCopy),
+        ocrScanCompleted,
+        CutoutEditState(cutBands, cutSeparatorStyle),
+    )
+
     // Let the host pull the live editor state to checkpoint a draft across process death.
     DisposableEffect(Unit) {
-        registerStateProvider {
-            EditorDraft(
-                currentCropRect(),
-                redactions.map { it.copy() },
-                drawPaths.toList(),
-                exportAdjustments(),
-                ocrBlocks.map(TextBlock::deepCopy),
-                ocrScanCompleted,
-                CutoutEditState(cutBands, cutSeparatorStyle),
-            )
-        }
+        registerStateProvider(::currentEditorDraft)
         onDispose { registerStateProvider(null) }
+    }
+
+    val currentDraftChangedCallback by rememberUpdatedState(onDraftChanged)
+    LaunchedEffect(Unit) {
+        snapshotFlow { currentEditorDraft() to replaceOriginalOnSave }
+            .drop(1)
+            .collect { currentDraftChangedCallback() }
     }
 
     fun resetCrop() {

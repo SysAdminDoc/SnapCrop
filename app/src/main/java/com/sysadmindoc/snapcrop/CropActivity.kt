@@ -79,8 +79,11 @@ import com.sysadmindoc.snapcrop.ui.theme.Danger
 import com.sysadmindoc.snapcrop.ui.theme.Black
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -102,10 +105,18 @@ private data class ShareRedactionCandidate(
     val categories: Set<SensitiveTextCategory>,
 )
 
+private data class DraftSourceSnapshot(
+    val uri: Uri,
+    val width: Int,
+    val height: Int,
+    val context: ExplicitSourceContext?,
+)
+
 class CropActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SHOW_FLASH = "show_flash"
+        private const val DRAFT_DEBOUNCE_MILLIS = 750L
         private const val KEY_HAS_DRAFT = "has_editor_draft"
         private const val KEY_MUTATION_PURPOSE = "source_mutation_purpose"
         private const val KEY_MUTATION_MESSAGE = "source_mutation_message"
@@ -124,7 +135,12 @@ class CropActivity : ComponentActivity() {
     private var sourceUri: Uri? = null
     private var selectedExportPresetId: String? = null
     private var draftStateProvider: (() -> EditorDraft)? = null
-    private val draftFile get() = File(filesDir, "editor_draft.json")
+    private val draftStore by lazy { EditorDraftStore(filesDir) }
+    private val draftCheckpointScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var draftCheckpointJob: Job? = null
+    private val pendingDraftRecovery = mutableStateOf<SnapCropProject?>(null)
+    private val draftRecoveryBlocked = mutableStateOf(false)
+    @Volatile private var restoringDraft = false
     private var intentSourceHints: List<String> = emptyList()
     private var currentCropHints: List<String> = emptyList()
     private val explicitSourceContext = mutableStateOf<ExplicitSourceContext?>(null)
@@ -261,6 +277,7 @@ class CropActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        pendingDraftRecovery.value = null
         handleIntent(intent)
     }
 
@@ -274,17 +291,6 @@ class CropActivity : ComponentActivity() {
         pendingReplacementUri = savedInstanceState?.getString(KEY_REPLACEMENT_URI)?.let(Uri::parse)
         pendingReplacementDateAdded = savedInstanceState?.getLong(KEY_REPLACEMENT_DATE, -1L) ?: -1L
         pendingReplacedSourceDateAdded = savedInstanceState?.getLong(KEY_REPLACED_SOURCE_DATE, -1L) ?: -1L
-        // Restore an in-progress edit checkpointed before a process death; otherwise open the intent.
-        val draft = if (savedInstanceState?.getBoolean(KEY_HAS_DRAFT) == true) {
-            runCatching { draftFile.takeIf { it.exists() }?.readText() }.getOrNull()
-        } else null
-        if (draft != null) {
-            runCatching { draftFile.delete() }
-            loadProjectFromJson(draft)
-        } else {
-            handleIntent(intent)
-        }
-
         setContent {
             SnapCropTheme {
                 val showDeleteConfirm = remember { mutableStateOf(false) }
@@ -320,13 +326,14 @@ class CropActivity : ComponentActivity() {
                                 }.apply()
                             },
                             registerStateProvider = { provider -> draftStateProvider = provider },
+                            onDraftChanged = { scheduleDraftCheckpoint(DRAFT_DEBOUNCE_MILLIS) },
                             onSave = { rect, redactions, draw, adj, cutout -> saveCropped(bmp, rect, redactions, draw, adj, cutout, deleteOriginal = effectiveDeleteOriginalOnSave()) },
                             onSaveCopy = { rect, redactions, draw, adj, cutout -> saveCropped(bmp, rect, redactions, draw, adj, cutout, deleteOriginal = false) },
                             onShare = { rect, redactions, draw, adj, cutout -> shareCropped(bmp, rect, redactions, draw, adj, cutout) },
                             onCopyClipboard = { rect, redactions, draw, adj, cutout -> copyToClipboard(bmp, rect, redactions, draw, adj, cutout) },
                             hasSourceContext = explicitSourceContext.value != null,
                             onEditSourceContext = { showSourceContextEditor.value = true },
-                            onDiscard = { finish() },
+                            onDiscard = ::discardDraftAndFinish,
                             onDelete = { showDeleteConfirm.value = true },
                             onAutoCrop = {
                                 val sbPx = SystemBars.statusBarHeight(resources)
@@ -438,7 +445,43 @@ class CropActivity : ComponentActivity() {
                             message = message,
                             canRelink = projectCanRelink.value,
                             onRelink = { projectSourcePicker.launch(arrayOf("image/*")) },
-                            onClose = { finish() },
+                            onClose = ::discardDraftAndFinish,
+                        )
+                    }
+
+                    pendingDraftRecovery.value?.let { project ->
+                        AlertDialog(
+                            onDismissRequest = {},
+                            title = { Text(stringResource(R.string.crop_draft_recovery_title)) },
+                            text = { Text(stringResource(R.string.crop_draft_recovery_message)) },
+                            confirmButton = {
+                                TextButton(onClick = { restoreDraft(project) }) {
+                                    Text(stringResource(R.string.crop_draft_restore))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = ::discardDraftAndContinue) {
+                                    Text(stringResource(R.string.crop_draft_discard))
+                                }
+                            },
+                        )
+                    }
+
+                    if (draftRecoveryBlocked.value) {
+                        AlertDialog(
+                            onDismissRequest = {},
+                            title = { Text(stringResource(R.string.crop_draft_recovery_failed_title)) },
+                            text = { Text(stringResource(R.string.crop_draft_recovery_failed_message)) },
+                            confirmButton = {
+                                TextButton(onClick = ::discardDraftAndContinue) {
+                                    Text(stringResource(R.string.crop_draft_discard_continue))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { finish() }) {
+                                    Text(stringResource(R.string.close))
+                                }
+                            },
                         )
                     }
 
@@ -523,6 +566,7 @@ class CropActivity : ComponentActivity() {
                 }
             }
         }
+        recoverDraftOnLaunch(savedInstanceState?.getBoolean(KEY_HAS_DRAFT) == true)
     }
 
     private fun getDeletePref(): Boolean =
@@ -595,11 +639,123 @@ class CropActivity : ComponentActivity() {
         handleProjectDecode(result, ProjectImportOrigin.EXTERNAL)
     }
 
-    private fun loadProjectFromJson(json: String) {
-        handleProjectDecode(
-            SnapCropProjectSidecar.decodeString(json, ProjectImportOrigin.INTERNAL_DRAFT),
-            ProjectImportOrigin.INTERNAL_DRAFT
+    private fun recoverDraftOnLaunch(restoreWithoutPrompt: Boolean) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = draftStore.readValidated()
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    EditorDraftReadResult.None -> handleIntent(intent)
+                    is EditorDraftReadResult.Ready -> {
+                        if (restoreWithoutPrompt) {
+                            restoreDraft(result.project)
+                        } else {
+                            pendingDraftRecovery.value = result.project
+                            isLoading.value = false
+                        }
+                    }
+                    is EditorDraftReadResult.Quarantined -> {
+                        Toast.makeText(
+                            this@CropActivity,
+                            R.string.crop_draft_quarantined,
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        handleIntent(intent)
+                    }
+                    is EditorDraftReadResult.Failed -> {
+                        draftRecoveryBlocked.value = true
+                        isLoading.value = false
+                    }
+                }
+            }
+        }
+    }
+
+    private fun restoreDraft(project: SnapCropProject) {
+        pendingDraftRecovery.value = null
+        draftRecoveryBlocked.value = false
+        restoringDraft = true
+        isLoading.value = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            handleProjectDecode(
+                ProjectDecodeResult.Success(project),
+                ProjectImportOrigin.INTERNAL_DRAFT,
+            )
+            withContext(Dispatchers.Main) { isLoading.value = false }
+        }
+    }
+
+    private fun discardDraftAndContinue() {
+        draftCheckpointJob?.cancel()
+        draftCheckpointScope.launch {
+            val discarded = draftStore.discard()
+            withContext(Dispatchers.Main) {
+                if (discarded.complete) {
+                    pendingDraftRecovery.value = null
+                    draftRecoveryBlocked.value = false
+                    restoringDraft = false
+                    handleIntent(intent)
+                } else {
+                    Toast.makeText(
+                        this@CropActivity,
+                        R.string.crop_draft_discard_failed,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun discardDraftAndFinish() {
+        draftCheckpointJob?.cancel()
+        draftCheckpointScope.launch {
+            val discarded = draftStore.discard()
+            withContext(Dispatchers.Main) {
+                if (!discarded.complete) {
+                    Toast.makeText(
+                        this@CropActivity,
+                        R.string.crop_draft_discard_failed,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+                finish()
+            }
+        }
+    }
+
+    private fun scheduleDraftCheckpoint(delayMillis: Long): Boolean {
+        val provider = draftStateProvider ?: return false
+        val source = sourceUri ?: return false
+        val bitmap = bitmapState.value ?: return false
+        val draft = runCatching(provider).getOrNull() ?: return false
+        val sourceSnapshot = DraftSourceSnapshot(
+            uri = source,
+            width = bitmap.width,
+            height = bitmap.height,
+            context = explicitSourceContext.value,
         )
+        val exportFormat = getExportFormat(forcePng = false)
+        val exportSettings = currentExportSettings()
+        val deleteOriginal = effectiveDeleteOriginalOnSave()
+        draftCheckpointJob?.cancel()
+        draftCheckpointJob = draftCheckpointScope.launch {
+            if (delayMillis > 0) delay(delayMillis)
+            val json = buildProjectSidecarJson(
+                rect = draft.crop,
+                redactions = draft.redactions,
+                drawPaths = draft.draws,
+                adj = draft.adj,
+                cutout = draft.cutout,
+                ocrBlocks = draft.ocrBlocks,
+                ocrReviewed = draft.ocrReviewed,
+                deleteOriginal = deleteOriginal,
+                exportFormat = exportFormat,
+                savePath = exportSettings.savePath,
+                computeHash = false,
+                sourceSnapshot = sourceSnapshot,
+            )
+            draftStore.write(json)
+        }
+        return true
     }
 
     private fun handleProjectDecode(result: ProjectDecodeResult, origin: ProjectImportOrigin) {
@@ -638,28 +794,8 @@ class CropActivity : ComponentActivity() {
         pendingReplacementUri?.let { outState.putString(KEY_REPLACEMENT_URI, it.toString()) }
         outState.putLong(KEY_REPLACEMENT_DATE, pendingReplacementDateAdded)
         outState.putLong(KEY_REPLACED_SOURCE_DATE, pendingReplacedSourceDateAdded)
-        // Checkpoint the in-progress edit as a project draft so a low-memory kill doesn't lose work.
-        val provider = draftStateProvider ?: return
-        if (sourceUri == null || bitmapState.value == null) return
-        try {
-            val d = provider()
-            val json = buildProjectSidecarJson(
-                rect = d.crop,
-                redactions = d.redactions,
-                drawPaths = d.draws,
-                adj = d.adj,
-                cutout = d.cutout,
-                ocrBlocks = d.ocrBlocks,
-                ocrReviewed = d.ocrReviewed,
-                deleteOriginal = effectiveDeleteOriginalOnSave(),
-                exportFormat = getExportFormat(forcePng = false),
-                savePath = currentExportSettings().savePath,
-                computeHash = false
-            )
-            draftFile.writeText(json)
-            outState.putBoolean(KEY_HAS_DRAFT, true)
-        } catch (_: Exception) {
-        }
+        // Capture Compose state on main, then encode/fsync/promote on the serialized IO scope.
+        outState.putBoolean(KEY_HAS_DRAFT, scheduleDraftCheckpoint(delayMillis = 0L))
     }
 
     private fun showProjectError(message: String, canRelink: Boolean = false) {
@@ -770,6 +906,19 @@ class CropActivity : ComponentActivity() {
                     initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)
                     initialOcrBlocks.value = project.ocrBlocks.map(TextBlock::deepCopy)
                     initialOcrReviewed.value = project.ocrReviewed
+                    if (restoringDraft) {
+                        restoringDraft = false
+                        val discarded = draftStore.discard()
+                        if (!discarded.complete) {
+                            runOnUiThread {
+                                Toast.makeText(
+                                    this@CropActivity,
+                                    R.string.crop_draft_discard_failed,
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        }
+                    }
                 } else {
                     val statusBarPx = SystemBars.statusBarHeight(resources)
                     val navBarPx = SystemBars.navigationBarHeight(resources)
@@ -1084,9 +1233,10 @@ class CropActivity : ComponentActivity() {
         savePath: String,
         ocrBlocks: List<TextBlock> = initialOcrBlocks.value,
         ocrReviewed: Boolean = initialOcrReviewed.value,
-        computeHash: Boolean = true
+        computeHash: Boolean = true,
+        sourceSnapshot: DraftSourceSnapshot? = null,
     ): String {
-        val source = sourceUri
+        val source = sourceSnapshot?.uri ?: sourceUri
         val bitmap = bitmapState.value
         val limits = SnapCropProjectSidecar.DEFAULT_LIMITS
         var remainingPoints = limits.maxTotalPoints
@@ -1107,8 +1257,8 @@ class CropActivity : ComponentActivity() {
         val project = SnapCropProject(
             sourceUri = source?.toString()?.take(limits.maxUriChars),
             sourceSha256 = if (computeHash) source?.let { sha256OfUri(it) } else null,
-            sourceWidth = bitmap?.width ?: 0,
-            sourceHeight = bitmap?.height ?: 0,
+            sourceWidth = sourceSnapshot?.width ?: bitmap?.width ?: 0,
+            sourceHeight = sourceSnapshot?.height ?: bitmap?.height ?: 0,
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
             cutBands = cutout.bands,
@@ -1125,7 +1275,11 @@ class CropActivity : ComponentActivity() {
             exportQuality = exportFormat.quality,
             exportSavePath = savePath.take(limits.maxPathChars),
             deleteOriginal = deleteOriginal,
-            sourceContext = explicitSourceContext.value
+            sourceContext = if (sourceSnapshot != null) {
+                sourceSnapshot.context
+            } else {
+                explicitSourceContext.value
+            }
         )
         return SnapCropProjectSidecar.encode(project)
     }
@@ -1901,13 +2055,13 @@ class CropActivity : ComponentActivity() {
                     }
                     deleteOriginal -> {
                         Toast.makeText(this, R.string.crop_sidecar_failed_original_retained, Toast.LENGTH_LONG).show()
-                        finish()
+                        discardDraftAndFinish()
                     }
                     else -> {
                         val message = if (requestedSidecarsSaved) detailMessage
                             else getString(R.string.crop_saved_sidecar_omitted)
                         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                        finish()
+                        discardDraftAndFinish()
                     }
                 }
             }
@@ -2149,7 +2303,7 @@ class CropActivity : ComponentActivity() {
                     getString(R.string.crop_copy_saved_original_retained)
                 }
                 Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                finish()
+                discardDraftAndFinish()
             }
             SourceMutationPurpose.DELETE_FROM_EDITOR -> {
                 Toast.makeText(
@@ -2157,15 +2311,12 @@ class CropActivity : ComponentActivity() {
                     if (succeeded) R.string.toast_moved_to_trash else R.string.toast_items_retained,
                     Toast.LENGTH_SHORT
                 ).show()
-                if (succeeded) finish()
+                if (succeeded) discardDraftAndFinish()
             }
         }
     }
 
     override fun onDestroy() {
-        // The draft only exists to survive process death; on a real finish, clean it up so the
-        // source URI + edit geometry don't linger in app-private storage.
-        if (isFinishing) runCatching { draftFile.delete() }
         val current = bitmapState.value
         if (current != null && current !== originalBitmap) current.recycle()
         originalBitmap?.recycle()

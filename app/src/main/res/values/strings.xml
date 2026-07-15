@@ -1504,4 +1504,13 @@
     <string name="compare_region_state">%1$d change regions</string>
     <string name="compare_divider_left">Move divider left</string>
     <string name="compare_divider_right">Move divider right</string>
+    <string name="crop_draft_recovery_title">Recover unfinished edit?</string>
+    <string name="crop_draft_recovery_message">A validated local draft is available. Restore its edits, or discard it and open the requested image.</string>
+    <string name="crop_draft_restore">Restore draft</string>
+    <string name="crop_draft_discard">Discard draft</string>
+    <string name="crop_draft_quarantined">A damaged editor draft was quarantined. Opening the requested image.</string>
+    <string name="crop_draft_recovery_failed_title">Draft recovery unavailable</string>
+    <string name="crop_draft_recovery_failed_message">The draft could not be validated or safely quarantined, so SnapCrop left it untouched.</string>
+    <string name="crop_draft_discard_continue">Discard and continue</string>
+    <string name="crop_draft_discard_failed">The editor draft could not be removed.</string>
 </resources>

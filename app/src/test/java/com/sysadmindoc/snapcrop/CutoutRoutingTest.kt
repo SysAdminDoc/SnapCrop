@@ -14,7 +14,7 @@ class CutoutRoutingTest {
         val preview = source("EditorPreview.kt")
 
         assertTrue(editor.contains("CutoutEditState(cutBands, cutSeparatorStyle)"))
-        assertTrue(activity.contains("cutout = d.cutout"))
+        assertTrue(activity.contains("cutout = draft.cutout"))
         assertTrue(activity.contains("initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)"))
         assertTrue(activity.contains("CropImageRenderer.render(bitmap, rect, redactions, drawPaths, adj, cutout)"))
         assertTrue(activity.contains("buildAnnotationSvg(rect, redactions, drawPaths, cutout)"))
