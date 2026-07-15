@@ -4,6 +4,11 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Added separately opt-in local OCR backfill for uncached screenshots. Every run
+  requires charging and device idle, honors item/source/decoded-pixel/time and
+  retry limits, checkpoints empty/success/failure outcomes, never moves media,
+  exposes queued/indexed/skipped/failed status plus cancellation in Settings and
+  Library, and provides a destructive Clear OCR index action.
 - Added explicit, selective Library metadata export/import for collections,
   notes, future reminders, and Unfiled inbox decisions. The bounded v1 document
   excludes credentials, OCR, source context, reminder tokens, and media; import

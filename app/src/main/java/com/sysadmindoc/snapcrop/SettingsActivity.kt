@@ -74,6 +74,11 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        if (!prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false) &&
+            prefs.getBoolean(OcrBackfillWorker.PREF_ENABLED, false)
+        ) {
+            prefs.edit().putBoolean(OcrBackfillWorker.PREF_ENABLED, false).apply()
+        }
         val initialCredentialStore = NetworkCredentialStore.open(this)
         val (screenW, screenH) = getScreenSize(this)
 
@@ -770,6 +775,13 @@ class SettingsActivity : ComponentActivity() {
                     var screenshotIndexEnabled by remember {
                         mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false))
                     }
+                    var ocrBackfillEnabled by remember {
+                        mutableStateOf(prefs.getBoolean(OcrBackfillWorker.PREF_ENABLED, false))
+                    }
+                    var ocrBackfillStatus by remember {
+                        mutableStateOf(OcrBackfillStatusStore.load(this@SettingsActivity))
+                    }
+                    var showClearOcrIndexDialog by remember { mutableStateOf(false) }
                     val screenshotIndexStore = remember { ScreenshotIndexStore(this@SettingsActivity) }
                     val indexEnabledStr = stringResource(R.string.settings_index_enabled)
                     val indexDisabledStr = stringResource(R.string.settings_index_disabled)
@@ -789,6 +801,12 @@ class SettingsActivity : ComponentActivity() {
                             getString(R.string.settings_index_failed)
                         }
                     }
+                    LaunchedEffect(ocrBackfillEnabled) {
+                        do {
+                            ocrBackfillStatus = OcrBackfillStatusStore.load(this@SettingsActivity)
+                            if (ocrBackfillEnabled) delay(1_000)
+                        } while (ocrBackfillEnabled)
+                    }
                     SettingToggle(
                         modifier = Modifier.settingsAnchor(
                             SettingsDestination.SCREENSHOT_INDEX, settingsRequesters, highlightedDestination
@@ -800,8 +818,31 @@ class SettingsActivity : ComponentActivity() {
                             screenshotIndexEnabled = it
                             prefs.edit().putBoolean(ScreenshotIndexStore.PREF_ENABLED, it).apply()
                             IndexWorker.sync(this@SettingsActivity, it)
+                            if (!it) {
+                                ocrBackfillEnabled = false
+                                prefs.edit().putBoolean(OcrBackfillWorker.PREF_ENABLED, false).apply()
+                                OcrBackfillWorker.sync(this@SettingsActivity, false)
+                            }
                             screenshotIndexStatus = if (it) indexEnabledStr else indexDisabledStr
                         }
+                    )
+                    SettingToggle(
+                        title = stringResource(R.string.settings_ocr_backfill_title),
+                        subtitle = stringResource(R.string.settings_ocr_backfill_subtitle),
+                        checked = ocrBackfillEnabled,
+                        enabled = screenshotIndexEnabled,
+                        onCheckedChange = { enabled ->
+                            ocrBackfillEnabled = enabled
+                            prefs.edit().putBoolean(OcrBackfillWorker.PREF_ENABLED, enabled).apply()
+                            OcrBackfillWorker.sync(this@SettingsActivity, enabled)
+                            ocrBackfillStatus = OcrBackfillStatusStore.load(this@SettingsActivity)
+                            if (enabled) lifecycleScope.launch {
+                                ocrBackfillStatus = OcrBackfillWorker.refreshStatus(
+                                    this@SettingsActivity,
+                                    screenshotIndexStore,
+                                )
+                            }
+                        },
                     )
                     if (screenshotIndexEnabled || revealedDestination == SettingsDestination.SCREENSHOT_INDEX) {
                         Card(
@@ -835,6 +876,13 @@ class SettingsActivity : ComponentActivity() {
                                                     )
                                                     IndexHealthStore.markSuccess(this@SettingsActivity, count)
                                                     screenshotIndexStatus = getString(R.string.settings_index_count, count)
+                                                    if (ocrBackfillEnabled) {
+                                                        ocrBackfillStatus = OcrBackfillWorker.refreshStatus(
+                                                            this@SettingsActivity,
+                                                            screenshotIndexStore,
+                                                        )
+                                                        OcrBackfillWorker.request(this@SettingsActivity)
+                                                    }
                                                     OperationJournal.record(
                                                         this@SettingsActivity, DiagnosticOperation.INDEX,
                                                         DiagnosticStage.COMPLETE, DiagnosticResult.SUCCESS, journalStarted,
@@ -873,6 +921,8 @@ class SettingsActivity : ComponentActivity() {
                                                     screenshotIndexStore.purge()
                                                     IndexHealthStore.clear(this@SettingsActivity)
                                                     screenshotIndexStatus = getString(R.string.settings_index_count, 0)
+                                                    OcrBackfillStatusStore.clear(this@SettingsActivity)
+                                                    ocrBackfillStatus = OcrBackfillStatus()
                                                     android.widget.Toast.makeText(
                                                         this@SettingsActivity,
                                                         getString(R.string.toast_index_purged),
@@ -894,8 +944,87 @@ class SettingsActivity : ComponentActivity() {
                                         Text(stringResource(R.string.settings_purge), color = Danger)
                                     }
                                 }
+                                Spacer(Modifier.height(14.dp))
+                                HorizontalDivider(color = Outline.copy(alpha = 0.55f))
+                                Spacer(Modifier.height(12.dp))
+                                Text(
+                                    stringResource(R.string.settings_ocr_backfill_status_title),
+                                    color = OnSurface,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp,
+                                )
+                                Text(
+                                    stringResource(
+                                        R.string.settings_ocr_backfill_counts,
+                                        ocrBackfillStatus.queued,
+                                        ocrBackfillStatus.indexed,
+                                        ocrBackfillStatus.skipped,
+                                        ocrBackfillStatus.failed,
+                                    ),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                )
+                                if (!ocrBackfillStatus.modelReady) {
+                                    Text(
+                                        stringResource(R.string.settings_ocr_backfill_model_needed),
+                                        color = Warning,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                    )
+                                }
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()),
+                                ) {
+                                    OutlinedButton(
+                                        enabled = ocrBackfillEnabled && !ocrBackfillStatus.running,
+                                        onClick = { OcrBackfillWorker.request(this@SettingsActivity) },
+                                    ) { Text(stringResource(R.string.settings_ocr_backfill_retry)) }
+                                    OutlinedButton(
+                                        enabled = ocrBackfillStatus.running,
+                                        onClick = {
+                                            OcrBackfillWorker.cancelCurrent(this@SettingsActivity)
+                                            ocrBackfillStatus = OcrBackfillStatusStore.load(this@SettingsActivity)
+                                        },
+                                    ) { Text(stringResource(R.string.cancel)) }
+                                    OutlinedButton(onClick = { showClearOcrIndexDialog = true }) {
+                                        Text(stringResource(R.string.settings_ocr_backfill_clear), color = Danger)
+                                    }
+                                }
                             }
                         }
+                    }
+
+                    if (showClearOcrIndexDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showClearOcrIndexDialog = false },
+                            title = { Text(stringResource(R.string.settings_ocr_backfill_clear_title), color = OnSurface) },
+                            text = { Text(stringResource(R.string.settings_ocr_backfill_clear_body), color = OnSurfaceVariant) },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    showClearOcrIndexDialog = false
+                                    ocrBackfillEnabled = false
+                                    lifecycleScope.launch {
+                                        val cleared = runCatching {
+                                            OcrBackfillWorker.clearIndex(this@SettingsActivity, screenshotIndexStore)
+                                        }.getOrDefault(0)
+                                        ocrBackfillStatus = OcrBackfillStatus()
+                                        Toast.makeText(
+                                            this@SettingsActivity,
+                                            getString(R.string.settings_ocr_backfill_cleared, cleared),
+                                            Toast.LENGTH_LONG,
+                                        ).show()
+                                    }
+                                }) { Text(stringResource(R.string.settings_ocr_backfill_clear), color = Danger) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showClearOcrIndexDialog = false }) {
+                                    Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                                }
+                            },
+                            containerColor = SurfaceVariant,
+                        )
                     }
 
                     Spacer(Modifier.height(20.dp))

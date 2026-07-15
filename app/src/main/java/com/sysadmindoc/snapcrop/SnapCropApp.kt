@@ -39,6 +39,7 @@ class SnapCropApp : Application(), SingletonImageLoader.Factory {
         )
         CrashReporter.install(this)
         try { IndexWorker.schedule(this) } catch (_: Exception) {}
+        try { OcrBackfillWorker.schedule(this) } catch (_: Exception) {}
         val manager = getSystemService(NotificationManager::class.java)
 
         // Delete old channel (had higher importance) so Android picks up the new one

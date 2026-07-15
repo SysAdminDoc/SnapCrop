@@ -481,6 +481,34 @@ internal interface ScreenshotIndexDao {
     @Query("SELECT COUNT(*) FROM screenshot_index")
     suspend fun count(): Int
 
+    @Query("""SELECT * FROM screenshot_index
+        WHERE is_screenshot = 1 AND is_video = 0
+        AND recognized_text = ''
+        AND recognized_categories NOT LIKE '%' || :checkpointMarker || '%'
+        ORDER BY date_added DESC, uri DESC LIMIT :limit""")
+    suspend fun getOcrBackfillCandidates(checkpointMarker: String, limit: Int): List<ScreenshotIndexRow>
+
+    @Query("""SELECT COUNT(*) FROM screenshot_index
+        WHERE is_screenshot = 1 AND is_video = 0
+        AND recognized_text = ''
+        AND recognized_categories NOT LIKE '%' || :checkpointMarker || '%'""")
+    suspend fun countOcrBackfillCandidates(checkpointMarker: String): Int
+
+    @Query("""UPDATE screenshot_index SET recognized_categories = :categories,
+        recognized_text = :text, indexed_at = :indexedAt
+        WHERE uri = :uri AND date_added = :dateAdded""")
+    suspend fun updateOcrPayload(
+        uri: String,
+        dateAdded: Long,
+        categories: String,
+        text: String,
+        indexedAt: Long,
+    ): Int
+
+    @Query("""UPDATE screenshot_index SET recognized_categories = '', recognized_text = '',
+        indexed_at = :indexedAt WHERE recognized_categories != '' OR recognized_text != ''""")
+    suspend fun clearOcrPayload(indexedAt: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(row: ScreenshotIndexRow)
 
@@ -1133,6 +1161,7 @@ class ScreenshotIndexStore(context: Context) {
             .trim()
             .take(MAX_RECOGNIZED_TEXT_CHARS)
         val categories = linkedSetOf<String>()
+        categories.add(OCR_CHECKPOINT_MARKER)
         if (codes.isNotEmpty()) categories.add("codes")
         if (SensitiveTextPatterns.containsSensitivePattern(recognizedText)) categories.add("sensitive")
         val updated = existing.copy(
@@ -1142,6 +1171,41 @@ class ScreenshotIndexStore(context: Context) {
         )
         dao.upsert(updated)
     }
+
+    internal suspend fun ocrBackfillCandidates(limit: Int): List<ScreenshotIndexRow> =
+        dao.getOcrBackfillCandidates(OCR_CHECKPOINT_MARKER, limit.coerceIn(1, 100))
+
+    internal suspend fun countOcrBackfillCandidates(): Int =
+        dao.countOcrBackfillCandidates(OCR_CHECKPOINT_MARKER)
+
+    internal suspend fun checkpointOcrBackfill(
+        candidate: ScreenshotIndexRow,
+        text: String,
+    ): Boolean {
+        val normalizedText = text.replace(Regex("\\s+"), " ").trim()
+            .take(MAX_RECOGNIZED_TEXT_CHARS)
+            .lowercase(Locale.ROOT)
+        val categories = linkedSetOf(OCR_CHECKPOINT_MARKER)
+        if (SensitiveTextPatterns.containsSensitivePattern(normalizedText)) categories.add("sensitive")
+        return dao.updateOcrPayload(
+            uri = candidate.uri,
+            dateAdded = candidate.dateAdded,
+            categories = categories.joinToString(","),
+            text = normalizedText,
+            indexedAt = System.currentTimeMillis(),
+        ) == 1
+    }
+
+    internal suspend fun skipOcrBackfill(candidate: ScreenshotIndexRow): Boolean =
+        dao.updateOcrPayload(
+            uri = candidate.uri,
+            dateAdded = candidate.dateAdded,
+            categories = OCR_CHECKPOINT_MARKER,
+            text = "",
+            indexedAt = System.currentTimeMillis(),
+        ) == 1
+
+    suspend fun clearOcrIndex(): Int = dao.clearOcrPayload(System.currentTimeMillis())
 
     suspend fun count(): Int = dao.count()
 
@@ -1705,7 +1769,7 @@ class ScreenshotIndexStore(context: Context) {
 
     private fun ScreenshotIndexRow.toEntry(): ScreenshotIndexEntry {
         val categories = (baseCategories.split(',') + recognizedCategories.split(','))
-            .filter { it.isNotBlank() }
+            .filter { it.isNotBlank() && it != OCR_CHECKPOINT_MARKER }
             .toSet()
         return ScreenshotIndexEntry(
         mediaId = mediaId,
@@ -1752,6 +1816,7 @@ class ScreenshotIndexStore(context: Context) {
 
     companion object {
         const val PREF_ENABLED = "screenshot_index_enabled"
+        internal const val OCR_CHECKPOINT_MARKER = "ocr_indexed"
         private const val MAX_RECOGNIZED_TEXT_CHARS = 8192
         private const val MAX_DUPLICATE_DISMISSALS = 20_000
         private const val DB_NAME = "screenshot_index_room.db"

@@ -441,6 +441,8 @@ fun GalleryScreen(
     var indexEntries by remember { mutableStateOf<Map<String, ScreenshotIndexEntry>>(emptyMap()) }
     var indexEnabled by remember { mutableStateOf(prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)) }
     var indexHealth by remember { mutableStateOf(IndexHealthStore.load(context)) }
+    var ocrBackfillEnabled by remember { mutableStateOf(prefs.getBoolean(OcrBackfillWorker.PREF_ENABLED, false)) }
+    var ocrBackfillStatus by remember { mutableStateOf(OcrBackfillStatusStore.load(context)) }
     var isLoading by remember { mutableStateOf(true) }
     var galleryFailures by remember { mutableStateOf<Set<GalleryFailureSource>>(emptySet()) }
     var reloadGeneration by remember { mutableIntStateOf(0) }
@@ -462,6 +464,13 @@ fun GalleryScreen(
     LaunchedEffect(Unit) {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+    }
+    LaunchedEffect(indexEnabled) {
+        do {
+            ocrBackfillEnabled = prefs.getBoolean(OcrBackfillWorker.PREF_ENABLED, false)
+            ocrBackfillStatus = OcrBackfillStatusStore.load(context)
+            if (indexEnabled) delay(2_000)
+        } while (indexEnabled)
     }
     var pendingDeleteUris by remember { mutableStateOf<List<Uri>?>(null) }
     var showCollectionPicker by remember { mutableStateOf(false) }
@@ -656,6 +665,9 @@ fun GalleryScreen(
                 IndexHealthStore.updateObservedCounts(context, indexEntries.size, eligibleCount)
             }
             indexHealth = IndexHealthStore.load(context)
+            if (prefs.getBoolean(OcrBackfillWorker.PREF_ENABLED, false)) {
+                ocrBackfillStatus = OcrBackfillWorker.refreshStatus(context, collectionStore)
+            }
         }
         indexEnabled = prefs.getBoolean(ScreenshotIndexStore.PREF_ENABLED, false)
         // Photos for the open album are loaded by the single effect below (keyed on refreshKey),
@@ -1433,9 +1445,15 @@ fun GalleryScreen(
             GalleryIndexHealthCard(
                 health = indexHealth,
                 indexFailed = GalleryFailureSource.INDEX_DATABASE in galleryFailures,
+                ocrEnabled = ocrBackfillEnabled,
+                ocrStatus = ocrBackfillStatus,
                 onRetry = { reloadGeneration++ },
                 onRebuild = { rebuildIndex() },
                 onManage = onManageIndex,
+                onCancelOcr = {
+                    OcrBackfillWorker.cancelCurrent(context)
+                    ocrBackfillStatus = OcrBackfillStatusStore.load(context)
+                },
             )
         }
 
@@ -1620,9 +1638,12 @@ private fun GalleryReliabilityBanner(title: String, body: String, onRetry: () ->
 private fun GalleryIndexHealthCard(
     health: IndexHealthSnapshot,
     indexFailed: Boolean,
+    ocrEnabled: Boolean,
+    ocrStatus: OcrBackfillStatus,
     onRetry: () -> Unit,
     onRebuild: () -> Unit,
     onManage: () -> Unit,
+    onCancelOcr: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -1669,7 +1690,31 @@ private fun GalleryIndexHealthCard(
                     trackColor = SurfaceContainer,
                 )
             }
-            Row(Modifier.align(Alignment.End), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                if (ocrEnabled) {
+                    stringResource(
+                        R.string.gallery_ocr_backfill_counts,
+                        ocrStatus.queued,
+                        ocrStatus.indexed,
+                        ocrStatus.skipped,
+                        ocrStatus.failed,
+                    )
+                } else {
+                    stringResource(R.string.gallery_ocr_backfill_off)
+                },
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Row(
+                Modifier.align(Alignment.End).horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (ocrStatus.running) {
+                    TextButton(onClick = onCancelOcr) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
                 TextButton(onClick = onManage) {
                     Text(stringResource(R.string.gallery_manage_index))
                 }

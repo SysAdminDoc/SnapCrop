@@ -342,6 +342,16 @@
     <string name="settings_index_loading">Reading local index…</string>
     <string name="settings_index_rebuilding">Rebuilding index…</string>
     <string name="settings_index_failed">Index rebuild failed. Media remains available; retry when ready.</string>
+    <string name="settings_ocr_backfill_title">Background OCR search</string>
+    <string name="settings_ocr_backfill_subtitle">Requires the local index and is off by default. While charging and idle, index text from uncached screenshots without moving files. Search text may be sensitive; it stays on this device and can be cleared anytime.</string>
+    <string name="settings_ocr_backfill_status_title">OCR backfill · latest run</string>
+    <string name="settings_ocr_backfill_counts">Queued: %1$d · Indexed: %2$d · Skipped: %3$d · Failed: %4$d</string>
+    <string name="settings_ocr_backfill_model_needed">The selected OCR model is not ready. Install it below, then retry.</string>
+    <string name="settings_ocr_backfill_retry">Retry</string>
+    <string name="settings_ocr_backfill_clear">Clear OCR index</string>
+    <string name="settings_ocr_backfill_clear_title">Clear the OCR search index?</string>
+    <string name="settings_ocr_backfill_clear_body">This disables background OCR and removes cached OCR/barcode search text from the local index. Screenshots and other Library metadata are unchanged.</string>
+    <string name="settings_ocr_backfill_cleared">Cleared OCR text from %1$d indexed items.</string>
     <string name="settings_rebuild">Rebuild</string>
     <string name="settings_purge">Purge</string>
     <string name="settings_section_erase">Smart erase</string>
@@ -824,6 +834,8 @@
     <string name="gallery_index_health_counts">Indexed %1$d of %2$d · pending %3$d · failed %4$d</string>
     <string name="gallery_index_last_success">Last successful scan: %1$s</string>
     <string name="gallery_index_never_scanned">No successful scan yet</string>
+    <string name="gallery_ocr_backfill_counts">OCR latest · queued %1$d · indexed %2$d · skipped %3$d · failed %4$d</string>
+    <string name="gallery_ocr_backfill_off">Background OCR is off.</string>
     <string name="gallery_empty_title">No albums found</string>
     <string name="gallery_empty_subtitle">Grant media access or add photos to see them here.</string>
     <string name="gallery_images_denied_title">Device photos hidden</string>

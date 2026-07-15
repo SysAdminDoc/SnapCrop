@@ -196,6 +196,11 @@ are blocked behind explicit opt-in and evaluation gates.
   reopen; add/edit/open it from the editor or Gallery, and choose per share whether
   the canonical link is included (off by default)
 - Search screenshot albums by filename, source hints, indexed categories, dimensions, and OCR/barcode text after using OCR in the editor
+- Optionally backfill searchable OCR text for uncached screenshots only while the
+  device is charging and idle. The separate opt-in is off by default, never moves
+  media, caps each run by items/source size/decoded pixels/time, checkpoints every
+  result, exposes queued/indexed/skipped/failed counts in Settings and Library,
+  and can cancel work or clear all cached OCR/barcode search text.
 - Pinch-to-zoom grid (2-6 columns)
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for collections, batch delete, share, resize, batch rename, or PDF report export
@@ -360,6 +365,9 @@ disclosed below; optional exports and automatic update checks are off by default
   migrates supported legacy keys; and reports unknown or invalid entries.
   Library organization has a separate explicit metadata export/import with a
   read-only relinking preview and conflict-preserving atomic commit.
+- Background OCR search requires both the local index and its own explicit opt-in.
+  Recognized text can contain sensitive content, remains in the local Room index,
+  is excluded from metadata/settings exports, and can be cleared independently.
 
 ### Network and ML Kit disclosure
 
