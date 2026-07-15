@@ -25,8 +25,6 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoFixHigh
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Edit
@@ -214,6 +212,7 @@ fun CropEditorScreen(
     var showLayerPanel by remember { mutableStateOf(false) }
     var showSavePresetDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val externalIntentLauncher = remember(context) { ExternalIntentLauncher(context) }
     val drawPrefs = remember { context.getSharedPreferences("snapcrop", android.content.Context.MODE_PRIVATE) }
     val exportPresets = remember { ExportPresetStore.load(drawPrefs) }
     var selectedExportPresetId by remember {
@@ -253,6 +252,7 @@ fun CropEditorScreen(
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
     var selectedOcrText by remember { mutableStateOf<String?>(null) }
+    var externalActionFallback by remember { mutableStateOf<ExternalActionFallback?>(null) }
     var showOcrReview by remember { mutableStateOf(false) }
     val selectedOcrBlocks = remember { mutableStateListOf<Int>() }
     val ocrDraftTexts = remember { mutableStateMapOf<Int, String>() }
@@ -3977,7 +3977,7 @@ fun CropEditorScreen(
         )
     }
 
-    if (selectedOcrText != null) {
+    if (selectedOcrText != null && externalActionFallback == null) {
         val ocrText = selectedOcrText.orEmpty()
         AlertDialog(
             onDismissRequest = { selectedOcrText = null },
@@ -4024,14 +4024,25 @@ fun CropEditorScreen(
                                     }
                                     AssistChip(
                                         onClick = {
-                                            val intent = when (entity.type) {
-                                                OcrEntityType.PHONE -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${entity.value}"))
-                                                OcrEntityType.EMAIL -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${entity.value}"))
-                                                OcrEntityType.URL -> Intent(Intent.ACTION_VIEW, Uri.parse(entity.value))
+                                            val outcome = when (entity.type) {
+                                                OcrEntityType.PHONE -> externalIntentLauncher.launchDial(entity.value)
+                                                OcrEntityType.EMAIL -> externalIntentLauncher.launchEmail(entity.value)
+                                                OcrEntityType.URL -> externalIntentLauncher.launchUrl(entity.value)
                                                 else -> null
                                             }
-                                            if (intent != null) runCatching { context.startActivity(intent) }
-                                            else copyText("SnapCrop", entity.value, copiedMessage)
+                                            if (outcome == null) {
+                                                copyText("SnapCrop", entity.value, copiedMessage)
+                                            } else if (outcome != ExternalLaunchOutcome.LAUNCHED) {
+                                                externalActionFallback = ExternalActionFallback(
+                                                    outcome = outcome,
+                                                    copyValue = entity.value,
+                                                    copyKind = if (entity.type == OcrEntityType.URL) {
+                                                        ExternalFallbackCopyKind.URL
+                                                    } else {
+                                                        ExternalFallbackCopyKind.VALUE
+                                                    },
+                                                )
+                                            }
                                         },
                                         label = { Text(chipLabel, fontSize = 11.sp, maxLines = 1) },
                                         leadingIcon = { Icon(chipIcon, null, modifier = Modifier.size(16.dp)) },
@@ -4152,6 +4163,13 @@ fun CropEditorScreen(
                 TextButton(onClick = { selectedOcrText = null }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
             },
             containerColor = SurfaceVariant
+        )
+    }
+
+    externalActionFallback?.let { fallback ->
+        ExternalActionFallbackDialog(
+            fallback = fallback,
+            onDismiss = { externalActionFallback = null },
         )
     }
 

@@ -1121,6 +1121,14 @@
     <string name="ocr_entity_copy_iban">Copy IBAN</string>
     <string name="ocr_entity_copied">Copied</string>
     <string name="ocr_entity_actions">Detected actions</string>
+    <string name="external_action_unavailable_title">No compatible app</string>
+    <string name="external_action_unavailable_body">No installed app can handle this action. You can copy it instead.</string>
+    <string name="external_action_failed_title">Couldn\'t open the other app</string>
+    <string name="external_action_failed_body">The other app did not open. You can copy the value and continue manually.</string>
+    <string name="external_action_copy_value">Copy value</string>
+    <string name="external_action_copy_url">Copy URL</string>
+    <string name="external_action_copied">Copied to clipboard</string>
+    <string name="external_action_copy_failed">Couldn\'t copy to clipboard</string>
 
     <!-- Editor - adjust mode -->
     <string name="adjust_brightness">Brightness</string>

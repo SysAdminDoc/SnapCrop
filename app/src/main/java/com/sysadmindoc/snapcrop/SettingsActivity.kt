@@ -194,6 +194,22 @@ class SettingsActivity : ComponentActivity() {
                 var navigationState by remember {
                     mutableStateOf(SettingsNavigationState.initial(SettingsRegistry.destination(intent)))
                 }
+                val externalIntentLauncher = remember {
+                    ExternalIntentLauncher(this@SettingsActivity)
+                }
+                var externalActionFallback by remember {
+                    mutableStateOf<ExternalActionFallback?>(null)
+                }
+                val openExternalUrl: (String) -> Unit = { url ->
+                    val outcome = externalIntentLauncher.launchUrl(url)
+                    if (outcome != ExternalLaunchOutcome.LAUNCHED) {
+                        externalActionFallback = ExternalActionFallback(
+                            outcome = outcome,
+                            copyValue = url,
+                            copyKind = ExternalFallbackCopyKind.URL,
+                        )
+                    }
+                }
                 val revealedDestination = navigationState.revealedDestination
                 val requestedDestination = navigationState.requestedDestination
                 val highlightedDestination = navigationState.highlightedDestination
@@ -265,6 +281,13 @@ class SettingsActivity : ComponentActivity() {
                             }
                         },
                         containerColor = SurfaceVariant
+                    )
+                }
+
+                externalActionFallback?.let { fallback ->
+                    ExternalActionFallbackDialog(
+                        fallback = fallback,
+                        onDismiss = { externalActionFallback = null },
                     )
                 }
 
@@ -1769,7 +1792,7 @@ class SettingsActivity : ComponentActivity() {
                     Text(stringResource(R.string.settings_about_url),
                         color = Primary, fontSize = 12.sp,
                         modifier = Modifier.clickable {
-                            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SysAdminDoc/SnapCrop"))) } catch (_: Exception) {}
+                            openExternalUrl("https://github.com/SysAdminDoc/SnapCrop")
                         })
                     Spacer(Modifier.height(12.dp))
 
@@ -1827,7 +1850,7 @@ class SettingsActivity : ComponentActivity() {
                             confirmButton = {
                                 TextButton(onClick = {
                                     updateInfo = null
-                                    try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl))) } catch (_: Exception) {}
+                                    openExternalUrl(info.downloadUrl)
                                 }) { Text(stringResource(R.string.settings_update_download), color = Primary) }
                             },
                             dismissButton = {

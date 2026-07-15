@@ -4,6 +4,10 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- External OCR dial, email, and browser handoffs plus Settings web links now
+  verify a compatible handler before launch and report launched, unavailable,
+  or failed outcomes. Unavailable/failed actions offer a localized Copy value
+  or Copy URL fallback without logging the recognized content or exception.
 - Added a host-rendered Compose state matrix with 44 approved compact/expanded,
   light/dark, and 1.0x/2.0x-font references across 11 workflows, HTML visual
   diffs, and headless semantic checks for localized names, roles, state,
