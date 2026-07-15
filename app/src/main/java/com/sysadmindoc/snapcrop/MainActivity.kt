@@ -95,6 +95,11 @@ import java.util.Locale
 
 data class RecentCrop(val uri: Uri, val thumbBitmap: androidx.compose.ui.graphics.ImageBitmap)
 
+internal enum class AppShellLayoutClass { Compact, Expanded }
+
+internal fun appShellLayoutClass(widthDp: Float): AppShellLayoutClass =
+    if (widthDp >= 840f) AppShellLayoutClass.Expanded else AppShellLayoutClass.Compact
+
 private enum class LocalNetworkPermissionOutcome {
     GRANTED,
     DENIED,
@@ -654,18 +659,33 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-                Scaffold(
-                    containerColor = Black,
-                    bottomBar = {
-                        SnapCropBottomBar(
-                            selectedTab = selectedTab,
-                            onSelectTab = { selectedTab = it }
-                        )
-                    }
-                ) { padding ->
-                    Box(Modifier.padding(padding)) {
-                        tabStateHolder.SaveableStateProvider(selectedTab) {
-                            when (selectedTab) {
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val shellLayout = appShellLayoutClass(maxWidth.value)
+                    Row(Modifier.fillMaxSize().background(Black)) {
+                        if (shellLayout == AppShellLayoutClass.Expanded) {
+                            SnapCropNavigationRail(
+                                selectedTab = selectedTab,
+                                onSelectTab = { selectedTab = it },
+                                onOpenSettings = {
+                                    startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                                },
+                            )
+                        }
+                        Scaffold(
+                            modifier = Modifier.weight(1f),
+                            containerColor = Black,
+                            bottomBar = {
+                                if (shellLayout == AppShellLayoutClass.Compact) {
+                                    SnapCropBottomBar(
+                                        selectedTab = selectedTab,
+                                        onSelectTab = { selectedTab = it }
+                                    )
+                                }
+                            }
+                        ) { padding ->
+                            Box(Modifier.padding(padding)) {
+                                tabStateHolder.SaveableStateProvider(selectedTab) {
+                                    when (selectedTab) {
                             0 -> HomeScreen(
                                 isRunning = serviceRunning.value,
                                 mediaCapabilities = mediaCapabilities.value,
@@ -725,6 +745,7 @@ class MainActivity : ComponentActivity() {
                                 onDeleteCrop = { uri -> requestDeleteUris(listOf(uri)) }
                             )
                             1 -> GalleryScreen(
+                                expandedLayout = shellLayout == AppShellLayoutClass.Expanded,
                                 refreshKey = galleryRefreshKey.intValue,
                                 imageAccess = mediaCapabilities.value.imageAccess,
                                 videoAccess = mediaCapabilities.value.videoAccess,
@@ -781,6 +802,8 @@ class MainActivity : ComponentActivity() {
                                 onBatchRename = { uris -> showRenameDialog(uris) },
                                 onBack = { selectedTab = 0 }
                             )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2747,6 +2770,59 @@ class MainActivity : ComponentActivity() {
                 }
             } catch (_: Exception) {}
         }
+    }
+}
+
+@Composable
+internal fun SnapCropNavigationRail(
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    NavigationRail(
+        modifier = Modifier.fillMaxHeight().safeDrawingPadding(),
+        containerColor = Surface,
+        contentColor = OnSurfaceVariant,
+    ) {
+        Spacer(Modifier.height(8.dp))
+        NavigationRailItem(
+            selected = selectedTab == 0,
+            onClick = { onSelectTab(0) },
+            icon = { Icon(Icons.Default.Home, contentDescription = null) },
+            label = { Text(stringResource(R.string.nav_home)) },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = Primary,
+                selectedTextColor = Primary,
+                indicatorColor = Primary.copy(alpha = 0.12f),
+                unselectedIconColor = OnSurfaceVariant,
+                unselectedTextColor = OnSurfaceVariant,
+            ),
+        )
+        NavigationRailItem(
+            selected = selectedTab == 1,
+            onClick = { onSelectTab(1) },
+            icon = { Icon(Icons.Default.Photo, contentDescription = null) },
+            label = { Text(stringResource(R.string.nav_gallery)) },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = Primary,
+                selectedTextColor = Primary,
+                indicatorColor = Primary.copy(alpha = 0.12f),
+                unselectedIconColor = OnSurfaceVariant,
+                unselectedTextColor = OnSurfaceVariant,
+            ),
+        )
+        Spacer(Modifier.weight(1f))
+        NavigationRailItem(
+            selected = false,
+            onClick = onOpenSettings,
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            label = { Text(stringResource(R.string.home_settings)) },
+            colors = NavigationRailItemDefaults.colors(
+                unselectedIconColor = OnSurfaceVariant,
+                unselectedTextColor = OnSurfaceVariant,
+            ),
+        )
+        Spacer(Modifier.height(8.dp))
     }
 }
 

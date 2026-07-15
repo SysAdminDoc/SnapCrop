@@ -202,6 +202,12 @@ are blocked behind explicit opt-in and evaluation gates.
   result, exposes queued/indexed/skipped/failed counts in Settings and Library,
   and can cancel work or clear all cached OCR/barcode search text.
 - Pinch-to-zoom grid (2-6 columns)
+- Expanded tablet, foldable, and desktop-mode windows replace the phone bottom
+  bar with a navigation rail and keep the Library grid plus image viewer visible
+  together. Compact windows retain the immersive viewer; selection, filters,
+  grid position, and the current media identity survive resize and Back.
+- Expanded Settings windows add a persistent category pane that routes to the
+  existing exact setting anchors without duplicating preference state.
 - Fullscreen viewer with pinch zoom (up to 5x)
 - Multi-select for collections, batch delete, share, resize, batch rename, or PDF report export
 - Select exactly two images for a private local Compare workspace with fitted swipe,

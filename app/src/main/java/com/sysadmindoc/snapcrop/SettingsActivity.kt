@@ -249,9 +249,16 @@ class SettingsActivity : ComponentActivity() {
                     SettingsDestination.entries.associateWith { BringIntoViewRequester() }
                 }
                 val focusManager = LocalFocusManager.current
+                val settingsScrollState = rememberScrollState()
                 var settingsQuery by rememberSaveable { mutableStateOf("") }
                 var navigationState by remember {
                     mutableStateOf(SettingsNavigationState.initial(SettingsRegistry.destination(intent)))
+                }
+                var activeSettingsCategory by rememberSaveable {
+                    mutableStateOf(
+                        SettingsRegistry.destination(intent)?.let(::settingsCategoryAnchor)
+                            ?: SettingsDestination.THEME
+                    )
                 }
                 val externalIntentLauncher = remember {
                     ExternalIntentLauncher(this@SettingsActivity)
@@ -275,6 +282,7 @@ class SettingsActivity : ComponentActivity() {
                 val openDestination: (SettingsDestination) -> Unit = { destination ->
                     settingsQuery = ""
                     focusManager.clearFocus()
+                    activeSettingsCategory = settingsCategoryAnchor(destination)
                     navigationState = navigationState.open(destination)
                 }
 
@@ -497,9 +505,19 @@ class SettingsActivity : ComponentActivity() {
                     )
                 }
 
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val expandedSettings = appShellLayoutClass(maxWidth.value) == AppShellLayoutClass.Expanded
+                    Row(Modifier.fillMaxSize().background(Black)) {
+                        if (expandedSettings) {
+                            SettingsCategoryNavigation(
+                                onOpen = openDestination,
+                                activeDestination = activeSettingsCategory,
+                            )
+                        }
                 Column(
                     modifier = Modifier
-                        .fillMaxSize()
+                        .weight(1f)
+                        .fillMaxHeight()
                         .background(
                             androidx.compose.ui.graphics.Brush.verticalGradient(
                                 listOf(Black, Surface.copy(alpha = 0.72f), Black)
@@ -507,7 +525,7 @@ class SettingsActivity : ComponentActivity() {
                         )
                         .safeDrawingPadding()
                         .imePadding()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(settingsScrollState)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     // Top bar
@@ -2505,6 +2523,8 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(24.dp))
                 }
+                    }
+                }
             }
         }
     }
@@ -2695,6 +2715,113 @@ private fun LibraryMetadataSelectionRow(
         Spacer(Modifier.width(8.dp))
         Text(title, color = if (enabled) OnSurface else OnSurfaceVariant)
     }
+}
+
+@Composable
+internal fun SettingsCategoryNavigation(
+    onOpen: (SettingsDestination) -> Unit,
+    activeDestination: SettingsDestination?,
+) {
+    val categories = listOf(
+        R.string.settings_section_appearance to SettingsDestination.THEME,
+        R.string.settings_section_save to SettingsDestination.DELETE_ORIGINAL,
+        R.string.settings_section_intelligence to SettingsDestination.SCREENSHOT_INDEX,
+        R.string.settings_section_format to SettingsDestination.IMAGE_FORMAT,
+        R.string.settings_section_presets to SettingsDestination.ANNOTATION_PRESETS,
+        R.string.settings_section_network to SettingsDestination.NETWORK_EXPORTS,
+        R.string.settings_section_watermark to SettingsDestination.WATERMARK,
+        R.string.settings_section_service to SettingsDestination.AUTO_START,
+        R.string.settings_section_storage to SettingsDestination.STORAGE,
+        R.string.settings_section_backup to SettingsDestination.BACKUP,
+        R.string.settings_section_about to SettingsDestination.ABOUT,
+    )
+    Column(
+        modifier = Modifier
+            .width(208.dp)
+            .fillMaxHeight()
+            .background(Surface)
+            .safeDrawingPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            stringResource(R.string.settings_title),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            color = OnSurface,
+            style = MaterialTheme.typography.titleLarge,
+        )
+        HorizontalDivider(color = Outline.copy(alpha = 0.52f))
+        Spacer(Modifier.height(4.dp))
+        categories.forEach { (label, destination) ->
+            val selected = activeDestination == destination
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp)
+                    .semantics {
+                        this.selected = selected
+                        role = Role.Button
+                    }
+                    .clickable(role = Role.Button) { onOpen(destination) },
+                color = if (selected) Primary.copy(alpha = 0.12f) else Color.Transparent,
+                shape = RoundedCornerShape(10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(label),
+                        color = if (selected) Primary else OnSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
+        }
+    }
+}
+
+internal fun settingsCategoryAnchor(destination: SettingsDestination): SettingsDestination = when (destination) {
+    SettingsDestination.THEME,
+    SettingsDestination.RECENT_WORKFLOWS -> SettingsDestination.THEME
+
+    SettingsDestination.DELETE_ORIGINAL,
+    SettingsDestination.PROJECT_SIDECARS,
+    SettingsDestination.OCR_TEXT_SIDECARS,
+    SettingsDestination.APP_CROP_PROFILES -> SettingsDestination.DELETE_ORIGINAL
+
+    SettingsDestination.SCREENSHOT_INDEX -> SettingsDestination.SCREENSHOT_INDEX
+
+    SettingsDestination.IMAGE_FORMAT,
+    SettingsDestination.TARGET_SIZE,
+    SettingsDestination.STRIP_EXIF,
+    SettingsDestination.OCR_SCRIPT,
+    SettingsDestination.ML_MODELS,
+    SettingsDestination.FILENAME_TEMPLATE -> SettingsDestination.IMAGE_FORMAT
+
+    SettingsDestination.ANNOTATION_PRESETS -> SettingsDestination.ANNOTATION_PRESETS
+    SettingsDestination.NETWORK_EXPORTS,
+    SettingsDestination.LOCAL_NETWORK -> SettingsDestination.NETWORK_EXPORTS
+
+    SettingsDestination.WATERMARK,
+    SettingsDestination.EXPORT_BORDER,
+    SettingsDestination.SAVE_LOCATION,
+    SettingsDestination.EXPORT_PRESETS -> SettingsDestination.WATERMARK
+
+    SettingsDestination.AUTO_START,
+    SettingsDestination.CONDITIONAL_AUTO_ACTIONS,
+    SettingsDestination.REDACT_ON_SHARE,
+    SettingsDestination.CUSTOM_PATTERNS,
+    SettingsDestination.REDACTION_STYLE,
+    SettingsDestination.SECURE_EDITOR -> SettingsDestination.AUTO_START
+
+    SettingsDestination.STORAGE -> SettingsDestination.STORAGE
+    SettingsDestination.BACKUP -> SettingsDestination.BACKUP
+    SettingsDestination.ABOUT,
+    SettingsDestination.AUTO_UPDATE,
+    SettingsDestination.OPERATION_JOURNAL,
+    SettingsDestination.CRASH_LOGS -> SettingsDestination.ABOUT
 }
 
 @Composable

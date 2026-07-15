@@ -35,7 +35,8 @@ class WorkflowStateRoutingTest {
     fun galleryToolbarSystemBackAndViewerSwipesShareIdentityReducer() {
         val gallery = source("GalleryScreen.kt")
 
-        assertTrue(gallery.contains("BackHandler(onBack = ::handleGalleryBack)"))
+        assertTrue(gallery.contains("PredictiveBackHandler { progress ->"))
+        assertTrue(gallery.contains("progress.collect { }"))
         assertTrue(gallery.contains("IconButton(onClick = ::handleGalleryBack)"))
         assertTrue(gallery.contains("deepestGalleryBackTarget"))
         assertTrue(gallery.contains("onCurrentPhotoChanged(photo)"))

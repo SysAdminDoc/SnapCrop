@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -72,6 +74,17 @@ import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 private annotation class HostStateConfigurations
+
+@Target(AnnotationTarget.ANNOTATION_CLASS, AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.BINARY)
+@Preview(
+    name = "expanded-dark-hinge-insets",
+    widthDp = 1000,
+    heightDp = 720,
+    fontScale = 1f,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+private annotation class AdaptiveLibraryConfiguration
 
 @PreviewTest
 @HostStateConfigurations
@@ -138,6 +151,61 @@ fun LibraryWorkflowStateReferences() = WorkflowReference(HostWorkflow.LIBRARY) {
             actionLabel = stringResource(R.string.gallery_allow_images),
             onAction = {},
         )
+    }
+}
+
+@PreviewTest
+@AdaptiveLibraryConfiguration
+@Composable
+fun AdaptiveLibraryHingeInsetReference() {
+    SnapCropTheme(darkOverride = true) {
+        Row(Modifier.fillMaxSize().background(Black)) {
+            SnapCropNavigationRail(
+                selectedTab = 1,
+                onSelectTab = {},
+                onOpenSettings = {},
+            )
+            LibraryListDetailLayout(
+                expanded = true,
+                hingeWidth = 32.dp,
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    top = 24.dp,
+                    end = 16.dp,
+                    bottom = 18.dp,
+                ),
+                listPane = {
+                    Column(Modifier.fillMaxSize().background(Black)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.gallery_title),
+                                modifier = Modifier.weight(1f),
+                                color = OnSurface,
+                                style = MaterialTheme.typography.headlineSmall,
+                            )
+                            IconButton(onClick = {}) {
+                                Icon(
+                                    Icons.Default.PhotoLibrary,
+                                    stringResource(R.string.gallery_title),
+                                    tint = OnSurface,
+                                )
+                            }
+                        }
+                        GalleryEmptyState(
+                            icon = Icons.Default.PhotoLibrary,
+                            title = stringResource(R.string.gallery_empty_title),
+                            subtitle = stringResource(R.string.gallery_empty_subtitle),
+                            actionLabel = stringResource(R.string.gallery_allow_images),
+                            onAction = {},
+                        )
+                    }
+                },
+                detailPane = { GalleryDetailEmptyState() },
+            )
+        }
     }
 }
 
@@ -225,8 +293,18 @@ fun EditorWorkflowStateReferences() = WorkflowReference(HostWorkflow.EDITOR) {
 @HostStateConfigurations
 @Composable
 fun SettingsWorkflowStateReferences() = WorkflowReference(HostWorkflow.SETTINGS) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val expanded = appShellLayoutClass(maxWidth.value) == AppShellLayoutClass.Expanded
+        Row(Modifier.fillMaxSize()) {
+            if (expanded) {
+                SettingsCategoryNavigation(
+                    onOpen = {},
+                    activeDestination = SettingsDestination.SCREENSHOT_INDEX,
+                )
+            }
     Column(
         Modifier
+            .weight(1f)
             .fillMaxSize()
             .background(Black)
             .verticalScroll(rememberScrollState())
@@ -260,6 +338,8 @@ fun SettingsWorkflowStateReferences() = WorkflowReference(HostWorkflow.SETTINGS)
             onCheckedChange = {},
         )
         SourceArchiveAccessCard(supported = true, granted = false, onGrant = {})
+    }
+        }
     }
 }
 

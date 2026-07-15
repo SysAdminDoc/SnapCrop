@@ -755,6 +755,8 @@
 
     <!-- Gallery screen -->
     <string name="gallery_title">Library</string>
+    <string name="gallery_detail_empty_title">Select an image</string>
+    <string name="gallery_detail_empty_subtitle">Choose an image to keep browsing while its preview stays open.</string>
     <string name="gallery_all_photos">All Photos</string>
     <string name="gallery_favorites">Favorites</string>
     <string name="gallery_selected_count">%1$d selected</string>

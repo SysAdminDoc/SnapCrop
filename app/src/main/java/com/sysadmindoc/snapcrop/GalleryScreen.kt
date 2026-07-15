@@ -17,7 +17,7 @@ import androidx.compose.foundation.combinedClickable
 import android.content.ClipData
 import android.graphics.Point
 import android.view.View
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.platform.LocalView
@@ -26,8 +26,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -91,6 +93,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -417,6 +420,8 @@ fun GalleryScreen(
     openRequest: GalleryOpenRequest? = null,
     onOpenRequestConsumed: () -> Unit = {},
     onCompareUris: (List<Uri>) -> Unit = {},
+    expandedLayout: Boolean = false,
+    adaptiveHingeWidth: Dp = 0.dp,
     refreshKey: Int = 0 // increment to force refresh (e.g., after returning from editor)
 ) {
     val canReadImages = imageAccess != MediaAccess.NONE
@@ -457,6 +462,7 @@ fun GalleryScreen(
     var favoriteKeys by remember { mutableStateOf(FavoritesStore.getAllKeys(context)) }
     var sortMode by rememberSaveable { mutableStateOf(SortMode.DATE) }
     var gridColumns by rememberSaveable { mutableIntStateOf(3) }
+    val photoGridState = rememberLazyGridState()
     var encodedFilters by rememberSaveable { mutableStateOf(GalleryFilterState().encode()) }
     val galleryFilters = remember(encodedFilters) { GalleryFilterState.decode(encodedFilters) }
     var showFilters by remember { mutableStateOf(false) }
@@ -540,7 +546,10 @@ fun GalleryScreen(
         }
     }
 
-    BackHandler(onBack = ::handleGalleryBack)
+    PredictiveBackHandler { progress ->
+        progress.collect { }
+        handleGalleryBack()
+    }
 
     fun reportFailure(source: GalleryFailureSource, error: Throwable) {
         galleryFailures = galleryFailures + source
@@ -1070,8 +1079,8 @@ fun GalleryScreen(
         )
     }
 
-    // Fullscreen viewer
-    if (viewerIndex >= 0 && viewerPhotos.isNotEmpty()) {
+    val viewerVisible = viewerIndex >= 0 && viewerPhotos.isNotEmpty()
+    val viewerPane: @Composable () -> Unit = {
         PhotoViewer(
             photos = viewerPhotos,
             initialIndex = viewerIndex,
@@ -1092,9 +1101,19 @@ fun GalleryScreen(
                 newState
             }
         )
+    }
+
+    // Compact windows preserve the immersive viewer. Expanded windows keep the
+    // same identity-backed viewer beside the live grid so resize never forks state.
+    if (!expandedLayout && viewerVisible) {
+        viewerPane()
         return
     }
 
+    LibraryListDetailLayout(
+        expanded = expandedLayout,
+        hingeWidth = adaptiveHingeWidth,
+        listPane = {
     Column(Modifier.fillMaxSize().background(Black)) {
         // Top bar
         Row(
@@ -1218,6 +1237,12 @@ fun GalleryScreen(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = if (expandedLayout) 176.dp else 224.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                 if (selectedAlbum == null) {
                     IconButton(onClick = {
                         collectionName = ""
@@ -1318,6 +1343,7 @@ fun GalleryScreen(
                     }) {
                         Icon(Icons.Default.SortByAlpha, stringResource(R.string.gallery_sort, sortLabel), tint = OnSurfaceVariant)
                     }
+                }
                 }
             }
         }
@@ -1583,6 +1609,7 @@ fun GalleryScreen(
         } else {
             PhotoGrid(
                 photos = viewerPhotos,
+                state = photoGridState,
                 columns = gridColumns,
                 showDateHeaders = sortMode == SortMode.DATE,
                 emptyTitle = when {
@@ -1602,6 +1629,7 @@ fun GalleryScreen(
                 }) else null,
                 selectedUris = selectedUris,
                 selectionMode = selectionMode,
+                activeViewerIdentity = if (expandedLayout) viewerIdentity else null,
                 onPhotoClick = { photo, index ->
                     if (selectionMode) toggleSelection(selectedUris, photo.uri.toString())
                     else if (photo.isVideo) onPlayVideo(photo.uri)
@@ -1614,6 +1642,81 @@ fun GalleryScreen(
                 }
             )
         }
+    }
+        },
+        detailPane = {
+            if (viewerVisible) viewerPane() else GalleryDetailEmptyState()
+        },
+    )
+}
+
+@Composable
+internal fun LibraryListDetailLayout(
+    expanded: Boolean,
+    hingeWidth: Dp = 0.dp,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    listPane: @Composable () -> Unit,
+    detailPane: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxSize().padding(contentPadding),
+    ) {
+        Box(
+            modifier = if (expanded) {
+                Modifier.weight(0.46f).fillMaxHeight()
+            } else {
+                Modifier.fillMaxSize()
+            },
+        ) {
+            listPane()
+        }
+        if (expanded) {
+            if (hingeWidth > 0.dp) {
+                Spacer(
+                    Modifier
+                        .width(hingeWidth)
+                        .fillMaxHeight()
+                        .background(Black),
+                )
+            } else {
+                VerticalDivider(color = Outline.copy(alpha = 0.72f))
+            }
+            Box(
+                modifier = Modifier.weight(0.54f).fillMaxHeight().background(MediaSurface),
+            ) {
+                detailPane()
+            }
+        }
+    }
+}
+
+@Composable
+internal fun GalleryDetailEmptyState() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(
+            Icons.Default.Photo,
+            contentDescription = null,
+            modifier = Modifier.size(48.dp),
+            tint = OnMediaSurfaceVariant,
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.gallery_detail_empty_title),
+            color = OnMediaSurface,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            stringResource(R.string.gallery_detail_empty_subtitle),
+            color = OnMediaSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 
@@ -2139,6 +2242,7 @@ private fun AlbumGrid(
 @Composable
 private fun PhotoGrid(
     photos: List<Photo>,
+    state: LazyGridState,
     columns: Int,
     showDateHeaders: Boolean = false,
     emptyTitle: String,
@@ -2147,6 +2251,7 @@ private fun PhotoGrid(
     onEmptyAction: (() -> Unit)?,
     selectedUris: List<String>,
     selectionMode: Boolean,
+    activeViewerIdentity: String?,
     onPhotoClick: (Photo, Int) -> Unit,
     onPhotoLongClick: (Photo) -> Unit,
     onPinchZoom: (Float) -> Unit
@@ -2175,6 +2280,7 @@ private fun PhotoGrid(
 
     var lastPinchZoom by remember { mutableFloatStateOf(1f) }
     LazyVerticalGrid(
+        state = state,
         columns = GridCells.Fixed(columns),
         contentPadding = PaddingValues(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -2205,7 +2311,11 @@ private fun PhotoGrid(
                     val photo = datePhotos[i]
                     val globalIdx = indexByUri[photo.uri.toString()] ?: 0
                     val isSelected = photo.uri.toString() in selectedUriSet
-                    PhotoItem(photo, globalIdx, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
+                    PhotoItem(
+                        photo, globalIdx, isSelected,
+                        galleryViewerIdentity(photo) == activeViewerIdentity,
+                        selectionMode, onPhotoClick, onPhotoLongClick,
+                    )
                 }
             }
         } else {
@@ -2216,7 +2326,11 @@ private fun PhotoGrid(
             ) { index ->
                 val photo = photos[index]
                 val isSelected = photo.uri.toString() in selectedUriSet
-                PhotoItem(photo, index, isSelected, selectionMode, onPhotoClick, onPhotoLongClick)
+                PhotoItem(
+                    photo, index, isSelected,
+                    galleryViewerIdentity(photo) == activeViewerIdentity,
+                    selectionMode, onPhotoClick, onPhotoLongClick,
+                )
             }
         } // else no date headers
     }
@@ -2225,7 +2339,7 @@ private fun PhotoGrid(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhotoItem(
-    photo: Photo, index: Int, isSelected: Boolean, selectionMode: Boolean,
+    photo: Photo, index: Int, isSelected: Boolean, isActive: Boolean, selectionMode: Boolean,
     onPhotoClick: (Photo, Int) -> Unit, onPhotoLongClick: (Photo) -> Unit
 ) {
     val mediaItemLabel = stringResource(R.string.gallery_media_item)
@@ -2242,7 +2356,7 @@ private fun PhotoItem(
         Modifier
             .semantics {
                 contentDescription = photoLabel
-                selected = isSelected
+                selected = isSelected || isActive
                 role = Role.Button
             }
             .combinedClickable(
@@ -2256,7 +2370,13 @@ private fun PhotoItem(
             contentDescription = null,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .clip(RoundedCornerShape(2.dp))
-                .then(if (isSelected) Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp)) else Modifier),
+                .then(
+                    when {
+                        isSelected -> Modifier.border(3.dp, Primary, RoundedCornerShape(2.dp))
+                        isActive -> Modifier.border(3.dp, Tertiary, RoundedCornerShape(2.dp))
+                        else -> Modifier
+                    }
+                ),
             contentScale = ContentScale.Crop
         )
         if (photo.isVideo) {
@@ -2503,7 +2623,8 @@ internal fun PhotoViewer(
         photos.getOrNull(initialIndex)?.let { FavoritesStore.isFavorite(context, it) } ?: false
     ) }
 
-    BackHandler {
+    PredictiveBackHandler { progress ->
+        progress.collect { }
         when {
             showSummary -> showSummary = false
             showInfo -> showInfo = false

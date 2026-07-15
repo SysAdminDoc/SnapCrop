@@ -39,7 +39,7 @@ class AccessibilitySemanticsRoutingTest {
         assertTrue(redactions.contains(".selectable("))
         assertTrue(redactions.contains("role = Role.RadioButton"))
         assertTrue(collage.contains("if (!occupied) Modifier.clickable"))
-        assertTrue(gallery.contains("selected = isSelected\n                role = Role.Button"))
+        assertTrue(gallery.contains("selected = isSelected || isActive\n                role = Role.Button"))
         assertTrue(gallery.contains("contentDescription = null"))
         assertTrue(home.contains("Modifier.fillMaxSize().clickable(role = Role.Button, onClick = onOpen)"))
     }

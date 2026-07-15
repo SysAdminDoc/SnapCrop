@@ -4,6 +4,12 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Added adaptive tablet, foldable, and desktop-window navigation. Expanded Home
+  and Library windows use a navigation rail; Library keeps its grid and one
+  identity-backed image viewer visible together, while compact windows retain
+  the bottom bar and immersive viewer. Selection, filters, grid position, Back,
+  and resize reuse the same saved state, and expanded Settings adds direct
+  category navigation.
 - Added separately opt-in local OCR backfill for uncached screenshots. Every run
   requires charging and device idle, honors item/source/decoded-pixel/time and
   retry limits, checkpoints empty/success/failure outcomes, never moves media,
@@ -18,7 +24,7 @@ All notable changes to SnapCrop will be documented in this file.
   verify a compatible handler before launch and report launched, unavailable,
   or failed outcomes. Unavailable/failed actions offer a localized Copy value
   or Copy URL fallback without logging the recognized content or exception.
-- Added a host-rendered Compose state matrix with 44 approved compact/expanded,
+- Added a host-rendered Compose state matrix with 45 approved compact/expanded,
   light/dark, and 1.0x/2.0x-font references across 11 workflows, HTML visual
   diffs, and headless semantic checks for localized names, roles, state,
   traversal, and 48dp targets. Its large-text pass also fixed clipped compact
