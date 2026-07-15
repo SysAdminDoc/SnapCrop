@@ -175,6 +175,7 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.mlkit.language.id)
     implementation(libs.mlkit.entity.extraction)
+    implementation(libs.okhttp)
     implementation(libs.play.services.base)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.exifinterface)

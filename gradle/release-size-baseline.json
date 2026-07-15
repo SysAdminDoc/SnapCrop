@@ -1,7 +1,7 @@
 {
     "schemaVersion": 2,
-    "baselineVersion": "6.88.0",
-    "rationale": "v6.88 removes unused Navigation Compose and establishes reusable size budgets",
+    "baselineVersion": "6.89.0",
+    "rationale": "Replace transitive OkHttp 3.12.1 with security-fixed 4.12.0",
     "limits": {
         "artifactCompressedGrowthBytes": 262144,
         "artifactUncompressedGrowthBytes": 524288,
@@ -12,152 +12,152 @@
     },
     "artifacts": {
         "universal": {
-            "compressedBytes": 239412897,
-            "uncompressedBytes": 240077785,
+            "compressedBytes": 239459551,
+            "uncompressedBytes": 240124173,
             "categories": {
                 "metadata": {
                     "compressedBytes": 22316,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288932,
-                    "uncompressedBytes": 10088795
+                    "compressedBytes": 9288936,
+                    "uncompressedBytes": 10088799
                 },
                 "dex": {
-                    "compressedBytes": 9855444,
-                    "uncompressedBytes": 9855444
+                    "compressedBytes": 9887760,
+                    "uncompressedBytes": 9887760
                 },
                 "native": {
                     "compressedBytes": 218838540,
                     "uncompressedBytes": 218838540
                 },
                 "other": {
-                    "compressedBytes": 54334,
-                    "uncompressedBytes": 118545
+                    "compressedBytes": 61929,
+                    "uncompressedBytes": 126477
                 },
                 "resources": {
-                    "compressedBytes": 1051720,
-                    "uncompressedBytes": 1114628
+                    "compressedBytes": 1057862,
+                    "uncompressedBytes": 1120764
                 }
             }
         },
         "arm64-v8a": {
-            "compressedBytes": 76985152,
-            "uncompressedBytes": 77828581,
+            "compressedBytes": 77031806,
+            "uncompressedBytes": 77874969,
             "categories": {
                 "metadata": {
                     "compressedBytes": 22316,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288932,
-                    "uncompressedBytes": 10088795
+                    "compressedBytes": 9288936,
+                    "uncompressedBytes": 10088799
                 },
                 "dex": {
-                    "compressedBytes": 9855444,
-                    "uncompressedBytes": 9855444
+                    "compressedBytes": 9887760,
+                    "uncompressedBytes": 9887760
                 },
                 "native": {
                     "compressedBytes": 56589336,
                     "uncompressedBytes": 56589336
                 },
                 "other": {
-                    "compressedBytes": 54334,
-                    "uncompressedBytes": 118545
+                    "compressedBytes": 61929,
+                    "uncompressedBytes": 126477
                 },
                 "resources": {
-                    "compressedBytes": 1051720,
-                    "uncompressedBytes": 1114628
+                    "compressedBytes": 1057862,
+                    "uncompressedBytes": 1120764
                 }
             }
         },
         "armeabi-v7a": {
-            "compressedBytes": 57241572,
-            "uncompressedBytes": 58096349,
+            "compressedBytes": 57288226,
+            "uncompressedBytes": 58142737,
             "categories": {
                 "metadata": {
                     "compressedBytes": 22316,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288932,
-                    "uncompressedBytes": 10088795
+                    "compressedBytes": 9288936,
+                    "uncompressedBytes": 10088799
                 },
                 "dex": {
-                    "compressedBytes": 9855444,
-                    "uncompressedBytes": 9855444
+                    "compressedBytes": 9887760,
+                    "uncompressedBytes": 9887760
                 },
                 "native": {
                     "compressedBytes": 36857104,
                     "uncompressedBytes": 36857104
                 },
                 "other": {
-                    "compressedBytes": 54334,
-                    "uncompressedBytes": 118545
+                    "compressedBytes": 61929,
+                    "uncompressedBytes": 126477
                 },
                 "resources": {
-                    "compressedBytes": 1051720,
-                    "uncompressedBytes": 1114628
+                    "compressedBytes": 1057862,
+                    "uncompressedBytes": 1120764
                 }
             }
         },
         "x86": {
-            "compressedBytes": 83337944,
-            "uncompressedBytes": 84195297,
+            "compressedBytes": 83384598,
+            "uncompressedBytes": 84241685,
             "categories": {
                 "metadata": {
                     "compressedBytes": 22316,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288932,
-                    "uncompressedBytes": 10088795
+                    "compressedBytes": 9288936,
+                    "uncompressedBytes": 10088799
                 },
                 "dex": {
-                    "compressedBytes": 9855444,
-                    "uncompressedBytes": 9855444
+                    "compressedBytes": 9887760,
+                    "uncompressedBytes": 9887760
                 },
                 "native": {
                     "compressedBytes": 62956052,
                     "uncompressedBytes": 62956052
                 },
                 "other": {
-                    "compressedBytes": 54334,
-                    "uncompressedBytes": 118545
+                    "compressedBytes": 61929,
+                    "uncompressedBytes": 126477
                 },
                 "resources": {
-                    "compressedBytes": 1051720,
-                    "uncompressedBytes": 1114628
+                    "compressedBytes": 1057862,
+                    "uncompressedBytes": 1120764
                 }
             }
         },
         "x86_64": {
-            "compressedBytes": 82828992,
-            "uncompressedBytes": 83675293,
+            "compressedBytes": 82875646,
+            "uncompressedBytes": 83721681,
             "categories": {
                 "metadata": {
                     "compressedBytes": 22316,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288932,
-                    "uncompressedBytes": 10088795
+                    "compressedBytes": 9288936,
+                    "uncompressedBytes": 10088799
                 },
                 "dex": {
-                    "compressedBytes": 9855444,
-                    "uncompressedBytes": 9855444
+                    "compressedBytes": 9887760,
+                    "uncompressedBytes": 9887760
                 },
                 "native": {
                     "compressedBytes": 62436048,
                     "uncompressedBytes": 62436048
                 },
                 "other": {
-                    "compressedBytes": 54334,
-                    "uncompressedBytes": 118545
+                    "compressedBytes": 61929,
+                    "uncompressedBytes": 126477
                 },
                 "resources": {
-                    "compressedBytes": 1051720,
-                    "uncompressedBytes": 1114628
+                    "compressedBytes": 1057862,
+                    "uncompressedBytes": 1120764
                 }
             }
         }
@@ -962,10 +962,10 @@
             "uncompressedBytes": 231039
         },
         {
-            "coordinate": "com.squareup.okhttp3:okhttp:3.12.1",
-            "artifact": "okhttp-3.12.1.jar",
-            "compressedBytes": 422787,
-            "uncompressedBytes": 763184
+            "coordinate": "com.squareup.okhttp3:okhttp:4.12.0",
+            "artifact": "okhttp-4.12.0.jar",
+            "compressedBytes": 789531,
+            "uncompressedBytes": 1558232
         },
         {
             "coordinate": "com.squareup.okio:okio-jvm:3.15.0",
@@ -1004,10 +1004,16 @@
             "uncompressedBytes": 2311
         },
         {
-            "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0",
-            "artifact": "kotlin-stdlib-jdk7-1.8.0.jar",
+            "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.21",
+            "artifact": "kotlin-stdlib-jdk7-1.8.21.jar",
             "compressedBytes": 963,
-            "uncompressedBytes": 482
+            "uncompressedBytes": 484
+        },
+        {
+            "coordinate": "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.21",
+            "artifact": "kotlin-stdlib-jdk8-1.8.21.jar",
+            "compressedBytes": 968,
+            "uncompressedBytes": 514
         },
         {
             "coordinate": "org.jetbrains.kotlin:kotlin-stdlib:2.3.21",

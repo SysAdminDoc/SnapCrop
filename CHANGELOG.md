@@ -4,6 +4,10 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Pinned the ML Kit entity-extraction runtime to binary-compatible OkHttp 4.12.0,
+  replacing the transitive OkHttp 3.12.1 affected by
+  GHSA-3cqm-mf7h-prrj/CVE-2021-0341 hostname-verification weaknesses.
+
 ## [v6.89.0] - 2026-07-13
 
 **Capture-first redesign and prompt-free replacement.**

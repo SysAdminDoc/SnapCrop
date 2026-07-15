@@ -17,6 +17,7 @@ mlkitSubjectSegmentation = "16.0.0-beta1"
 mlkitTranslate = "17.0.3"
 mlkitLanguageId = "17.0.6"
 mlkitEntityExtraction = "16.0.0-beta6"
+okhttp = "4.12.0"
 playServicesBase = "18.10.0"
 junit = "4.13.2"
 robolectric = "4.16.1"
@@ -60,6 +61,7 @@ mlkit-subjectsegmentation = { group = "com.google.android.gms", name = "play-ser
 mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
 mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 mlkit-entity-extraction = { group = "com.google.mlkit", name = "entity-extraction", version.ref = "mlkitEntityExtraction" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 play-services-base = { group = "com.google.android.gms", name = "play-services-base", version.ref = "playServicesBase" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
