@@ -26,6 +26,10 @@ All notable changes to SnapCrop will be documented in this file.
 - Local operation diagnostics now persist completed partial exports and media
   mutations as `PARTIAL` with content-free sidecar types or exact outcome counts;
   gallery copy also distinguishes recoverable Trash from legacy permanent deletion.
+- Crash reports now use atomic bounded retention, remove device model data, redact
+  path/URI/endpoint/query-like exception values while retaining stack symbols, show
+  the complete sanitized report plus data categories before sharing, and report
+  complete, partial, or failed deletion from the actual files left on disk.
 
 ## [v6.89.0] - 2026-07-13
 

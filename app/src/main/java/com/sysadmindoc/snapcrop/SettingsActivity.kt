@@ -2000,6 +2000,7 @@ class SettingsActivity : ComponentActivity() {
                     // Crash diagnostics — local only, nothing leaves the device unless shared.
                     var crashFiles by remember { mutableStateOf(CrashReporter.crashLogs(this@SettingsActivity)) }
                     var crashViewText by remember { mutableStateOf<String?>(null) }
+                    var crashSharePreview by remember { mutableStateOf<CrashSharePreview?>(null) }
                     Spacer(Modifier.height(12.dp))
                     Card(
                         modifier = Modifier
@@ -2023,15 +2024,45 @@ class SettingsActivity : ComponentActivity() {
                                 Spacer(Modifier.height(8.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     TextButton(onClick = {
-                                        crashViewText = crashFiles.firstOrNull()?.let { runCatching { it.readText() }.getOrNull() }
+                                        crashViewText = crashFiles.firstOrNull()?.let(CrashReporter::readReport)
                                     }) { Text(stringResource(R.string.settings_crash_view), color = Primary, fontSize = 13.sp) }
-                                    TextButton(onClick = { shareCrashLog(crashFiles.firstOrNull()) }) {
+                                    TextButton(onClick = {
+                                        val file = crashFiles.firstOrNull()
+                                        val report = file?.let(CrashReporter::readReport)
+                                        if (file == null || report == null) {
+                                            crashFiles = CrashReporter.crashLogs(this@SettingsActivity)
+                                            Toast.makeText(
+                                                this@SettingsActivity,
+                                                R.string.settings_crash_none,
+                                                Toast.LENGTH_SHORT,
+                                            ).show()
+                                        } else {
+                                            crashSharePreview = CrashSharePreview(file, report)
+                                        }
+                                    }) {
                                         Text(stringResource(R.string.settings_crash_share), color = Primary, fontSize = 13.sp)
                                     }
                                     TextButton(onClick = {
-                                        CrashReporter.clear(this@SettingsActivity)
-                                        crashFiles = emptyList()
+                                        val result = CrashReporter.clear(this@SettingsActivity)
+                                        crashFiles = result.remaining
                                         crashViewText = null
+                                        crashSharePreview = null
+                                        val message = when (result.status) {
+                                            CrashClearStatus.COMPLETE -> getString(
+                                                R.string.settings_crash_clear_complete,
+                                                result.deleted,
+                                            )
+                                            CrashClearStatus.PARTIAL -> getString(
+                                                R.string.settings_crash_clear_partial,
+                                                result.deleted,
+                                                result.retained,
+                                            )
+                                            CrashClearStatus.FAILED -> getString(
+                                                R.string.settings_crash_clear_failed,
+                                                result.retained,
+                                            )
+                                        }
+                                        Toast.makeText(this@SettingsActivity, message, Toast.LENGTH_LONG).show()
                                     }) { Text(stringResource(R.string.settings_crash_clear), color = Danger, fontSize = 13.sp) }
                                 }
                             }
@@ -2050,6 +2081,46 @@ class SettingsActivity : ComponentActivity() {
                                     modifier = Modifier.verticalScroll(rememberScrollState()))
                             },
                             containerColor = SurfaceVariant
+                        )
+                    }
+                    crashSharePreview?.let { preview ->
+                        AlertDialog(
+                            onDismissRequest = { crashSharePreview = null },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        crashSharePreview = null
+                                        shareCrashLog(preview.file)
+                                    }
+                                ) {
+                                    Text(stringResource(R.string.settings_crash_share_confirm), color = Primary)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { crashSharePreview = null }) {
+                                    Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                                }
+                            },
+                            title = { Text(stringResource(R.string.settings_crash_share_preview_title), color = OnSurface) },
+                            text = {
+                                Column(Modifier.verticalScroll(rememberScrollState())) {
+                                    Text(
+                                        stringResource(R.string.settings_crash_share_disclosure),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                    Text(
+                                        preview.report,
+                                        color = OnSurfaceVariant,
+                                        fontSize = 10.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        lineHeight = 13.sp,
+                                    )
+                                }
+                            },
+                            containerColor = SurfaceVariant,
                         )
                     }
 
@@ -2126,7 +2197,7 @@ class SettingsActivity : ComponentActivity() {
     }
 
     private fun shareCrashLog(file: File?) {
-        if (file == null || !file.exists()) {
+        if (file == null || CrashReporter.readReport(file) == null) {
             Toast.makeText(this, getString(R.string.settings_crash_none), Toast.LENGTH_SHORT).show()
             return
         }
@@ -2139,6 +2210,7 @@ class SettingsActivity : ComponentActivity() {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
                 putExtra(Intent.EXTRA_SUBJECT, "SnapCrop crash log")
+                clipData = ClipData.newRawUri("SnapCrop crash log", uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }, null))
         } catch (_: Exception) {
@@ -2208,6 +2280,8 @@ class SettingsActivity : ComponentActivity() {
             }
         }
 }
+
+private data class CrashSharePreview(val file: File, val report: String)
 
 @Composable
 private fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
