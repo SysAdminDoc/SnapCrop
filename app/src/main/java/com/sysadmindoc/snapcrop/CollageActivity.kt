@@ -43,7 +43,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class CollageLayout(
+internal data class CollageLayout(
     val name: String,
     val cols: Int,
     val rows: Int,
@@ -64,7 +64,7 @@ private val collageBgColors = listOf(
     CollageColor(0xFFF38BA8.toInt(), R.string.collage_color_pink),
 )
 
-private val layouts = listOf(
+internal val collageLayouts = listOf(
     CollageLayout("2x1", 2, 1),
     CollageLayout("1x2", 1, 2),
     CollageLayout("2x2", 2, 2),
@@ -92,10 +92,139 @@ private val layouts = listOf(
     CollageLayout("6x3", 6, 3),
 )
 
+internal data class CollageSelectionUndo(
+    val previousLayout: CollageLayout,
+    val removedUris: List<Uri>,
+) {
+    init {
+        require(removedUris.isNotEmpty())
+    }
+}
+
+internal data class CollageSelectionState(
+    val layout: CollageLayout = collageLayouts[2],
+    val uris: List<Uri> = emptyList(),
+    val pendingLayout: CollageLayout? = null,
+    val undo: CollageSelectionUndo? = null,
+) {
+    init {
+        require(uris.size <= layout.slots)
+    }
+}
+
+internal object CollageSelectionReducer {
+    fun requestLayout(state: CollageSelectionState, target: CollageLayout): CollageSelectionState = when {
+        target == state.layout -> state.copy(pendingLayout = null)
+        state.uris.size <= target.slots -> state.copy(layout = target, pendingLayout = null)
+        else -> state.copy(pendingLayout = target)
+    }
+
+    fun cancelPending(state: CollageSelectionState): CollageSelectionState =
+        state.copy(pendingLayout = null)
+
+    fun confirmPending(state: CollageSelectionState): CollageSelectionState {
+        val target = state.pendingLayout ?: return state
+        if (state.uris.size <= target.slots) return state.copy(layout = target, pendingLayout = null)
+        return state.copy(
+            layout = target,
+            uris = state.uris.take(target.slots),
+            pendingLayout = null,
+            undo = CollageSelectionUndo(state.layout, state.uris.drop(target.slots)),
+        )
+    }
+
+    fun undo(state: CollageSelectionState): CollageSelectionState {
+        val undo = state.undo ?: return state
+        return state.copy(
+            layout = undo.previousLayout,
+            uris = state.uris + undo.removedUris,
+            pendingLayout = null,
+            undo = null,
+        )
+    }
+
+    fun replace(
+        state: CollageSelectionState,
+        picked: List<Uri>,
+        maxItems: Int,
+        keepCurrentLayout: Boolean = true,
+    ): CollageSelectionState {
+        val uris = picked.distinctBy(Uri::toString)
+            .take(maxItems.coerceIn(0, collageLayouts.maxOf(CollageLayout::slots)))
+        val layout = state.layout.takeIf { keepCurrentLayout && it.slots >= uris.size }
+            ?: collageLayouts.firstOrNull { it.slots >= uris.size }
+            ?: collageLayouts.maxBy(CollageLayout::slots)
+        return state.copy(layout = layout, uris = uris, pendingLayout = null, undo = null)
+    }
+
+    fun append(state: CollageSelectionState, picked: List<Uri>): CollageSelectionState {
+        val capacity = (state.layout.slots - state.uris.size).coerceAtLeast(0)
+        if (capacity == 0) return state
+        val existing = state.uris.mapTo(hashSetOf(), Uri::toString)
+        val additions = picked.filter { existing.add(it.toString()) }.take(capacity)
+        return state.copy(uris = state.uris + additions, pendingLayout = null, undo = null)
+    }
+
+    fun remove(state: CollageSelectionState, index: Int): CollageSelectionState =
+        if (index !in state.uris.indices) state else state.copy(
+            uris = state.uris.filterIndexed { position, _ -> position != index },
+            pendingLayout = null,
+            undo = null,
+        )
+
+    fun retainReadable(state: CollageSelectionState, readable: Set<Uri>): CollageSelectionState {
+        val uris = state.uris.filter(readable::contains)
+        val undo = state.undo?.let { snapshot ->
+            snapshot.copy(removedUris = snapshot.removedUris.filter(readable::contains))
+        }?.takeIf { it.removedUris.isNotEmpty() }
+        return state.copy(
+            uris = uris,
+            pendingLayout = state.pendingLayout?.takeIf { uris.size > it.slots },
+            undo = undo,
+        )
+    }
+}
+
+internal object CollageSelectionPersistence {
+    private const val STATE_URIS = "collage_uris"
+    private const val STATE_LAYOUT = "collage_layout"
+    private const val STATE_PENDING_LAYOUT = "collage_pending_layout"
+    private const val STATE_UNDO_LAYOUT = "collage_undo_layout"
+    private const val STATE_UNDO_URIS = "collage_undo_uris"
+
+    fun save(outState: Bundle, state: CollageSelectionState) {
+        WorkflowStateRestoration.putUris(outState, STATE_URIS, state.uris)
+        outState.putString(STATE_LAYOUT, state.layout.name)
+        outState.putString(STATE_PENDING_LAYOUT, state.pendingLayout?.name)
+        outState.putString(STATE_UNDO_LAYOUT, state.undo?.previousLayout?.name)
+        WorkflowStateRestoration.putUris(outState, STATE_UNDO_URIS, state.undo?.removedUris.orEmpty())
+    }
+
+    fun restore(savedState: Bundle): CollageSelectionState {
+        val uris = WorkflowStateRestoration.restoreUris(savedState, STATE_URIS)
+            .take(CollageActivity.MAX_INBOUND_ITEMS)
+        val requestedLayout = layout(savedState.getString(STATE_LAYOUT)) ?: collageLayouts[2]
+        val currentLayout = requestedLayout.takeIf { it.slots >= uris.size }
+            ?: collageLayouts.firstOrNull { it.slots >= uris.size }
+            ?: collageLayouts.maxBy(CollageLayout::slots)
+        val pendingLayout = layout(savedState.getString(STATE_PENDING_LAYOUT))
+            ?.takeIf { it != currentLayout && uris.size > it.slots }
+        val currentUriStrings = uris.mapTo(hashSetOf(), Uri::toString)
+        val removedUris = WorkflowStateRestoration.restoreUris(savedState, STATE_UNDO_URIS)
+            .filter { currentUriStrings.add(it.toString()) }
+            .take((CollageActivity.MAX_INBOUND_ITEMS - uris.size).coerceAtLeast(0))
+        val undo = layout(savedState.getString(STATE_UNDO_LAYOUT))
+            ?.takeIf { removedUris.isNotEmpty() && uris.size + removedUris.size <= it.slots }
+            ?.let { CollageSelectionUndo(it, removedUris) }
+        return CollageSelectionState(currentLayout, uris, pendingLayout, undo)
+    }
+
+    private fun layout(name: String?): CollageLayout? = collageLayouts.firstOrNull { it.name == name }
+}
+
 class CollageActivity : ComponentActivity() {
 
-    private val imageUris = mutableStateListOf<Uri>()
-    private val selectedLayout = mutableStateOf(layouts[2]) // default 2x2
+    private val selectionState = mutableStateOf(CollageSelectionState())
     private val isSaving = mutableStateOf(false)
     private val spacing = mutableIntStateOf(4) // pixels gap
     private val bgColorIdx = mutableIntStateOf(0)
@@ -109,13 +238,10 @@ class CollageActivity : ComponentActivity() {
     ) { uris ->
         if (uris.isNotEmpty()) {
             uris.forEach { WorkflowStateRestoration.persistReadGrant(this, it) }
-            val slots = selectedLayout.value.slots
-            if (nextPickReplaces) {
-                imageUris.clear()
-                imageUris.addAll(uris.take(slots))
+            selectionState.value = if (nextPickReplaces) {
+                CollageSelectionReducer.replace(selectionState.value, uris, MAX_INBOUND_ITEMS)
             } else {
-                val capacity = (slots - imageUris.size).coerceAtLeast(0)
-                if (capacity > 0) imageUris.addAll(uris.take(capacity))
+                CollageSelectionReducer.append(selectionState.value, uris)
             }
             nextPickReplaces = true // default back so the toolbar "Pick" button always replaces.
         }
@@ -127,7 +253,7 @@ class CollageActivity : ComponentActivity() {
     }
 
     private fun launchAppendPicker() {
-        if (imageUris.size >= selectedLayout.value.slots) return
+        if (selectionState.value.uris.size >= selectionState.value.layout.slots) return
         nextPickReplaces = false
         pickImagesLauncher.launch(arrayOf("image/*"))
     }
@@ -136,41 +262,53 @@ class CollageActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         applySecureWindow(this)
-        val restored = WorkflowStateRestoration.restoreUris(savedInstanceState, STATE_URIS)
+        var restored = emptyList<Uri>()
         if (savedInstanceState != null) {
-            imageUris.addAll(restored.take(MAX_INBOUND_ITEMS))
-            selectedLayout.value = layouts.firstOrNull {
-                it.name == savedInstanceState.getString(STATE_LAYOUT)
-            } ?: layouts[2]
+            selectionState.value = CollageSelectionPersistence.restore(savedInstanceState)
+            restored = selectionState.value.uris + selectionState.value.undo?.removedUris.orEmpty()
             spacing.intValue = savedInstanceState.getInt(STATE_SPACING, 4).coerceIn(0, 64)
             bgColorIdx.intValue = savedInstanceState.getInt(STATE_BACKGROUND, 0)
                 .coerceIn(collageBgColors.indices)
             cellAspect.floatValue = savedInstanceState.getFloat(STATE_CELL_ASPECT, 4f / 3f)
                 .coerceIn(0.5f, 2f)
-            while (imageUris.size > selectedLayout.value.slots) imageUris.removeAt(imageUris.lastIndex)
         } else {
             @Suppress("DEPRECATION")
             intent.getParcelableArrayListExtra<Uri>(InboundShareContract.EXTRA_URIS)
                 ?.distinctBy(Uri::toString)
                 ?.take(MAX_INBOUND_ITEMS)
                 ?.let { incoming ->
-                    selectedLayout.value = layouts.firstOrNull { it.slots >= incoming.size } ?: layouts.maxBy { it.slots }
-                    imageUris.addAll(incoming)
+                    selectionState.value = CollageSelectionReducer.replace(
+                        selectionState.value,
+                        incoming,
+                        MAX_INBOUND_ITEMS,
+                        keepCurrentLayout = false,
+                    )
                 }
         }
 
         setContent {
             SnapCropTheme {
+                val state = selectionState.value
                 CollageScreen(
-                    uris = imageUris,
-                    layout = selectedLayout.value,
+                    uris = state.uris,
+                    layout = state.layout,
+                    pendingLayout = state.pendingLayout,
+                    undo = state.undo,
                     isSaving = isSaving.value,
                     spacing = spacing.intValue,
                     bgColorIdx = bgColorIdx.intValue,
-                    onLayoutChange = {
-                        selectedLayout.value = it
-                        // Drop overflow selections silently when shrinking layouts.
-                        while (imageUris.size > it.slots) imageUris.removeAt(imageUris.size - 1)
+                    onLayoutChange = { selectionState.value = CollageSelectionReducer.requestLayout(state, it) },
+                    onConfirmLayoutChange = {
+                        selectionState.value = CollageSelectionReducer.confirmPending(selectionState.value)
+                    },
+                    onCancelLayoutChange = {
+                        selectionState.value = CollageSelectionReducer.cancelPending(selectionState.value)
+                    },
+                    onUndoLayoutChange = {
+                        selectionState.value = CollageSelectionReducer.undo(selectionState.value)
+                    },
+                    onUndoDismissed = {
+                        selectionState.value = selectionState.value.copy(undo = null)
                     },
                     onSpacingChange = { spacing.intValue = it },
                     onBgColorChange = { bgColorIdx.intValue = it },
@@ -178,7 +316,9 @@ class CollageActivity : ComponentActivity() {
                     onCellAspectChange = { cellAspect.floatValue = it },
                     onPickImages = { launchReplacePicker() },
                     onAddImage = { launchAppendPicker() },
-                    onRemoveImage = { idx -> if (idx in imageUris.indices) imageUris.removeAt(idx) },
+                    onRemoveImage = { idx ->
+                        selectionState.value = CollageSelectionReducer.remove(selectionState.value, idx)
+                    },
                     onSave = { buildAndSave() },
                     onClose = { finish() }
                 )
@@ -191,21 +331,23 @@ class CollageActivity : ComponentActivity() {
                     WorkflowStateRestoration.validateReadableUris(this@CollageActivity, restored)
                 }
                 if (validated.unavailableCount > 0) {
-                    imageUris.retainAll(validated.uris.toSet())
+                    selectionState.value = CollageSelectionReducer.retainReadable(
+                        selectionState.value,
+                        validated.uris.toSet(),
+                    )
                     Toast.makeText(this@CollageActivity, R.string.workflow_restore_missing_media, Toast.LENGTH_LONG).show()
-                    if (imageUris.isEmpty()) launchReplacePicker()
+                    if (selectionState.value.uris.isEmpty()) launchReplacePicker()
                 }
             }
         }
 
         // First launch: pick replaces (list is empty anyway).
         nextPickReplaces = true
-        if (imageUris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
+        if (selectionState.value.uris.isEmpty()) pickImagesLauncher.launch(arrayOf("image/*"))
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        WorkflowStateRestoration.putUris(outState, STATE_URIS, imageUris)
-        outState.putString(STATE_LAYOUT, selectedLayout.value.name)
+        CollageSelectionPersistence.save(outState, selectionState.value)
         outState.putInt(STATE_SPACING, spacing.intValue)
         outState.putInt(STATE_BACKGROUND, bgColorIdx.intValue)
         outState.putFloat(STATE_CELL_ASPECT, cellAspect.floatValue)
@@ -213,10 +355,11 @@ class CollageActivity : ComponentActivity() {
     }
 
     private fun buildAndSave() {
-        if (imageUris.size < 2 || isSaving.value) return
+        val selection = selectionState.value
+        if (selection.uris.size < 2 || isSaving.value) return
         startCollage(
-            uris = imageUris.toList(),
-            layout = selectedLayout.value,
+            uris = selection.uris,
+            layout = selection.layout,
             gap = spacing.intValue,
             aspect = cellAspect.floatValue,
             backgroundColor = collageBgColors[bgColorIdx.intValue.coerceIn(collageBgColors.indices)].color,
@@ -304,8 +447,6 @@ class CollageActivity : ComponentActivity() {
 
     companion object {
         const val MAX_INBOUND_ITEMS = 25
-        private const val STATE_URIS = "collage_uris"
-        private const val STATE_LAYOUT = "collage_layout"
         private const val STATE_SPACING = "collage_spacing"
         private const val STATE_BACKGROUND = "collage_background"
         private const val STATE_CELL_ASPECT = "collage_cell_aspect"
@@ -357,10 +498,16 @@ class CollageActivity : ComponentActivity() {
 private fun CollageScreen(
     uris: List<Uri>,
     layout: CollageLayout,
+    pendingLayout: CollageLayout?,
+    undo: CollageSelectionUndo?,
     isSaving: Boolean,
     spacing: Int,
     bgColorIdx: Int,
     onLayoutChange: (CollageLayout) -> Unit,
+    onConfirmLayoutChange: () -> Unit,
+    onCancelLayoutChange: () -> Unit,
+    onUndoLayoutChange: () -> Unit,
+    onUndoDismissed: () -> Unit,
     onSpacingChange: (Int) -> Unit,
     onBgColorChange: (Int) -> Unit,
     cellAspect: Float,
@@ -371,7 +518,27 @@ private fun CollageScreen(
     onSave: () -> Unit,
     onClose: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(Black).safeDrawingPadding().imePadding()) {
+    val snackbarHostState = remember { SnackbarHostState() }
+    val undoMessage = undo?.let {
+        stringResource(R.string.collage_layout_removed, it.removedUris.size)
+    }.orEmpty()
+    val undoLabel = stringResource(R.string.editor_undo)
+    LaunchedEffect(undo, undoMessage) {
+        if (undo != null) {
+            when (snackbarHostState.showSnackbar(
+                message = undoMessage,
+                actionLabel = undoLabel,
+                withDismissAction = true,
+                duration = SnackbarDuration.Long,
+            )) {
+                SnackbarResult.ActionPerformed -> onUndoLayoutChange()
+                SnackbarResult.Dismissed -> onUndoDismissed()
+            }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Black)) {
+      Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
         // Top bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
@@ -395,7 +562,7 @@ private fun CollageScreen(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(layouts, key = { it.name }) { l ->
+            items(collageLayouts, key = { it.name }) { l ->
                 val layoutCd = stringResource(R.string.collage_layout_cd, l.name, l.slots, "")
                 FilterChip(
                     selected = layout == l,
@@ -594,5 +761,45 @@ private fun CollageScreen(
                 }
             }
         }
+      }
+
+      SnackbarHost(
+          hostState = snackbarHostState,
+          modifier = Modifier
+              .align(Alignment.BottomCenter)
+              .safeDrawingPadding()
+              .padding(horizontal = 12.dp, vertical = 76.dp),
+      )
+
+      pendingLayout?.let { target ->
+          val removalCount = (uris.size - target.slots).coerceAtLeast(0)
+          AlertDialog(
+              onDismissRequest = onCancelLayoutChange,
+              confirmButton = {
+                  TextButton(onClick = onConfirmLayoutChange) {
+                      Text(stringResource(R.string.collage_layout_confirm), color = Danger)
+                  }
+              },
+              dismissButton = {
+                  TextButton(onClick = onCancelLayoutChange) {
+                      Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                  }
+              },
+              title = {
+                  Text(stringResource(R.string.collage_layout_reduce_title, target.name), color = OnSurface)
+              },
+              text = {
+                  Text(
+                      stringResource(
+                          R.string.collage_layout_reduce_body,
+                          target.slots,
+                          removalCount,
+                      ),
+                      color = OnSurfaceVariant,
+                  )
+              },
+              containerColor = SurfaceVariant,
+          )
+      }
     }
 }

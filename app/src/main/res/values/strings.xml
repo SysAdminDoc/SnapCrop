@@ -1219,6 +1219,10 @@
     <string name="collage_bg_label">BG:</string>
     <string name="collage_remove_cd">Remove image from cell %1$d</string>
     <string name="collage_layout_cd">%1$s layout, %2$d cells%3$s</string>
+    <string name="collage_layout_reduce_title">Change to %1$s?</string>
+    <string name="collage_layout_reduce_body">This layout has %1$d cells and will remove %2$d selected image(s). Cancel keeps the current order; after changing, Undo restores it.</string>
+    <string name="collage_layout_confirm">Remove and change</string>
+    <string name="collage_layout_removed">Removed %1$d image(s) from the collage.</string>
     <string name="collage_gap_cd">Gap spacing, %1$d pixels</string>
     <string name="collage_aspect_cd">%1$s cell aspect ratio%2$s</string>
     <string name="collage_background_cd">%1$s background color%2$s</string>

@@ -30,6 +30,9 @@ All notable changes to SnapCrop will be documented in this file.
   path/URI/endpoint/query-like exception values while retaining stack symbols, show
   the complete sanitized report plus data categories before sharing, and report
   complete, partial, or failed deletion from the actual files left on disk.
+- Collage layout reductions now disclose the exact removal count, preserve order on
+  cancel, and offer one-step Undo that survives recreation; replacement picks expand
+  to the smallest fitting layout instead of silently truncating selected images.
 
 ## [v6.89.0] - 2026-07-13
 
