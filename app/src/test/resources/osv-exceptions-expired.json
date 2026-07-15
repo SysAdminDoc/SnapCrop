@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "advisoryId": "CVE-2026-53914",
+      "scope": "build-test",
+      "rationale": "Fixture proving that an expired Kotlin cache exception fails the release gate.",
+      "owner": "SnapCrop test suite",
+      "expiresOn": "2000-01-01"
+    }
+  ]
+}

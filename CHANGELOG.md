@@ -20,6 +20,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Settings restore now streams strict UTF-8 under a 2 MiB limit on a worker thread,
   rejects duplicate or invalid nested preset/profile data before mutation, validates
   cross-references, and applies the complete staged preference set in one commit.
+- Added a release-scoped OSV gate that reports runtime and build/test graphs
+  separately, rejects unexcepted High/Critical runtime advisories, validates owned
+  time-bounded exceptions, and is required by release provenance generation.
 
 ## [v6.89.0] - 2026-07-13
 

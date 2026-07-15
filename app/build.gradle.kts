@@ -1,6 +1,12 @@
 import java.util.Properties
 import java.security.MessageDigest
+import java.io.ByteArrayOutputStream
+import java.net.HttpURLConnection
+import java.net.URI
+import java.net.URLEncoder
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -8,6 +14,96 @@ import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import org.cyclonedx.model.Component
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import kotlin.math.ceil
+import kotlin.math.min
+import kotlin.math.pow
+
+data class OsvExceptionPolicy(
+    val advisoryId: String,
+    val scope: String,
+    val rationale: String,
+    val owner: String,
+    val expiresOn: LocalDate,
+)
+
+data class OsvComponent(val group: String, val module: String, val version: String) {
+    val packageName: String get() = "$group:$module"
+    val coordinate: String get() = "$packageName:$version"
+}
+
+fun readOsvExceptionPolicies(file: File, today: LocalDate): List<OsvExceptionPolicy> {
+    require(file.isFile) { "OSV exception policy file is missing: $file" }
+    val root = JsonSlurper().parse(file) as? Map<*, *>
+        ?: error("OSV exception policy root must be an object")
+    require(root["schemaVersion"]?.toString()?.toIntOrNull() == 1) {
+        "OSV exception policy schemaVersion must be 1"
+    }
+    val rows = root["exceptions"] as? List<*>
+        ?: error("OSV exception policy exceptions must be an array")
+    val allowedScopes = setOf("release-runtime", "build-test")
+    val allowedFields = setOf("advisoryId", "scope", "rationale", "owner", "expiresOn")
+    val policies = rows.mapIndexed { index, value ->
+        val row = value as? Map<*, *> ?: error("OSV exception $index must be an object")
+        require(row.keys.map(Any?::toString).toSet() == allowedFields) {
+            "OSV exception $index must contain exactly $allowedFields"
+        }
+        fun required(field: String): String = row[field]?.toString()?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: error("OSV exception $index is missing $field")
+        val advisoryId = required("advisoryId")
+        val scope = required("scope")
+        val rationale = required("rationale")
+        val owner = required("owner")
+        val expiresOn = runCatching { LocalDate.parse(required("expiresOn")) }
+            .getOrElse { error("OSV exception $advisoryId expiresOn must use YYYY-MM-DD") }
+        require(advisoryId.matches(Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{2,80}$"))) {
+            "OSV exception $index has an invalid advisoryId"
+        }
+        require(scope in allowedScopes) { "OSV exception $advisoryId has invalid scope $scope" }
+        require(rationale.length >= 20) { "OSV exception $advisoryId needs a specific rationale" }
+        require(owner.length <= 120) { "OSV exception $advisoryId owner is too long" }
+        require(!today.isAfter(expiresOn)) {
+            "OSV exception $advisoryId expired on $expiresOn"
+        }
+        OsvExceptionPolicy(advisoryId, scope, rationale, owner, expiresOn)
+    }
+    require(policies.map { it.advisoryId.uppercase(Locale.ROOT) to it.scope }.distinct().size == policies.size) {
+        "OSV exception advisoryId/scope pairs must be unique"
+    }
+    return policies
+}
+
+fun cvssV3BaseScore(vector: String): Double? {
+    if (!vector.startsWith("CVSS:3.")) return null
+    val metrics = vector.split('/').drop(1).mapNotNull { token ->
+        token.split(':', limit = 2).takeIf { it.size == 2 }?.let { it[0] to it[1] }
+    }.toMap()
+    fun metric(name: String, values: Map<String, Double>): Double? = metrics[name]?.let(values::get)
+    val scopeChanged = metrics["S"] == "C"
+    val attackVector = metric("AV", mapOf("N" to .85, "A" to .62, "L" to .55, "P" to .2)) ?: return null
+    val attackComplexity = metric("AC", mapOf("L" to .77, "H" to .44)) ?: return null
+    val privileges = metric(
+        "PR",
+        if (scopeChanged) mapOf("N" to .85, "L" to .68, "H" to .5)
+        else mapOf("N" to .85, "L" to .62, "H" to .27),
+    ) ?: return null
+    val interaction = metric("UI", mapOf("N" to .85, "R" to .62)) ?: return null
+    val impactValues = mapOf("H" to .56, "L" to .22, "N" to 0.0)
+    val confidentiality = metric("C", impactValues) ?: return null
+    val integrity = metric("I", impactValues) ?: return null
+    val availability = metric("A", impactValues) ?: return null
+    val impactSubScore = 1 - (1 - confidentiality) * (1 - integrity) * (1 - availability)
+    val impact = if (scopeChanged) {
+        7.52 * (impactSubScore - .029) - 3.25 * (impactSubScore - .02).pow(15)
+    } else {
+        6.42 * impactSubScore
+    }
+    if (impact <= 0) return 0.0
+    val exploitability = 8.22 * attackVector * attackComplexity * privileges * interaction
+    val unrounded = if (scopeChanged) min(1.08 * (impact + exploitability), 10.0)
+        else min(impact + exploitability, 10.0)
+    return ceil(unrounded * 10.0) / 10.0
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -204,6 +300,292 @@ tasks.cyclonedxDirectBom {
     projectType.set(Component.Type.APPLICATION)
     includeConfigs.set(listOf("releaseRuntimeClasspath"))
     skipConfigs.set(listOf(".*[Tt]est.*", "debug.*", "androidTest.*"))
+}
+
+val osvExceptionPolicyFile = rootProject.layout.projectDirectory.file("gradle/osv-exceptions.json")
+val expiredOsvExceptionFixture = layout.projectDirectory.file("src/test/resources/osv-exceptions-expired.json")
+val osvReleaseReportFile = layout.buildDirectory.file("reports/osv-release-vulnerabilities.json")
+
+tasks.register("testOsvExceptionPolicy") {
+    group = "verification"
+    description = "Proves OSV exception metadata is complete and expired exceptions fail closed."
+    inputs.files(osvExceptionPolicyFile, expiredOsvExceptionFixture)
+    doLast {
+        val today = LocalDate.now(ZoneOffset.UTC)
+        readOsvExceptionPolicies(osvExceptionPolicyFile.asFile, today)
+        val expiredFailure = runCatching {
+            readOsvExceptionPolicies(expiredOsvExceptionFixture.asFile, today)
+        }.exceptionOrNull()
+        check(expiredFailure?.message?.contains("expired on") == true) {
+            "Expired OSV exception fixture did not fail closed"
+        }
+        logger.lifecycle("OSV exception policy passed; expired fixture failed closed")
+    }
+}
+
+tasks.register("verifyReleaseVulnerabilities") {
+    group = "verification"
+    description = "Queries OSV by scope, reports findings, and rejects unexcepted High/Critical release vulnerabilities."
+    dependsOn("testOsvExceptionPolicy")
+    inputs.file(osvExceptionPolicyFile)
+    outputs.file(osvReleaseReportFile)
+    outputs.upToDateWhen { false }
+
+    doLast {
+        check(!gradle.startParameter.isOffline) { "OSV release verification cannot run in Gradle offline mode" }
+        val reportFile = osvReleaseReportFile.get().asFile
+        reportFile.parentFile.mkdirs()
+        reportFile.delete()
+        val generatedAt = Instant.now().toString()
+        val today = LocalDate.now(ZoneOffset.UTC)
+        try {
+            val policies = readOsvExceptionPolicies(osvExceptionPolicyFile.asFile, today)
+            val apiBase = providers.gradleProperty("snapcrop.osvApiBase")
+                .orElse("https://api.osv.dev/v1")
+                .get()
+                .trimEnd('/')
+            val apiUri = URI(apiBase)
+            val loopbackHost = apiUri.host in setOf("localhost", "127.0.0.1", "::1", "[::1]")
+            check(apiUri.userInfo == null && apiUri.query == null && apiUri.fragment == null &&
+                (apiUri.scheme == "https" || apiUri.scheme == "http" && loopbackHost)
+            ) { "OSV API must use HTTPS, except for an explicit loopback test endpoint" }
+
+            fun requestJson(method: String, path: String, requestBody: String? = null): Any {
+                val connection = URI("$apiBase$path").toURL().openConnection() as HttpURLConnection
+                connection.requestMethod = method
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                connection.setRequestProperty("Accept", "application/json")
+                connection.setRequestProperty("User-Agent", "SnapCrop-Gradle-OSV-Gate/1")
+                if (requestBody != null) {
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                    connection.outputStream.use { it.write(requestBody.toByteArray(Charsets.UTF_8)) }
+                }
+                val status = connection.responseCode
+                val stream = if (status in 200..299) connection.inputStream else connection.errorStream
+                val output = ByteArrayOutputStream(64 * 1024)
+                stream?.use { input ->
+                    val buffer = ByteArray(16 * 1024)
+                    var total = 0
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        total += read
+                        check(total <= 32 * 1024 * 1024) { "OSV response exceeded 32 MiB" }
+                        output.write(buffer, 0, read)
+                    }
+                }
+                check(status in 200..299) {
+                    "OSV request $path failed with HTTP $status: ${output.toString(Charsets.UTF_8).take(500)}"
+                }
+                return JsonSlurper().parseText(output.toString(Charsets.UTF_8))
+            }
+
+            fun resolvedComponents(configurationName: String): List<OsvComponent> =
+                configurations.getByName(configurationName)
+                    .resolvedConfiguration
+                    .resolvedArtifacts
+                    .map { artifact ->
+                        val id = artifact.moduleVersion.id
+                        OsvComponent(id.group, id.name, id.version)
+                    }
+                    .filter { it.group.isNotBlank() && it.module.isNotBlank() && it.version.isNotBlank() }
+                    .distinct()
+                    .sortedBy(OsvComponent::coordinate)
+
+            val releaseComponents = resolvedComponents("releaseRuntimeClasspath")
+            val buildTestConfigurations = listOf(
+                "debugUnitTestRuntimeClasspath",
+                "debugAndroidTestRuntimeClasspath",
+            )
+            val buildTestComponents = (
+                buildTestConfigurations.flatMap(::resolvedComponents) +
+                    OsvComponent("org.jetbrains.kotlin", "kotlin-gradle-plugin", libs.versions.kotlin.get()) +
+                    OsvComponent("com.android.tools.build", "gradle", libs.versions.agp.get())
+                ).distinct().sortedBy(OsvComponent::coordinate)
+
+            fun query(component: OsvComponent, pageToken: String? = null): Map<String, Any> = linkedMapOf(
+                "version" to component.version,
+                "package" to linkedMapOf("ecosystem" to "Maven", "name" to component.packageName),
+            ).apply {
+                if (pageToken != null) put("page_token", pageToken)
+            }
+
+            fun queryScope(components: List<OsvComponent>): Map<OsvComponent, Set<String>> {
+                if (components.isEmpty()) return emptyMap()
+                val response = requestJson(
+                    "POST",
+                    "/querybatch",
+                    JsonOutput.toJson(mapOf("queries" to components.map { query(it) })),
+                ) as? Map<*, *> ?: error("OSV querybatch response must be an object")
+                val results = response["results"] as? List<*>
+                    ?: error("OSV querybatch response is missing results")
+                check(results.size == components.size) { "OSV querybatch result count mismatch" }
+                return components.mapIndexed { index, component ->
+                    val ids = linkedSetOf<String>()
+                    var result = results[index] as? Map<*, *> ?: emptyMap<Any, Any>()
+                    var pages = 0
+                    while (true) {
+                        (result["vulns"] as? List<*>)?.forEach { row ->
+                            ((row as? Map<*, *>)?.get("id") as? String)?.let(ids::add)
+                        }
+                        val token = result["next_page_token"] as? String ?: break
+                        check(++pages <= 10) { "OSV pagination exceeded 10 pages for ${component.coordinate}" }
+                        val next = requestJson(
+                            "POST",
+                            "/querybatch",
+                            JsonOutput.toJson(mapOf("queries" to listOf(query(component, token)))),
+                        ) as? Map<*, *> ?: error("OSV paginated response must be an object")
+                        result = ((next["results"] as? List<*>)?.singleOrNull() as? Map<*, *>)
+                            ?: error("OSV paginated response is missing its result")
+                    }
+                    component to ids.toSet()
+                }.toMap(linkedMapOf())
+            }
+
+            // Deliberately issue independent requests: only release-runtime findings can block
+            // publication, while build/test/tooling findings remain visible without false positives.
+            val releaseIds = queryScope(releaseComponents)
+            val buildTestIds = queryScope(buildTestComponents)
+            val advisoryIds = (releaseIds.values + buildTestIds.values).flatten().toSortedSet()
+            val advisories = advisoryIds.associateWith { id ->
+                requestJson("GET", "/vulns/${URLEncoder.encode(id, Charsets.UTF_8)}") as? Map<*, *>
+                    ?: error("OSV advisory $id must be an object")
+            }
+
+            fun labelRank(value: String?): Int = when (value?.uppercase(Locale.ROOT)) {
+                "CRITICAL" -> 4
+                "HIGH" -> 3
+                "MODERATE", "MEDIUM" -> 2
+                "LOW" -> 1
+                else -> 0
+            }
+
+            fun findingRows(
+                scope: String,
+                idsByComponent: Map<OsvComponent, Set<String>>,
+            ): List<Map<String, Any?>> = idsByComponent.flatMap { (component, ids) ->
+                ids.map { id ->
+                    val advisory = advisories.getValue(id)
+                    val affected = (advisory["affected"] as? List<*>)
+                        ?.mapNotNull { it as? Map<*, *> }
+                        ?.filter { row ->
+                            val pkg = row["package"] as? Map<*, *>
+                            pkg?.get("name") == component.packageName
+                        }.orEmpty()
+                    val severityContainers = listOf(advisory) + affected
+                    val labelRanks = severityContainers.flatMap { container ->
+                        listOf("database_specific", "ecosystem_specific").mapNotNull { field ->
+                            ((container[field] as? Map<*, *>)?.get("severity") as? String)?.let(::labelRank)
+                        }
+                    }
+                    val scores = severityContainers.flatMap { container ->
+                        (container["severity"] as? List<*>)?.mapNotNull { row ->
+                            val severity = row as? Map<*, *> ?: return@mapNotNull null
+                            val score = severity["score"]?.toString() ?: return@mapNotNull null
+                            score.toDoubleOrNull() ?: cvssV3BaseScore(score)
+                        }.orEmpty()
+                    }
+                    val maxScore = scores.maxOrNull()
+                    val scoreRank = when {
+                        maxScore == null -> 0
+                        maxScore >= 9.0 -> 4
+                        maxScore >= 7.0 -> 3
+                        maxScore >= 4.0 -> 2
+                        maxScore > 0.0 -> 1
+                        else -> 0
+                    }
+                    val rank = maxOf(labelRanks.maxOrNull() ?: 0, scoreRank)
+                    val severity = when (rank) {
+                        4 -> "CRITICAL"
+                        3 -> "HIGH"
+                        2 -> "MODERATE"
+                        1 -> "LOW"
+                        else -> "UNKNOWN"
+                    }
+                    val aliases = (advisory["aliases"] as? List<*>)
+                        ?.mapNotNull { it as? String }.orEmpty().sorted()
+                    val identities = (aliases + id).map { it.uppercase(Locale.ROOT) }.toSet()
+                    val exception = policies.firstOrNull { policy ->
+                        policy.scope == scope && policy.advisoryId.uppercase(Locale.ROOT) in identities
+                    }
+                    linkedMapOf<String, Any?>(
+                        "coordinate" to component.coordinate,
+                        "advisoryId" to id,
+                        "aliases" to aliases,
+                        "severity" to severity,
+                        "cvssBaseScore" to maxScore,
+                        "summary" to advisory["summary"]?.toString()?.take(500),
+                        "excepted" to (exception != null),
+                        "exceptionExpiresOn" to exception?.expiresOn?.toString(),
+                    )
+                }
+            }.sortedWith(compareBy({ it["coordinate"].toString() }, { it["advisoryId"].toString() }))
+
+            val releaseFindings = findingRows("release-runtime", releaseIds)
+            val buildTestFindings = findingRows("build-test", buildTestIds)
+            val blocking = releaseFindings.filter { finding ->
+                finding["severity"] in setOf("HIGH", "CRITICAL") && finding["excepted"] != true
+            }
+            val report = linkedMapOf<String, Any?>(
+                "schemaVersion" to 1,
+                "generatedAt" to generatedAt,
+                "status" to if (blocking.isEmpty()) "passed" else "failed",
+                "blockingThreshold" to "HIGH",
+                "scopes" to listOf(
+                    linkedMapOf(
+                        "name" to "release-runtime",
+                        "configurations" to listOf("releaseRuntimeClasspath"),
+                        "componentCount" to releaseComponents.size,
+                        "components" to releaseComponents.map(OsvComponent::coordinate),
+                        "findingCount" to releaseFindings.size,
+                        "blockingFindingCount" to blocking.size,
+                        "findings" to releaseFindings,
+                    ),
+                    linkedMapOf(
+                        "name" to "build-test",
+                        "configurations" to buildTestConfigurations + listOf("build-host-plugins"),
+                        "componentCount" to buildTestComponents.size,
+                        "components" to buildTestComponents.map(OsvComponent::coordinate),
+                        "findingCount" to buildTestFindings.size,
+                        "blockingFindingCount" to 0,
+                        "findings" to buildTestFindings,
+                    ),
+                ),
+                "exceptions" to policies.map { policy ->
+                    linkedMapOf(
+                        "advisoryId" to policy.advisoryId,
+                        "scope" to policy.scope,
+                        "rationale" to policy.rationale,
+                        "owner" to policy.owner,
+                        "expiresOn" to policy.expiresOn.toString(),
+                    )
+                },
+            )
+            reportFile.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(report)) + "\n")
+            check(blocking.isEmpty()) {
+                "Unexcepted High/Critical release vulnerabilities: " +
+                    blocking.joinToString { "${it["coordinate"]} ${it["advisoryId"]}" }
+            }
+            logger.lifecycle(
+                "OSV release gate passed: ${releaseComponents.size} runtime and " +
+                    "${buildTestComponents.size} build/test components; report ${reportFile.absolutePath}"
+            )
+        } catch (error: Exception) {
+            if (!reportFile.exists()) {
+                val failure = linkedMapOf<String, Any?>(
+                    "schemaVersion" to 1,
+                    "generatedAt" to generatedAt,
+                    "status" to "error",
+                    "error" to (error.message ?: error.javaClass.simpleName).take(1_000),
+                )
+                reportFile.writeText(JsonOutput.prettyPrint(JsonOutput.toJson(failure)) + "\n")
+            }
+            throw error
+        }
+    }
 }
 
 val releaseSizeReportFile = layout.buildDirectory.file("reports/release-size.json")
@@ -431,6 +813,7 @@ tasks.register("generateReleaseProvenance") {
     description = "Builds stable release artifacts and a machine-readable provenance manifest."
     dependsOn(
         "verifyReleaseSizeBudget",
+        "verifyReleaseVulnerabilities",
         "cyclonedxDirectBom",
         rootProject.tasks.named("verifyWrapperJar"),
         rootProject.tasks.named("verifyBuildCacheSecurity"),

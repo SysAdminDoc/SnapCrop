@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "advisoryId": "CVE-2026-53914",
+      "scope": "build-test",
+      "rationale": "Kotlin build and incremental caches are disabled by verifyBuildCacheSecurity until the fixed stable compiler is available.",
+      "owner": "SnapCrop maintainers",
+      "expiresOn": "2026-12-31"
+    }
+  ]
+}
