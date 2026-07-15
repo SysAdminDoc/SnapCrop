@@ -1685,7 +1685,7 @@ private fun GalleryIndexHealthCard(
 }
 
 @Composable
-private fun GalleryFailureState(onRetry: () -> Unit) {
+internal fun GalleryFailureState(onRetry: () -> Unit) {
     GalleryEmptyState(
         icon = Icons.Default.Info,
         title = stringResource(R.string.gallery_failed_title),
@@ -1760,7 +1760,7 @@ private fun openExplicitSource(context: Context, sourceContext: ExplicitSourceCo
 }
 
 @Composable
-private fun GalleryEmptyState(
+internal fun GalleryEmptyState(
     icon: ImageVector,
     title: String,
     subtitle: String,

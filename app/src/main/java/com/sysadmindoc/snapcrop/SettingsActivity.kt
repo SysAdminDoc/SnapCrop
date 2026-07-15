@@ -2262,7 +2262,7 @@ class SettingsActivity : ComponentActivity() {
 private data class CrashSharePreview(val file: File, val report: String)
 
 @Composable
-private fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
+internal fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -2280,7 +2280,7 @@ private fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun SettingToggle(
+internal fun SettingToggle(
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -2335,7 +2335,7 @@ private fun SettingToggle(
 }
 
 @Composable
-private fun SourceArchiveAccessCard(
+internal fun SourceArchiveAccessCard(
     supported: Boolean,
     granted: Boolean,
     onGrant: () -> Unit,

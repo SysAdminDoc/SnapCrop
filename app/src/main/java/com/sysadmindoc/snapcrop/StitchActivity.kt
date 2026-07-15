@@ -237,7 +237,7 @@ class StitchActivity : ComponentActivity() {
 }
 
 @Composable
-private fun StitchScreen(
+internal fun StitchScreen(
     uris: List<Uri>,
     isVertical: Boolean,
     isSaving: Boolean,

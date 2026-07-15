@@ -495,7 +495,7 @@ class CollageActivity : ComponentActivity() {
 }
 
 @Composable
-private fun CollageScreen(
+internal fun CollageScreen(
     uris: List<Uri>,
     layout: CollageLayout,
     pendingLayout: CollageLayout?,

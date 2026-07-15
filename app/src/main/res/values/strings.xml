@@ -38,6 +38,19 @@
     <!-- Navigation -->
     <string name="nav_home">Home</string>
     <string name="nav_gallery">Library</string>
+    <string name="ui_matrix_editor_title">Editor</string>
+    <string name="ui_matrix_empty_label">Empty state</string>
+    <string name="ui_matrix_loading_label">Loading state</string>
+    <string name="ui_matrix_error_label">Error state</string>
+    <string name="ui_matrix_destructive_label">Destructive confirmation</string>
+    <string name="ui_matrix_loading_body">Loading %1$s data…</string>
+    <string name="ui_matrix_error_body">%1$s could not finish. Existing data was kept.</string>
+    <string name="ui_matrix_destructive_title">Remove this %1$s item?</string>
+    <string name="ui_matrix_destructive_body">This action cannot be undone.</string>
+    <string name="ui_matrix_retry">Retry</string>
+    <string name="ui_matrix_remove">Remove</string>
+    <string name="ui_matrix_keep">Keep</string>
+    <string name="ui_matrix_root_description">%1$s, %2$s reference</string>
     <string name="more_actions">More actions</string>
 
     <!-- Home screen -->

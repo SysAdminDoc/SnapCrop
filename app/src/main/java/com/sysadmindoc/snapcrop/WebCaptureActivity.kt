@@ -72,6 +72,95 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import java.io.File
 
+@Composable
+internal fun WebCaptureContent(
+    inputUrl: String,
+    status: String,
+    isLoading: Boolean,
+    isCapturing: Boolean,
+    canCapture: Boolean,
+    onBack: () -> Unit,
+    onInputUrlChange: (String) -> Unit,
+    onLoad: () -> Unit,
+    onCancel: () -> Unit,
+    onCapture: () -> Unit,
+    renderer: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Black)
+            .safeDrawingPadding()
+            .imePadding()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = OnSurface)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.web_capture_title), color = OnSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.web_capture_privacy), color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = inputUrl,
+                onValueChange = onInputUrlChange,
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = { Text(stringResource(R.string.web_capture_url)) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Primary,
+                    unfocusedBorderColor = Outline,
+                    focusedTextColor = OnSurface,
+                    unfocusedTextColor = OnSurface,
+                    cursorColor = Primary
+                )
+            )
+            OutlinedButton(onClick = onLoad, enabled = !isLoading && !isCapturing) {
+                Icon(Icons.Default.Language, null)
+                Spacer(Modifier.padding(horizontal = 3.dp))
+                Text(stringResource(R.string.web_capture_load))
+            }
+        }
+        if (status.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(status, color = OnSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                if (isLoading || isCapturing) {
+                    TextButton(onClick = onCancel) {
+                        Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
+                    }
+                }
+            }
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) { renderer() }
+        Button(
+            onClick = onCapture,
+            enabled = canCapture && !isLoading && !isCapturing,
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Primary)
+        ) {
+            if (isLoading || isCapturing) {
+                CircularProgressIndicator(color = OnPrimary, strokeWidth = 2.dp, modifier = Modifier.height(18.dp))
+            } else {
+                Icon(Icons.Default.CameraAlt, null, tint = OnPrimary)
+            }
+            Spacer(Modifier.padding(horizontal = 4.dp))
+            Text(stringResource(if (isCapturing) R.string.web_capture_capturing else R.string.web_capture_capture), color = OnPrimary)
+        }
+    }
+}
+
 class WebCaptureActivity : ComponentActivity() {
     companion object {
         const val EXTRA_URL = "web_capture_url"
@@ -147,85 +236,23 @@ class WebCaptureActivity : ComponentActivity() {
     @Composable
     private fun WebCaptureScreen() {
         BackHandler(onBack = ::handleBack)
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Black)
-                .safeDrawingPadding()
-                .imePadding()
+        WebCaptureContent(
+            inputUrl = inputUrl,
+            status = status,
+            isLoading = isLoading,
+            isCapturing = isCapturing,
+            canCapture = loadedUrl != null,
+            onBack = ::handleBack,
+            onInputUrlChange = { inputUrl = it.take(WebCapturePolicy.MAX_URL_CHARS) },
+            onLoad = ::loadPage,
+            onCancel = ::cancelWork,
+            onCapture = ::captureFullPage,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = ::handleBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = OnSurface)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.web_capture_title), color = OnSurface, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                    Text(stringResource(R.string.web_capture_privacy), color = OnSurfaceVariant, fontSize = 11.sp, lineHeight = 15.sp)
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputUrl,
-                    onValueChange = { inputUrl = it.take(WebCapturePolicy.MAX_URL_CHARS) },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.web_capture_url)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Primary,
-                        unfocusedBorderColor = Outline,
-                        focusedTextColor = OnSurface,
-                        unfocusedTextColor = OnSurface,
-                        cursorColor = Primary
-                    )
-                )
-                OutlinedButton(
-                    onClick = ::loadPage,
-                    enabled = !isLoading && !isCapturing
-                ) {
-                    Icon(Icons.Default.Language, null)
-                    Spacer(Modifier.padding(horizontal = 3.dp))
-                    Text(stringResource(R.string.web_capture_load))
-                }
-            }
-            if (status.isNotBlank()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(status, color = OnSurfaceVariant, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                    if (isLoading || isCapturing) {
-                        TextButton(onClick = ::cancelWork) {
-                            Text(stringResource(R.string.cancel), color = OnSurfaceVariant)
-                        }
-                    }
-                }
-            }
             key(rendererEpoch) {
                 AndroidView(
                     factory = { context -> createWebView(context).also { webView = it } },
-                    modifier = Modifier.weight(1f).fillMaxWidth().background(androidx.compose.ui.graphics.Color.White)
+                    modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.White)
                 )
-            }
-            Button(
-                onClick = ::captureFullPage,
-                enabled = loadedUrl != null && !isLoading && !isCapturing,
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Primary)
-            ) {
-                if (isLoading || isCapturing) {
-                    CircularProgressIndicator(color = OnPrimary, strokeWidth = 2.dp, modifier = Modifier.height(18.dp))
-                } else {
-                    Icon(Icons.Default.CameraAlt, null, tint = OnPrimary)
-                }
-                Spacer(Modifier.padding(horizontal = 4.dp))
-                Text(stringResource(if (isCapturing) R.string.web_capture_capturing else R.string.web_capture_capture), color = OnPrimary)
             }
         }
     }

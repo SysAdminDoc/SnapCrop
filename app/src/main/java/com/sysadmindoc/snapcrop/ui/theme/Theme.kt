@@ -43,11 +43,14 @@ private val SnapCropTypography = Typography(
 )
 
 @Composable
-fun SnapCropTheme(content: @Composable () -> Unit) {
+fun SnapCropTheme(
+    darkOverride: Boolean? = null,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     val themePref = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
         .getString("theme", "dark") ?: "dark"
-    val dark = resolveDarkTheme(themePref, isSystemInDarkTheme())
+    val dark = darkOverride ?: resolveDarkTheme(themePref, isSystemInDarkTheme())
     isDarkTheme = dark
     val view = LocalView.current
     if (!view.isInEditMode) {

@@ -4,6 +4,11 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Added a host-rendered Compose state matrix with 44 approved compact/expanded,
+  light/dark, and 1.0x/2.0x-font references across 11 workflows, HTML visual
+  diffs, and headless semantic checks for localized names, roles, state,
+  traversal, and 48dp targets. Its large-text pass also fixed clipped compact
+  actions in Long Screenshot Review.
 - Pinned the ML Kit entity-extraction runtime to binary-compatible OkHttp 4.12.0,
   replacing the transitive OkHttp 3.12.1 affected by
   GHSA-3cqm-mf7h-prrj/CVE-2021-0341 hostname-verification weaknesses.

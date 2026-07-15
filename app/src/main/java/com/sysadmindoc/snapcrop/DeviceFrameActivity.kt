@@ -38,7 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class DeviceFrame(
+internal data class DeviceFrame(
     val key: String,
     @param:StringRes val nameRes: Int,
     val bezelColor: Int,       // bezel fill color
@@ -48,7 +48,7 @@ private data class DeviceFrame(
     val notchHeight: Float     // fraction of screen height (0 = no notch)
 )
 
-private val frames = listOf(
+internal val frames = listOf(
     DeviceFrame("pixel", R.string.device_frame_pixel, 0xFF1A1A1A.toInt(), 0.08f, 0.03f, 0.06f, 0.015f),
     DeviceFrame("iphone", R.string.device_frame_iphone, 0xFF2C2C2E.toInt(), 0.10f, 0.025f, 0.08f, 0.02f),
     DeviceFrame("samsung", R.string.device_frame_samsung, 0xFF000000.toInt(), 0.07f, 0.02f, 0.05f, 0.01f),
@@ -309,7 +309,7 @@ class DeviceFrameActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FrameScreen(
+internal fun FrameScreen(
     imageUri: Uri?,
     frame: DeviceFrame,
     isSaving: Boolean,

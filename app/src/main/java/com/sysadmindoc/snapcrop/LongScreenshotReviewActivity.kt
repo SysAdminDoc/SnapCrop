@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.stringResource
@@ -293,7 +294,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LongScreenshotReviewScreen(
+internal fun LongScreenshotReviewScreen(
     uri: Uri?,
     frameCount: Int,
     stopReason: String,
@@ -464,40 +465,92 @@ private fun LongScreenshotReviewScreen(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            LongScreenshotActions(
+                canSave = uri != null,
+                isBusy = isBusy,
+                onRetry = onRetry,
+                onDiscard = onDiscard,
+                onSave = onSave,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LongScreenshotActions(
+    canSave: Boolean,
+    isBusy: Boolean,
+    onRetry: () -> Unit,
+    onDiscard: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val largeText = LocalConfiguration.current.fontScale >= 1.5f
+
+    @Composable
+    fun RetryButton(modifier: Modifier = Modifier) {
                 OutlinedButton(
                     onClick = onRetry,
                     enabled = !isBusy,
+                    modifier = modifier,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Secondary)
                 ) {
                     Icon(Icons.Default.Refresh, stringResource(R.string.long_screenshot_retry), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.long_screenshot_retry))
                 }
+    }
+
+    @Composable
+    fun DiscardButton(modifier: Modifier = Modifier) {
                 OutlinedButton(
                     onClick = onDiscard,
                     enabled = !isBusy,
+                    modifier = modifier,
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger)
                 ) {
                     Icon(Icons.Default.Close, stringResource(R.string.long_screenshot_discard), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.long_screenshot_discard))
                 }
+    }
+
+    @Composable
+    fun SaveButton(modifier: Modifier = Modifier) {
                 Button(
                     onClick = onSave,
-                    enabled = uri != null && !isBusy,
-                    modifier = Modifier.weight(1f),
+                    enabled = canSave && !isBusy,
+                    modifier = modifier,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary, contentColor = OnPrimary)
                 ) {
                     Icon(Icons.Default.Save, stringResource(R.string.long_screenshot_save_edit), modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(stringResource(R.string.long_screenshot_save_edit))
                 }
+    }
+
+    if (largeText) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RetryButton(Modifier.weight(1f))
+                DiscardButton(Modifier.weight(1f))
             }
+            SaveButton(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RetryButton()
+            DiscardButton()
+            SaveButton(Modifier.weight(1f))
         }
     }
 }

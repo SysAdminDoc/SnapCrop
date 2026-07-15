@@ -271,7 +271,7 @@ private data class FrameSaveFormat(
 )
 
 @Composable
-private fun VideoClipScreen(
+internal fun VideoClipScreen(
     uri: Uri,
     isWorking: Boolean,
     onClose: () -> Unit,
@@ -285,13 +285,14 @@ private fun VideoClipScreen(
     onTrimClip: (Long, Long) -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var durationMs by remember { mutableLongStateOf(0L) }
-    var framePosition by remember { mutableFloatStateOf(0f) }
-    var trimRange by remember { mutableStateOf(0f..1f) }
+    val inspectionMode = androidx.compose.ui.platform.LocalInspectionMode.current
+    var durationMs by remember { mutableLongStateOf(if (inspectionMode) 60_000L else 0L) }
+    var framePosition by remember { mutableFloatStateOf(if (inspectionMode) 15_000f else 0f) }
+    var trimRange by remember { mutableStateOf(if (inspectionMode) 5_000f..45_000f else 0f..1f) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var metadataFailure by remember { mutableStateOf<VideoLoadFailure?>(null) }
     var previewFailure by remember { mutableStateOf<VideoLoadFailure?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(!inspectionMode) }
     var retryGeneration by remember { mutableIntStateOf(0) }
 
     DisposableEffect(uri) {
@@ -299,6 +300,7 @@ private fun VideoClipScreen(
     }
 
     LaunchedEffect(uri, retryGeneration) {
+        if (inspectionMode) return@LaunchedEffect
         isLoading = true
         metadataFailure = null
         previewFailure = null
@@ -334,6 +336,7 @@ private fun VideoClipScreen(
     }
 
     LaunchedEffect(uri, framePosition, durationMs, retryGeneration) {
+        if (inspectionMode) return@LaunchedEffect
         if (durationMs <= 0L) return@LaunchedEffect
         delay(140)
         previewFailure = null

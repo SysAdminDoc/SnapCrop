@@ -111,6 +111,7 @@ plugins {
     alias(libs.plugins.cyclonedx.bom)
     alias(libs.plugins.ksp)
     alias(libs.plugins.room)
+    alias(libs.plugins.screenshot)
 }
 
 // Load signing credentials from gitignored keystore.properties (local builds)
@@ -146,6 +147,8 @@ android {
             minorApiLevel = 1
         }
     }
+
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     androidResources {
         // Auto-generate locales_config.xml from values-* folders and wire android:localeConfig,
@@ -285,6 +288,9 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.json)
     testImplementation(libs.androidx.work.testing)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
+    testImplementation(libs.androidx.ui.test.manifest)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
@@ -292,8 +298,15 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.ui.test.junit4.accessibility)
+    screenshotTestImplementation(libs.screenshot.validation.api)
+    screenshotTestImplementation(platform(libs.androidx.compose.bom))
+    screenshotTestImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+tasks.named("check") {
+    dependsOn("validateDebugScreenshotTest")
 }
 
 tasks.cyclonedxDirectBom {

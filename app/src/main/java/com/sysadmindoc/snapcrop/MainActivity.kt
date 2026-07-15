@@ -2862,7 +2862,7 @@ private fun CapabilityCard(title: String, body: String, action: String, onClick:
 }
 
 @Composable
-private fun HomeScreen(
+internal fun HomeScreen(
     isRunning: Boolean,
     mediaCapabilities: MediaCapabilities,
     recentCrops: List<RecentCrop>,
