@@ -17,6 +17,26 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class BatchImageIntakeTest {
     @Test
+    fun boundsInspectionUsesOneLimitedPassWithoutAllocatingPixels() {
+        val bytes = png(320, 180)
+        val source = ByteSource(bytes, declaredLength = bytes.size.toLong())
+
+        assertEquals(BatchImageBoundsResult.Ready(320, 180), BatchImageIntake.inspectBounds(source))
+        assertEquals(1, source.openCount)
+    }
+
+    @Test
+    fun boundsInspectionRejectsDeclaredOversizeBeforeOpeningProvider() {
+        val source = CountingSource(BatchImageIntake.MAX_ENCODED_BYTES + 1)
+
+        assertEquals(
+            BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.ENCODED_TOO_LARGE),
+            BatchImageIntake.inspectBounds(source),
+        )
+        assertEquals(0, source.openCount)
+    }
+
+    @Test
     fun validImageBoundsDecodeBeforeAReadableWorkingBitmap() {
         val bytes = png(320, 180)
         val source = ByteSource(bytes, declaredLength = bytes.size.toLong())

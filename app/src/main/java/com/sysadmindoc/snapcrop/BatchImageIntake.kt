@@ -32,6 +32,20 @@ internal sealed interface BatchImageIntakeResult {
     data object Cancelled : BatchImageIntakeResult
 }
 
+internal enum class BatchImageBoundsFailureKind {
+    ENCODED_TOO_LARGE,
+    SOURCE_TOO_LARGE,
+    OPEN,
+    READ,
+    INVALID_IMAGE,
+    CANCELLED,
+}
+
+internal sealed interface BatchImageBoundsResult {
+    data class Ready(val width: Int, val height: Int) : BatchImageBoundsResult
+    data class Failure(val kind: BatchImageBoundsFailureKind) : BatchImageBoundsResult
+}
+
 internal sealed interface BatchDecodePlan {
     data class Decode(val sampleSize: Int) : BatchDecodePlan
     data object SourceTooLarge : BatchDecodePlan
@@ -50,6 +64,51 @@ internal object BatchImageIntake {
     internal interface Source {
         val declaredLength: Long?
         fun openStream(): InputStream?
+    }
+
+    fun inspectBounds(
+        resolver: ContentResolver,
+        uri: Uri,
+        cancelled: () -> Boolean = { false },
+    ): BatchImageBoundsResult = inspectBounds(
+        source = object : Source {
+            override val declaredLength: Long? = InboundShareContract.declaredSize(resolver, uri)
+            override fun openStream(): InputStream? = resolver.openInputStream(uri)
+        },
+        cancelled = cancelled,
+    )
+
+    /** Reads dimensions through a byte-limited stream and never requests pixel allocation. */
+    internal fun inspectBounds(
+        source: Source,
+        cancelled: () -> Boolean = { false },
+    ): BatchImageBoundsResult {
+        if (cancelled()) return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.CANCELLED)
+        if (source.declaredLength?.let { it > MAX_ENCODED_BYTES } == true) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.ENCODED_TOO_LARGE)
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        try {
+            val stream = source.openStream()
+                ?: return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.OPEN)
+            stream.use { BitmapFactory.decodeStream(LimitedInputStream(it), null, bounds) }
+        } catch (_: SecurityException) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.OPEN)
+        } catch (_: IOException) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.READ)
+        } catch (_: RuntimeException) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.INVALID_IMAGE)
+        } catch (_: OutOfMemoryError) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.INVALID_IMAGE)
+        }
+        if (cancelled()) return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.CANCELLED)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.INVALID_IMAGE)
+        }
+        if (bounds.outWidth.toLong() * bounds.outHeight.toLong() > MAX_SOURCE_PIXELS) {
+            return BatchImageBoundsResult.Failure(BatchImageBoundsFailureKind.SOURCE_TOO_LARGE)
+        }
+        return BatchImageBoundsResult.Ready(bounds.outWidth, bounds.outHeight)
     }
 
     fun decode(

@@ -234,6 +234,14 @@
     <string name="toast_temp_cleared">Temporary cleanup: %1$d removed (%2$s), %3$d recent retained.</string>
     <string name="toast_temp_cleanup_partial">Temporary cleanup incomplete: %1$d removed, %2$d retained; %3$d removal failures.</string>
     <string name="toast_temp_cleanup_failed">Temporary cleanup failed: %1$d retained; %2$d removal failures.</string>
+    <string name="raster_omission_title">Some images could not be used</string>
+    <string name="raster_omission_message">%1$d of %2$d images failed validation (items %3$s). Continue without them?</string>
+    <string name="raster_omission_continue">Continue without them</string>
+    <string name="raster_composition_too_large">This image exceeds the 20 MP / 128 MiB safety limit. Remove images or choose a smaller layout.</string>
+    <string name="raster_composition_memory_failed">Not enough memory to build this image. Nothing was saved.</string>
+    <string name="raster_composition_input_failed">Every selected image must decode successfully. Nothing was saved.</string>
+    <string name="raster_composition_failed">Could not build this image. Nothing was saved.</string>
+    <string name="raster_composition_cancelled">Image creation was cancelled. Nothing was saved.</string>
     <string name="toast_app_rule_saved">App rule saved</string>
     <string name="toast_app_rule_removed">App rule removed</string>
     <string name="toast_imported_rules">Imported %1$d app rules</string>

@@ -1,8 +1,6 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -133,26 +131,58 @@ class StitchActivity : ComponentActivity() {
 
     private fun stitchAndSave() {
         if (imageUris.size < 2 || isSaving.value) return
+        startStitch(
+            uris = imageUris.toList(),
+            vertical = isVertical.value,
+            allowedOmissions = emptySet(),
+        )
+    }
+
+    private fun startStitch(uris: List<Uri>, vertical: Boolean, allowedOmissions: Set<Int>) {
+        if (isSaving.value) return
         isSaving.value = true
-        val urisSnapshot = imageUris.toList()
 
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val result = stitchFromUris(urisSnapshot, isVertical.value)
-                if (result == null) {
+            when (val result = RasterCompositionPipeline.compose(
+                resolver = contentResolver,
+                uris = uris,
+                minimumInputs = 2,
+                allowedOmissions = allowedOmissions,
+                planner = { bounds -> RasterCompositionLayouts.stitch(bounds, vertical) },
+            )) {
+                is RasterCompositionResult.Success -> {
+                    try {
+                        saveToGallery(result.bitmap)
+                    } catch (_: OutOfMemoryError) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@StitchActivity,
+                                R.string.raster_composition_memory_failed,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            isSaving.value = false
+                        }
+                    } finally {
+                        if (!result.bitmap.isRecycled) result.bitmap.recycle()
+                    }
+                }
+                is RasterCompositionResult.ConfirmationRequired -> {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@StitchActivity, getString(R.string.stitch_one_title), Toast.LENGTH_SHORT).show()
+                        isSaving.value = false
+                        showRasterOmissionConfirmation(result) {
+                            startStitch(uris, vertical, result.failedPositions.toSet())
+                        }
+                    }
+                }
+                is RasterCompositionResult.Failure -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@StitchActivity,
+                            result.reason.messageRes,
+                            Toast.LENGTH_LONG,
+                        ).show()
                         isSaving.value = false
                     }
-                    return@launch
-                }
-
-                saveToGallery(result)
-                result.recycle()
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@StitchActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
-                    isSaving.value = false
                 }
             }
         }
@@ -161,70 +191,6 @@ class StitchActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         applySecureWindow(this)
-    }
-
-    /**
-     * Streams the stitch from source URIs: reads bounds first, then decodes/scales/draws one
-     * source at a time so peak memory stays at the result plus a single frame, instead of holding
-     * every full-resolution image at once (which OOMed on large multi-image stitches).
-     */
-    private fun stitchFromUris(uris: List<Uri>, vertical: Boolean): Bitmap? {
-        val cap = 2048 // bound the normalized edge to keep memory sane on very large sources
-        val dims = uris.mapNotNull { uri ->
-            val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            try { contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, o) } } catch (_: Exception) {}
-            if (o.outWidth > 0 && o.outHeight > 0) uri to (o.outWidth to o.outHeight) else null
-        }
-        if (dims.size < 2) return null
-
-        return if (vertical) {
-            val maxW = minOf(dims.maxOf { it.second.first }, cap)
-            val totalH = dims.sumOf { (it.second.second.toFloat() * maxW / it.second.first).toInt().coerceAtLeast(1) }
-            val result = Bitmap.createBitmap(maxW, totalH, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(result)
-            var y = 0f
-            for ((uri, d) in dims) {
-                val targetH = (d.second.toFloat() * maxW / d.first).toInt().coerceAtLeast(1)
-                drawScaledFrame(canvas, uri, maxW, targetH, 0f, y)
-                y += targetH
-            }
-            result
-        } else {
-            val maxH = minOf(dims.maxOf { it.second.second }, cap)
-            val totalW = dims.sumOf { (it.second.first.toFloat() * maxH / it.second.second).toInt().coerceAtLeast(1) }
-            val result = Bitmap.createBitmap(totalW, maxH, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(result)
-            var x = 0f
-            for ((uri, d) in dims) {
-                val targetW = (d.first.toFloat() * maxH / d.second).toInt().coerceAtLeast(1)
-                drawScaledFrame(canvas, uri, targetW, maxH, x, 0f)
-                x += targetW
-            }
-            result
-        }
-    }
-
-    private fun drawScaledFrame(canvas: Canvas, uri: Uri, targetW: Int, targetH: Int, x: Float, y: Float) {
-        val src = decodeSampled(uri, maxOf(targetW, targetH)) ?: return
-        try {
-            val scaled = Bitmap.createScaledBitmap(src, targetW, targetH, true)
-            canvas.drawBitmap(scaled, x, y, null)
-            if (scaled !== src) scaled.recycle()
-        } finally {
-            src.recycle()
-        }
-    }
-
-    private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        val longest = maxOf(bounds.outWidth, bounds.outHeight)
-        while (longest > 0 && longest / sample > targetEdge * 2) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-    } catch (_: Exception) {
-        null
     }
 
     private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {

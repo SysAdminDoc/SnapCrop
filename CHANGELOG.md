@@ -10,6 +10,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Replaced Settings' whole-cache deletion with a 24-hour, allowlisted cleanup for
   disposable share, clipboard, and export artifacts that preserves active capture,
   editor handoff, and diagnostic state and reports retained/failed items.
+- Unified Stitch, Collage, and Device Frame behind bounds-first 20 MP / 128 MiB
+  raster budgets, typed per-input failures, explicit omission confirmation, direct
+  one-source-at-a-time rendering, and transactional MediaStore publication.
 
 ## [v6.89.0] - 2026-07-13
 

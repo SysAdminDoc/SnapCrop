@@ -1,8 +1,6 @@
 package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -216,55 +214,84 @@ class CollageActivity : ComponentActivity() {
 
     private fun buildAndSave() {
         if (imageUris.size < 2 || isSaving.value) return
+        startCollage(
+            uris = imageUris.toList(),
+            layout = selectedLayout.value,
+            gap = spacing.intValue,
+            aspect = cellAspect.floatValue,
+            backgroundColor = collageBgColors[bgColorIdx.intValue.coerceIn(collageBgColors.indices)].color,
+            allowedOmissions = emptySet(),
+        )
+    }
+
+    private fun startCollage(
+        uris: List<Uri>,
+        layout: CollageLayout,
+        gap: Int,
+        aspect: Float,
+        backgroundColor: Int,
+        allowedOmissions: Set<Int>,
+    ) {
+        if (isSaving.value) return
         isSaving.value = true
-        val layout = selectedLayout.value
-        val gap = spacing.intValue
 
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                // Target: 1080px wide collage
-                val cellW = ((1080 - gap * (layout.cols + 1)) / layout.cols).coerceAtLeast(1)
-                val cellH = (cellW / cellAspect.floatValue).toInt().coerceAtLeast(1)
-                val totalW = cellW * layout.cols + gap * (layout.cols + 1)
-                val totalH = cellH * layout.rows + gap * (layout.rows + 1)
-
-                val result = Bitmap.createBitmap(totalW, totalH, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(result)
-                // Background
-                canvas.drawColor(collageBgColors[bgColorIdx.intValue.coerceIn(0, collageBgColors.size - 1)].color)
-
-                // Decode only the cells we actually use, downsampled to roughly the cell size, one at
-                // a time — full-resolution sources are never all held in memory at once.
-                var drawn = 0
-                for (i in 0 until layout.slots) {
-                    val uri = imageUris.getOrNull(i) ?: break
-                    val src = decodeSampled(uri, maxOf(cellW, cellH)) ?: continue
-                    val col = i % layout.cols
-                    val row = i / layout.cols
-                    val x = gap + col * (cellW + gap)
-                    val y = gap + row * (cellH + gap)
-                    val scaled = centerCropBitmap(src, cellW, cellH)
-                    canvas.drawBitmap(scaled, x.toFloat(), y.toFloat(), null)
-                    if (scaled !== src) scaled.recycle()
-                    src.recycle()
-                    drawn++
+            when (val result = RasterCompositionPipeline.compose(
+                resolver = contentResolver,
+                uris = uris,
+                minimumInputs = 2,
+                allowedOmissions = allowedOmissions,
+                planner = { bounds ->
+                    RasterCompositionLayouts.collage(
+                        bounds = bounds,
+                        columns = layout.cols,
+                        rows = layout.rows,
+                        gap = gap,
+                        cellAspect = aspect,
+                        backgroundColor = backgroundColor,
+                    )
+                },
+            )) {
+                is RasterCompositionResult.Success -> {
+                    try {
+                        saveToGallery(result.bitmap)
+                    } catch (_: OutOfMemoryError) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@CollageActivity,
+                                R.string.raster_composition_memory_failed,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            isSaving.value = false
+                        }
+                    } finally {
+                        if (!result.bitmap.isRecycled) result.bitmap.recycle()
+                    }
                 }
-
-                if (drawn == 0) {
-                    result.recycle()
+                is RasterCompositionResult.ConfirmationRequired -> {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
+                        isSaving.value = false
+                        showRasterOmissionConfirmation(result) {
+                            startCollage(
+                                uris,
+                                layout,
+                                gap,
+                                aspect,
+                                backgroundColor,
+                                allowedOmissions = result.failedPositions.toSet(),
+                            )
+                        }
+                    }
+                }
+                is RasterCompositionResult.Failure -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@CollageActivity,
+                            result.reason.messageRes,
+                            Toast.LENGTH_LONG,
+                        ).show()
                         isSaving.value = false
                     }
-                    return@launch
-                }
-
-                saveToGallery(result)
-                result.recycle()
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@CollageActivity, getString(R.string.collage_failed), Toast.LENGTH_SHORT).show()
-                    isSaving.value = false
                 }
             }
         }
@@ -282,35 +309,6 @@ class CollageActivity : ComponentActivity() {
         private const val STATE_SPACING = "collage_spacing"
         private const val STATE_BACKGROUND = "collage_background"
         private const val STATE_CELL_ASPECT = "collage_cell_aspect"
-    }
-
-    private fun decodeSampled(uri: Uri, targetEdge: Int): Bitmap? = try {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        val longest = maxOf(bounds.outWidth, bounds.outHeight)
-        while (longest > 0 && longest / sample > targetEdge * 2) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-    } catch (_: Exception) {
-        null
-    }
-
-    private fun centerCropBitmap(src: Bitmap, targetW: Int, targetH: Int): Bitmap {
-        val srcRatio = src.width.toFloat() / src.height
-        val targetRatio = targetW.toFloat() / targetH
-        val (cropW, cropH) = if (srcRatio > targetRatio) {
-            (src.height * targetRatio).toInt() to src.height
-        } else {
-            src.width to (src.width / targetRatio).toInt()
-        }
-        val x = (src.width - cropW) / 2
-        val y = (src.height - cropH) / 2
-        val cropped = Bitmap.createBitmap(src, x.coerceAtLeast(0), y.coerceAtLeast(0),
-            cropW.coerceAtMost(src.width), cropH.coerceAtMost(src.height))
-        val scaled = Bitmap.createScaledBitmap(cropped, targetW, targetH, true)
-        if (cropped !== src) cropped.recycle()
-        return scaled
     }
 
     private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {

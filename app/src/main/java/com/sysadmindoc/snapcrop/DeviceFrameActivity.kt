@@ -133,86 +133,125 @@ class DeviceFrameActivity : ComponentActivity() {
         if (isSaving.value) return
         isSaving.value = true
         val frame = selectedFrame.value
+        val backgroundColor = bgColor.value
 
         lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val src = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
-                if (src == null) {
+            when (val result = RasterCompositionPipeline.compose(
+                resolver = contentResolver,
+                uris = listOf(uri),
+                minimumInputs = 1,
+                allowedOmissions = emptySet(),
+                planner = { bounds ->
+                    bounds.singleOrNull()?.let {
+                        RasterCompositionLayouts.deviceFrame(
+                            bounds = it,
+                            bezelWidthFraction = frame.bezelWidth,
+                            backgroundColor = backgroundColor,
+                        )
+                    }
+                },
+                drawBeforeInputs = { canvas, layout ->
+                    val geometry = layout.metadata
+                    val cornerRadius = geometry.totalWidth * frame.cornerRadius
+                    canvas.drawRoundRect(
+                        RectF(geometry.deviceRect),
+                        cornerRadius,
+                        cornerRadius,
+                        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = frame.bezelColor
+                            style = Paint.Style.FILL
+                        },
+                    )
+                },
+                drawInput = { canvas, layout, _, bitmap ->
+                    val geometry = layout.metadata
+                    val screenRect = RectF(geometry.screenRect)
+                    val screenRadius = geometry.totalWidth * frame.screenRadius
+                    val saveCount = canvas.save()
+                    try {
+                        canvas.clipPath(Path().apply {
+                            addRoundRect(screenRect, screenRadius, screenRadius, Path.Direction.CW)
+                        })
+                        canvas.drawBitmap(
+                            bitmap,
+                            null,
+                            screenRect,
+                            Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                        )
+                    } finally {
+                        canvas.restoreToCount(saveCount)
+                    }
+                },
+                drawAfterInputs = { canvas, layout ->
+                    val geometry = layout.metadata
+                    val screenRect = RectF(geometry.screenRect)
+                    val screenRadius = geometry.totalWidth * frame.screenRadius
+                    canvas.drawRoundRect(
+                        screenRect,
+                        screenRadius,
+                        screenRadius,
+                        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = 0x30FFFFFF
+                            style = Paint.Style.STROKE
+                            strokeWidth = 2f
+                        },
+                    )
+                    if (frame.notchHeight > 0f) {
+                        val notchWidth = geometry.totalWidth * 0.25f
+                        val notchHeight = geometry.screenHeight * frame.notchHeight
+                        val notchRect = RectF(
+                            layout.width / 2f - notchWidth / 2f,
+                            screenRect.top,
+                            layout.width / 2f + notchWidth / 2f,
+                            screenRect.top + notchHeight,
+                        )
+                        canvas.drawRoundRect(
+                            notchRect,
+                            notchHeight / 2f,
+                            notchHeight / 2f,
+                            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                color = frame.bezelColor
+                                style = Paint.Style.FILL
+                            },
+                        )
+                    }
+                },
+            )) {
+                is RasterCompositionResult.Success -> {
+                    try {
+                        saveToGallery(result.bitmap)
+                    } catch (_: OutOfMemoryError) {
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@DeviceFrameActivity,
+                                R.string.raster_composition_memory_failed,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            isSaving.value = false
+                        }
+                    } finally {
+                        if (!result.bitmap.isRecycled) result.bitmap.recycle()
+                    }
+                }
+                is RasterCompositionResult.ConfirmationRequired -> {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(this@DeviceFrameActivity, getString(R.string.device_frame_load_failed), Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@DeviceFrameActivity,
+                            R.string.raster_composition_input_failed,
+                            Toast.LENGTH_LONG,
+                        ).show()
                         isSaving.value = false
                     }
-                    return@launch
                 }
-
-                val screenW = src.width
-                val screenH = src.height
-                val bezel = (screenW * frame.bezelWidth).toInt()
-                val totalW = screenW + bezel * 2
-                val totalH = screenH + bezel * 2
-                val padding = (totalW * 0.06f).toInt() // outer padding
-                val canvasW = totalW + padding * 2
-                val canvasH = totalH + padding * 2
-
-                val result = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(result)
-                canvas.drawColor(bgColor.value)
-
-                val deviceRect = RectF(padding.toFloat(), padding.toFloat(),
-                    (padding + totalW).toFloat(), (padding + totalH).toFloat())
-                val cornerR = totalW * frame.cornerRadius
-
-                // Device body
-                val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = frame.bezelColor; style = Paint.Style.FILL
-                }
-                canvas.drawRoundRect(deviceRect, cornerR, cornerR, bodyPaint)
-
-                // Screen area
-                val screenRect = RectF(
-                    deviceRect.left + bezel, deviceRect.top + bezel,
-                    deviceRect.right - bezel, deviceRect.bottom - bezel
-                )
-                val screenR = totalW * frame.screenRadius
-
-                // Clip to screen shape and draw screenshot
-                canvas.save()
-                val clipPath = Path()
-                clipPath.addRoundRect(screenRect, screenR, screenR, Path.Direction.CW)
-                canvas.clipPath(clipPath)
-                canvas.drawBitmap(src, null, screenRect, null)
-                canvas.restore()
-
-                // Screen border (subtle)
-                val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = 0x30FFFFFF; style = Paint.Style.STROKE; strokeWidth = 2f
-                }
-                canvas.drawRoundRect(screenRect, screenR, screenR, borderPaint)
-
-                // Notch indicator (top center)
-                if (frame.notchHeight > 0) {
-                    val notchW = totalW * 0.25f
-                    val notchH = screenH * frame.notchHeight
-                    val notchRect = RectF(
-                        canvasW / 2f - notchW / 2, screenRect.top,
-                        canvasW / 2f + notchW / 2, screenRect.top + notchH
-                    )
-                    val notchPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                        color = frame.bezelColor; style = Paint.Style.FILL
+                is RasterCompositionResult.Failure -> {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@DeviceFrameActivity,
+                            result.reason.messageRes,
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        isSaving.value = false
                     }
-                    canvas.drawRoundRect(notchRect, notchH / 2, notchH / 2, notchPaint)
-                }
-
-                src.recycle()
-                try {
-                    saveToGallery(result)
-                } finally {
-                    if (!result.isRecycled) result.recycle()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@DeviceFrameActivity, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()
-                    isSaving.value = false
                 }
             }
         }
