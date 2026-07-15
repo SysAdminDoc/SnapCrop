@@ -36,6 +36,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Removed the inert experimental erase-model toggle, placeholder candidate registry,
   and no-op Settings search route; Settings now gives a noninteractive explanation
   of the built-in offline erase backend and retires obsolete model preferences.
+- Reconciled maintainer, security, editor, release, and blocked-validation docs to
+  the v6.89.0 source contract: API 37/37.1, 18 tools and 6 modes, 10 activities and
+  7 instrumentation files, current permissions/model delivery, and all five APKs.
 
 ## [v6.89.0] - 2026-07-13
 
