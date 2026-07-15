@@ -7,11 +7,10 @@ import java.io.OutputStream
 
 object NetworkExportTempFiles {
     const val MAX_TEMP_BYTES = 256L * 1024L * 1024L
-    private const val DIRECTORY = "network-export"
     private const val STALE_AGE_MS = 24L * 60L * 60L * 1000L
 
     fun create(cacheDirectory: File, suffix: String, now: Long = System.currentTimeMillis()): File {
-        val directory = cacheDirectory.resolve(DIRECTORY)
+        val directory = cacheDirectory.resolve(CacheCleanupPolicy.NETWORK_EXPORT_DIRECTORY)
         check(directory.mkdirs() || directory.isDirectory) { "Could not create network export cache" }
         purge(directory, now)
         return File.createTempFile("export-", suffix, directory)

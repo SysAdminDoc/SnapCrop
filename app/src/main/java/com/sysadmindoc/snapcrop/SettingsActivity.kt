@@ -1689,6 +1689,8 @@ class SettingsActivity : ComponentActivity() {
                     SettingsSectionHeader(stringResource(R.string.settings_section_storage))
                     Spacer(Modifier.height(8.dp))
 
+                    var cacheCleanupRunning by remember { mutableStateOf(false) }
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1696,14 +1698,41 @@ class SettingsActivity : ComponentActivity() {
                             .settingsAnchor(SettingsDestination.STORAGE, settingsRequesters, highlightedDestination),
                         colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
                         shape = RoundedCornerShape(12.dp),
+                        enabled = !cacheCleanupRunning,
                         onClick = {
-                            lifecycleScope.launch(Dispatchers.IO) {
-                                cacheDir.deleteRecursively()
-                                withContext(Dispatchers.Main) {
+                            if (!cacheCleanupRunning) {
+                                cacheCleanupRunning = true
+                                lifecycleScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        CacheCleanupPolicy.cleanup(cacheDir)
+                                    }
+                                    val message = when (result.status) {
+                                        CacheCleanupStatus.SUCCESS -> getString(
+                                            R.string.toast_temp_cleared,
+                                            result.deletedItems,
+                                            android.text.format.Formatter.formatShortFileSize(
+                                                this@SettingsActivity,
+                                                result.deletedBytes,
+                                            ),
+                                            result.retainedItems,
+                                        )
+                                        CacheCleanupStatus.PARTIAL -> getString(
+                                            R.string.toast_temp_cleanup_partial,
+                                            result.deletedItems,
+                                            result.retainedItems,
+                                            result.failedItems,
+                                        )
+                                        CacheCleanupStatus.FAILURE -> getString(
+                                            R.string.toast_temp_cleanup_failed,
+                                            result.retainedItems,
+                                            result.failedItems,
+                                        )
+                                    }
+                                    cacheCleanupRunning = false
                                     android.widget.Toast.makeText(
                                         this@SettingsActivity,
-                                        getString(R.string.toast_temp_cleared),
-                                        android.widget.Toast.LENGTH_SHORT
+                                        message,
+                                        android.widget.Toast.LENGTH_LONG,
                                     ).show()
                                 }
                             }
@@ -1712,7 +1741,14 @@ class SettingsActivity : ComponentActivity() {
                         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
                                 Text(stringResource(R.string.settings_clear_cache), color = OnSurface, fontWeight = FontWeight.Medium, fontSize = 15.sp)
-                                Text(stringResource(R.string.settings_clear_cache_subtitle), color = OnSurfaceVariant, fontSize = 12.sp)
+                                Text(
+                                    stringResource(
+                                        if (cacheCleanupRunning) R.string.settings_clear_cache_running
+                                        else R.string.settings_clear_cache_subtitle
+                                    ),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp,
+                                )
                             }
                         }
                     }
@@ -2068,7 +2104,7 @@ class SettingsActivity : ComponentActivity() {
             return
         }
         try {
-            val dir = File(cacheDir, "shared_crops").apply { mkdirs() }
+            val dir = File(cacheDir, CacheCleanupPolicy.SHARED_CROPS_DIRECTORY).apply { mkdirs() }
             val out = File(dir, file.name)
             file.copyTo(out, overwrite = true)
             val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", out)

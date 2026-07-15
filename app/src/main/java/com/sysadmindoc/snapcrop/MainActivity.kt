@@ -2345,7 +2345,10 @@ class MainActivity : ComponentActivity() {
                 val sharedUris = if (policy == ShareMetadataPolicy.PRESERVE) {
                     uris
                 } else {
-                    val shareRoot = java.io.File(cacheDir, "share_clean").apply { mkdirs() }
+                    val shareRoot = java.io.File(
+                        cacheDir,
+                        CacheCleanupPolicy.SANITIZED_SHARE_DIRECTORY,
+                    ).apply { mkdirs() }
                     shareRoot.listFiles()
                         ?.filter { it.isDirectory && System.currentTimeMillis() - it.lastModified() > 24 * 60 * 60 * 1000L }
                         ?.forEach { it.deleteRecursively() }

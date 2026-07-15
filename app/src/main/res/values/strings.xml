@@ -231,7 +231,9 @@
     <string name="toast_deleted_count">Deleted %1$d photos</string>
     <string name="toast_delete_failed">Delete failed: %1$s</string>
     <string name="toast_failed_load_image">Failed to load image</string>
-    <string name="toast_temp_cleared">Temporary files cleared</string>
+    <string name="toast_temp_cleared">Temporary cleanup: %1$d removed (%2$s), %3$d recent retained.</string>
+    <string name="toast_temp_cleanup_partial">Temporary cleanup incomplete: %1$d removed, %2$d retained; %3$d removal failures.</string>
+    <string name="toast_temp_cleanup_failed">Temporary cleanup failed: %1$d retained; %2$d removal failures.</string>
     <string name="toast_app_rule_saved">App rule saved</string>
     <string name="toast_app_rule_removed">App rule removed</string>
     <string name="toast_imported_rules">Imported %1$d app rules</string>
@@ -481,6 +483,7 @@
     <string name="settings_section_storage">Storage</string>
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_subtitle">Remove temporary share/clipboard files</string>
+    <string name="settings_clear_cache_running">Removing stale temporary files…</string>
     <string name="settings_section_backup">Backup</string>
     <string name="settings_backup_hint">Back up settings, presets, and app rules for reinstall. Network credentials, screenshot notes, reminders, and inbox decisions stay on this device.</string>
     <string name="settings_backup_export">Back up settings</string>

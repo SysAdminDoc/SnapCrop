@@ -1231,7 +1231,7 @@ class CropActivity : ComponentActivity() {
                     CropImageRenderer.render(bitmap, rect, redactions, drawPaths, adj, cutout),
                     exportSettings
                 )
-                val clipDir = File(cacheDir, "clipboard")
+                val clipDir = File(cacheDir, CacheCleanupPolicy.CLIPBOARD_DIRECTORY)
                 // Clipboard stays lossless PNG unless HDR forces JPEG (pre-Android 16). On API 36+
                 // the PNG codec carries the gain map, so HDR pastes keep PNG too.
                 val clipFormat = getExportFormat(
@@ -1529,7 +1529,7 @@ class CropActivity : ComponentActivity() {
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
             val useTargetSize = exportSettings.targetSizeEnabled && shareFmt != Bitmap.CompressFormat.PNG
             val targetBytes = exportSettings.targetSizeKb.coerceIn(50, 5000).toLong() * 1024L
-            val shareDir = File(cacheDir, "shared_crops")
+            val shareDir = File(cacheDir, CacheCleanupPolicy.SHARED_CROPS_DIRECTORY)
             val shareFile = File(shareDir, "${resolveFilename(exportSettings)}.$ext")
             try {
                 val result = CropCacheArtifactPublisher.publish(
