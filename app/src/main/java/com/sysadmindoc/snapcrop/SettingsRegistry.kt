@@ -15,7 +15,6 @@ enum class SettingsDestination(val wireValue: String) {
     OCR_TEXT_SIDECARS("ocr_text_sidecars"),
     APP_CROP_PROFILES("app_crop_profiles"),
     SCREENSHOT_INDEX("screenshot_index"),
-    SMART_ERASE("smart_erase"),
     IMAGE_FORMAT("image_format"),
     TARGET_SIZE("target_size"),
     STRIP_EXIF("strip_exif"),
@@ -107,10 +106,6 @@ object SettingsRegistry {
         OcrScript.PREF_KEY,
         "filename_template",
     )
-    private val eraseResetKeys = setOf(
-        AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL,
-        AdvancedEraseBackendRegistry.PREF_SELECTED_BACKEND,
-    )
     private val watermarkResetKeys = setOf("watermark_enabled", "watermark_text")
     private val borderResetKeys = setOf("border_size", "border_color")
     private val locationResetKeys = setOf("save_path")
@@ -144,8 +139,6 @@ object SettingsRegistry {
             R.string.settings_profiles_subtitle, R.string.settings_search_keywords_intelligence, saveResetKeys),
         entry(context, SettingsDestination.SCREENSHOT_INDEX, R.string.settings_index_title,
             R.string.settings_index_subtitle, R.string.settings_search_keywords_intelligence),
-        entry(context, SettingsDestination.SMART_ERASE, R.string.settings_erase_title,
-            R.string.settings_search_summary_erase, R.string.settings_search_keywords_erase, eraseResetKeys),
         entry(context, SettingsDestination.IMAGE_FORMAT, R.string.settings_section_format,
             R.string.settings_format_hint, R.string.settings_search_keywords_format, formatResetKeys),
         entry(context, SettingsDestination.TARGET_SIZE, R.string.settings_target_size_title,

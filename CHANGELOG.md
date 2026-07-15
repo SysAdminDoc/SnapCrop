@@ -33,6 +33,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Collage layout reductions now disclose the exact removal count, preserve order on
   cancel, and offer one-step Undo that survives recreation; replacement picks expand
   to the smallest fitting layout instead of silently truncating selected images.
+- Removed the inert experimental erase-model toggle, placeholder candidate registry,
+  and no-op Settings search route; Settings now gives a noninteractive explanation
+  of the built-in offline erase backend and retires obsolete model preferences.
 
 ## [v6.89.0] - 2026-07-13
 

@@ -22,7 +22,12 @@ internal data class RegisteredPreference(
 /** The restorable public contract for the otherwise unstructured `snapcrop` preference file. */
 internal object SettingsPreferenceSchema {
     const val PREFS_NAME = "snapcrop"
-    const val VERSION = 2
+    const val VERSION = 3
+
+    private val retiredKeys = setOf(
+        "advanced_erase_allow_experimental",
+        "advanced_erase_selected_backend",
+    )
 
     val preferences: List<RegisteredPreference> = listOf(
         boolean("auto_start"),
@@ -40,7 +45,6 @@ internal object SettingsPreferenceSchema {
         boolean("conditional_auto_actions"),
         boolean("redact_on_share"),
         boolean(ScreenshotIndexStore.PREF_ENABLED),
-        boolean(AdvancedEraseBackendRegistry.PREF_ALLOW_EXPERIMENTAL),
         boolean(SecurePreviewPolicy.PREF_ENABLED, "secure_editor"),
         boolean(OperationJournal.PREF_ENABLED),
         boolean(UpdateChecker.PREF_AUTO),
@@ -61,7 +65,6 @@ internal object SettingsPreferenceSchema {
         string(OcrScript.PREF_KEY),
         string(UserAppProfileStore.PREF_KEY),
         string(CustomRedactionPatternStore.PREF_KEY),
-        string(AdvancedEraseBackendRegistry.PREF_SELECTED_BACKEND),
         string(ScreenshotService.PREF_LAST_ACTION),
         string(PREF_SHARE_METADATA_DEFAULT),
         string(ExportPresetStore.PREF_EDITOR_PRESET_ID),
@@ -96,6 +99,7 @@ internal object SettingsPreferenceSchema {
         val values = prefs.all
         val editor = prefs.edit()
         var migrated = 0
+        val hasRetiredKeys = retiredKeys.any(values::containsKey)
         preferences.forEach { preference ->
             preference.legacyKeys.forEach { legacyKey ->
                 if (!values.containsKey(legacyKey)) return@forEach
@@ -107,7 +111,8 @@ internal object SettingsPreferenceSchema {
                 editor.remove(legacyKey)
             }
         }
-        if (migrated > 0 || preferences.any { entry -> entry.legacyKeys.any(values::containsKey) }) {
+        retiredKeys.forEach(editor::remove)
+        if (migrated > 0 || hasRetiredKeys || preferences.any { entry -> entry.legacyKeys.any(values::containsKey) }) {
             editor.apply()
         }
         return migrated
@@ -118,6 +123,7 @@ internal object SettingsPreferenceSchema {
             editor.remove(preference.key)
             preference.legacyKeys.forEach(editor::remove)
         }
+        retiredKeys.forEach(editor::remove)
     }
 
     fun writeTyped(

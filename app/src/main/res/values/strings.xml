@@ -332,8 +332,8 @@
     <string name="settings_rebuild">Rebuild</string>
     <string name="settings_purge">Purge</string>
     <string name="settings_section_erase">Smart erase</string>
-    <string name="settings_erase_title">Allow experimental erase model packs</string>
-    <string name="settings_erase_readiness">Backend readiness</string>
+    <string name="settings_erase_title">Local Smart Erase</string>
+    <string name="settings_erase_status">The editor uses SnapCrop’s built-in offline bitmap fill. Downloadable model packs are unavailable because no license-verified, benchmarked backend is integrated.</string>
     <string name="settings_section_format">Image format</string>
     <string name="settings_format_hint">PNG is lossless, JPEG/WebP are smaller files</string>
     <string name="settings_quality">Quality: %1$d%%</string>
@@ -570,8 +570,6 @@
     <string name="settings_search_keywords_save">replace copy delete exif metadata project sidecar</string>
     <string name="settings_search_summary_intelligence">Local index, OCR script, and app crop rules</string>
     <string name="settings_search_keywords_intelligence">gallery search index rebuild purge chinese japanese korean devanagari profiles</string>
-    <string name="settings_search_summary_erase">Local erase backend and evaluation status</string>
-    <string name="settings_search_keywords_erase">smart heal inpaint model benchmark</string>
     <string name="settings_search_summary_format">PNG, JPEG, WebP, quality, and target size</string>
     <string name="settings_search_keywords_format">compression resize kilobytes export image</string>
     <string name="settings_search_summary_presets">Reusable annotation styles and defaults</string>
