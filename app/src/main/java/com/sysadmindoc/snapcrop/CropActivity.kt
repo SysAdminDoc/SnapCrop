@@ -2037,15 +2037,25 @@ class CropActivity : ComponentActivity() {
             val svgSaved = annotationSvg == null || saveSvgSidecar(name, savePath, annotationSvg)
             val projectSaved = projectSidecarJson == null || saveProjectSidecar(name, savePath, projectSidecarJson)
             val ocrTextSaved = correctedOcrText == null || saveOcrTextSidecar(name, savePath, correctedOcrText)
-            val requestedSidecarsSaved = svgSaved && projectSaved && ocrTextSaved
+            val omittedSidecars = buildSet {
+                if (annotationSvg != null && !svgSaved) add(DiagnosticSidecar.SVG)
+                if (projectSidecarJson != null && !projectSaved) add(DiagnosticSidecar.PROJECT)
+                if (correctedOcrText != null && !ocrTextSaved) add(DiagnosticSidecar.OCR_TEXT)
+            }
+            val requestedSidecarsSaved = omittedSidecars.isEmpty()
             val detailMessage = baseMessage +
                 (if (annotationSvg != null && svgSaved) " + SVG" else "") +
                 (if (projectSidecarJson != null && projectSaved) " + Project" else "") +
                 (if (correctedOcrText != null && ocrTextSaved) " + OCR text" else "")
 
             OperationJournal.record(
-                this, DiagnosticOperation.EXPORT, DiagnosticStage.COMPLETE, DiagnosticResult.SUCCESS,
-                journalStarted
+                this,
+                DiagnosticOperation.EXPORT,
+                DiagnosticStage.COMPLETE,
+                if (requestedSidecarsSaved) DiagnosticResult.SUCCESS else DiagnosticResult.PARTIAL,
+                journalStarted,
+                partial = omittedSidecars.takeIf(Set<DiagnosticSidecar>::isNotEmpty)
+                    ?.let(DiagnosticPartial::Sidecars),
             )
 
             runOnUiThread {

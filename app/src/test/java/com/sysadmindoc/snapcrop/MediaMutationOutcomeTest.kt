@@ -21,6 +21,13 @@ class MediaMutationOutcomeTest {
 
         assertEquals(MediaMutationResult.PARTIAL, outcome.result)
         assertEquals(3, outcome.retained)
+        assertEquals(DiagnosticResult.PARTIAL, outcome.diagnosticResult)
+        assertEquals(
+            DiagnosticPartial.Counts(requested = 5, succeeded = 2, retained = 3),
+            outcome.diagnosticPartial,
+        )
+        assertEquals(R.string.toast_trashed_partial, outcome.messageResource(scopedTrash = true))
+        assertEquals(R.string.toast_deleted_partial, outcome.messageResource(scopedTrash = false))
     }
 
     @Test
@@ -29,6 +36,10 @@ class MediaMutationOutcomeTest {
 
         assertEquals(MediaMutationResult.SUCCESS, outcome.result)
         assertEquals(0, outcome.retained)
+        assertEquals(DiagnosticResult.SUCCESS, outcome.diagnosticResult)
+        assertEquals(null, outcome.diagnosticPartial)
+        assertEquals(R.string.toast_trashed_count, outcome.messageResource(scopedTrash = true))
+        assertEquals(R.string.toast_deleted_items_count, outcome.messageResource(scopedTrash = false))
     }
 
     @Test

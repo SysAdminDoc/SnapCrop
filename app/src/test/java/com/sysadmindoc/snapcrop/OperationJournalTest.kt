@@ -51,6 +51,61 @@ class OperationJournalTest {
     }
 
     @Test
+    fun partialCountsPersistAndRenderWithoutClaimingRetry() {
+        val partial = DiagnosticPartial.Counts(requested = 5, succeeded = 2, retained = 3)
+        assertTrue(
+            OperationJournal.record(
+                context,
+                DiagnosticOperation.DELETE,
+                DiagnosticStage.COMPLETE,
+                DiagnosticResult.PARTIAL,
+                partial = partial,
+            )
+        )
+
+        assertEquals(partial, OperationJournal.events(context).single().partial)
+        val text = OperationJournal.formatted(context)
+        assertTrue(text.contains("DELETE/COMPLETE PARTIAL"))
+        assertTrue(text.contains("requested=5 succeeded=2 retained=3"))
+        assertFalse(text.contains("RETRY"))
+    }
+
+    @Test
+    fun omittedSidecarTypesPersistWithoutFreeFormMetadata() {
+        val partial = DiagnosticPartial.Sidecars(
+            setOf(DiagnosticSidecar.PROJECT, DiagnosticSidecar.OCR_TEXT)
+        )
+        assertTrue(
+            OperationJournal.record(
+                context,
+                DiagnosticOperation.EXPORT,
+                DiagnosticStage.COMPLETE,
+                DiagnosticResult.PARTIAL,
+                partial = partial,
+            )
+        )
+
+        assertEquals(partial, OperationJournal.events(context).single().partial)
+        assertTrue(
+            OperationJournal.formatted(context)
+                .contains("omittedSidecars=OCR_TEXT,PROJECT")
+        )
+    }
+
+    @Test
+    fun partialResultWithoutTypedDetailsFailsClosed() {
+        assertFalse(
+            OperationJournal.record(
+                context,
+                DiagnosticOperation.DELETE,
+                DiagnosticStage.COMPLETE,
+                DiagnosticResult.PARTIAL,
+            )
+        )
+        assertTrue(OperationJournal.events(context).isEmpty())
+    }
+
+    @Test
     fun ringIsCountAndSizeBounded() {
         repeat(OperationJournal.MAX_EVENTS + 40) {
             OperationJournal.record(

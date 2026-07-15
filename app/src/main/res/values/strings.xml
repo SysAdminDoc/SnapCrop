@@ -853,6 +853,8 @@
     <string name="toast_moved_to_trash">Moved to Trash</string>
     <string name="toast_trashed_count">Moved %1$d item(s) to Trash</string>
     <string name="toast_trashed_partial">Moved %1$d item(s) to Trash; retained %2$d</string>
+    <string name="toast_deleted_items_count">Permanently deleted %1$d item(s)</string>
+    <string name="toast_deleted_partial">Permanently deleted %1$d item(s); retained %2$d</string>
     <string name="toast_items_retained">Nothing removed; items retained</string>
     <string name="toast_mutation_pending">Wait for the current media operation to finish</string>
     <string name="toast_delete_unsupported">SnapCrop cannot remove this provider’s item</string>

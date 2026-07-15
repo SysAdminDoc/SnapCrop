@@ -2541,12 +2541,9 @@ class MainActivity : ComponentActivity() {
             this,
             DiagnosticOperation.DELETE,
             DiagnosticStage.COMPLETE,
-            when (outcome.result) {
-                MediaMutationResult.SUCCESS -> DiagnosticResult.SUCCESS
-                MediaMutationResult.PARTIAL -> DiagnosticResult.RETRY
-                MediaMutationResult.RETAINED -> DiagnosticResult.FAILED
-            },
-            mutationStartedAt
+            outcome.diagnosticResult,
+            mutationStartedAt,
+            partial = outcome.diagnosticPartial,
         )
         if (succeeded.isNotEmpty()) {
             if (MediaMutationMetadataPolicy.cleanImmediately(Build.VERSION.SDK_INT)) {
@@ -2570,9 +2567,16 @@ class MainActivity : ComponentActivity() {
             loadRecentCrops()
         }
         val message = when (outcome.result) {
-            MediaMutationResult.RETAINED -> getString(R.string.toast_items_retained)
-            MediaMutationResult.PARTIAL -> getString(R.string.toast_trashed_partial, outcome.succeeded, outcome.retained)
-            MediaMutationResult.SUCCESS -> getString(R.string.toast_trashed_count, outcome.succeeded)
+            MediaMutationResult.RETAINED -> getString(outcome.messageResource(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R))
+            MediaMutationResult.PARTIAL -> getString(
+                outcome.messageResource(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R),
+                outcome.succeeded,
+                outcome.retained,
+            )
+            MediaMutationResult.SUCCESS -> getString(
+                outcome.messageResource(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R),
+                outcome.succeeded,
+            )
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }

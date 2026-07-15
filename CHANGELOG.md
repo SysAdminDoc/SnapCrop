@@ -23,6 +23,9 @@ All notable changes to SnapCrop will be documented in this file.
 - Added a release-scoped OSV gate that reports runtime and build/test graphs
   separately, rejects unexcepted High/Critical runtime advisories, validates owned
   time-bounded exceptions, and is required by release provenance generation.
+- Local operation diagnostics now persist completed partial exports and media
+  mutations as `PARTIAL` with content-free sidecar types or exact outcome counts;
+  gallery copy also distinguishes recoverable Trash from legacy permanent deletion.
 
 ## [v6.89.0] - 2026-07-13
 

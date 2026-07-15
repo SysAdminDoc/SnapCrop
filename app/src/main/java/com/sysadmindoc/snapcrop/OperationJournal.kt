@@ -15,6 +15,7 @@ import java.util.TimeZone
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal enum class DiagnosticOperation {
@@ -45,7 +46,30 @@ internal enum class DiagnosticStage {
     COMPLETE
 }
 
-internal enum class DiagnosticResult { SUCCESS, CANCELLED, BLOCKED, RETRY, FAILED }
+internal enum class DiagnosticResult { SUCCESS, PARTIAL, CANCELLED, BLOCKED, RETRY, FAILED }
+
+internal enum class DiagnosticSidecar { SVG, PROJECT, OCR_TEXT }
+
+internal sealed interface DiagnosticPartial {
+    data class Counts(
+        val requested: Int,
+        val succeeded: Int,
+        val retained: Int,
+    ) : DiagnosticPartial {
+        init {
+            require(requested > 0)
+            require(succeeded >= 0)
+            require(retained >= 0)
+            require(succeeded + retained == requested)
+        }
+    }
+
+    data class Sidecars(val omitted: Set<DiagnosticSidecar>) : DiagnosticPartial {
+        init {
+            require(omitted.isNotEmpty())
+        }
+    }
+}
 
 internal enum class DiagnosticCode {
     NONE,
@@ -81,8 +105,13 @@ internal data class DiagnosticEvent(
     val durationMs: Long,
     val result: DiagnosticResult,
     val code: DiagnosticCode,
-    val errorClass: String?
-)
+    val errorClass: String?,
+    val partial: DiagnosticPartial? = null,
+) {
+    init {
+        require((result == DiagnosticResult.PARTIAL) == (partial != null))
+    }
+}
 
 /**
  * A local-only, content-free diagnostic ring. The API deliberately accepts enums and an exception
@@ -127,7 +156,8 @@ internal object OperationJournal {
         result: DiagnosticResult,
         startedAtElapsedMs: Long? = null,
         code: DiagnosticCode = DiagnosticCode.NONE,
-        error: Throwable? = null
+        error: Throwable? = null,
+        partial: DiagnosticPartial? = null,
     ): Boolean = runCatching {
         if (!isEnabled(context)) return false
         val nowElapsed = SystemClock.elapsedRealtime()
@@ -148,7 +178,8 @@ internal object OperationJournal {
                 durationMs = duration,
                 result = result,
                 code = code,
-                errorClass = error?.javaClass?.simpleName?.take(80)?.takeIf { it.matches(ERROR_CLASS) }
+                errorClass = error?.javaClass?.simpleName?.take(80)?.takeIf { it.matches(ERROR_CLASS) },
+                partial = partial,
             )
         )
     }.getOrDefault(false)
@@ -160,11 +191,12 @@ internal object OperationJournal {
         result: DiagnosticResult,
         startedAtElapsedMs: Long? = null,
         code: DiagnosticCode = DiagnosticCode.NONE,
-        error: Throwable? = null
+        error: Throwable? = null,
+        partial: DiagnosticPartial? = null,
     ) {
         val app = context.applicationContext
         runCatching {
-            writer.execute { record(app, operation, stage, result, startedAtElapsedMs, code, error) }
+            writer.execute { record(app, operation, stage, result, startedAtElapsedMs, code, error, partial) }
         }
     }
 
@@ -207,6 +239,17 @@ internal object OperationJournal {
                 append(event.operation.name).append('/').append(event.stage.name).append(' ')
                 append(event.result.name).append(" durationMs=").append(event.durationMs)
                 if (event.code != DiagnosticCode.NONE) append(" code=").append(event.code.name)
+                when (val partial = event.partial) {
+                    is DiagnosticPartial.Counts -> {
+                        append(" requested=").append(partial.requested)
+                        append(" succeeded=").append(partial.succeeded)
+                        append(" retained=").append(partial.retained)
+                    }
+                    is DiagnosticPartial.Sidecars -> append(" omittedSidecars=").append(
+                        partial.omitted.sortedBy(DiagnosticSidecar::name).joinToString(",", transform = DiagnosticSidecar::name)
+                    )
+                    null -> Unit
+                }
                 event.errorClass?.let { append(" errorClass=").append(it) }
                 append('\n')
             }
@@ -270,7 +313,21 @@ internal object OperationJournal {
             .put("d", event.durationMs)
             .put("r", event.result.name)
             .put("c", event.code.name)
-            .apply { event.errorClass?.let { put("e", it) } }
+            .apply {
+                event.errorClass?.let { put("e", it) }
+                when (val partial = event.partial) {
+                    is DiagnosticPartial.Counts -> {
+                        put("q", partial.requested)
+                        put("u", partial.succeeded)
+                        put("n", partial.retained)
+                    }
+                    is DiagnosticPartial.Sidecars -> put(
+                        "x",
+                        JSONArray(partial.omitted.sortedBy(DiagnosticSidecar::name).map(DiagnosticSidecar::name)),
+                    )
+                    null -> Unit
+                }
+            }
             .toString()
     }.toByteArray(Charsets.UTF_8)
 
@@ -279,14 +336,37 @@ internal object OperationJournal {
         val json = JSONObject(line)
         val errorClass = json.optString("e", "").orEmpty().take(80)
             .takeIf { it.isNotBlank() && it.matches(ERROR_CLASS) }
+        val result = DiagnosticResult.valueOf(json.getString("r"))
+        val hasCounts = json.has("q") || json.has("u") || json.has("n")
+        val hasSidecars = json.has("x")
+        require(!(hasCounts && hasSidecars))
+        val partial = when {
+            result != DiagnosticResult.PARTIAL -> null
+            hasCounts -> DiagnosticPartial.Counts(
+                requested = json.getInt("q"),
+                succeeded = json.getInt("u"),
+                retained = json.getInt("n"),
+            )
+            hasSidecars -> {
+                val encoded = json.getJSONArray("x")
+                require(encoded.length() in 1..DiagnosticSidecar.entries.size)
+                DiagnosticPartial.Sidecars(
+                    buildSet {
+                        repeat(encoded.length()) { add(DiagnosticSidecar.valueOf(encoded.getString(it))) }
+                    }
+                )
+            }
+            else -> null
+        }
         DiagnosticEvent(
             timestampMs = json.getLong("t"),
             operation = DiagnosticOperation.valueOf(json.getString("o")),
             stage = DiagnosticStage.valueOf(json.getString("s")),
             durationMs = json.getLong("d").coerceIn(0, 24 * 60 * 60 * 1000L),
-            result = DiagnosticResult.valueOf(json.getString("r")),
+            result = result,
             code = DiagnosticCode.valueOf(json.optString("c", DiagnosticCode.NONE.name)),
-            errorClass = errorClass
+            errorClass = errorClass,
+            partial = partial,
         )
     }.getOrNull()
 
