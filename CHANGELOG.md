@@ -4,6 +4,22 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+## [v6.91.0] - 2026-07-22
+
+- Delete-original on save now actually removes the original screenshot from the
+  gallery. The previous path used a direct MediaStore update to move the source into
+  a visible `Pictures/trashed/` album — but MANAGE_MEDIA does not authorize direct
+  updates to media the app did not create, so on real (system-owned) screenshots the
+  move silently failed and the original stayed in the gallery. Save &amp; Replace now
+  uses `createTrashRequest`, the request API MANAGE_MEDIA does authorize, so the
+  original goes to the system trash (Recently deleted) — out of every gallery view,
+  recoverable for the platform retention window — prompt-free when Media management
+  access is granted (Android 10 falls back to a delete).
+- Fixed the Custom redaction patterns settings section rendering as overlapping,
+  unreadable text. It was wrapped in a `Box`, which stacked the title, description,
+  Add pattern / Import / Copy export controls, and pattern list on top of each other;
+  it now lays out vertically in a `Column`.
+
 ## [v6.90.0] - 2026-07-22
 
 - Moved on-device ML model inventory queries off the main thread. `OcrModelManager`

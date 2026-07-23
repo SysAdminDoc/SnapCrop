@@ -1944,7 +1944,7 @@ class SettingsActivity : ComponentActivity() {
                     )
 
                     Spacer(Modifier.height(8.dp))
-                    Box(
+                    Column(
                         Modifier.settingsAnchor(
                             SettingsDestination.CUSTOM_PATTERNS, settingsRequesters, highlightedDestination
                         )

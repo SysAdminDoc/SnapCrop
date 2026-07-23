@@ -41,16 +41,17 @@ class SourceContextRoutingTest {
     }
 
     @Test
-    fun promptFreeArchiveBypassesPerFileWriteRequestOnAndroidTwelveAndLater() {
+    fun sourceRemovalUsesMediaStoreTrashRequest() {
         val crop = source("CropActivity.kt")
-        val routeStart = crop.indexOf("private fun continueSourceArchiveAccess()")
-        val routeEnd = crop.indexOf("private fun launchSourceArchiveWriteRequest()")
-        val route = crop.substring(routeStart, routeEnd)
 
-        assertTrue(route.contains("Build.VERSION.SDK_INT >= Build.VERSION_CODES.S"))
-        assertTrue(route.contains("moveSourceToArchive(mayRequestLegacyAccess = false)"))
-        assertTrue(route.contains("else {\n            launchSourceArchiveWriteRequest()"))
-        assertFalse(route.contains("MediaStore.createWriteRequest"))
+        // Replace-after-save and editor delete both route the original to the MediaStore
+        // trash via createTrashRequest, the request API MANAGE_MEDIA authorizes prompt-free
+        // for media the app does not own (the reason the old direct-update move never
+        // removed system screenshots).
+        assertTrue(crop.contains("requestSourceTrash()"))
+        assertTrue(crop.contains("MediaStore.createTrashRequest(contentResolver, listOf(uri), true)"))
+        assertFalse(crop.contains("moveSourceToArchive"))
+        assertFalse(crop.contains("SourceArchiveManager.moveToArchive"))
     }
 
     private fun source(name: String): String =

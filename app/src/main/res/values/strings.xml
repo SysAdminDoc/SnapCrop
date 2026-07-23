@@ -310,7 +310,7 @@
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>
     <string name="settings_export_defaults">Export defaults</string>
-    <string name="settings_export_summary_replace">%1$s output - Save archives the source screenshot</string>
+    <string name="settings_export_summary_replace">%1$s output - Save removes the original screenshot from the gallery</string>
     <string name="settings_export_summary_keep">%1$s output - Save keeps the source screenshot</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_theme_title">Theme</string>
@@ -322,7 +322,7 @@
     <string name="settings_replace_subtitle">When ON (default), manual Save moves the source screenshot to Pictures/trashed after the edited copy is safely written.</string>
     <string name="settings_archive_access_title">Prompt-free archive access</string>
     <string name="settings_archive_access_needed">Allow one-time Media management access so Save &amp; Replace can move originals without asking for every photo.</string>
-    <string name="settings_archive_access_ready">Ready - originals move to Pictures/trashed without per-photo prompts.</string>
+    <string name="settings_archive_access_ready">Ready - originals move to Recently deleted without per-photo prompts.</string>
     <string name="settings_archive_access_legacy">Android 10-11 requires confirmation before SnapCrop can move a source it did not create.</string>
     <string name="settings_archive_access_action">Allow prompt-free moves</string>
     <string name="settings_archive_access_unavailable">Media management settings are unavailable on this device.</string>
@@ -747,8 +747,7 @@
     <string name="crop_save_replace">Save &amp; Replace</string>
     <string name="crop_saved_path">Saved to %1$s</string>
     <string name="crop_copy_saved_path">Copy saved to %1$s</string>
-    <string name="crop_original_archived">Original moved to Pictures/trashed</string>
-    <string name="crop_archive_access_required">To replace without per-photo prompts, allow SnapCrop under Media management apps. The saved crop is kept if you decline.</string>
+    <string name="crop_original_archived">Original moved to Recently deleted</string>
     <string name="crop_copy_saved_original_retained">Copy saved; original retained</string>
     <string name="crop_sidecar_failed_original_retained">Image saved, but a requested sidecar could not be written. Original retained.</string>
     <string name="crop_saved_sidecar_omitted">Image saved; a requested sidecar could not be written.</string>

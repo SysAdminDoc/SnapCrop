@@ -1,11 +1,9 @@
 package com.sysadmindoc.snapcrop
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.app.RecoverableSecurityException
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -68,7 +66,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import androidx.core.content.ContextCompat
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
 import com.sysadmindoc.snapcrop.ui.theme.Primary
@@ -187,32 +184,6 @@ class CropActivity : ComponentActivity() {
             verifyAndLoadProjectSource(uri, project, pendingProjectPolicy)
             withContext(Dispatchers.Main) { isLoading.value = false }
         }
-    }
-
-    private val sourceArchiveWriteLauncher = registerForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK) {
-            moveSourceToArchive(mayRequestLegacyAccess = false)
-        } else {
-            completeSourceMutation(false)
-        }
-    }
-
-    private val sourceArchiveMediaManagementLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (SourceArchiveManager.hasPromptFreeAccess(this)) {
-            continueSourceArchiveAccess()
-        } else {
-            completeSourceMutation(false)
-        }
-    }
-
-    private val sourceArchiveLocationLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) continueSourceArchiveAccess() else completeSourceMutation(false)
     }
 
     private fun handleIntent(incomingIntent: Intent) {
@@ -2104,88 +2075,10 @@ class CropActivity : ComponentActivity() {
             completeSourceMutation(false)
             return
         }
-        when (purpose) {
-            SourceMutationPurpose.REPLACE_AFTER_SAVE -> requestSourceArchive()
-            SourceMutationPurpose.DELETE_FROM_EDITOR -> requestSourceTrash()
-        }
-    }
-
-    private fun requestSourceArchive() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_MEDIA_LOCATION) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            sourceArchiveLocationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION)
-            return
-        }
-        continueSourceArchiveAccess()
-    }
-
-    private fun continueSourceArchiveAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            !SourceArchiveManager.hasPromptFreeAccess(this)
-        ) {
-            Toast.makeText(this, R.string.crop_archive_access_required, Toast.LENGTH_LONG).show()
-            runCatching {
-                sourceArchiveMediaManagementLauncher.launch(SourceArchiveManager.permissionIntent())
-            }.onFailure {
-                android.util.Log.w("SnapCrop", "Unable to open media management settings", it)
-                completeSourceMutation(false)
-            }
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            // MANAGE_MEDIA is the one-time special access that authorizes this update.
-            // Launching createWriteRequest here shows a per-file system dialog and some
-            // OEM builds incorrectly apply trash semantics to the selected source.
-            moveSourceToArchive(mayRequestLegacyAccess = false)
-        } else {
-            launchSourceArchiveWriteRequest()
-        }
-    }
-
-    private fun launchSourceArchiveWriteRequest() {
-        val uri = sourceUri ?: run {
-            completeSourceMutation(false)
-            return
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                val pendingIntent = MediaStore.createWriteRequest(contentResolver, listOf(uri))
-                sourceArchiveWriteLauncher.launch(IntentSenderRequest.Builder(pendingIntent.intentSender).build())
-            } catch (e: Exception) {
-                android.util.Log.w("SnapCrop", "Unable to request source archive access", e)
-                completeSourceMutation(false)
-            }
-        } else {
-            moveSourceToArchive(mayRequestLegacyAccess = true)
-        }
-    }
-
-    private fun moveSourceToArchive(mayRequestLegacyAccess: Boolean) {
-        val uri = sourceUri ?: run {
-            completeSourceMutation(false)
-            return
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val moved = SourceArchiveManager.moveToArchive(contentResolver, uri)
-                withContext(Dispatchers.Main) { completeSourceMutation(moved) }
-            } catch (recoverable: RecoverableSecurityException) {
-                if (mayRequestLegacyAccess) {
-                    withContext(Dispatchers.Main) {
-                        sourceArchiveWriteLauncher.launch(
-                            IntentSenderRequest.Builder(recoverable.userAction.actionIntent.intentSender).build()
-                        )
-                    }
-                } else {
-                    withContext(Dispatchers.Main) { completeSourceMutation(false) }
-                }
-            } catch (e: Exception) {
-                android.util.Log.w("SnapCrop", "Unable to move source into archive", e)
-                withContext(Dispatchers.Main) { completeSourceMutation(false) }
-            }
-        }
+        // Both paths send the original to the MediaStore trash. Direct resolver.update
+        // moves are not authorized by MANAGE_MEDIA for media the app does not own (only
+        // the request APIs are), so createTrashRequest is the reliable prompt-free route.
+        requestSourceTrash()
     }
 
     private fun requestSourceTrash() {
