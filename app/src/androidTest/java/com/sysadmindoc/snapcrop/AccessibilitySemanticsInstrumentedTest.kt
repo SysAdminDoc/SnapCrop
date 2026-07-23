@@ -69,18 +69,34 @@ class SettingsAccessibilityInstrumentedTest {
         composeRule.onNodeWithTag("settings-search").performTextClearance()
         composeRule.onNodeWithTag("settings-search").performTextInput("local network")
         composeRule.onNodeWithTag("settings-result-local_network").assertIsDisplayed().performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("settings-anchor-local_network").assertIsDisplayed()
+        // The dedicated local-network control only exists on Android 17+; below that the
+        // routed reveal deliberately falls back to the always-present Network exports
+        // anchor, so assert whichever control production actually surfaces on this API.
+        val revealedAnchor = if (Build.VERSION.SDK_INT >= LocalNetworkEndpointPolicy.ANDROID_17_API) {
+            "settings-anchor-local_network"
+        } else {
+            "settings-anchor-network_exports"
+        }
+        awaitAnchorDisplayed(revealedAnchor)
     }
 
     @Test
     fun settingsSearchRoutesToLiveModelInventory() {
         composeRule.onNodeWithTag("settings-search").performTextInput("on-device models")
         composeRule.onNodeWithTag("settings-result-ml_models").assertIsDisplayed().performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("settings-anchor-ml_models").assertIsDisplayed()
+        awaitAnchorDisplayed("settings-anchor-ml_models")
         composeRule.onNodeWithText(composeRule.activity.getString(R.string.ml_models_ocr_title)).assertIsDisplayed()
         composeRule.onRoot().tryPerformAccessibilityChecks()
+    }
+
+    // The routed anchor reveal runs on a delayed LaunchedEffect (bringIntoView after a
+    // short settle), which waitForIdle does not synchronize on, so poll until the
+    // scrolled-in anchor is actually displayed instead of asserting immediately.
+    private fun awaitAnchorDisplayed(tag: String) {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching { composeRule.onNodeWithTag(tag).assertIsDisplayed() }.isSuccess
+        }
+        composeRule.onNodeWithTag(tag).assertIsDisplayed()
     }
 }
 

@@ -19,7 +19,9 @@ import com.google.mlkit.vision.text.devanagari.DevanagariTextRecognizerOptions
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -37,14 +39,19 @@ object OcrModelManager {
 
     suspend fun isInstalled(context: Context, script: OcrScript): Boolean {
         if (script == OcrScript.LATIN) return true
-        MlKitStatus.playServicesIssue(context)?.let {
-            throw OcrModelUnavailableException(script, it)
-        }
-        return withRecognizer(script) { recognizer ->
-            ModuleInstall.getClient(context)
-                .areModulesAvailable(recognizer)
-                .awaitModelTask()
-                .areModulesAvailable()
+        // ML Kit client construction loads a Play services Dynamite module on first
+        // use and areModulesAvailable initiates GMS IPC; keep both off the main
+        // thread so a cold/slow Play services never stalls the caller's UI thread.
+        return withContext(Dispatchers.IO) {
+            MlKitStatus.playServicesIssue(context)?.let {
+                throw OcrModelUnavailableException(script, it)
+            }
+            withRecognizer(script) { recognizer ->
+                ModuleInstall.getClient(context)
+                    .areModulesAvailable(recognizer)
+                    .awaitModelTask()
+                    .areModulesAvailable()
+            }
         }
     }
 
@@ -66,6 +73,7 @@ object OcrModelManager {
         if (isInstalled(context, script)) return
         requireUnmeteredNetwork(context)
 
+        withContext(Dispatchers.IO) {
         withRecognizer(script) { recognizer ->
             val client = ModuleInstall.getClient(context)
             val completion = CompletableDeferred<Unit>()
@@ -102,13 +110,16 @@ object OcrModelManager {
                 runCatching { client.unregisterListener(listener).awaitModelTask() }
             }
         }
+        }
     }
 
     /** Best-effort release; Play services may retain a module shared by another app. */
     suspend fun release(context: Context, script: OcrScript) {
         require(script != OcrScript.LATIN) { "The Latin OCR model is bundled" }
-        withRecognizer(script) { recognizer ->
-            ModuleInstall.getClient(context).releaseModules(recognizer).awaitModelTask()
+        withContext(Dispatchers.IO) {
+            withRecognizer(script) { recognizer ->
+                ModuleInstall.getClient(context).releaseModules(recognizer).awaitModelTask()
+            }
         }
     }
 
@@ -143,25 +154,33 @@ object TranslationModelManager {
     private val manager: RemoteModelManager
         get() = RemoteModelManager.getInstance()
 
-    suspend fun installedLanguages(): Set<String> =
+    // RemoteModelManager construction and query dispatch touch Play services; keep
+    // them off the main thread so a cold/slow GMS never stalls the caller's UI thread.
+    suspend fun installedLanguages(): Set<String> = withContext(Dispatchers.IO) {
         manager.getDownloadedModels(TranslateRemoteModel::class.java)
             .awaitModelTask()
             .mapTo(linkedSetOf(TranslateLanguage.ENGLISH)) { it.language }
+    }
 
-    suspend fun isInstalled(language: String): Boolean =
+    suspend fun isInstalled(language: String): Boolean = withContext(Dispatchers.IO) {
         language == TranslateLanguage.ENGLISH || manager.isModelDownloaded(model(language)).awaitModelTask()
+    }
 
     suspend fun download(language: String) {
         require(language != TranslateLanguage.ENGLISH) { "English translation is built in" }
-        manager.download(
-            model(language),
-            DownloadConditions.Builder().requireWifi().build(),
-        ).awaitModelTask()
+        withContext(Dispatchers.IO) {
+            manager.download(
+                model(language),
+                DownloadConditions.Builder().requireWifi().build(),
+            ).awaitModelTask()
+        }
     }
 
     suspend fun delete(language: String) {
         require(language != TranslateLanguage.ENGLISH) { "English translation is built in" }
-        manager.deleteDownloadedModel(model(language)).awaitModelTask()
+        withContext(Dispatchers.IO) {
+            manager.deleteDownloadedModel(model(language)).awaitModelTask()
+        }
     }
 
     private fun model(language: String): TranslateRemoteModel =

@@ -4,6 +4,23 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+## [v6.90.0] - 2026-07-22
+
+- Moved on-device ML model inventory queries off the main thread. `OcrModelManager`
+  and `TranslationModelManager` now construct ML Kit recognizer clients and initiate
+  Play services module IPC on `Dispatchers.IO`, so a cold or slow Play services can
+  no longer stall the Settings UI thread while the ML models panel resolves its live
+  inventory. Verified on-device: this removes an intermittent process kill (ANR) seen
+  when the ML models panel first composed on a real Android 16 target.
+- Fixed local-network search routing on Android 16 and below. Searching for the
+  local-network control now reliably scrolls to the always-present Network exports
+  section instead of silently scrolling nowhere; the dedicated local-network control
+  remains Android 17+ only, and the routed reveal no longer depends on an unattached
+  requester throwing.
+- Validated the full instrumentation suite on a physical Android 16 (API 36) device
+  for the first time, including the optional Japanese OCR module download/run/release
+  round-trip over Wi-Fi and the Ultra HDR JPEG gain-map round-trip.
+
 - Added adaptive tablet, foldable, and desktop-window navigation. Expanded Home
   and Library windows use a navigation rail; Library keeps its grid and one
   identity-backed image viewer visible together, while compact windows retain

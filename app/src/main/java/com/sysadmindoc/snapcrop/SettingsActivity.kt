@@ -290,13 +290,19 @@ class SettingsActivity : ComponentActivity() {
                     val destination = requestedDestination ?: return@LaunchedEffect
                     delay(160)
                     navigationState = navigationState.highlight(destination)
-                    val requester = settingsRequesters.getValue(destination)
-                    val broughtIntoView = runCatching { requester.bringIntoView() }.isSuccess
-                    if (!broughtIntoView && destination == SettingsDestination.LOCAL_NETWORK) {
-                        runCatching {
-                            settingsRequesters.getValue(SettingsDestination.NETWORK_EXPORTS).bringIntoView()
-                        }
+                    // The dedicated local-network control only exists on Android 17+. Below
+                    // that its requester is never attached and bringIntoView silently no-ops
+                    // (it does not throw), so route to the always-present Network exports
+                    // section instead of leaving the search result scrolling nowhere.
+                    val revealTarget = if (
+                        destination == SettingsDestination.LOCAL_NETWORK &&
+                        Build.VERSION.SDK_INT < LocalNetworkEndpointPolicy.ANDROID_17_API
+                    ) {
+                        SettingsDestination.NETWORK_EXPORTS
+                    } else {
+                        destination
                     }
+                    runCatching { settingsRequesters.getValue(revealTarget).bringIntoView() }
                     delay(1800)
                     navigationState = navigationState.complete(destination)
                 }
