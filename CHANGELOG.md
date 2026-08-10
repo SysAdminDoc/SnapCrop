@@ -1492,3 +1492,43 @@ Sixth-pass deep audit — security + reliability.
 - v6.3.0: Line/eraser tools, selective color pop, tilt-shift
 - v6.2.0: Blur brush, free rotation, export border, highlights/shadows
 - v6.1.0: Audit — 8 bug fixes, sharpen slider, gallery viewer zoom
+
+## Roadmap archive — 2026-08-10 — ROADMAP.md
+
+<details>
+<summary>Original roadmap snapshot</summary>
+
+```markdown
+# SnapCrop Roadmap
+
+Updated: 2026-07-12
+
+## Strategic Direction
+
+SnapCrop should stay screenshot-first, privacy-first, and local-first. Most known
+work is implemented and now blocked only on device validation (see
+`Roadmap_Blocked.md`). The next high-value work is preserving fidelity/trust on
+the newest platform, dropping a deprecated security dependency, and closing small
+discoverability/recall gaps competitors have normalized — without adding cloud AI,
+accounts, or new permissions.
+
+## Research-Driven Additions
+
+### P3 — Larger bets and maintainability
+
+### P0 — Immediate data-trust fixes
+
+### P1 — Platform, reliability, accessibility, and distribution
+
+### P2 — Efficiency, discoverability, and differentiated workflows
+
+### P3 — Later experiments and maintenance
+
+### P0 — Immediate security and data-trust fixes
+
+### P1 — Security automation, truthful recovery, and verification
+
+### P2 — Local recall, portability, and adaptive efficiency
+```
+
+</details>
