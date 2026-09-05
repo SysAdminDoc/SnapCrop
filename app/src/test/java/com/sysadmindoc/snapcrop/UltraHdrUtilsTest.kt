@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Gainmap
 import android.graphics.Matrix
+import android.graphics.Rect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -38,6 +39,35 @@ class UltraHdrUtilsTest {
         assertTrue(target.hasUltraHdrGainmap())
         assertEquals(3, target.gainmap!!.gainmapContents.width)
         assertEquals(2, target.gainmap!!.gainmapContents.height)
+    }
+
+    @Test
+    fun straightenReattachesGainmapSoTheRendererDoesNotCopyANull() {
+        val source = hdrBitmap(16, 16, 4, 4)
+
+        val straightened = createEditorSpaceStraightenedBitmap(source, 12f)
+
+        assertTrue(straightened.hasUltraHdrGainmap())
+    }
+
+    @Test
+    fun renderKeepsGainmapThroughAFreeRotation() {
+        val source = hdrBitmap(16, 16, 4, 4)
+        val adj = FloatArray(25).apply {
+            this[1] = 1f
+            this[2] = 1f
+            this[8] = 12f
+        }
+
+        val output = CropImageRenderer.render(
+            source,
+            Rect(0, 0, 16, 16),
+            emptyList(),
+            emptyList(),
+            adj,
+        )
+
+        assertTrue(output.hasUltraHdrGainmap())
     }
 
     @Test
