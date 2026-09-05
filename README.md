@@ -2,7 +2,7 @@
 
 **The screenshot tool Android should have shipped with.**
 
-Auto-detect, auto-crop, annotate, redact, and share screenshots — all in one tap. Core editing works offline, with no ads, account, or SnapCrop-operated analytics service.
+Scrolling capture and automatic redaction of sensitive text, free. Both are paid upgrades in the tools people usually compare this against. SnapCrop also detects every screenshot you take, strips the status and nav bars, and hands you an editor. Core editing works offline, with no ads, account, or SnapCrop-operated analytics service.
 
 [![Android](https://img.shields.io/badge/Android-10%2B-3ddc84?logo=android&logoColor=white)](https://github.com/SysAdminDoc/SnapCrop/releases/latest)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -269,14 +269,15 @@ are blocked behind explicit opt-in and evaluation gates.
 
 ## Download
 
-Grab the latest universal `SnapCrop-<version>.apk` from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Smaller production-signed APKs are also published for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`; choose one only when the device ABI is known. Each release includes a shared CycloneDX JSON SBOM and a provenance JSON file covering every APK. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
+Grab `SnapCrop-<version>-arm64-v8a.apk` from [**Releases**](https://github.com/SysAdminDoc/SnapCrop/releases/latest) and sideload it. Almost every phone sold since 2017 is `arm64-v8a`, and that build is roughly a third the size of the universal one. If you are not sure what your device runs, or you need `armeabi-v7a`, `x86`, or `x86_64`, take the universal `SnapCrop-<version>.apk` instead; it contains every ABI and works anywhere. Each release includes a shared CycloneDX JSON SBOM and a provenance JSON file covering every APK. Verify the downloaded APK's SHA-256 and signing-certificate SHA-256 against that manifest before installing.
 
 ### Automatic sideload updates with Obtainium
 
 1. In Obtainium, add `https://github.com/SysAdminDoc/SnapCrop` as a GitHub source.
 2. Keep prereleases disabled. If an APK filter is requested, use
-   `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+\.apk$` so SBOM/provenance files and any
-   future alternate artifacts cannot be selected accidentally.
+   `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+-arm64-v8a\.apk$` so SBOM/provenance files and any
+   future alternate artifacts cannot be selected accidentally. Swap `arm64-v8a` for
+   `^SnapCrop-[0-9]+\.[0-9]+\.[0-9]+\.apk$` if you need the universal build.
 3. Before installing, compare Obtainium/GitHub's SHA-256 with the digest shown by
    SnapCrop's update dialog or `SnapCrop-<version>-provenance.json`.
 
