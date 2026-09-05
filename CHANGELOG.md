@@ -4,6 +4,8 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+## [v6.92.0] - 2026-09-05
+
 - Straightening an Ultra HDR screenshot no longer silently discards its HDR. The
   rotation helper draws into a fresh bitmap, and a Canvas draw never carries a gain
   map, so every later render stage was copying a null forward. The gain map is now
