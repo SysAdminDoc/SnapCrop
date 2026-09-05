@@ -266,6 +266,7 @@
     <string name="toast_copy_failed">Copy failed</string>
     <string name="toast_saved">Saved</string>
     <string name="toast_save_failed">Save failed</string>
+    <string name="toast_webp_too_large">WebP cannot store an image over %1$d px on a side. Saved as PNG instead.</string>
     <string name="toast_shared">Shared</string>
     <string name="toast_no_text">No text found</string>
     <string name="toast_no_faces">No faces found</string>

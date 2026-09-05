@@ -23,11 +23,23 @@ internal fun Bitmap.hasUltraHdrGainmap(): Boolean =
  */
 internal fun supportsPngGainmapEncoding(): Boolean = Build.VERSION.SDK_INT >= 36
 
+/**
+ * libwebp stores each dimension in a 14-bit field, so no WebP may exceed 16,383 px on either
+ * axis. Long-screenshot stitching allows 64 MP output (59,259 px tall at 1080 px wide), which
+ * is far past that ceiling, and `Bitmap.compress` simply fails on an oversized WebP.
+ */
+internal const val WEBP_MAX_DIMENSION = 16_383
+
+internal fun exceedsWebpDimensionLimit(width: Int, height: Int): Boolean =
+    width > WEBP_MAX_DIMENSION || height > WEBP_MAX_DIMENSION
+
 internal data class ResolvedExportFormat(
     val format: Bitmap.CompressFormat,
     val quality: Int,
     val ext: String,
     val mime: String,
+    /** True when a WebP preference was downgraded to PNG because the output is too large. */
+    val webpDowngraded: Boolean = false,
 )
 
 /**
@@ -35,6 +47,11 @@ internal data class ResolvedExportFormat(
  * a PNG preference (or a forced-PNG shape crop) stays PNG only where [pngGainmapSupported]
  * (Android 16+); otherwise HDR falls back to JPEG. Non-HDR output honors the user's format,
  * or forced PNG for alpha-bearing shape crops.
+ *
+ * [outputWidth] and [outputHeight] describe the bitmap that will actually be encoded. When they
+ * are known and exceed [WEBP_MAX_DIMENSION], a WebP preference is downgraded to PNG rather than
+ * handed to an encoder that cannot represent it. Zero means "not known", which leaves the
+ * preference untouched.
  */
 internal fun resolveExportFormat(
     userFormat: ExportImageFormat,
@@ -42,6 +59,8 @@ internal fun resolveExportFormat(
     forcePng: Boolean,
     ultraHdr: Boolean,
     pngGainmapSupported: Boolean = supportsPngGainmapEncoding(),
+    outputWidth: Int = 0,
+    outputHeight: Int = 0,
 ): ResolvedExportFormat {
     val png = ResolvedExportFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
     if (ultraHdr) {
@@ -52,10 +71,14 @@ internal fun resolveExportFormat(
     if (forcePng) return png
     return when (userFormat) {
         ExportImageFormat.WEBP -> {
-            @Suppress("DEPRECATION")
-            val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-                      else Bitmap.CompressFormat.WEBP
-            ResolvedExportFormat(fmt, quality, "webp", "image/webp")
+            if (exceedsWebpDimensionLimit(outputWidth, outputHeight)) {
+                png.copy(webpDowngraded = true)
+            } else {
+                @Suppress("DEPRECATION")
+                val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
+                          else Bitmap.CompressFormat.WEBP
+                ResolvedExportFormat(fmt, quality, "webp", "image/webp")
+            }
         }
         ExportImageFormat.JPEG -> ResolvedExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
         ExportImageFormat.PNG -> png

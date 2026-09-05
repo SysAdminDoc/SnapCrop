@@ -92,7 +92,8 @@ private data class CropExportFormat(
     val format: Bitmap.CompressFormat,
     val quality: Int,
     val ext: String,
-    val mime: String
+    val mime: String,
+    val webpDowngraded: Boolean = false
 )
 
 private enum class SourceMutationPurpose { REPLACE_AFTER_SAVE, DELETE_FROM_EDITOR }
@@ -572,7 +573,9 @@ class CropActivity : ComponentActivity() {
         val resolved = getExportFormat(
             forcePng = false,
             ultraHdr = bitmap?.hasUltraHdrGainmap() == true,
-            settings = settings
+            settings = settings,
+            outputWidth = bitmap?.width ?: 0,
+            outputHeight = bitmap?.height ?: 0
         )
         return resolved.format to resolved.quality
     }
@@ -580,10 +583,19 @@ class CropActivity : ComponentActivity() {
     private fun getExportFormat(
         forcePng: Boolean,
         ultraHdr: Boolean = false,
-        settings: ExportSettings = currentExportSettings()
+        settings: ExportSettings = currentExportSettings(),
+        outputWidth: Int = 0,
+        outputHeight: Int = 0
     ): CropExportFormat {
-        val r = resolveExportFormat(settings.format, settings.quality, forcePng, ultraHdr)
-        return CropExportFormat(r.format, r.quality, r.ext, r.mime)
+        val r = resolveExportFormat(
+            settings.format,
+            settings.quality,
+            forcePng,
+            ultraHdr,
+            outputWidth = outputWidth,
+            outputHeight = outputHeight
+        )
+        return CropExportFormat(r.format, r.quality, r.ext, r.mime, r.webpDowngraded)
     }
 
     private fun vibrateShort() {
@@ -1299,7 +1311,9 @@ class CropActivity : ComponentActivity() {
                 val exportFormat = getExportFormat(
                     forcePng = hasShapeCrop,
                     ultraHdr = cropped.hasUltraHdrGainmap(),
-                    settings = exportSettings
+                    settings = exportSettings,
+                    outputWidth = cropped.width,
+                    outputHeight = cropped.height
                 )
                 val projectSidecarJson = if (projectSidecarsEnabled()) {
                     buildProjectSidecarJson(rect, redactions, drawPaths, adj, cutout, deleteOriginal, exportFormat, savePath)
@@ -1910,8 +1924,19 @@ class CropActivity : ComponentActivity() {
         val exportFormat = getExportFormat(
             forcePng,
             ultraHdr = bitmap.hasUltraHdrGainmap(),
-            settings = exportSettings
+            settings = exportSettings,
+            outputWidth = bitmap.width,
+            outputHeight = bitmap.height
         )
+        if (exportFormat.webpDowngraded) {
+            runOnUiThread {
+                Toast.makeText(
+                    this,
+                    getString(R.string.toast_webp_too_large, WEBP_MAX_DIMENSION),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
         val format = exportFormat.format
         val quality = exportFormat.quality
         val ext = exportFormat.ext

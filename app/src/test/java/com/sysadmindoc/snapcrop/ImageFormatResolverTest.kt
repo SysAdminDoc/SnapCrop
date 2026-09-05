@@ -2,6 +2,8 @@ package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -75,5 +77,60 @@ class ImageFormatResolverTest {
         val webpLossy = resolveExportFormat(ExportImageFormat.WEBP, 60, forcePng = false, ultraHdr = false)
         assertEquals(Bitmap.CompressFormat.WEBP_LOSSY, webpLossy.format)
         assertEquals(60, webpLossy.quality)
+    }
+
+    @Test
+    fun webpStaysWebpAtTheDimensionLimit() {
+        val atLimit = resolveExportFormat(
+            ExportImageFormat.WEBP, 70, forcePng = false, ultraHdr = false,
+            outputWidth = 1080, outputHeight = WEBP_MAX_DIMENSION
+        )
+        assertEquals(Bitmap.CompressFormat.WEBP_LOSSY, atLimit.format)
+        assertFalse(atLimit.webpDowngraded)
+    }
+
+    @Test
+    fun webpDowngradesToPngOnePixelPastTheLimit() {
+        val tooTall = resolveExportFormat(
+            ExportImageFormat.WEBP, 70, forcePng = false, ultraHdr = false,
+            outputWidth = 1080, outputHeight = WEBP_MAX_DIMENSION + 1
+        )
+        assertEquals(Bitmap.CompressFormat.PNG, tooTall.format)
+        assertEquals("png", tooTall.ext)
+        assertTrue(tooTall.webpDowngraded)
+
+        val tooWide = resolveExportFormat(
+            ExportImageFormat.WEBP, 70, forcePng = false, ultraHdr = false,
+            outputWidth = WEBP_MAX_DIMENSION + 1, outputHeight = 400
+        )
+        assertEquals(Bitmap.CompressFormat.PNG, tooWide.format)
+        assertTrue(tooWide.webpDowngraded)
+    }
+
+    @Test
+    fun unknownDimensionsLeaveTheWebpPreferenceAlone() {
+        val unknown = resolveExportFormat(
+            ExportImageFormat.WEBP, 70, forcePng = false, ultraHdr = false,
+            outputWidth = 0, outputHeight = 0
+        )
+        assertEquals(Bitmap.CompressFormat.WEBP_LOSSY, unknown.format)
+        assertFalse(unknown.webpDowngraded)
+    }
+
+    @Test
+    fun oversizedPngAndJpegPreferencesAreUntouched() {
+        val png = resolveExportFormat(
+            ExportImageFormat.PNG, 70, forcePng = false, ultraHdr = false,
+            outputWidth = 1080, outputHeight = 59_259
+        )
+        assertEquals(Bitmap.CompressFormat.PNG, png.format)
+        assertFalse(png.webpDowngraded)
+
+        val jpeg = resolveExportFormat(
+            ExportImageFormat.JPEG, 70, forcePng = false, ultraHdr = false,
+            outputWidth = 1080, outputHeight = 59_259
+        )
+        assertEquals(Bitmap.CompressFormat.JPEG, jpeg.format)
+        assertFalse(jpeg.webpDowngraded)
     }
 }
