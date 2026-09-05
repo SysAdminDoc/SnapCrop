@@ -4,6 +4,16 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Straightening an Ultra HDR screenshot no longer silently discards its HDR. The
+  rotation helper draws into a fresh bitmap, and a Canvas draw never carries a gain
+  map, so every later render stage was copying a null forward. The gain map is now
+  reattached with the same rotation applied to it.
+- WebP exports larger than 16,383 px on either axis now save as PNG instead of
+  failing. libwebp cannot represent a dimension above that, while long-screenshot
+  stitching allows output up to 64 MP, so a tall stitched capture exported as WebP
+  failed at the encoder with no explanation. The editor now says why the format
+  changed.
+
 ## [v6.91.0] - 2026-07-22
 
 - Delete-original on save now actually removes the original screenshot from the
