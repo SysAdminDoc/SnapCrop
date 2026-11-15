@@ -2,6 +2,7 @@ package com.sysadmindoc.snapcrop
 
 import android.graphics.Bitmap
 import android.graphics.Rect
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 
@@ -14,8 +15,10 @@ internal fun ComposeContentTestRule.hostEditor(
     bitmap: Bitmap = whiteTestBitmap(),
     initialOcrBlocks: List<TextBlock> = emptyList(),
     onRotate: () -> Unit = {},
+    onRootView: (android.view.View) -> Unit = {},
 ) {
     setContent {
+        onRootView(LocalView.current)
         SnapCropTheme {
             CropEditorScreen(
                 bitmap = bitmap,

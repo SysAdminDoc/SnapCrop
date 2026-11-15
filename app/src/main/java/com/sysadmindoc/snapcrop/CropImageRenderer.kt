@@ -407,7 +407,8 @@ internal object CropImageRenderer {
         }
     }
     
-    private fun applyAdjustments(bitmap: Bitmap, adj: FloatArray): Bitmap {
+    /** Returns [bitmap] itself when nothing applies; never recycles it. The editor's live preview calls this too. */
+    internal fun applyAdjustments(bitmap: Bitmap, adj: FloatArray): Bitmap {
         val brightness = adj[0]; val contrast = adj[1]; val saturation = adj[2]
         val warmth = if (adj.size > 4) adj[4] else 0f
         val vignetteAmt = if (adj.size > 5) adj[5] else 0f

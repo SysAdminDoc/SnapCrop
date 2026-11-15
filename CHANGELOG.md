@@ -10,6 +10,7 @@ All notable changes to SnapCrop will be documented in this file.
 - You can now long-press in the OCR text window to select a single word or a few, and Copy and Translate then use only that selection (#2). A line under the text shows what they'll pick up, and with nothing selected they still take the whole block. The translated text is selectable too.
 - Crop mode has a rotate button at the end of the Straighten row (in the side panel on tablets), so each tap turns the image a quarter turn without going through the ⋮ menu (#4).
 - Translation now covers every language ML Kit can translate on the phone, 59 in all instead of 8 (#4). The OCR window keeps the common ones as chips and puts the rest behind an "All 59 languages" chip, which also marks the models already downloaded. Your last pick is remembered, and detected source languages show their name (Greek) instead of a code (EL). In Settings, the model list shows the common and downloaded languages first, with a button to see all of them.
+- Adjust on a phone keeps the photo in view while you work (#4). The sliders now scroll in a shorter panel, and Auto and Reset moved up next to the filters. Sharpen, highlights, shadows, tilt-shift, denoise, the three curves and the Red, Blue, Green and Glitch filters also preview live on the photo now. Before, those only showed up after saving.
 
 ## [v6.92.0] - 2026-09-05
 

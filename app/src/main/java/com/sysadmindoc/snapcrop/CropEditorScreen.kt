@@ -78,6 +78,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -108,6 +109,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.activity.compose.BackHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1073,6 +1075,34 @@ fun CropEditorScreen(
         )
     }
 
+    // Live preview for adjustments the canvas color filter can't show (issue #4). Rendered on a
+    // private downscaled copy so a rotate recycling `bitmap` can't pull pixels out from under it.
+    val adjustPreviewSourceHolder = remember(bitmap) { arrayOfNulls<Bitmap>(1) }
+    var adjustPreview by remember(bitmap) { mutableStateOf<ImageBitmap?>(null) }
+    val needsPixelPreview = needsPixelAdjustPreview(
+        sharpen, highlights, shadows, tiltShift, denoise, curveR, curveG, curveB, selectedFilter
+    )
+    LaunchedEffect(
+        bitmap, needsPixelPreview, brightness, contrast, saturation, warmth, vignette,
+        sharpen, highlights, shadows, tiltShift, denoise, curveR, curveG, curveB, selectedFilter
+    ) {
+        if (!needsPixelPreview) {
+            adjustPreview = null
+            return@LaunchedEffect
+        }
+        delay(ADJUST_PREVIEW_DEBOUNCE_MS)
+        if (bitmap.isRecycled) return@LaunchedEffect
+        val source = adjustPreviewSourceHolder[0]
+            ?: adjustPreviewSource(bitmap).also { adjustPreviewSourceHolder[0] = it }
+        val adj = exportAdjustments()
+        val rendered = withContext(Dispatchers.Default) {
+            val out = CropImageRenderer.applyAdjustments(source, adj)
+            // applyAdjustments hands back its input when nothing applies; never share the source.
+            if (out === source) source.copy(Bitmap.Config.ARGB_8888, false) else out
+        }
+        adjustPreview = rendered.asImageBitmap()
+    }
+
     fun currentCropRect() = Rect(cropLeft, cropTop, cropRight, cropBottom)
 
     fun currentEditorDraft() = EditorDraft(
@@ -1219,6 +1249,8 @@ fun CropEditorScreen(
         val isWideLayout = editorLayoutClass(maxWidth.value, maxHeight.value) == EditorLayoutClass.Wide
         val isShortLayout = maxHeight < 480.dp
         val sidePanelWidth = editorSidePanelWidthDp(maxWidth.value).dp
+        // Phone Adjust panel: 13 sliders stacked would push the photo off screen (issue #4).
+        val adjustSliderMaxHeight = (maxHeight * 0.22f).coerceIn(132.dp, 200.dp)
 
         @Composable
         fun PanelSection(title: String, content: @Composable ColumnScope.() -> Unit) {
@@ -2342,170 +2374,83 @@ fun CropEditorScreen(
         // Adjust mode sliders
         if (!isWideLayout && editMode == EditMode.ADJUST) {
             val adjustColor = AdjustAccent
-            // Filter presets
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                ImageFilter.entries.forEach { filter ->
-                    FilterChip(
-                        selected = selectedFilter == filter,
-                        onClick = { selectedFilter = filter },
-                        label = { Text(filter.label, fontSize = 11.sp) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = adjustColor.copy(alpha = 0.3f), selectedLabelColor = adjustColor,
-                            containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+            // Filter presets, with Auto-enhance and Reset on the same line so the photo keeps the room
+            Row(modifier = Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 12.dp, top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ImageFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = selectedFilter == filter,
+                            onClick = { selectedFilter = filter },
+                            label = { Text(filter.label, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = adjustColor.copy(alpha = 0.3f), selectedLabelColor = adjustColor,
+                                containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                    }
+                }
+                TextButton(onClick = {
+                    // Auto-enhance: analyze bitmap histogram and set optimal values
+                    pushUndo()
+                    val sampleSize = 4
+                    val sw = (bitmap.width / sampleSize).coerceAtLeast(1); val sh = (bitmap.height / sampleSize).coerceAtLeast(1)
+                    val sampled = android.graphics.Bitmap.createScaledBitmap(bitmap, sw, sh, false)
+                    var totalLum = 0f; var minLum = 255f; var maxLum = 0f; var totalSat = 0f
+                    val pixels = IntArray(sw * sh)
+                    sampled.getPixels(pixels, 0, sw, 0, 0, sw, sh)
+                    for (px in pixels) {
+                        val r = (px shr 16) and 0xFF; val g = (px shr 8) and 0xFF; val b = px and 0xFF
+                        val lum = 0.299f * r + 0.587f * g + 0.114f * b
+                        totalLum += lum; minLum = minOf(minLum, lum); maxLum = maxOf(maxLum, lum)
+                        val cMax = maxOf(r, g, b).toFloat(); val cMin = minOf(r, g, b).toFloat()
+                        totalSat += if (cMax > 0) (cMax - cMin) / cMax else 0f
+                    }
+                    sampled.recycle()
+                    val n = pixels.size.toFloat()
+                    val avgLum = totalLum / n
+                    val avgSat = totalSat / n
+                    // Target: mid-tone brightness, decent contrast, natural saturation
+                    brightness = ((128f - avgLum) * 0.4f).coerceIn(-40f, 40f)
+                    contrast = if (maxLum - minLum < 150) 1.2f else if (maxLum - minLum > 230) 0.95f else 1.05f
+                    saturation = if (avgSat < 0.15f) 1.3f else if (avgSat > 0.5f) 0.9f else 1.1f
+                    warmth = 0f; vignette = 0f
+                    haptic()
+                }) {
+                    Text(stringResource(R.string.adjust_auto_enhance), color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; denoise = 0f; curveR = 0f; curveG = 0f; curveB = 0f; selectedFilter = ImageFilter.NONE }) {
+                    Text(stringResource(R.string.adjust_reset), color = adjustColor, fontSize = 11.sp)
                 }
             }
-            val brightnessLabel = stringResource(R.string.adjust_brightness)
-            val contrastLabel = stringResource(R.string.adjust_contrast)
-            val saturationLabel = stringResource(R.string.adjust_saturation)
-            val warmthLabel = stringResource(R.string.adjust_warmth)
-            val vignetteLabel = stringResource(R.string.adjust_vignette)
-            val sharpenLabel = stringResource(R.string.adjust_sharpen)
-            val highlightsLabel = stringResource(R.string.adjust_highlights)
-            val shadowsLabel = stringResource(R.string.adjust_shadows)
-            val tiltShiftLabel = stringResource(R.string.adjust_tilt_shift)
-            val denoiseLabel = stringResource(R.string.adjust_denoise)
-            val curveRLabel = stringResource(R.string.adjust_curve_r)
-            val curveGLabel = stringResource(R.string.adjust_curve_g)
-            val curveBLabel = stringResource(R.string.adjust_curve_b)
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(brightnessLabel, color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = brightness, onValueChange = { brightness = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$brightnessLabel, ${brightness.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${brightness.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_contrast), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = contrast, onValueChange = { contrast = it },
-                        valueRange = 0.5f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$contrastLabel, ${String.format("%.1f", contrast)}x" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${String.format("%.1f", contrast)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_saturation), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = saturation, onValueChange = { saturation = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$saturationLabel, ${String.format("%.1f", saturation)}x" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${String.format("%.1f", saturation)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_warmth), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = warmth, onValueChange = { warmth = it },
-                        valueRange = -50f..50f, modifier = Modifier.weight(1f).semantics { contentDescription = "$warmthLabel, ${warmth.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${warmth.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_vignette), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = vignette, onValueChange = { vignette = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$vignetteLabel, ${(vignette * 100).toInt()} percent" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${(vignette * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_sharpen), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = sharpen, onValueChange = { sharpen = it },
-                        valueRange = 0f..2f, modifier = Modifier.weight(1f).semantics { contentDescription = "$sharpenLabel, ${String.format("%.1f", sharpen)}x" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${String.format("%.1f", sharpen)}x", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_highlights), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = highlights, onValueChange = { highlights = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$highlightsLabel, ${highlights.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${highlights.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_shadows), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = shadows, onValueChange = { shadows = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$shadowsLabel, ${shadows.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${shadows.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_tilt_shift), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = tiltShift, onValueChange = { tiltShift = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$tiltShiftLabel, ${(tiltShift * 100).toInt()} percent" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${(tiltShift * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_denoise), color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = denoise, onValueChange = { denoise = it },
-                        valueRange = 0f..1f, modifier = Modifier.weight(1f).semantics { contentDescription = "$denoiseLabel, ${(denoise * 100).toInt()} percent" },
-                        colors = SliderDefaults.colors(thumbColor = adjustColor, activeTrackColor = adjustColor, inactiveTrackColor = SurfaceVariant))
-                    Text("${(denoise * 100).toInt()}%", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .heightIn(max = adjustSliderMaxHeight)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                PanelSlider(stringResource(R.string.adjust_brightness), brightness, -100f..100f, adjustColor, "${brightness.toInt()}") { brightness = it }
+                PanelSlider(stringResource(R.string.adjust_contrast), contrast, 0.5f..2f, adjustColor, "${String.format("%.1f", contrast)}x") { contrast = it }
+                PanelSlider(stringResource(R.string.adjust_saturation), saturation, 0f..2f, adjustColor, "${String.format("%.1f", saturation)}x") { saturation = it }
+                PanelSlider(stringResource(R.string.adjust_warmth), warmth, -50f..50f, adjustColor, "${warmth.toInt()}") { warmth = it }
+                PanelSlider(stringResource(R.string.adjust_vignette), vignette, 0f..1f, adjustColor, "${(vignette * 100).toInt()}%") { vignette = it }
+                PanelSlider(stringResource(R.string.adjust_sharpen), sharpen, 0f..2f, adjustColor, "${String.format("%.1f", sharpen)}x") { sharpen = it }
+                PanelSlider(stringResource(R.string.adjust_highlights), highlights, -100f..100f, adjustColor, "${highlights.toInt()}") { highlights = it }
+                PanelSlider(stringResource(R.string.adjust_shadows), shadows, -100f..100f, adjustColor, "${shadows.toInt()}") { shadows = it }
+                PanelSlider(stringResource(R.string.adjust_tilt_shift), tiltShift, 0f..1f, adjustColor, "${(tiltShift * 100).toInt()}%") { tiltShift = it }
+                PanelSlider(stringResource(R.string.adjust_denoise), denoise, 0f..1f, adjustColor, "${(denoise * 100).toInt()}%") { denoise = it }
                 // Curves (per-channel RGB)
-                val curvesColor = OcrAccent // Lavender
-                Text(stringResource(R.string.adjust_curves), color = curvesColor, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                Text(stringResource(R.string.adjust_curves), color = OcrAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_r), color = ChannelRed, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = curveR, onValueChange = { curveR = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveRLabel, ${curveR.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = ChannelRed, activeTrackColor = ChannelRed, inactiveTrackColor = SurfaceVariant))
-                    Text("${curveR.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_g), color = ChannelGreen, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = curveG, onValueChange = { curveG = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveGLabel, ${curveG.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = ChannelGreen, activeTrackColor = ChannelGreen, inactiveTrackColor = SurfaceVariant))
-                    Text("${curveG.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.adjust_curve_b), color = ChannelBlue, fontSize = 11.sp, modifier = Modifier.width(72.dp))
-                    Slider(value = curveB, onValueChange = { curveB = it },
-                        valueRange = -100f..100f, modifier = Modifier.weight(1f).semantics { contentDescription = "$curveBLabel, ${curveB.toInt()}" },
-                        colors = SliderDefaults.colors(thumbColor = ChannelBlue, activeTrackColor = ChannelBlue, inactiveTrackColor = SurfaceVariant))
-                    Text("${curveB.toInt()}", color = OnSurfaceVariant, fontSize = 11.sp, modifier = Modifier.width(32.dp))
-                }
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = {
-                        // Auto-enhance: analyze bitmap histogram and set optimal values
-                        pushUndo()
-                        val sampleSize = 4
-                        val sw = (bitmap.width / sampleSize).coerceAtLeast(1); val sh = (bitmap.height / sampleSize).coerceAtLeast(1)
-                        val sampled = android.graphics.Bitmap.createScaledBitmap(bitmap, sw, sh, false)
-                        var totalLum = 0f; var minLum = 255f; var maxLum = 0f; var totalSat = 0f
-                        val pixels = IntArray(sw * sh)
-                        sampled.getPixels(pixels, 0, sw, 0, 0, sw, sh)
-                        for (px in pixels) {
-                            val r = (px shr 16) and 0xFF; val g = (px shr 8) and 0xFF; val b = px and 0xFF
-                            val lum = 0.299f * r + 0.587f * g + 0.114f * b
-                            totalLum += lum; minLum = minOf(minLum, lum); maxLum = maxOf(maxLum, lum)
-                            val cMax = maxOf(r, g, b).toFloat(); val cMin = minOf(r, g, b).toFloat()
-                            totalSat += if (cMax > 0) (cMax - cMin) / cMax else 0f
-                        }
-                        sampled.recycle()
-                        val n = pixels.size.toFloat()
-                        val avgLum = totalLum / n
-                        val avgSat = totalSat / n
-                        // Target: mid-tone brightness, decent contrast, natural saturation
-                        brightness = ((128f - avgLum) * 0.4f).coerceIn(-40f, 40f)
-                        contrast = if (maxLum - minLum < 150) 1.2f else if (maxLum - minLum > 230) 0.95f else 1.05f
-                        saturation = if (avgSat < 0.15f) 1.3f else if (avgSat > 0.5f) 0.9f else 1.1f
-                        warmth = 0f; vignette = 0f
-                        haptic()
-                    }) {
-                        Text(stringResource(R.string.adjust_auto_enhance), color = adjustColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                    TextButton(onClick = { brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f; vignette = 0f; sharpen = 0f; highlights = 0f; shadows = 0f; tiltShift = 0f; denoise = 0f; curveR = 0f; curveG = 0f; curveB = 0f; selectedFilter = ImageFilter.NONE }) {
-                        Text(stringResource(R.string.adjust_reset), color = adjustColor, fontSize = 11.sp)
-                    }
-                }
+                PanelSlider(stringResource(R.string.adjust_curve_r), curveR, -100f..100f, ChannelRed, "${curveR.toInt()}") { curveR = it }
+                PanelSlider(stringResource(R.string.adjust_curve_g), curveG, -100f..100f, ChannelGreen, "${curveG.toInt()}") { curveG = it }
+                PanelSlider(stringResource(R.string.adjust_curve_b), curveB, -100f..100f, ChannelBlue, "${curveB.toInt()}") { curveB = it }
             }
         }
 
@@ -3085,12 +3030,19 @@ fun CropEditorScreen(
                         drawContext.canvas.nativeCanvas.rotate(rotationAngle, ox + drawW / 2, oy + drawH / 2)
                     }
 
-                    drawImage(imageBitmap, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
-                        dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
-                        colorFilter = adjustFilter)
+                    // The pixel preview already carries the color matrix and vignette.
+                    val pixelPreview = adjustPreview
+                    if (pixelPreview != null) {
+                        drawImage(pixelPreview, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+                            dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()))
+                    } else {
+                        drawImage(imageBitmap, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()),
+                            dstSize = IntSize(drawW.roundToInt(), drawH.roundToInt()),
+                            colorFilter = adjustFilter)
+                    }
 
                     // Vignette overlay (radial gradient from transparent to black)
-                    if (vignette > 0.01f) {
+                    if (pixelPreview == null && vignette > 0.01f) {
                         drawContext.canvas.nativeCanvas.apply {
                             vigPaint.shader = android.graphics.RadialGradient(
                                 ox + drawW / 2, oy + drawH / 2,
