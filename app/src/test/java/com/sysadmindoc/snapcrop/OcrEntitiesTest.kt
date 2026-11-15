@@ -50,4 +50,70 @@ class OcrEntitiesTest {
         assertEquals(5, emails.size)
         assertEquals(emails.size, emails.map { it.value.lowercase() }.toSet().size)
     }
+
+    // Issue #4: links OCR'd from a screenshot usually have no scheme.
+    @Test
+    fun bareDomainWithPathIsALink() {
+        val url = extractEntities("Source: github.com/SysAdminDoc/SnapCrop.").single()
+        assertEquals(OcrEntityType.URL, url.type)
+        assertEquals("https://github.com/SysAdminDoc/SnapCrop", url.value)
+        assertEquals("github.com/SysAdminDoc/SnapCrop", url.display)
+    }
+
+    @Test
+    fun bareDomainsAcrossCommonTldsAreLinks() {
+        val values = extractEntities("bbc.co.uk/news, docs.example.dev and youtu.be/abc123")
+            .filter { it.type == OcrEntityType.URL }
+            .map { it.value }
+        assertEquals(listOf("https://bbc.co.uk/news", "https://docs.example.dev", "https://youtu.be/abc123"), values)
+    }
+
+    @Test
+    fun fileNamesVersionsAndRunOnSentencesAreNotLinks() {
+        val text = "Open README.md and build.gradle.kts, then photo.jpg. Version 6.92.0 is done.It works"
+        assertTrue(extractEntities(text).none { it.type == OcrEntityType.URL })
+    }
+
+    @Test
+    fun trailingPunctuationAndUnbalancedBracketsAreTrimmed() {
+        val values = extractEntities("(see https://example.com/a). Also https://example.org/b!")
+            .map { it.value }
+        assertEquals(listOf("https://example.com/a", "https://example.org/b"), values)
+    }
+
+    @Test
+    fun balancedBracketsInsideAUrlAreKept() {
+        val url = extractEntities("https://en.wikipedia.org/wiki/Foo_(bar)").single()
+        assertEquals("https://en.wikipedia.org/wiki/Foo_(bar)", url.value)
+    }
+
+    @Test
+    fun uppercaseSchemeIsLoweredSoTheBrowserAcceptsIt() {
+        val url = extractEntities("HTTPS://Example.com/Path").single()
+        assertEquals("https://Example.com/Path", url.value)
+    }
+
+    @Test
+    fun emailDomainIsNotAlsoALink() {
+        val entities = extractEntities("Write to jane@example.com today")
+        assertEquals(listOf(OcrEntityType.EMAIL), entities.map { it.type })
+    }
+
+    @Test
+    fun wwwInsideAWordIsNotTreatedAsAPrefix() {
+        val url = extractEntities("awww.com").single()
+        assertEquals("https://awww.com", url.value)
+    }
+
+    @Test
+    fun chipTextDropsTheSchemeAndCapsLongLinks() {
+        assertEquals("example.com", urlChipText("https://www.example.com/"))
+        val long = urlChipText("https://example.com/a/really/long/path/that/keeps/going/on")
+        assertEquals(32, long.length)
+        assertEquals(ELLIPSIS, long.last())
+    }
+
+    private companion object {
+        val ELLIPSIS = Char(0x2026)
+    }
 }

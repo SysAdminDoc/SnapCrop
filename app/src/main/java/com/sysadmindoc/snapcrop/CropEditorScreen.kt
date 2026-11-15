@@ -4055,7 +4055,7 @@ fun CropEditorScreen(
                                     val chipLabel = when (entity.type) {
                                         OcrEntityType.PHONE -> stringResource(R.string.ocr_entity_call, entity.display)
                                         OcrEntityType.EMAIL -> stringResource(R.string.ocr_entity_email, entity.display)
-                                        OcrEntityType.URL -> stringResource(R.string.ocr_entity_open_url)
+                                        OcrEntityType.URL -> stringResource(R.string.ocr_entity_open_url, urlChipText(entity.display))
                                         OcrEntityType.IPV4 -> stringResource(R.string.ocr_entity_copy_ip)
                                         OcrEntityType.MAC -> stringResource(R.string.ocr_entity_copy_mac)
                                         OcrEntityType.IBAN -> stringResource(R.string.ocr_entity_copy_iban)
