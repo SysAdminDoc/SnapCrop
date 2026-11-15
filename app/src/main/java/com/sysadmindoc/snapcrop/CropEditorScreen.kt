@@ -76,6 +76,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -2709,6 +2710,8 @@ fun CropEditorScreen(
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
+                        // A zoomed photo is drawn larger than the canvas; without the clip it covers the tool panels.
+                        .clipToBounds()
                         .semantics {
                             role = Role.Image
                             contentDescription = context.getString(R.string.editor_canvas_cd)

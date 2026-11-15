@@ -16,6 +16,7 @@ import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipe
 import com.sysadmindoc.snapcrop.ui.theme.SnapCropTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -67,6 +68,28 @@ class EditorPinchGestureTest {
         assertTrue("ink bottom ${ink.bottom} near swipe y $y", abs(ink.bottom - y) <= 16f)
         assertTrue("ink starts at ${ink.left}, finger started at $startX", abs(ink.left - startX) <= 20f)
         assertTrue("ink ends at ${ink.right}, finger ended at $endX", abs(ink.right - endX) <= 20f)
+    }
+
+    /** Seen on a phone after the fix above: a zoomed photo covered the Draw tools and the mode tabs. */
+    @Test
+    fun zoomedPhotoStaysInsideTheCanvas() {
+        val canvas = openDrawMode()
+        val c = canvasCentre(canvas)
+        val x = c.x.roundToInt()
+        val unzoomed = capture(canvas)
+        assertFalse("panel above the canvas starts dark", unzoomed.isWhite(x, -3))
+        assertFalse("bar below the canvas starts dark", unzoomed.isWhite(x, unzoomed.height + 2))
+
+        canvas.performTouchInput {
+            pinch(c - Offset(40f, 0f), c - Offset(120f, 0f), c + Offset(40f, 0f), c + Offset(120f, 0f), 400L)
+        }
+        compose.waitForIdle()
+        val zoomed = capture(canvas)
+
+        assertTrue("zoomed photo reaches the canvas top", zoomed.isWhite(x, 2))
+        assertTrue("zoomed photo reaches the canvas bottom", zoomed.isWhite(x, zoomed.height - 3))
+        assertFalse("photo drawn over the panel above the canvas", zoomed.isWhite(x, -3))
+        assertFalse("photo drawn over the bar below the canvas", zoomed.isWhite(x, zoomed.height + 2))
     }
 
     @Test
