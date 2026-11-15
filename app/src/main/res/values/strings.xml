@@ -411,6 +411,8 @@
     <string name="settings_section_presets">Annotation presets</string>
     <string name="settings_presets_body">Save draw tool styles and load them quickly in the editor.</string>
     <string name="settings_presets_empty">No presets saved yet. Use the + button in the editor\'s draw mode to save your current tool style.</string>
+    <string name="settings_preset_cd">%1$s preset: %2$s</string>
+    <string name="settings_preset_default_cd">%1$s preset: %2$s, default</string>
     <string name="settings_preset_default">Default</string>
     <string name="settings_preset_set_default">Set default</string>
     <string name="settings_section_network">Network exports</string>
@@ -989,6 +991,15 @@
     <string name="tool_eraser">Eraser</string>
     <string name="tool_fill">Fill</string>
     <string name="tool_smart_erase">Smart Erase</string>
+    <!-- Draw tool chips in the editor. Keep these short: the chips sit several to a row. -->
+    <string name="tool_chip_curved_arrow">Curve</string>
+    <string name="tool_chip_highlight">Mark</string>
+    <!-- The numbered-callout tool, which drops 1, 2, 3 markers on the image. -->
+    <string name="tool_chip_callout">#</string>
+    <string name="tool_chip_spotlight">Focus</string>
+    <string name="tool_chip_magnifier">Zoom</string>
+    <string name="tool_chip_eraser">Erase</string>
+    <string name="tool_chip_smart_erase">Smart</string>
 
     <!-- Editor - toolbar -->
     <string name="editor_undo">Undo</string>
@@ -1060,15 +1071,25 @@
     <!-- Editor - draw options -->
     <string name="draw_filled">Fill</string>
     <string name="draw_dashed">Dash</string>
+    <string name="draw_style_summary">%1$s, %2$dpx</string>
+    <string name="draw_style_summary_dashed">%1$s, %2$dpx, dashed</string>
+    <string name="draw_style_spoken">%1$s, %2$d pixels</string>
+    <string name="draw_style_spoken_dashed">%1$s, %2$d pixels, dashed</string>
     <string name="draw_backdrop">BG</string>
     <string name="draw_background_label">BG:</string>
     <string name="draw_width_label">Width</string>
+    <string name="draw_width_px">%1$dpx</string>
+    <string name="draw_width_cd">%1$s, %2$d pixels</string>
+    <string name="draw_text_size">Size: %1$dpx</string>
     <string name="draw_color_picker_title">Choose color</string>
     <string name="draw_red">R</string>
     <string name="draw_green">G</string>
     <string name="draw_blue">B</string>
     <string name="draw_hex">Hex: #%1$s</string>
     <string name="draw_layers">Layers</string>
+    <string name="draw_layers_hide">Hide Layers</string>
+    <string name="draw_layers_count">Layers %1$d</string>
+    <string name="draw_emoji_cd">Emoji %1$s</string>
     <string name="draw_text_dialog_title">Enter text</string>
     <string name="draw_text_hint">Type here</string>
     <string name="draw_save_preset_title">Save preset</string>
@@ -1076,6 +1097,7 @@
     <string name="draw_eyedropper">Eyedropper</string>
     <string name="draw_add_text">Add</string>
     <string name="draw_recent_color_cd">Recent color %1$d, %2$s%3$s</string>
+    <string name="draw_color_cd">%1$s color</string>
     <string name="draw_current_color_cd">Current draw color, tap to open color picker</string>
     <string name="selected_suffix">, selected</string>
     <string name="draw_layers_title">Layers</string>
@@ -1159,6 +1181,9 @@
     <string name="ocr_translate">Translate</string>
     <string name="ocr_translating">Translating…</string>
     <string name="ocr_translation_failed">Translation failed</string>
+    <string name="ocr_translation_preparing">Preparing on-device translation...</string>
+    <string name="ocr_translation_already">Already %1$s</string>
+    <string name="ocr_translation_pair">%1$s -&gt; %2$s</string>
     <string name="ocr_target_language">Target language</string>
     <string name="ocr_copy">Copy</string>
     <string name="ocr_select_hint">Long-press a word to select it. Copy and Translate then use only your selection.</string>
@@ -1225,9 +1250,9 @@
     <string name="filter_invert">Invert</string>
     <string name="filter_polaroid">Polaroid</string>
     <string name="filter_grain">Grain</string>
-    <string name="filter_red_pop">Red Pop</string>
-    <string name="filter_blue_pop">Blue Pop</string>
-    <string name="filter_green_pop">Green Pop</string>
+    <string name="filter_red_pop">Red</string>
+    <string name="filter_blue_pop">Blue</string>
+    <string name="filter_green_pop">Green</string>
     <string name="filter_glitch">Glitch</string>
 
     <!-- Resize dialog (editor) -->
@@ -1236,6 +1261,17 @@
     <string name="resize_current_dimensions">Current: %1$d x %2$d</string>
 
     <!-- Aspect ratios -->
+    <string name="ratio_free">Free</string>
+    <string name="ratio_1_1">1:1</string>
+    <string name="ratio_4_3">4:3</string>
+    <string name="ratio_3_4">3:4</string>
+    <string name="ratio_4_5">4:5</string>
+    <string name="ratio_5_4">5:4</string>
+    <string name="ratio_16_9">16:9</string>
+    <string name="ratio_9_16">9:16</string>
+    <string name="ratio_2_1">2:1</string>
+    <string name="ratio_3_1">3:1</string>
+    <string name="ratio_21_9">21:9</string>
     <string name="ratio_circle">Circle</string>
     <string name="ratio_rounded">Rounded</string>
     <string name="ratio_star">Star</string>
@@ -1489,6 +1525,21 @@
     <string name="mlkit_retry_storage">Free some storage space for %1$s, then retry.</string>
     <string name="mlkit_retry_update">Update Google Play services and retry %1$s.</string>
     <string name="mlkit_retry_generic">The %1$s model is not ready yet. Connect to Wi-Fi, keep SnapCrop open, and retry.</string>
+    <!-- ML Kit feature names. The plain form goes mid-sentence ("retry %1$s"); the subject form starts a sentence. -->
+    <string name="mlkit_feature_ocr">OCR</string>
+    <string name="mlkit_feature_ocr_subject">OCR</string>
+    <string name="mlkit_feature_barcodes">barcode scanning</string>
+    <string name="mlkit_feature_barcodes_subject">Barcode scanning</string>
+    <string name="mlkit_feature_faces">face detection</string>
+    <string name="mlkit_feature_faces_subject">Face detection</string>
+    <string name="mlkit_feature_entities">sensitive text detection</string>
+    <string name="mlkit_feature_entities_subject">Sensitive text detection</string>
+    <string name="mlkit_feature_translation">translation</string>
+    <string name="mlkit_feature_translation_subject">Translation</string>
+    <string name="mlkit_feature_background_removal">background removal</string>
+    <string name="mlkit_feature_background_removal_subject">Background removal</string>
+    <string name="mlkit_feature_ai_crop">AI crop</string>
+    <string name="mlkit_feature_ai_crop_subject">AI crop</string>
 
     <!-- ScrollCaptureService -->
     <string name="scroll_capture_limit">Reached capture limit</string>
@@ -1613,4 +1664,38 @@
     <string name="crop_draft_recovery_failed_message">The draft could not be validated or safely quarantined, so SnapCrop left it untouched.</string>
     <string name="crop_draft_discard_continue">Discard and continue</string>
     <string name="crop_draft_discard_failed">The editor draft could not be removed.</string>
+
+    <!-- Offline help catalog (LocalHelpCatalog). Each entry is a title and a one-paragraph summary. -->
+    <string name="help_entry_recover_permissions_title">Recover missing permissions</string>
+    <string name="help_entry_recover_permissions_summary">Use the permission cards on Home to restore Photos, Videos, or Notifications separately. Photo access is required for screenshot monitoring; Android pickers remain available without library access.</string>
+    <string name="help_entry_save_replace_or_copy_title">Choose Save &amp; Replace or Save Copy</string>
+    <string name="help_entry_save_replace_or_copy_summary">Save &amp; Replace writes the edited result and then uses Android\'s removal flow for the original. Save Copy keeps the original and creates a separate result.</string>
+    <string name="help_entry_editor_modes_and_tools_title">Find editor modes and drawing tools</string>
+    <string name="help_entry_editor_modes_and_tools_summary">Use Crop, Pixelate, Draw, OCR, and Adjust mode chips. Draw contains Pen, arrows, shapes, text, highlight, callout, spotlight, magnifier, emoji, neon, blur, eraser, fill, Smart Erase, and ruler tools.</string>
+    <string name="help_entry_save_sidecars_safely_title">Understand project and OCR sidecars</string>
+    <string name="help_entry_save_sidecars_safely_summary">Project and OCR-text sidecars are optional and may contain reversible layers or sensitive recognized text. If a requested sidecar fails, Save &amp; Replace retains the original instead of deleting it.</string>
+    <string name="help_entry_redact_safely_title">Redact secrets safely</string>
+    <string name="help_entry_redact_safely_summary">Use opaque Bar replacement for secrets because it destroys the covered pixels. Pixelate and Blur are cosmetic effects and may be partly reversible.</string>
+    <string name="help_entry_remove_middle_content_title">Cut out irrelevant rows or columns</string>
+    <string name="help_entry_remove_middle_content_summary">Use Cut Out before perspective or free rotation. Add horizontal or vertical source bands, edit or remove them non-destructively, choose a straight, dashed, or torn seam, then use Preview to inspect the squeezed output. Retained annotations move with their pixels when exported.</string>
+    <string name="help_entry_troubleshoot_long_screenshot_title">Fix Long Screenshot capture</string>
+    <string name="help_entry_troubleshoot_long_screenshot_summary">Enable the disclosed Long Screenshot Accessibility service, return to the target app, and start from its Quick Settings tile. Retry from review when scrolling stalls or a seam is wrong.</string>
+    <string name="help_entry_troubleshoot_delayed_capture_title">Fix Delayed Capture</string>
+    <string name="help_entry_troubleshoot_delayed_capture_summary">Grant full photo access so monitoring can see the next screenshot, choose 3, 5, or 10 seconds, then stay in the target app until Android captures it. Notifications are the fallback when overlays are unavailable.</string>
+    <string name="help_entry_secure_preview_capture_conflict_title">Fix blank protected previews</string>
+    <string name="help_entry_secure_preview_capture_conflict_summary">Protect media previews blocks screenshots, recording, Recents, overlays, and notification pixels. Disable it temporarily in Settings only when you intentionally need to capture SnapCrop itself.</string>
+    <string name="help_entry_troubleshoot_step_capture_title">Fix Step Capture</string>
+    <string name="help_entry_troubleshoot_step_capture_summary">Enable the separate Step Capture Accessibility service and start its Quick Settings tile before tapping through the task. Stop from the tile or ongoing notification to build the guide.</string>
+    <string name="help_entry_troubleshoot_static_web_capture_title">Fix static web capture</string>
+    <string name="help_entry_troubleshoot_static_web_capture_summary">Enter a public HTTPS page. SnapCrop renders the bounded main document offline without scripts or external resources; use Long Screenshot when the page is too large or needs live content.</string>
+    <string name="help_entry_share_metadata_and_source_link_title">Control share metadata and source links</string>
+    <string name="help_entry_share_metadata_and_source_link_summary">Review the metadata categories before sharing, choose Strip all, Keep safe, or Preserve, and include the explicit source link only when the destination should receive it.</string>
+    <string name="help_entry_save_and_reopen_projects_title">Save and reopen editable projects</string>
+    <string name="help_entry_save_and_reopen_projects_summary">Enable project sidecars before saving to keep crop, redaction, adjustment, and annotation state. Open the .snapcrop.json file later and relink only to a source with the expected fingerprint.</string>
+    <string name="help_entry_filter_gallery_title">Filter the Gallery</string>
+    <string name="help_entry_filter_gallery_summary">Combine media, source, category, date, orientation, dimensions, favorite, and format filters. Clear all filters to return to the full album without changing any files.</string>
+    <string name="help_entry_organize_gallery_collections_title">Organize manual collections</string>
+    <string name="help_entry_organize_gallery_collections_summary">Select supported screenshots and add them to a named collection. Membership organizes the existing media without moving or duplicating its files.</string>
+    <string name="help_entry_compare_two_screenshots_title">Compare two screenshots locally</string>
+    <string name="help_entry_compare_two_screenshots_summary">Select exactly two Gallery images, then use Compare for a fitted swipe, opacity overlay, paused blink, or visible-difference view. Different sizes align without stretching, and closing creates no copy.</string>
 </resources>

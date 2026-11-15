@@ -182,6 +182,10 @@ android {
             // Keep local instrumentation isolated from an installed production build.
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            // en-XA and ar-XB, so untranslated English and RTL problems show up on a phone. Opt-in
+            // with -Psnapcrop.pseudoLocales=true: once the debug APK carries them, the screenshot
+            // previews render in en-XA and every reference stops matching.
+            isPseudoLocalesEnabled = providers.gradleProperty("snapcrop.pseudoLocales").orNull == "true"
         }
         release {
             isMinifyEnabled = true

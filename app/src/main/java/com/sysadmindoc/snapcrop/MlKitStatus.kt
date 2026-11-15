@@ -12,18 +12,25 @@ import com.google.android.gms.common.GoogleApiAvailability
  * models. The non-Latin OCR scripts also need Play services; they're checked per script by
  * [OcrModelManager].
  */
-enum class MlKitFeature(val label: String, val needsPlayServices: Boolean = false) {
-    TEXT_RECOGNITION("OCR"),
-    BARCODE_SCANNING("barcode scanning"),
-    FACE_DETECTION("face detection"),
-    ENTITY_EXTRACTION("sensitive text detection"),
+enum class MlKitFeature(
+    /** The name as it reads mid-sentence ("retry background removal"). */
+    @param:StringRes val labelRes: Int,
+    /** The name as the subject that starts a sentence ("Background removal unavailable."). */
+    @param:StringRes val subjectRes: Int,
+    val needsPlayServices: Boolean = false,
+) {
+    TEXT_RECOGNITION(R.string.mlkit_feature_ocr, R.string.mlkit_feature_ocr_subject),
+    BARCODE_SCANNING(R.string.mlkit_feature_barcodes, R.string.mlkit_feature_barcodes_subject),
+    FACE_DETECTION(R.string.mlkit_feature_faces, R.string.mlkit_feature_faces_subject),
+    ENTITY_EXTRACTION(R.string.mlkit_feature_entities, R.string.mlkit_feature_entities_subject),
     // The translate library and its model downloads run without Play services.
-    TRANSLATION("translation"),
-    SUBJECT_SEGMENTATION("background removal", needsPlayServices = true),
-    OBJECT_DETECTION("AI crop");
-
-    /** [label] as the subject of a sentence. */
-    val subject: String get() = label.replaceFirstChar { it.uppercase() }
+    TRANSLATION(R.string.mlkit_feature_translation, R.string.mlkit_feature_translation_subject),
+    SUBJECT_SEGMENTATION(
+        R.string.mlkit_feature_background_removal,
+        R.string.mlkit_feature_background_removal_subject,
+        needsPlayServices = true,
+    ),
+    OBJECT_DETECTION(R.string.mlkit_feature_ai_crop, R.string.mlkit_feature_ai_crop_subject);
 }
 
 object MlKitStatus {
@@ -47,7 +54,7 @@ object MlKitStatus {
         code == ConnectionResult.SERVICE_MISSING || code == ConnectionResult.SERVICE_INVALID
 
     fun playServicesIssue(context: Context, feature: MlKitFeature): String? =
-        playServicesIssue(context, feature.subject)
+        playServicesIssue(context, context.getString(feature.subjectRes))
 
     /** [subject] names what can't run, for example "Background removal" or "Chinese OCR". */
     fun playServicesIssue(context: Context, subject: String): String? =
@@ -74,30 +81,32 @@ object MlKitStatus {
     ): String {
         val raw = error.message?.trim().orEmpty()
         val lower = raw.lowercase()
-        val playIssue = playServicesMessage(context, feature.subject, playServicesCode)
+        val label = context.getString(feature.labelRes)
+        val subject = context.getString(feature.subjectRes)
+        val playIssue = playServicesMessage(context, subject, playServicesCode)
         // Without Play services, or with it turned off, an update can't help, so the fallbacks drop that advice.
         val missing = isMissing(playServicesCode)
         val updateCantHelp = missing || playServicesCode == ConnectionResult.SERVICE_DISABLED
         return when {
             feature.needsPlayServices && playIssue != null -> playIssue
             raw.isBlank() ->
-                if (updateCantHelp) context.getString(R.string.mlkit_unavailable, feature.subject)
-                else context.getString(R.string.mlkit_unavailable_update, feature.subject)
+                if (updateCantHelp) context.getString(R.string.mlkit_unavailable, subject)
+                else context.getString(R.string.mlkit_unavailable_update, subject)
             "wifi" in lower || "network" in lower ->
-                context.getString(R.string.mlkit_retry_wifi, feature.label)
+                context.getString(R.string.mlkit_retry_wifi, label)
             "storage" in lower || "space" in lower ->
-                context.getString(R.string.mlkit_retry_storage, feature.label)
+                context.getString(R.string.mlkit_retry_storage, label)
             // A bundled feature runs without Play services, so its absence isn't the reason.
             "play services" in lower || "google play" in lower || "service" in lower ->
-                if (missing) context.getString(R.string.mlkit_unavailable_detail, feature.subject, raw)
-                else playIssue ?: context.getString(R.string.mlkit_retry_update, feature.label)
+                if (missing) context.getString(R.string.mlkit_unavailable_detail, subject, raw)
+                else playIssue ?: context.getString(R.string.mlkit_retry_update, label)
             "model" in lower || "download" in lower ->
-                context.getString(R.string.mlkit_retry_generic, feature.label)
+                context.getString(R.string.mlkit_retry_generic, label)
             "source language" in lower || "not supported" in lower || "no text" in lower || "could not identify" in lower ->
                 raw
             else ->
-                if (updateCantHelp) context.getString(R.string.mlkit_unavailable_detail, feature.subject, raw)
-                else context.getString(R.string.mlkit_unavailable_detail_retry, feature.subject, raw)
+                if (updateCantHelp) context.getString(R.string.mlkit_unavailable_detail, subject, raw)
+                else context.getString(R.string.mlkit_unavailable_detail_retry, subject, raw)
         }
     }
 }

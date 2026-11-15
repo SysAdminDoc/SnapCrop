@@ -1475,7 +1475,7 @@ fun CropEditorScreen(
                                         selectedRatio = ratio
                                         if (ratio.ratio != null) applyAspectRatio(ratio)
                                     },
-                                    label = { Text(ratio.label, fontSize = 10.sp) },
+                                    label = { Text(stringResource(ratio.labelRes), fontSize = 10.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = PrimaryContainer,
                                         selectedLabelColor = Primary,
@@ -1588,7 +1588,7 @@ fun CropEditorScreen(
                                     FilterChip(
                                         selected = drawTool == tool,
                                         onClick = { drawTool = tool; editMode = EditMode.DRAW },
-                                        label = { Text(tool.label, fontSize = 9.sp) },
+                                        label = { Text(stringResource(tool.labelRes), fontSize = 9.sp) },
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = PrimaryContainer,
                                             selectedLabelColor = Primary,
@@ -1637,13 +1637,14 @@ fun CropEditorScreen(
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            drawColors.take(7).forEach { (color, name) ->
+                            drawColors.take(7).forEach { (color, nameRes) ->
                                 val selected = drawColor == color
+                                val colorCd = stringResource(R.string.draw_color_cd, stringResource(nameRes))
                                 Box(
                                     Modifier
                                         .size(48.dp)
                                         .semantics {
-                                            contentDescription = "$name color"
+                                            contentDescription = colorCd
                                             this.selected = selected
                                             role = Role.RadioButton
                                         }
@@ -1664,7 +1665,7 @@ fun CropEditorScreen(
                             value = drawStrokeWidth,
                             range = 2f..20f,
                             color = Secondary,
-                            valueLabel = "${drawStrokeWidth.toInt()}px",
+                            valueLabel = stringResource(R.string.draw_width_px, drawStrokeWidth.toInt()),
                             onChange = { drawStrokeWidth = it }
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1716,7 +1717,7 @@ fun CropEditorScreen(
                                     FilterChip(
                                         selected = selectedFilter == filter,
                                         onClick = { selectedFilter = filter },
-                                        label = { Text(filter.label, fontSize = 10.sp) },
+                                        label = { Text(stringResource(filter.labelRes), fontSize = 10.sp) },
                                         colors = FilterChipDefaults.filterChipColors(
                                             selectedContainerColor = adjustColor.copy(alpha = 0.3f),
                                             selectedLabelColor = adjustColor,
@@ -1871,7 +1872,7 @@ fun CropEditorScreen(
                     val label = buildString {
                         if (snap.draws.isNotEmpty()) append("D${snap.draws.size} ")
                         if (snap.redactions.isNotEmpty()) append("R${snap.redactions.size} ")
-                        if (snap.filter != ImageFilter.NONE) append(snap.filter.label + " ")
+                        if (snap.filter != ImageFilter.NONE) append(stringResource(snap.filter.labelRes) + " ")
                         if (snap.bright != 0f || snap.contr != 1f || snap.sat != 1f) append("Adj ")
                         val cropDesc = "${snap.crop.width()}x${snap.crop.height()}"
                         if (isEmpty()) append(cropDesc) else append(cropDesc)
@@ -1950,7 +1951,7 @@ fun CropEditorScreen(
                         if (ratio.ratio != null) applyAspectRatio(ratio)
                     },
                     modifier = Modifier.height(40.dp),
-                    label = { Text(ratio.label, fontSize = 11.sp) },
+                    label = { Text(stringResource(ratio.labelRes), fontSize = 11.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                         containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
@@ -2222,7 +2223,7 @@ fun CropEditorScreen(
                     DrawTool.entries.forEach { tool ->
                         FilterChip(selected = drawTool == tool,
                             onClick = { drawTool = tool },
-                            label = { Text(tool.label, fontSize = 10.sp) },
+                            label = { Text(stringResource(tool.labelRes), fontSize = 10.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = PrimaryContainer, selectedLabelColor = Primary,
                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant),
@@ -2254,11 +2255,11 @@ fun CropEditorScreen(
                             tint = if (eyedropperActive) Primary else OnSurfaceVariant,
                             modifier = Modifier.size(16.dp))
                     }
-                    drawColors.forEach { (color, name) ->
+                    drawColors.forEach { (color, nameRes) ->
                         EditorColorSwatch(
                             color = color,
                             selected = drawColor == color,
-                            contentDescription = "$name color",
+                            contentDescription = stringResource(R.string.draw_color_cd, stringResource(nameRes)),
                             onClick = { drawColor = color; eyedropperActive = false }
                         )
                     }
@@ -2374,7 +2375,7 @@ fun CropEditorScreen(
                         enabled = drawPaths.isNotEmpty() || showLayerPanel
                     ) {
                         Text(
-                            if (showLayerPanel) "Hide ${stringResource(R.string.draw_layers)}" else "${stringResource(R.string.draw_layers)} ${drawPaths.size}",
+                            if (showLayerPanel) stringResource(R.string.draw_layers_hide) else stringResource(R.string.draw_layers_count, drawPaths.size),
                             color = if (drawPaths.isNotEmpty() || showLayerPanel) Secondary else OnSurfaceVariant.copy(alpha = 0.4f),
                             fontSize = 11.sp
                         )
@@ -2385,10 +2386,11 @@ fun CropEditorScreen(
             val widthLabel = stringResource(R.string.draw_width_label)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("${drawStrokeWidth.toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp,
+                val widthCd = stringResource(R.string.draw_width_cd, widthLabel, drawStrokeWidth.toInt())
+                Text(stringResource(R.string.draw_width_px, drawStrokeWidth.toInt()), color = OnSurfaceVariant, fontSize = 11.sp,
                     modifier = Modifier.width(32.dp))
                 Slider(value = drawStrokeWidth, onValueChange = { drawStrokeWidth = it },
-                    valueRange = 2f..20f, modifier = Modifier.weight(1f).semantics { contentDescription = "$widthLabel, ${drawStrokeWidth.toInt()} pixels" },
+                    valueRange = 2f..20f, modifier = Modifier.weight(1f).semantics { contentDescription = widthCd },
                     colors = SliderDefaults.colors(thumbColor = Secondary, activeTrackColor = Secondary,
                         inactiveTrackColor = SurfaceVariant))
             }
@@ -2422,10 +2424,11 @@ fun CropEditorScreen(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     commonEmojis.forEach { emoji ->
+                        val emojiCd = stringResource(R.string.draw_emoji_cd, emoji)
                         Surface(
                             modifier = Modifier.size(48.dp)
                                 .semantics {
-                                    contentDescription = "Emoji $emoji"
+                                    contentDescription = emojiCd
                                     selected = selectedEmoji == emoji
                                     role = Role.RadioButton
                                 }
@@ -2458,7 +2461,7 @@ fun CropEditorScreen(
                         FilterChip(
                             selected = selectedFilter == filter,
                             onClick = { selectedFilter = filter },
-                            label = { Text(filter.label, fontSize = 11.sp) },
+                            label = { Text(stringResource(filter.labelRes), fontSize = 11.sp) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = adjustColor.copy(alpha = 0.3f), selectedLabelColor = adjustColor,
                                 containerColor = SurfaceVariant, labelColor = OnSurfaceVariant
@@ -4236,7 +4239,7 @@ fun CropEditorScreen(
                             CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Primary)
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                translationStatus ?: "Preparing on-device translation...",
+                                translationStatus ?: stringResource(R.string.ocr_translation_preparing),
                                 color = OnSurfaceVariant,
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp
@@ -4251,9 +4254,9 @@ fun CropEditorScreen(
                         translation != null -> {
                             val result = translation!!
                             val summary = if (result.alreadyTargetLanguage) {
-                                "Already ${result.targetLabel}"
+                                stringResource(R.string.ocr_translation_already, result.targetLabel)
                             } else {
-                                "${result.sourceLabel} -> ${result.targetLabel}"
+                                stringResource(R.string.ocr_translation_pair, result.sourceLabel, result.targetLabel)
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(summary, color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
@@ -4458,7 +4461,7 @@ fun CropEditorScreen(
                             shape = RoundedCornerShape(8.dp)
                         )
                         Spacer(Modifier.width(8.dp))
-                        Text("Size: ${(drawStrokeWidth * 3).toInt()}px", color = OnSurfaceVariant, fontSize = 11.sp)
+                        Text(stringResource(R.string.draw_text_size, (drawStrokeWidth * 3).toInt()), color = OnSurfaceVariant, fontSize = 11.sp)
                     }
                 }
             },
@@ -4494,7 +4497,15 @@ fun CropEditorScreen(
                 Column {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Box(Modifier.size(20.dp).background(Color(drawColor), RoundedCornerShape(4.dp)))
-                        Text("${drawTool.label}, ${drawStrokeWidth.toInt()}px${if (dashedStroke) ", dashed" else ""}", color = OnSurfaceVariant, fontSize = 12.sp)
+                        Text(
+                            stringResource(
+                                if (dashedStroke) R.string.draw_style_summary_dashed else R.string.draw_style_summary,
+                                stringResource(drawTool.labelRes),
+                                drawStrokeWidth.toInt(),
+                            ),
+                            color = OnSurfaceVariant,
+                            fontSize = 12.sp,
+                        )
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(

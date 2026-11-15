@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import androidx.annotation.StringRes
 import java.text.Normalizer
 import java.util.Locale
 
@@ -19,10 +20,14 @@ enum class HelpRoute {
     GALLERY_COMPARE,
 }
 
+/**
+ * [id] and [keywords] are search aids that never reach the screen; the visible title and summary
+ * live in `strings.xml` so translations cover them.
+ */
 data class HelpEntry(
     val id: String,
-    val title: String,
-    val summary: String,
+    @param:StringRes val titleRes: Int,
+    @param:StringRes val summaryRes: Int,
     val keywords: Set<String>,
     val route: HelpRoute,
 )
@@ -32,127 +37,128 @@ object LocalHelpCatalog {
     val entries: List<HelpEntry> = listOf(
         HelpEntry(
             id = "recover-permissions",
-            title = "Recover missing permissions",
-            summary = "Use the permission cards on Home to restore Photos, Videos, or Notifications separately. Photo access is required for screenshot monitoring; Android pickers remain available without library access.",
+            titleRes = R.string.help_entry_recover_permissions_title,
+            summaryRes = R.string.help_entry_recover_permissions_summary,
             keywords = setOf("permission", "photos", "videos", "notifications", "monitor", "denied", "recovery"),
             route = HelpRoute.HOME_PERMISSIONS,
         ),
         HelpEntry(
             id = "save-replace-or-copy",
-            title = "Choose Save & Replace or Save Copy",
-            summary = "Save & Replace writes the edited result and then uses Android's removal flow for the original. Save Copy keeps the original and creates a separate result.",
+            titleRes = R.string.help_entry_save_replace_or_copy_title,
+            summaryRes = R.string.help_entry_save_replace_or_copy_summary,
             keywords = setOf("save", "replace", "copy", "original", "delete", "trash", "editor"),
             route = HelpRoute.EDITOR_SAVE_ACTIONS,
         ),
         HelpEntry(
             id = "editor-modes-and-tools",
-            title = "Find editor modes and drawing tools",
-            summary = "Use Crop, Pixelate, Draw, OCR, and Adjust mode chips. Draw contains Pen, arrows, shapes, text, highlight, callout, spotlight, magnifier, emoji, neon, blur, eraser, fill, Smart Erase, and ruler tools.",
+            titleRes = R.string.help_entry_editor_modes_and_tools_title,
+            summaryRes = R.string.help_entry_editor_modes_and_tools_summary,
             keywords = setOf("editor", "crop", "pixelate", "draw", "ocr", "adjust", "pen", "arrow", "shape", "text", "emoji", "eraser", "ruler"),
             route = HelpRoute.EDITOR_REDACTION,
         ),
         HelpEntry(
             id = "save-sidecars-safely",
-            title = "Understand project and OCR sidecars",
-            summary = "Project and OCR-text sidecars are optional and may contain reversible layers or sensitive recognized text. If a requested sidecar fails, Save & Replace retains the original instead of deleting it.",
+            titleRes = R.string.help_entry_save_sidecars_safely_title,
+            summaryRes = R.string.help_entry_save_sidecars_safely_summary,
             keywords = setOf("save", "project", "ocr", "sidecar", "sensitive", "replace", "retain", "failure"),
             route = HelpRoute.SETTINGS_PROJECT_SIDECARS,
         ),
         HelpEntry(
             id = "redact-safely",
-            title = "Redact secrets safely",
-            summary = "Use opaque Bar replacement for secrets because it destroys the covered pixels. Pixelate and Blur are cosmetic effects and may be partly reversible.",
+            titleRes = R.string.help_entry_redact_safely_title,
+            summaryRes = R.string.help_entry_redact_safely_summary,
             keywords = setOf("redact", "privacy", "secret", "opaque", "bar", "pixelate", "blur", "safe"),
             route = HelpRoute.EDITOR_REDACTION,
         ),
         HelpEntry(
             id = "remove-middle-content",
-            title = "Cut out irrelevant rows or columns",
-            summary = "Use Cut Out before perspective or free rotation. Add horizontal or vertical source bands, edit or remove them non-destructively, choose a straight, dashed, or torn seam, then use Preview to inspect the squeezed output. Retained annotations move with their pixels when exported.",
+            titleRes = R.string.help_entry_remove_middle_content_title,
+            summaryRes = R.string.help_entry_remove_middle_content_summary,
             keywords = setOf("cut", "squeeze", "remove", "middle", "band", "seam", "long", "screenshot", "preview"),
             route = HelpRoute.EDITOR_CUTOUT,
         ),
         HelpEntry(
             id = "troubleshoot-long-screenshot",
-            title = "Fix Long Screenshot capture",
-            summary = "Enable the disclosed Long Screenshot Accessibility service, return to the target app, and start from its Quick Settings tile. Retry from review when scrolling stalls or a seam is wrong.",
+            titleRes = R.string.help_entry_troubleshoot_long_screenshot_title,
+            summaryRes = R.string.help_entry_troubleshoot_long_screenshot_summary,
             keywords = setOf("long", "screenshot", "scroll", "accessibility", "tile", "stitch", "seam", "retry"),
             route = HelpRoute.HOME_LONG_SCREENSHOT,
         ),
         HelpEntry(
             id = "troubleshoot-delayed-capture",
-            title = "Fix Delayed Capture",
-            summary = "Grant full photo access so monitoring can see the next screenshot, choose 3, 5, or 10 seconds, then stay in the target app until Android captures it. Notifications are the fallback when overlays are unavailable.",
+            titleRes = R.string.help_entry_troubleshoot_delayed_capture_title,
+            summaryRes = R.string.help_entry_troubleshoot_delayed_capture_summary,
             keywords = setOf("delay", "timer", "capture", "permission", "monitor", "overlay", "notification"),
             route = HelpRoute.HOME_PERMISSIONS,
         ),
         HelpEntry(
             id = "secure-preview-capture-conflict",
-            title = "Fix blank protected previews",
-            summary = "Protect media previews blocks screenshots, recording, Recents, overlays, and notification pixels. Disable it temporarily in Settings only when you intentionally need to capture SnapCrop itself.",
+            titleRes = R.string.help_entry_secure_preview_capture_conflict_title,
+            summaryRes = R.string.help_entry_secure_preview_capture_conflict_summary,
             keywords = setOf("secure", "protect", "blank", "preview", "screenshot", "recording", "recents"),
             route = HelpRoute.SETTINGS_SECURE_EDITOR,
         ),
         HelpEntry(
             id = "troubleshoot-step-capture",
-            title = "Fix Step Capture",
-            summary = "Enable the separate Step Capture Accessibility service and start its Quick Settings tile before tapping through the task. Stop from the tile or ongoing notification to build the guide.",
+            titleRes = R.string.help_entry_troubleshoot_step_capture_title,
+            summaryRes = R.string.help_entry_troubleshoot_step_capture_summary,
             keywords = setOf("step", "capture", "guide", "accessibility", "tile", "notification", "stop", "troubleshoot"),
             route = HelpRoute.HOME_STEP_CAPTURE,
         ),
         HelpEntry(
             id = "troubleshoot-static-web-capture",
-            title = "Fix static web capture",
-            summary = "Enter a public HTTPS page. SnapCrop renders the bounded main document offline without scripts or external resources; use Long Screenshot when the page is too large or needs live content.",
+            titleRes = R.string.help_entry_troubleshoot_static_web_capture_title,
+            summaryRes = R.string.help_entry_troubleshoot_static_web_capture_summary,
             keywords = setOf("web", "url", "https", "page", "offline", "script", "large", "troubleshoot"),
             route = HelpRoute.HOME_WEB_CAPTURE,
         ),
         HelpEntry(
             id = "share-metadata-and-source-link",
-            title = "Control share metadata and source links",
-            summary = "Review the metadata categories before sharing, choose Strip all, Keep safe, or Preserve, and include the explicit source link only when the destination should receive it.",
+            titleRes = R.string.help_entry_share_metadata_and_source_link_title,
+            summaryRes = R.string.help_entry_share_metadata_and_source_link_summary,
             keywords = setOf("share", "metadata", "exif", "location", "source", "link", "strip", "privacy"),
             route = HelpRoute.SHARE_PRIVACY,
         ),
         HelpEntry(
             id = "save-and-reopen-projects",
-            title = "Save and reopen editable projects",
-            summary = "Enable project sidecars before saving to keep crop, redaction, adjustment, and annotation state. Open the .snapcrop.json file later and relink only to a source with the expected fingerprint.",
+            titleRes = R.string.help_entry_save_and_reopen_projects_title,
+            summaryRes = R.string.help_entry_save_and_reopen_projects_summary,
             keywords = setOf("project", "sidecar", "reopen", "editable", "relink", "fingerprint", "json"),
             route = HelpRoute.SETTINGS_PROJECT_SIDECARS,
         ),
         HelpEntry(
             id = "filter-gallery",
-            title = "Filter the Gallery",
-            summary = "Combine media, source, category, date, orientation, dimensions, favorite, and format filters. Clear all filters to return to the full album without changing any files.",
+            titleRes = R.string.help_entry_filter_gallery_title,
+            summaryRes = R.string.help_entry_filter_gallery_summary,
             keywords = setOf("gallery", "filter", "source", "category", "date", "orientation", "favorite", "format"),
             route = HelpRoute.GALLERY_FILTERS,
         ),
         HelpEntry(
             id = "organize-gallery-collections",
-            title = "Organize manual collections",
-            summary = "Select supported screenshots and add them to a named collection. Membership organizes the existing media without moving or duplicating its files.",
+            titleRes = R.string.help_entry_organize_gallery_collections_title,
+            summaryRes = R.string.help_entry_organize_gallery_collections_summary,
             keywords = setOf("gallery", "collection", "album", "organize", "select", "membership", "move", "duplicate"),
             route = HelpRoute.GALLERY_COLLECTIONS,
         ),
         HelpEntry(
             id = "compare-two-screenshots",
-            title = "Compare two screenshots locally",
-            summary = "Select exactly two Gallery images, then use Compare for a fitted swipe, opacity overlay, paused blink, or visible-difference view. Different sizes align without stretching, and closing creates no copy.",
+            titleRes = R.string.help_entry_compare_two_screenshots_title,
+            summaryRes = R.string.help_entry_compare_two_screenshots_summary,
             keywords = setOf("gallery", "compare", "difference", "overlay", "blink", "before", "after", "local"),
             route = HelpRoute.GALLERY_COMPARE,
         ),
     )
 
-    fun search(query: String): List<HelpEntry> {
+    /** [text] resolves a string resource id, so the search matches what the user reads. */
+    fun search(query: String, text: (Int) -> String): List<HelpEntry> {
         val normalizedQuery = query.normalizedSearchText()
         if (normalizedQuery.isEmpty()) return entries
         val queryTokens = normalizedQuery.tokens().distinct()
         if (queryTokens.isEmpty()) return entries
 
         return entries.mapIndexedNotNull { usefulOrder, entry ->
-            val title = entry.title.normalizedSearchText()
-            val summary = entry.summary.normalizedSearchText()
+            val title = text(entry.titleRes).normalizedSearchText()
+            val summary = text(entry.summaryRes).normalizedSearchText()
             val id = entry.id.replace('-', ' ').normalizedSearchText()
             val keywords = entry.keywords.map(String::normalizedSearchText)
             val titleTokens = title.tokens()

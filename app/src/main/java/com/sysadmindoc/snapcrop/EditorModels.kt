@@ -3,6 +3,7 @@ package com.sysadmindoc.snapcrop
 import android.content.SharedPreferences
 import android.graphics.PointF
 import android.graphics.Rect
+import androidx.annotation.StringRes
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.abs
@@ -114,10 +115,12 @@ data class CutoutEditState(
 
 internal enum class EditMode { CROP, CUTOUT, PIXELATE, DRAW, OCR, ADJUST }
 
-internal enum class DrawTool(val label: String) {
-    PEN("Pen"), ARROW("Arrow"), CURVED_ARROW("Curve"), LINE("Line"), MEASURE("Ruler"), RECT("Rect"), CIRCLE("Circle"), TEXT("Text"),
-    HIGHLIGHT("Mark"), CALLOUT("#"), SPOTLIGHT("Focus"), MAGNIFIER("Zoom"), EMOJI("Emoji"),
-    NEON("Neon"), BLUR("Blur"), ERASER("Erase"), FILL("Fill"), HEAL("Smart")
+internal enum class DrawTool(@param:StringRes val labelRes: Int) {
+    PEN(R.string.tool_pen), ARROW(R.string.tool_arrow), CURVED_ARROW(R.string.tool_chip_curved_arrow), LINE(R.string.tool_line),
+    MEASURE(R.string.tool_measure), RECT(R.string.tool_rect), CIRCLE(R.string.tool_circle), TEXT(R.string.tool_text),
+    HIGHLIGHT(R.string.tool_chip_highlight), CALLOUT(R.string.tool_chip_callout), SPOTLIGHT(R.string.tool_chip_spotlight),
+    MAGNIFIER(R.string.tool_chip_magnifier), EMOJI(R.string.tool_emoji), NEON(R.string.tool_neon), BLUR(R.string.tool_blur),
+    ERASER(R.string.tool_chip_eraser), FILL(R.string.tool_fill), HEAL(R.string.tool_chip_smart_erase)
 }
 
 internal val commonEmojis = listOf(
@@ -127,13 +130,15 @@ internal val commonEmojis = listOf(
     "\uD83D\uDCF7", "\uD83C\uDFAF", "\uD83D\uDE80", "\uD83D\uDC40", "\uD83C\uDF89"
 )
 
+internal data class DrawColor(val argb: Int, @param:StringRes val nameRes: Int)
+
 internal val drawColors = listOf(
-    0xFFFF0000.toInt() to "Red",
-    0xFFFFFF00.toInt() to "Yellow",
-    0xFF00FF00.toInt() to "Green",
-    0xFF89B4FA.toInt() to "Blue",
-    0xFFFFFFFF.toInt() to "White",
-    0xFF000000.toInt() to "Black"
+    DrawColor(0xFFFF0000.toInt(), R.string.color_red),
+    DrawColor(0xFFFFFF00.toInt(), R.string.color_yellow),
+    DrawColor(0xFF00FF00.toInt(), R.string.color_green),
+    DrawColor(0xFF89B4FA.toInt(), R.string.color_blue),
+    DrawColor(0xFFFFFFFF.toInt(), R.string.color_white),
+    DrawColor(0xFF000000.toInt(), R.string.color_black)
 )
 
 internal data class DrawStylePreset(
@@ -251,25 +256,25 @@ internal fun smoothPath(points: List<PointF>): List<PointF> {
     return smooth
 }
 
-internal enum class AspectRatio(val label: String, val ratio: Float?) {
-    FREE("Free", null),
-    SQUARE("1:1", 1f),
-    RATIO_4_3("4:3", 4f / 3f),
-    RATIO_3_4("3:4", 3f / 4f),
-    RATIO_4_5("4:5", 4f / 5f),
-    RATIO_5_4("5:4", 5f / 4f),
-    RATIO_16_9("16:9", 16f / 9f),
-    RATIO_9_16("9:16", 9f / 16f),
-    RATIO_2_1("2:1", 2f / 1f),
-    RATIO_3_1("3:1", 3f / 1f),
-    RATIO_21_9("21:9", 21f / 9f),
-    CIRCLE("Circle", 1f),
-    ROUNDED("Rounded", null),
-    STAR("Star", 1f),
-    HEART("Heart", 1f),
-    TRIANGLE("Triangle", 1f),
-    HEXAGON("Hexagon", 1f),
-    DIAMOND("Diamond", 1f)
+internal enum class AspectRatio(@param:StringRes val labelRes: Int, val ratio: Float?) {
+    FREE(R.string.ratio_free, null),
+    SQUARE(R.string.ratio_1_1, 1f),
+    RATIO_4_3(R.string.ratio_4_3, 4f / 3f),
+    RATIO_3_4(R.string.ratio_3_4, 3f / 4f),
+    RATIO_4_5(R.string.ratio_4_5, 4f / 5f),
+    RATIO_5_4(R.string.ratio_5_4, 5f / 4f),
+    RATIO_16_9(R.string.ratio_16_9, 16f / 9f),
+    RATIO_9_16(R.string.ratio_9_16, 9f / 16f),
+    RATIO_2_1(R.string.ratio_2_1, 2f / 1f),
+    RATIO_3_1(R.string.ratio_3_1, 3f / 1f),
+    RATIO_21_9(R.string.ratio_21_9, 21f / 9f),
+    CIRCLE(R.string.ratio_circle, 1f),
+    ROUNDED(R.string.ratio_rounded, null),
+    STAR(R.string.ratio_star, 1f),
+    HEART(R.string.ratio_heart, 1f),
+    TRIANGLE(R.string.ratio_triangle, 1f),
+    HEXAGON(R.string.ratio_hexagon, 1f),
+    DIAMOND(R.string.ratio_diamond, 1f)
 }
 
 internal fun aspectRatioForShapeCrop(value: Float): AspectRatio = when (value.roundToInt()) {
@@ -315,12 +320,12 @@ internal data class EditorSnapshot(
     val cutout: CutoutEditState = CutoutEditState(),
 )
 
-internal enum class ImageFilter(val label: String) {
-    NONE("None"), MONO("Mono"), SEPIA("Sepia"), COOL("Cool"), WARM("Warm"),
-    VIVID("Vivid"), MUTED("Muted"), VINTAGE("Vintage"), NOIR("Noir"), FADE("Fade"),
-    INVERT("Invert"), POLAROID("Polaroid"), GRAIN("Grain"),
-    RED_POP("Red"), BLUE_POP("Blue"), GREEN_POP("Green"),
-    GLITCH("Glitch")
+internal enum class ImageFilter(@param:StringRes val labelRes: Int) {
+    NONE(R.string.filter_none), MONO(R.string.filter_mono), SEPIA(R.string.filter_sepia), COOL(R.string.filter_cool),
+    WARM(R.string.filter_warm), VIVID(R.string.filter_vivid), MUTED(R.string.filter_muted), VINTAGE(R.string.filter_vintage),
+    NOIR(R.string.filter_noir), FADE(R.string.filter_fade), INVERT(R.string.filter_invert), POLAROID(R.string.filter_polaroid),
+    GRAIN(R.string.filter_grain), RED_POP(R.string.filter_red_pop), BLUE_POP(R.string.filter_blue_pop),
+    GREEN_POP(R.string.filter_green_pop), GLITCH(R.string.filter_glitch)
 }
 
 internal fun getFilterMatrix(filter: ImageFilter): android.graphics.ColorMatrix? {

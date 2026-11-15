@@ -56,7 +56,7 @@ internal fun EditorModeBanner(
     val (bannerBg, bannerColor, bannerText) = when (editMode) {
         EditMode.CUTOUT -> Triple(Primary.copy(alpha = 0.15f), Primary, stringResource(R.string.cutout_mode_banner))
         EditMode.PIXELATE -> Triple(Tertiary.copy(alpha = 0.15f), Tertiary, stringResource(R.string.editor_banner_pixelate, pixelateLabel))
-        EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, stringResource(R.string.editor_banner_draw, drawLabel, drawTool.label.lowercase()))
+        EditMode.DRAW -> Triple(Secondary.copy(alpha = 0.15f), Secondary, stringResource(R.string.editor_banner_draw, drawLabel, stringResource(drawTool.labelRes).lowercase()))
         EditMode.OCR -> {
             val info = if (ocrLoading) stringResource(R.string.ocr_scan).uppercase() + "..." else buildString {
                 append(stringResource(R.string.editor_banner_ocr, ocrLabel))

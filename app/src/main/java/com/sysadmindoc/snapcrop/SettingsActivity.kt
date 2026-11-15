@@ -1341,15 +1341,35 @@ class SettingsActivity : ComponentActivity() {
                         Text(stringResource(R.string.settings_presets_empty), color = OnSurfaceVariant, fontSize = 11.sp)
                     } else {
                         stylePresets.forEachIndexed { idx, preset ->
+                            val toolLabel = stringResource(preset.tool.labelRes)
+                            val width = preset.strokeWidth.toInt()
+                            val spokenStyle = stringResource(
+                                if (preset.dashed) R.string.draw_style_spoken_dashed else R.string.draw_style_spoken,
+                                toolLabel,
+                                width,
+                            )
+                            val presetCd = stringResource(
+                                if (styleDefault == preset.name) R.string.settings_preset_default_cd else R.string.settings_preset_cd,
+                                preset.name,
+                                spokenStyle,
+                            )
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics(mergeDescendants = true) {
-                                contentDescription = "${preset.name} preset: ${preset.tool.label}, ${preset.strokeWidth.toInt()} pixels${if (preset.dashed) ", dashed" else ""}${if (styleDefault == preset.name) ", default" else ""}"
+                                contentDescription = presetCd
                             }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Box(Modifier.size(16.dp)
                                     .background(androidx.compose.ui.graphics.Color(preset.color), RoundedCornerShape(3.dp))
                                     .border(1.dp, Outline, RoundedCornerShape(3.dp)))
                                 Column(Modifier.weight(1f)) {
                                     Text(preset.name, color = OnSurface, fontSize = 13.sp, fontWeight = if (styleDefault == preset.name) FontWeight.Bold else FontWeight.Normal)
-                                    Text("${preset.tool.label}, ${preset.strokeWidth.toInt()}px${if (preset.dashed) ", dashed" else ""}", color = OnSurfaceVariant, fontSize = 11.sp)
+                                    Text(
+                                        stringResource(
+                                            if (preset.dashed) R.string.draw_style_summary_dashed else R.string.draw_style_summary,
+                                            toolLabel,
+                                            width,
+                                        ),
+                                        color = OnSurfaceVariant,
+                                        fontSize = 11.sp,
+                                    )
                                 }
                                 TextButton(onClick = {
                                     styleDefault = if (styleDefault == preset.name) null else preset.name

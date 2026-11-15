@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -36,7 +37,8 @@ internal fun LocalHelpDialog(
     onDismiss: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
-    val results = remember(query) { LocalHelpCatalog.search(query) }
+    val resources = LocalResources.current
+    val results = remember(query, resources) { LocalHelpCatalog.search(query, resources::getString) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -80,8 +82,8 @@ internal fun LocalHelpDialog(
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Column(Modifier.padding(12.dp)) {
-                                Text(entry.title, color = OnSurface, fontSize = 14.sp)
-                                Text(entry.summary, color = OnSurfaceVariant, fontSize = 12.sp)
+                                Text(stringResource(entry.titleRes), color = OnSurface, fontSize = 14.sp)
+                                Text(stringResource(entry.summaryRes), color = OnSurfaceVariant, fontSize = 12.sp)
                                 Text(stringResource(R.string.help_open), color = com.sysadmindoc.snapcrop.ui.theme.Primary, fontSize = 11.sp)
                             }
                         }
