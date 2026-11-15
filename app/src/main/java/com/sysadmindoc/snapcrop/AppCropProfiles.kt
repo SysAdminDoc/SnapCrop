@@ -235,10 +235,10 @@ object AppCropProfiles {
 
         val topChrome = bandBackgroundCoverage(bitmap, topBand)
         val bottomChrome = bandBackgroundCoverage(bitmap, bottomBand)
-        val accent = max(
-            accentCoverage(bitmap, topBand, template.accentColors),
-            accentCoverage(bitmap, bottomBand, template.accentColors)
-        )
+        val topAccent = accentCoverage(bitmap, topBand, template.accentColors)
+        val bottomAccent = accentCoverage(bitmap, bottomBand, template.accentColors)
+        val accent = max(topAccent.coverage, bottomAccent.coverage)
+        val accentMark = max(topAccent.markCoverage, bottomAccent.markCoverage)
         val divider = max(
             boundaryContrast(bitmap, base.top + topHeight),
             boundaryContrast(bitmap, base.bottom - bottomHeight)
@@ -246,8 +246,9 @@ object AppCropProfiles {
         if (hasHint && topChrome < 0.35f && bottomChrome < 0.35f && accent < 0.002f) {
             return null
         }
+        // Plain bands fit almost any screenshot; only the app's own mark in a bar says which app it is.
         val visualConfidence = (topChrome * 0.26f) + (bottomChrome * 0.26f) +
-                (accent * 12.0f).coerceAtMost(0.34f) + (divider * 0.14f)
+                (accentMark * 12.0f).coerceAtMost(0.34f) + (divider * 0.14f)
         val confidence = if (hasHint) max(0.84f, visualConfidence) else visualConfidence
 
         return CropProfileMatch(template, confidence.coerceIn(0f, 1f), hasHint)
@@ -312,26 +313,44 @@ object AppCropProfiles {
             ?: bitmap.getPixel(rect.centerX().coerceIn(0, bitmap.width - 1), rect.centerY().coerceIn(0, bitmap.height - 1))
     }
 
-    private fun accentCoverage(bitmap: Bitmap, rect: Rect, accentColors: List<Int>): Float {
-        if (rect.width() <= 0 || rect.height() <= 0 || accentColors.isEmpty()) return 0f
+    /**
+     * [coverage] is the share of band samples in an accent color. [markCoverage] keeps it only when
+     * the color sits inside the band like a logo or badge; color that reaches the band's first or
+     * last sampled row, or spreads over more than a third of its columns, runs through the band
+     * (a grid line, a photo, a colored toolbar) and counts as zero.
+     */
+    private class AccentCoverage(val coverage: Float, val markCoverage: Float)
+
+    private fun accentCoverage(bitmap: Bitmap, rect: Rect, accentColors: List<Int>): AccentCoverage {
+        if (rect.width() <= 0 || rect.height() <= 0 || accentColors.isEmpty()) return AccentCoverage(0f, 0f)
         var matches = 0
         var samples = 0
         val xStep = max(1, rect.width() / 36)
         val yStep = max(1, rect.height() / 10)
+        val lastRow = rect.top + (rect.height() - 1) / yStep * yStep
+        val columns = (rect.width() + xStep - 1) / xStep
+        val matchedColumns = HashSet<Int>()
+        var reachesEdge = false
 
         var y = rect.top
         while (y < rect.bottom) {
             var x = rect.left
             while (x < rect.right) {
                 val pixel = bitmap.getPixel(x, y)
-                if (accentColors.any { colorDistance(pixel, it) < 42 }) matches++
+                if (accentColors.any { colorDistance(pixel, it) < 42 }) {
+                    matches++
+                    matchedColumns += x
+                    if (y == rect.top || y == lastRow) reachesEdge = true
+                }
                 samples++
                 x += xStep
             }
             y += yStep
         }
 
-        return if (samples == 0) 0f else matches.toFloat() / samples
+        val coverage = if (samples == 0) 0f else matches.toFloat() / samples
+        val isMark = !reachesEdge && matchedColumns.size * 3 <= columns
+        return AccentCoverage(coverage, if (isMark) coverage else 0f)
     }
 
     private fun boundaryContrast(bitmap: Bitmap, boundaryY: Int): Float {
