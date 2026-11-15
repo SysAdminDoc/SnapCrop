@@ -27,7 +27,68 @@ class SnapCropProjectSidecarTest {
         val decoded = SnapCropProjectSidecar.decode(encoded)
 
         assertEquals(context, decoded.sourceContext)
-        assertEquals(5, JSONObject(encoded).getInt("version"))
+        assertEquals(6, JSONObject(encoded).getInt("version"))
+    }
+
+    @Test
+    fun turnedProjectRoundTripsAndValidatesAgainstTheTurnedImage() {
+        // A 100 x 40 screenshot turned once is 40 x 100; the redaction only fits the turned picture.
+        val turned = basicProject().copy(
+            sourceWidth = 100,
+            sourceHeight = 40,
+            geometry = listOf(GeometryStep.RotateClockwise, GeometryStep.Flip(horizontal = true), GeometryStep.Resize(20, 50)),
+            cropRect = Rect(0, 0, 20, 50),
+            redactions = listOf(RedactionRegions.manual(Rect(5, 35, 15, 45), RedactionStyle.SOLID)),
+        )
+
+        val encoded = SnapCropProjectSidecar.encode(turned)
+        val result = SnapCropProjectSidecar.decodeString(encoded, ProjectImportOrigin.EXTERNAL)
+
+        assertEquals(turned, (result as ProjectDecodeResult.Success).project)
+        assertEquals("resize", JSONObject(encoded).getJSONArray("geometry").getJSONObject(2).getString("op"))
+        // The fingerprint still describes the untouched source.
+        assertEquals(
+            SourceMatch.MATCH,
+            SnapCropProjectSidecar.compareSource(turned, SourceIdentity(validHash, 100, 40), SourceVerificationPolicy.REQUIRE_FINGERPRINT)
+        )
+    }
+
+    @Test
+    fun cropOutsideTheTurnedImageIsRejected() {
+        val stale = basicProject().copy(
+            sourceWidth = 100,
+            sourceHeight = 40,
+            geometry = listOf(GeometryStep.RotateClockwise),
+            cropRect = Rect(0, 0, 100, 40),
+        )
+
+        val result = SnapCropProjectSidecar.decodeString(SnapCropProjectSidecar.encode(stale), ProjectImportOrigin.EXTERNAL)
+
+        assertEquals("crop", (result as ProjectDecodeResult.Rejected).field)
+    }
+
+    @Test
+    fun versionFiveIgnoresGeometry() {
+        val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject().copy(geometry = listOf(GeometryStep.RotateClockwise))))
+            .put("version", 5)
+
+        assertTrue(SnapCropProjectSidecar.decode(encoded.toString()).geometry.isEmpty())
+    }
+
+    @Test
+    fun badGeometryIsRejected() {
+        fun fieldFor(geometry: org.json.JSONArray): String? {
+            val encoded = JSONObject(SnapCropProjectSidecar.encode(basicProject())).put("geometry", geometry)
+            return (SnapCropProjectSidecar.decodeString(encoded.toString(), ProjectImportOrigin.EXTERNAL) as ProjectDecodeResult.Rejected).field
+        }
+        fun step(op: String) = JSONObject().put("op", op)
+
+        assertEquals("geometry.resize", fieldFor(org.json.JSONArray().put(step("resize").put("width", 200).put("height", 200))))
+        assertEquals("geometry.resize", fieldFor(org.json.JSONArray().put(step("resize").put("width", 0).put("height", 50))))
+        assertEquals("geometry.resize", fieldFor(org.json.JSONArray().put(step("resize").put("width", 50))))
+        assertEquals("geometry.flip", fieldFor(org.json.JSONArray().put(step("flip"))))
+        assertEquals("geometry.op", fieldFor(org.json.JSONArray().put(step("spin"))))
+        assertEquals("geometry", fieldFor(org.json.JSONArray().apply { repeat(33) { put(step("flip").put("horizontal", true)) } }))
     }
 
     @Test

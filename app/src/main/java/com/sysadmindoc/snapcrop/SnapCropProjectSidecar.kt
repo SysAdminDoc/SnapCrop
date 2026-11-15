@@ -32,7 +32,12 @@ data class SnapCropProject(
     val exportQuality: Int,
     val exportSavePath: String?,
     val deleteOriginal: Boolean,
-    val sourceContext: ExplicitSourceContext? = null
+    val sourceContext: ExplicitSourceContext? = null,
+    /**
+     * Turns, mirrors and resizes applied to the source, in order. Every other field is in the
+     * pixels of the image these leave behind; [sourceWidth] and [sourceHeight] stay the source's.
+     */
+    val geometry: List<GeometryStep> = emptyList()
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -55,7 +60,8 @@ data class SnapCropProject(
                 exportQuality == other.exportQuality &&
                 exportSavePath == other.exportSavePath &&
                 deleteOriginal == other.deleteOriginal &&
-                sourceContext == other.sourceContext
+                sourceContext == other.sourceContext &&
+                geometry == other.geometry
     }
 
     override fun hashCode(): Int {
@@ -78,6 +84,7 @@ data class SnapCropProject(
         result = 31 * result + (exportSavePath?.hashCode() ?: 0)
         result = 31 * result + deleteOriginal.hashCode()
         result = 31 * result + (sourceContext?.hashCode() ?: 0)
+        result = 31 * result + geometry.hashCode()
         return result
     }
 }
@@ -97,7 +104,8 @@ data class ProjectImportLimits(
     val maxPathChars: Int = 1_024,
     val maxSourceUrlChars: Int = 2_048,
     val maxSourceLabelChars: Int = 160,
-    val maxSourcePackageChars: Int = 255
+    val maxSourcePackageChars: Int = 255,
+    val maxGeometrySteps: Int = 32
 )
 
 enum class ProjectImportOrigin { EXTERNAL, INTERNAL_DRAFT }
@@ -115,7 +123,7 @@ enum class SourceMatch { MATCH, HASH_MISMATCH, DIMENSION_MISMATCH, MISSING_FINGE
 object SnapCropProjectSidecar {
     const val MIME_TYPE = "application/vnd.snapcrop.project+json"
     private const val SCHEMA = "com.sysadmindoc.snapcrop.project"
-    private const val VERSION = 5
+    private const val VERSION = 6
     private const val ADJUSTMENT_COUNT = 25
     val DEFAULT_LIMITS = ProjectImportLimits()
     private val HASH_PATTERN = Regex("^[0-9a-fA-F]{64}$")
@@ -146,6 +154,7 @@ object SnapCropProjectSidecar {
                 .put("height", project.sourceHeight)
                 .put("context", project.sourceContext?.toJson() ?: JSONObject.NULL)
             )
+            .put("geometry", JSONArray().apply { project.geometry.forEach { put(it.toJson()) } })
             .put("crop", project.cropRect.toJson())
             .put("adjustments", project.adjustments.toAdjustmentsJson())
             .put("cutout", JSONObject()
@@ -213,7 +222,7 @@ object SnapCropProjectSidecar {
             when {
                 e.message == "schema" -> ProjectDecodeResult.Rejected(ProjectRejectReason.UNSUPPORTED_SCHEMA)
                 e.message == "version" -> ProjectDecodeResult.Rejected(ProjectRejectReason.UNSUPPORTED_VERSION)
-                e.message?.startsWith("cutout") == true ->
+                e.message?.startsWith("cutout") == true || e.message?.startsWith("geometry") == true ->
                     ProjectDecodeResult.Rejected(ProjectRejectReason.INVALID_FIELD, e.message)
                 else -> ProjectDecodeResult.Rejected(ProjectRejectReason.MALFORMED)
             }
@@ -275,7 +284,8 @@ object SnapCropProjectSidecar {
             exportQuality = export.optInt("quality", 100),
             exportSavePath = export.optNullableString("savePath"),
             deleteOriginal = export.optBoolean("deleteOriginal", false),
-            sourceContext = sourceContext
+            sourceContext = sourceContext,
+            geometry = if (version >= 6) root.optJSONArray("geometry").toGeometryList() else emptyList()
         )
     }
 
@@ -302,9 +312,15 @@ object SnapCropProjectSidecar {
         limits: ProjectImportLimits
     ): ProjectDecodeResult {
         fun reject(field: String) = ProjectDecodeResult.Rejected(ProjectRejectReason.INVALID_FIELD, field)
-        val width = project.sourceWidth
-        val height = project.sourceHeight
-        if (width !in 1..4096 || height !in 1..4096 || width.toLong() * height > 16_777_216L) return reject("source.dimensions")
+        val sourceWidth = project.sourceWidth
+        val sourceHeight = project.sourceHeight
+        if (sourceWidth !in 1..4096 || sourceHeight !in 1..4096 || sourceWidth.toLong() * sourceHeight > 16_777_216L) {
+            return reject("source.dimensions")
+        }
+        if (project.geometry.size > limits.maxGeometrySteps) return reject("geometry")
+        // Everything below is in the pixels the turns, mirrors and resizes leave behind.
+        val (width, height) = GeometrySteps.finalSize(sourceWidth, sourceHeight, project.geometry)
+            ?: return reject("geometry.resize")
         if ((project.sourceUri?.length ?: 0) > limits.maxUriChars) return reject("source.uri")
         project.sourceContext?.let { context ->
             if ((context.url?.length ?: 0) > limits.maxSourceUrlChars ||
@@ -450,6 +466,37 @@ object SnapCropProjectSidecar {
                     throw IllegalArgumentException("cutout.bounds")
                 }
                 add(CutBand(axis, item.getInt("start"), item.getInt("endExclusive")))
+            }
+        }
+    }
+
+    private fun GeometryStep.toJson(): JSONObject = when (this) {
+        GeometryStep.RotateClockwise -> JSONObject().put("op", "rotate")
+        is GeometryStep.Flip -> JSONObject().put("op", "flip").put("horizontal", horizontal)
+        is GeometryStep.Resize -> JSONObject().put("op", "resize").put("width", width).put("height", height)
+    }
+
+    private fun JSONArray?.toGeometryList(): List<GeometryStep> {
+        if (this == null) return emptyList()
+        return buildList {
+            for (index in 0 until length()) {
+                val item = optJSONObject(index) ?: throw IllegalArgumentException("geometry")
+                add(
+                    when (item.optString("op")) {
+                        "rotate" -> GeometryStep.RotateClockwise
+                        "flip" -> {
+                            val horizontal = item.opt("horizontal") as? Boolean
+                                ?: throw IllegalArgumentException("geometry.flip")
+                            GeometryStep.Flip(horizontal)
+                        }
+                        "resize" -> {
+                            val width = item.opt("width") as? Int ?: throw IllegalArgumentException("geometry.resize")
+                            val height = item.opt("height") as? Int ?: throw IllegalArgumentException("geometry.resize")
+                            GeometryStep.Resize(width, height)
+                        }
+                        else -> throw IllegalArgumentException("geometry.op")
+                    }
+                )
             }
         }
     }

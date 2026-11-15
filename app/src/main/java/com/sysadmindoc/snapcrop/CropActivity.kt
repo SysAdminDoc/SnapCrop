@@ -9,7 +9,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
@@ -103,10 +102,18 @@ private data class ShareRedactionCandidate(
     val categories: Set<SensitiveTextCategory>,
 )
 
+/** The decoded source's size and the turns, mirrors and resizes made since, which a project replays. */
+private data class EditGeometry(
+    val sourceWidth: Int,
+    val sourceHeight: Int,
+    val steps: List<GeometryStep> = emptyList(),
+) {
+    fun then(step: GeometryStep): EditGeometry = copy(steps = GeometrySteps.append(steps, step))
+}
+
 private data class DraftSourceSnapshot(
     val uri: Uri,
-    val width: Int,
-    val height: Int,
+    val geometry: EditGeometry,
     val context: ExplicitSourceContext?,
 )
 
@@ -125,6 +132,7 @@ class CropActivity : ComponentActivity() {
 
     private var originalBitmap: Bitmap? = null
     private val bitmapState = mutableStateOf<Bitmap?>(null)
+    @Volatile private var editGeometry: EditGeometry? = null
     private val cropRect = mutableStateOf(Rect(0, 0, 0, 0))
     private val cropMethod = mutableStateOf("")
     private val isLoading = mutableStateOf(true)
@@ -213,6 +221,7 @@ class CropActivity : ComponentActivity() {
         explicitSourceContext.value = ExplicitSourceContext.fromIntent(incomingIntent, referrer)
         isLoading.value = true
         bitmapState.value = null
+        editGeometry = null
         cropMethod.value = ""
         initialRedactions.value = emptyList()
         initialDrawPaths.value = emptyList()
@@ -332,10 +341,11 @@ class CropActivity : ComponentActivity() {
                                 val current = bitmapState.value ?: return@CropEditorScreen
                                 val plan = ImageGeometryChange.resizeFor(current.width, current.height, maxDim)
                                     ?: return@CropEditorScreen
-                                val resized = Bitmap.createScaledBitmap(current, plan.targetWidth, plan.targetHeight, true)
+                                val resized = plan.apply(current)
                                 if (current !== originalBitmap) current.recycle()
                                 originalBitmap?.recycle(); originalBitmap = null
                                 invalidateOcrReview()
+                                editGeometry = editGeometry?.then(plan.step)
                                 bitmapState.value = resized
                                 cropRect.value = crop
                                 cropMethod.value = ""
@@ -715,8 +725,7 @@ class CropActivity : ComponentActivity() {
         val draft = runCatching(provider).getOrNull() ?: return false
         val sourceSnapshot = DraftSourceSnapshot(
             uri = source,
-            width = bitmap.width,
-            height = bitmap.height,
+            geometry = editGeometry ?: EditGeometry(bitmap.width, bitmap.height),
             context = explicitSourceContext.value,
         )
         val exportFormat = getExportFormat(forcePng = false)
@@ -874,8 +883,18 @@ class CropActivity : ComponentActivity() {
                         }
                     }
                 }
-                originalBitmap = bmp
-                bitmapState.value = bmp
+                // The project's crop, redactions and drawings sit on the turned, mirrored or resized
+                // picture, so replay those changes on the source before anything is shown.
+                val steps = project?.geometry.orEmpty()
+                var shown = bmp
+                for (step in steps) {
+                    val next = step.changeFor(shown.width, shown.height).apply(shown)
+                    if (next !== shown) shown.recycle()
+                    shown = next
+                }
+                editGeometry = EditGeometry(bmp.width, bmp.height, steps)
+                originalBitmap = shown
+                bitmapState.value = shown
                 projectLoadError.value = null
                 projectCanRelink.value = false
                 pendingRelinkProject = null
@@ -954,8 +973,8 @@ class CropActivity : ComponentActivity() {
     /** [crop] comes from the editor, already turned with its redactions and drawings. */
     private fun rotateBitmap(crop: Rect) {
         val current = bitmapState.value ?: return
-        val matrix = Matrix().apply { postRotate(90f) }
-        val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+        val change = ImageGeometryChange.RotateClockwise(current.width, current.height)
+        val rotated = change.apply(current)
         // Recycle the old bitmap (including originalBitmap if it was the current one)
         if (rotated !== current) current.recycle()
         if (originalBitmap != null && originalBitmap !== current && originalBitmap !== rotated) {
@@ -963,6 +982,7 @@ class CropActivity : ComponentActivity() {
         }
         originalBitmap = null
         invalidateOcrReview()
+        editGeometry = editGeometry?.then(change.step)
         bitmapState.value = rotated
         cropRect.value = crop
         cropMethod.value = ""
@@ -972,14 +992,15 @@ class CropActivity : ComponentActivity() {
 
     private fun flipBitmap(horizontal: Boolean, crop: Rect) {
         val current = bitmapState.value ?: return
-        val matrix = Matrix().apply { if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f) }
-        val flipped = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
+        val change = ImageGeometryChange.Flip(current.width, current.height, horizontal)
+        val flipped = change.apply(current)
         if (flipped !== current) current.recycle()
         if (originalBitmap != null && originalBitmap !== current && originalBitmap !== flipped) {
             originalBitmap?.recycle()
         }
         originalBitmap = null
         invalidateOcrReview()
+        editGeometry = editGeometry?.then(change.step)
         bitmapState.value = flipped
         cropRect.value = crop
         dropStaleCutBands()
@@ -1235,6 +1256,7 @@ class CropActivity : ComponentActivity() {
     ): String {
         val source = sourceSnapshot?.uri ?: sourceUri
         val bitmap = bitmapState.value
+        val geometry = sourceSnapshot?.geometry ?: editGeometry ?: EditGeometry(bitmap?.width ?: 0, bitmap?.height ?: 0)
         val limits = SnapCropProjectSidecar.DEFAULT_LIMITS
         var remainingPoints = limits.maxTotalPoints
         val boundedDrawPaths = drawPaths.take(limits.maxDrawLayers).mapNotNull { path ->
@@ -1254,8 +1276,9 @@ class CropActivity : ComponentActivity() {
         val project = SnapCropProject(
             sourceUri = source?.toString()?.take(limits.maxUriChars),
             sourceSha256 = if (computeHash) source?.let { sha256OfUri(it) } else null,
-            sourceWidth = sourceSnapshot?.width ?: bitmap?.width ?: 0,
-            sourceHeight = sourceSnapshot?.height ?: bitmap?.height ?: 0,
+            sourceWidth = geometry.sourceWidth,
+            sourceHeight = geometry.sourceHeight,
+            geometry = geometry.steps,
             cropRect = Rect(rect),
             adjustments = adj.copyOf(),
             cutBands = cutout.bands,
