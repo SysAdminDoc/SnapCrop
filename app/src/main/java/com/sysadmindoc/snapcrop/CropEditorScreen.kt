@@ -153,11 +153,18 @@ fun CropEditorScreen(
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
 
-    // Effective scale/offset used by all coordinate math
-    val scaleX = baseScale * zoomLevel
-    val scaleY = baseScale * zoomLevel
-    val offsetX = baseOx * zoomLevel + panX
-    val offsetY = baseOy * zoomLevel + panY
+    // Canvas size, recorded where the fitted layout is computed.
+    var canvasWidth by remember { mutableFloatStateOf(0f) }
+    var canvasHeight by remember { mutableFloatStateOf(0f) }
+
+    // Effective scale/offset used by all coordinate math. These must be snapshot-backed, not plain
+    // vals: the canvas gesture coroutine is keyed on the edit mode, so a pinch inside Draw mode
+    // doesn't restart it, and a captured val would keep mapping touches through the pre-zoom
+    // viewport (strokes landing away from the finger).
+    val scaleX by remember { derivedStateOf { baseScale * zoomLevel } }
+    val scaleY by remember { derivedStateOf { baseScale * zoomLevel } }
+    val offsetX by remember { derivedStateOf { baseOx * zoomLevel + panX } }
+    val offsetY by remember { derivedStateOf { baseOy * zoomLevel + panY } }
 
     var cropLeft by remember { mutableIntStateOf(initialCropRect.left) }
     var cropTop by remember { mutableIntStateOf(initialCropRect.top) }
@@ -1154,15 +1161,31 @@ fun CropEditorScreen(
         cropBottom = cropTop + height
     }
 
-    fun zoomBy(factor: Float) {
-        val next = (zoomLevel * factor).coerceIn(1f, 5f)
-        if (next <= 1.01f) {
-            zoomLevel = 1f
-            panX = 0f
-            panY = 0f
-        } else {
-            zoomLevel = next
-        }
+    // Built from state only (the fitted image is centred), so the Unit-keyed wheel handler, which
+    // keeps the first composition's closure, still sees the current bitmap after a rotate.
+    fun viewportGeometry() = EditorViewportGeometry(
+        canvasWidth = canvasWidth,
+        canvasHeight = canvasHeight,
+        imageLeft = baseOx,
+        imageTop = baseOy,
+        imageWidth = canvasWidth - 2f * baseOx,
+        imageHeight = canvasHeight - 2f * baseOy,
+    )
+
+    fun applyViewport(next: EditorViewportState) {
+        zoomLevel = next.zoom
+        panX = next.panX
+        panY = next.panY
+    }
+
+    /** Zooms about [focus] (canvas coordinates), the canvas centre when there's no pointer. */
+    fun zoomBy(factor: Float, focus: Offset = Offset(canvasWidth / 2f, canvasHeight / 2f)) {
+        applyViewport(
+            EditorViewport.zoom(
+                EditorViewportState(zoomLevel, panX, panY), factor,
+                focus.x, focus.y, focus.x, focus.y, viewportGeometry()
+            )
+        )
     }
 
     BoxWithConstraints(
@@ -2597,9 +2620,10 @@ fun CropEditorScreen(
                         while (true) {
                             val event = awaitPointerEvent()
                             if (event.type == PointerEventType.Scroll) {
-                                val scrollY = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                                if (scrollY != 0f) {
-                                    zoomBy(if (scrollY > 0f) 0.9f else 1.1f)
+                                val scrollChange = event.changes.firstOrNull()
+                                val scrollY = scrollChange?.scrollDelta?.y ?: 0f
+                                if (scrollY != 0f && scrollChange != null) {
+                                    zoomBy(if (scrollY > 0f) 0.9f else 1.1f, scrollChange.position)
                                     event.changes.forEach { it.consume() }
                                 }
                             }
@@ -2859,19 +2883,31 @@ fun CropEditorScreen(
 
                                     // Multi-touch: pinch-to-zoom
                                     if (pressed.size >= 2) {
+                                        if (!multiTouch && dragStarted) {
+                                            // A second finger turns this into a pinch: drop the stroke or
+                                            // redaction box the first finger had started, or it would be
+                                            // committed when the fingers lift.
+                                            currentDrawPoints.clear()
+                                            pixDragStart = null; pixDragCurrent = null
+                                            dragStarted = false
+                                        }
                                         multiTouch = true
                                         val centroid = Offset(
                                             pressed.map { it.position.x }.average().toFloat(),
                                             pressed.map { it.position.y }.average().toFloat()
                                         )
                                         val spread = pressed.map { (it.position - centroid).getDistance() }.average().toFloat()
-                                        if (prevCount >= 2 && prevSpread > 1f) {
-                                            val zoom = spread / prevSpread
-                                            val pan = centroid - prevCentroid
-                                            if (zoom != 1f || zoomLevel > 1.05f) {
-                                                zoomLevel = (zoomLevel * zoom).coerceIn(1f, 5f)
-                                                panX += pan.x; panY += pan.y
-                                            }
+                                        // Same finger count as last frame only: a finger landing or lifting moves
+                                        // the centroid in one jump, which would read as a sudden pan.
+                                        if (prevCount == pressed.size && prevSpread > 1f) {
+                                            // Zoom about the fingers, not the canvas corner, and keep the image on screen.
+                                            applyViewport(
+                                                EditorViewport.zoom(
+                                                    EditorViewportState(zoomLevel, panX, panY), spread / prevSpread,
+                                                    prevCentroid.x, prevCentroid.y, centroid.x, centroid.y,
+                                                    viewportGeometry()
+                                                )
+                                            )
                                         }
                                         prevCentroid = centroid
                                         prevSpread = spread
@@ -2937,7 +2973,12 @@ fun CropEditorScreen(
                                                 currentDrawPoints.add(PointF(bx, by))
                                             }
                                             editMode == EditMode.CROP && zoomLevel > 1.05f -> {
-                                                panX += dragDelta.x; panY += dragDelta.y
+                                                applyViewport(
+                                                    EditorViewport.pan(
+                                                        EditorViewportState(zoomLevel, panX, panY),
+                                                        dragDelta.x, dragDelta.y, viewportGeometry()
+                                                    )
+                                                )
                                             }
                                         }
                                     }
@@ -2953,6 +2994,9 @@ fun CropEditorScreen(
                     // Avoid state writes inside DrawScope to prevent recomposition loops
                     if (baseScale != fitScale || baseOx != fitOx || baseOy != fitOy) {
                         baseScale = fitScale; baseOx = fitOx; baseOy = fitOy
+                    }
+                    if (canvasWidth != size.width || canvasHeight != size.height) {
+                        canvasWidth = size.width; canvasHeight = size.height
                     }
 
                     // Effective (zoomed) image position

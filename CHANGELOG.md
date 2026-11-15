@@ -4,6 +4,8 @@ All notable changes to SnapCrop will be documented in this file.
 
 ## [Unreleased]
 
+- Drawing after a pinch zoom now lands under your finger (#3). The editor's touch handler kept converting touches with the zoom from before the pinch, so pen strokes, highlighter marks and pixelate boxes showed up somewhere else on the image. Pinch zoom also stays centered between your fingers now instead of pulling a tall screenshot off the side of the screen, and it can't pan the image out of view. Putting a second finger down partway through a stroke no longer leaves a stray line behind.
+
 ## [v6.92.0] - 2026-09-05
 
 - Straightening an Ultra HDR screenshot no longer silently discards its HDR. The
