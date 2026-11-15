@@ -80,7 +80,7 @@ Taking a screenshot on Android gives you a raw capture with status bars, navigat
 - Precision mode — hold 800ms for 4x slower, pixel-perfect dragging
 - 18 aspect ratios including 7 shape crops (circle, star, heart, triangle, hexagon, diamond, rounded rect)
 - AI Reframe shifts selected aspect ratios around detected objects, text, and faces
-- Free rotation slider (-45 to +45 degrees)
+- Free rotation slider (-45 to +45 degrees), plus a button that turns the image a quarter turn per tap
 - Gradient backgrounds for shape crops (6 presets)
 - Grid overlays (rule of thirds / golden ratio)
 - Multi-select annotation layers to align against crop edges/centers, distribute
@@ -150,11 +150,13 @@ are blocked behind explicit opt-in and evaluation gates.
 
 **OCR**
 - Tap any text block to copy it or translate it on-device
+- Long-press in the text window to pick out a word or a few, and Copy and Translate use just that
+- Links show up as chips you can tap, including bare ones like `github.com/user/repo`
 - Review OCR blocks before export: correct text, merge related blocks, or delete
   false detections without changing the screenshot pixels
 - Searchable PDF reports use explicitly reviewed text for the PDF layer and appendix;
   Settings can also save an opt-in UTF-8 `.txt` companion (which may contain sensitive text)
-- Translate recognized text with ML Kit language detection and downloadable offline translation models
+- Translate recognized text into any of the 59 languages ML Kit can translate offline, with language detection and downloadable models
 - Translation shows model-download and retry guidance when Play Services needs
   Wi-Fi, storage, or an update
 - Scan QR codes and barcodes
@@ -165,6 +167,7 @@ are blocked behind explicit opt-in and evaluation gates.
   as JPEG, including crop, perspective, redaction, annotations, borders, and watermarks.
 - Brightness, Contrast, Saturation, Warmth, Vignette, Sharpen, Highlights, Shadows, Tilt-Shift, Denoise
 - Per-channel RGB curves
+- Every slider and filter previews live on the photo, and on a phone the sliders scroll in a short panel so the photo stays in view
 - 16 filter effects: Mono, Sepia, Cool, Warm, Vivid, Muted, Vintage, Noir, Fade,
   Invert, Polaroid, Grain, Red/Blue/Green Pop, and Glitch; Auto-enhance is a
   separate image-analysis action
@@ -240,6 +243,7 @@ are blocked behind explicit opt-in and evaluation gates.
 - ML-assisted tools surface Play Services/model retry guidance instead of
   silently looking like no-ops
 - **Color Palette** — Extract 6 dominant colors with hex codes and percentages
+- **Search image** in the editor's ⋮ menu looks up the edited picture on Google Lens (through the Google app), Bing or Yandex
 
 ### Export Options
 - Image saves use one transactional MediaStore path: an output is published only
@@ -420,6 +424,7 @@ disclosed below; optional exports and automatic update checks are off by default
   upload. Custom HTTP/WebDAV destinations are HTTPS-only; Imgur receives the
   selected image; Android 17 requests Local network access only for a configured
   LAN, link-local, or `.local` endpoint.
+- Search image sends nothing until you pick an engine. Picking Google Lens hands the image to the Google app on the phone. For Bing or Yandex, SnapCrop uploads a JPEG of the edited image (at most 1600 px on the long side, no EXIF or location) straight to that engine over HTTPS and opens the results page in your browser. That engine's own privacy policy covers what happens after.
 
 ### Permission and security policy
 
