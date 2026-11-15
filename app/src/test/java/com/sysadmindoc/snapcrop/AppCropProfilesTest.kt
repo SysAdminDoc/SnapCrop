@@ -78,6 +78,24 @@ class AppCropProfilesTest {
         assertEquals("full", applyWithoutHints(bar).method)
     }
 
+    /** "x.com" is a substring of netflix.com, xbox.com and dropbox.com, which aren't X. */
+    @Test
+    fun appNameHintsMatchWholeNamesOnly() {
+        val bitmap = Bitmap.createBitmap(360, 800, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(Color.WHITE)
+        fillRect(bitmap, Rect(20, 100, 340, 700), Color.rgb(51, 51, 51))
+        val base = AutoCrop.CropResult(Rect(0, 0, 360, 800), "full")
+        fun methodFor(hint: String) = AppCropProfiles.apply(bitmap, base, 0, 0, listOf(hint), enabled = true).method
+
+        for (hint in listOf("https://www.netflix.com/browse", "https://www.xbox.com/en-US", "https://www.dropbox.com/home", "https://max.com/")) {
+            assertEquals(hint, "full", methodFor(hint))
+        }
+        assertEquals("profile:X/Twitter", methodFor("https://x.com/home"))
+        assertEquals("profile:X/Twitter", methodFor("https://mobile.x.com/home"))
+        assertEquals("profile:Reddit", methodFor("Screenshot_20261115-101500_Reddit.jpg"))
+        assertEquals("profile:Reddit", methodFor("https://www.reddit.com/r/android"))
+    }
+
     private fun applyWithoutHints(bitmap: Bitmap) = AppCropProfiles.apply(
         bitmap = bitmap,
         baseResult = AutoCrop.CropResult(Rect(0, 0, bitmap.width, bitmap.height), "full"),

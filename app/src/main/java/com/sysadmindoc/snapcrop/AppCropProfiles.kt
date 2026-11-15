@@ -227,7 +227,7 @@ object AppCropProfiles {
         density: Float,
         hints: List<String>
     ): CropProfileMatch? {
-        val hasHint = hints.any { hint -> template.aliases.any { alias -> hint.contains(alias) } }
+        val hasHint = hints.any { hint -> template.aliases.any { alias -> hint.containsName(alias) } }
         val topHeight = (template.topDp * density).toInt().coerceIn(32, base.height() / 4)
         val bottomHeight = (template.bottomDp * density).toInt().coerceIn(32, base.height() / 4)
         val topBand = Rect(base.left, base.top, base.right, min(base.bottom, base.top + topHeight))
@@ -252,6 +252,17 @@ object AppCropProfiles {
         val confidence = if (hasHint) max(0.84f, visualConfidence) else visualConfidence
 
         return CropProfileMatch(template, confidence.coerceIn(0f, 1f), hasHint)
+    }
+
+    /** [name] appearing as a whole name, so "x.com" matches x.com and mobile.x.com but not netflix.com. */
+    private fun String.containsName(name: String): Boolean {
+        var from = 0
+        while (true) {
+            val at = indexOf(name, from)
+            if (at < 0) return false
+            if (at == 0 || !this[at - 1].isLetterOrDigit()) return true
+            from = at + 1
+        }
     }
 
     private fun estimateDensity(bitmap: Bitmap, statusBarPx: Int, navBarPx: Int): Float {
