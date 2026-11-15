@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Gainmap
 import android.os.Build
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -34,5 +35,29 @@ class UltraHdrRoundTripTest {
         val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 
         assertTrue(decoded.hasGainmap())
+    }
+
+    /** Measures whether this device's PNG encoder keeps a gain map, instead of assuming it from the API level. */
+    @Test
+    fun pngGainmapSupportMatchesTheEncoder() {
+        assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        val source = Bitmap.createBitmap(32, 16, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.DKGRAY)
+            gainmap = Gainmap(Bitmap.createBitmap(8, 4, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(Color.WHITE)
+            })
+        }
+        val bytes = ByteArrayOutputStream().use { output ->
+            assertTrue(source.compress(Bitmap.CompressFormat.PNG, 100, output))
+            output.toByteArray()
+        }
+
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+        assertEquals(
+            "PNG kept the gain map on API ${Build.VERSION.SDK_INT}: ${decoded.hasGainmap()}",
+            decoded.hasGainmap(),
+            supportsPngGainmapEncoding(),
+        )
     }
 }
