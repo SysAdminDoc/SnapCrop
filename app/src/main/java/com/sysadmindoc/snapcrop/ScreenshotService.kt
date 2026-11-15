@@ -571,8 +571,16 @@ class ScreenshotService : Service() {
         val securePreview = SecurePreviewPolicy.isEnabled(this)
         // Secure preview intentionally omits screenshot pixels from system notification surfaces.
         val thumbnail = if (SecurePreviewPolicy.showNotificationThumbnail(securePreview)) try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             contentResolver.openInputStream(uri)?.use { stream ->
-                val opts = BitmapFactory.Options().apply { inSampleSize = 8 }
+                BitmapFactory.decodeStream(stream, null, bounds)
+            }
+            // Unknown bounds must not fall through to an unbounded decode.
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
+            else contentResolver.openInputStream(uri)?.use { stream ->
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize = notificationThumbnailSampleSize(bounds.outWidth, bounds.outHeight)
+                }
                 BitmapFactory.decodeStream(stream, null, opts)
             }
         } catch (_: Exception) { null } else null
@@ -725,4 +733,28 @@ class ScreenshotService : Service() {
         dismissDetectedNotification()
         super.onDestroy()
     }
+}
+
+/** Longest edge allowed for a notification thumbnail, in pixels. */
+internal const val NOTIFICATION_THUMBNAIL_MAX_PX = 1024
+
+/**
+ * Picks the `inSampleSize` that fits a decoded thumbnail inside a
+ * [NOTIFICATION_THUMBNAIL_MAX_PX] square.
+ *
+ * A fixed factor is wrong in both directions. It is unbounded in absolute terms, so a stitched
+ * long screenshot still decodes to something enormous, and from Android 17 a RemoteViews bitmap
+ * over `1.5 * w * h * 4` bytes throws a fatal IllegalArgumentException. It also shrinks a small
+ * capture into an unreadable thumbnail. Deriving the factor from the source bounds fixes both.
+ */
+internal fun notificationThumbnailSampleSize(sourceWidth: Int, sourceHeight: Int): Int {
+    if (sourceWidth <= 0 || sourceHeight <= 0) return 1
+    var sample = 1
+    while (
+        sourceWidth / sample > NOTIFICATION_THUMBNAIL_MAX_PX ||
+        sourceHeight / sample > NOTIFICATION_THUMBNAIL_MAX_PX
+    ) {
+        sample *= 2
+    }
+    return sample
 }

@@ -5,6 +5,7 @@ All notable changes to SnapCrop will be documented in this file.
 ## [Unreleased]
 
 - Drawing after a pinch zoom now lands under your finger (#3). The editor's touch handler kept converting touches with the zoom from before the pinch, so pen strokes, highlighter marks and pixelate boxes showed up somewhere else on the image. Pinch zoom also stays centered between your fingers now instead of pulling a tall screenshot off the side of the screen, and it can't pan the image out of view. Putting a second finger down partway through a stroke no longer leaves a stray line behind.
+- The screenshot notification's thumbnail is now sized from the capture itself instead of always shrinking it 8 times. A stitched long screenshot used to produce a huge thumbnail, which Android 17 rejects outright, while a small capture shrank into something you couldn't read. Thumbnails now fit inside 1024 px on the long edge.
 
 ## [v6.92.0] - 2026-09-05
 
