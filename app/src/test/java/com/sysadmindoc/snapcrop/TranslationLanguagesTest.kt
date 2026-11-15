@@ -1,6 +1,8 @@
 package com.sysadmindoc.snapcrop
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,5 +46,25 @@ class TranslationLanguagesTest {
         val short = visibleTranslationRows(all, setOf("en", "es"), status, showAll = false)
         assertEquals(listOf("en", "el", "es", "pl"), short.map { it.language })
         assertEquals(all, visibleTranslationRows(all, setOf("en", "es"), status, showAll = true))
+    }
+
+    /** Issue #2 on a phone: translating one picked word failed with "Could not identify the source language". */
+    @Test
+    fun aPickedWordTakesItsLanguageFromTheBlockThenThePage() = runBlocking {
+        val asked = mutableListOf<String>()
+        val shortIsUnknown: suspend (String) -> String = { sample ->
+            asked += sample
+            if (sample.split(' ').size < 3) "und" else "en"
+        }
+
+        assertEquals("en", TextTranslator.identifySource(" Visit ", listOf("Visit github.com now please", "x"), shortIsUnknown))
+        assertEquals(listOf("Visit", "Visit github.com now please"), asked)
+
+        asked.clear()
+        assertEquals("en", TextTranslator.identifySource("Visit", listOf("Visit", "", "Visit the page today"), shortIsUnknown))
+        assertEquals(listOf("Visit", "Visit the page today"), asked)
+
+        assertEquals("fr", TextTranslator.identifySource("Bonjour", listOf("Hello there my friend")) { if (it == "Bonjour") "fr" else "en" })
+        assertNull(TextTranslator.identifySource("Hi", listOf("Yo", "")) { "und" })
     }
 }

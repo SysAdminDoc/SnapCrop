@@ -373,7 +373,7 @@ fun CropEditorScreen(
         haptic()
     }
 
-    fun translateText(text: String) {
+    fun translateText(text: String, languageContext: List<String> = emptyList()) {
         if (translating) return
         translating = true
         translation = null
@@ -386,6 +386,7 @@ fun CropEditorScreen(
                         text = text,
                         target = translateTarget,
                         context = context.applicationContext,
+                        languageContext = languageContext,
                         onProgress = { message -> scope.launch { translationStatus = message } }
                     )
                 }
@@ -4287,7 +4288,7 @@ fun CropEditorScreen(
                         }
                     }) { Text(stringResource(R.string.ocr_copy), color = OnSurfaceVariant) }
                     Button(
-                        onClick = { translateText(pickedText ?: ocrText) },
+                        onClick = { translateText(pickedText ?: ocrText, listOf(ocrText, ocrBlocks.joinToString("\n") { it.text })) },
                         enabled = !translating,
                         colors = ButtonDefaults.buttonColors(containerColor = Primary),
                         shape = RoundedCornerShape(10.dp)

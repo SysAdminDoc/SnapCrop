@@ -59,10 +59,29 @@ object TextTranslator {
     fun targetFor(language: String?): TranslationTarget =
         targetLanguages.firstOrNull { it.language == language } ?: defaultTarget
 
+    /**
+     * Language tag for [text], or null when nothing identifies. A word or two picked out of a
+     * block (#2) is too short for language ID and comes back "und", so the texts in
+     * [languageContext] (the block it came from, then the whole page) are tried in order.
+     */
+    internal suspend fun identifySource(
+        text: String,
+        languageContext: List<String>,
+        identify: suspend (String) -> String
+    ): String? {
+        val samples = (listOf(text) + languageContext).map(String::trim).filter(String::isNotEmpty).distinct()
+        for (sample in samples) {
+            val tag = identify(sample)
+            if (tag != "und") return tag
+        }
+        return null
+    }
+
     suspend fun translate(
         text: String,
         target: TranslationTarget = defaultTarget,
         context: Context? = null,
+        languageContext: List<String> = emptyList(),
         onProgress: (String) -> Unit = {}
     ): TextTranslation {
         val original = text.trim()
@@ -72,8 +91,8 @@ object TextTranslator {
             MlKitStatus.playServicesIssue(appContext)?.let { throw IllegalStateException(it) }
         }
         onProgress(context?.getString(MlKitStatus.TRANSLATION_IDENTIFYING) ?: "Identifying source language on device…")
-        val identifiedTag = languageIdentifier.identifyLanguage(original).awaitResult()
-        require(identifiedTag != "und") { "Could not identify the source language" }
+        val identifiedTag = identifySource(original, languageContext) { languageIdentifier.identifyLanguage(it).awaitResult() }
+            ?: throw IllegalArgumentException("Could not identify the source language")
 
         val sourceLanguage = TranslateLanguage.fromLanguageTag(identifiedTag)
             ?: throw IllegalArgumentException("Detected language is not supported for on-device translation")
