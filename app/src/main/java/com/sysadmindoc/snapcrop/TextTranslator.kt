@@ -8,6 +8,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -24,31 +25,39 @@ data class TextTranslation(
 )
 
 object TextTranslator {
-    val defaultTarget = TranslationTarget(TranslateLanguage.ENGLISH, "English")
+    /** Last target language picked in the OCR dialog, as an ML Kit language code. */
+    const val PREF_TARGET = "ocr_translate_target"
 
-    val targetLanguages = listOf(
-        defaultTarget,
-        TranslationTarget(TranslateLanguage.SPANISH, "Spanish"),
-        TranslationTarget(TranslateLanguage.FRENCH, "French"),
-        TranslationTarget(TranslateLanguage.GERMAN, "German"),
-        TranslationTarget(TranslateLanguage.PORTUGUESE, "Portuguese"),
-        TranslationTarget(TranslateLanguage.JAPANESE, "Japanese"),
-        TranslationTarget(TranslateLanguage.KOREAN, "Korean"),
-        TranslationTarget(TranslateLanguage.CHINESE, "Chinese")
-    )
+    val defaultTarget: TranslationTarget by lazy { target(TranslateLanguage.ENGLISH) }
+
+    /** Every language ML Kit translates on device (59 in translate 17.0.3), sorted by name. */
+    val targetLanguages: List<TranslationTarget> by lazy {
+        TranslateLanguage.getAllLanguages().distinct().map(::target).sortedBy { it.label }
+    }
+
+    /** One-tap chips in the OCR dialog; the rest of [targetLanguages] sit behind "More languages". */
+    val quickTargets: List<TranslationTarget> by lazy {
+        listOf(
+            TranslateLanguage.ENGLISH,
+            TranslateLanguage.SPANISH,
+            TranslateLanguage.FRENCH,
+            TranslateLanguage.GERMAN,
+            TranslateLanguage.PORTUGUESE,
+            TranslateLanguage.JAPANESE,
+            TranslateLanguage.KOREAN,
+            TranslateLanguage.CHINESE,
+        ).map(::target)
+    }
 
     private val languageIdentifier by lazy {
         LanguageIdentification.getClient()
     }
 
-    private val languageLabels = targetLanguages.associate { it.language to it.label } + mapOf(
-        TranslateLanguage.ARABIC to "Arabic",
-        TranslateLanguage.HINDI to "Hindi",
-        TranslateLanguage.ITALIAN to "Italian",
-        TranslateLanguage.RUSSIAN to "Russian",
-        TranslateLanguage.TURKISH to "Turkish",
-        TranslateLanguage.VIETNAMESE to "Vietnamese"
-    )
+    fun target(language: String): TranslationTarget = TranslationTarget(language, labelFor(language))
+
+    /** Target for a stored language code, or [defaultTarget] when it's missing or no longer offered. */
+    fun targetFor(language: String?): TranslationTarget =
+        targetLanguages.firstOrNull { it.language == language } ?: defaultTarget
 
     suspend fun translate(
         text: String,
@@ -112,8 +121,15 @@ object TextTranslator {
         }
     }
 
-    fun labelFor(language: String): String =
-        languageLabels[language] ?: language.uppercase()
+    /** English language name, matching the rest of the UI ("el" reads "Greek"); unknown codes fall back to the code. */
+    fun labelFor(language: String): String {
+        val name = Locale.forLanguageTag(language).getDisplayLanguage(Locale.ENGLISH)
+        return if (name.isBlank() || name.equals(language, ignoreCase = true)) {
+            language.uppercase(Locale.ROOT)
+        } else {
+            name.replaceFirstChar { it.titlecase(Locale.ENGLISH) }
+        }
+    }
 
     fun userMessage(context: Context, error: Throwable): String {
         val raw = error.message?.trim().orEmpty()

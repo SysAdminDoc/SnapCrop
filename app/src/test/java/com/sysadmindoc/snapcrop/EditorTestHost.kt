@@ -12,6 +12,7 @@ internal fun whiteTestBitmap(width: Int = 400, height: Int = 800): Bitmap =
 /** Hosts [CropEditorScreen] with no-op callbacks except the ones a test passes in. */
 internal fun ComposeContentTestRule.hostEditor(
     bitmap: Bitmap = whiteTestBitmap(),
+    initialOcrBlocks: List<TextBlock> = emptyList(),
     onRotate: () -> Unit = {},
 ) {
     setContent {
@@ -20,6 +21,7 @@ internal fun ComposeContentTestRule.hostEditor(
                 bitmap = bitmap,
                 initialCropRect = Rect(0, 0, bitmap.width, bitmap.height),
                 cropMethod = "",
+                initialOcrBlocks = initialOcrBlocks,
                 onSave = { _, _, _, _, _ -> },
                 onSaveCopy = { _, _, _, _, _ -> },
                 onShare = { _, _, _, _, _ -> },

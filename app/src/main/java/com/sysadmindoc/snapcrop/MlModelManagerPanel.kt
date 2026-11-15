@@ -17,6 +17,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +50,26 @@ internal enum class ManagedModelState {
     FAILED,
 }
 
+/**
+ * Translation rows to list: everything when [showAll], otherwise the quick languages plus any
+ * model that is on the phone or mid-change, so the 59-language list stays short by default.
+ */
+internal fun visibleTranslationRows(
+    all: List<TranslationTarget>,
+    quickLanguages: Set<String>,
+    status: Map<String, ManagedModelStatus>,
+    showAll: Boolean,
+): List<TranslationTarget> = if (showAll) all else all.filter { target ->
+    target.language in quickLanguages || status[target.language]?.state in KEEP_LISTED_STATES
+}
+
+private val KEEP_LISTED_STATES = setOf(
+    ManagedModelState.INSTALLED,
+    ManagedModelState.DOWNLOADING,
+    ManagedModelState.REMOVING,
+    ManagedModelState.FAILED,
+)
+
 internal data class ManagedModelStatus(
     val state: ManagedModelState,
     val progress: ModelDownloadProgress? = null,
@@ -78,7 +99,13 @@ internal fun MlModelManagerPanel(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val optionalScripts = remember { OcrScript.entries.filterNot { it == OcrScript.LATIN } }
-    val translationLanguages = remember { TextTranslator.targetLanguages.distinctBy(TranslationTarget::language) }
+    // English (built in) first, then every other ML Kit language by name.
+    val translationLanguages = remember {
+        listOf(TextTranslator.defaultTarget) +
+            TextTranslator.targetLanguages.filter { it.language != TranslateLanguage.ENGLISH }
+    }
+    val quickLanguages = remember { TextTranslator.quickTargets.mapTo(HashSet()) { it.language } }
+    var showAllTranslations by remember { mutableStateOf(false) }
     var ocrStatus by remember {
         mutableStateOf(
             OcrScript.entries.associateWith {
@@ -210,7 +237,7 @@ internal fun MlModelManagerPanel(modifier: Modifier = Modifier) {
             Text(stringResource(R.string.ml_models_translation_title), color = OnSurface, style = MaterialTheme.typography.titleSmall)
             Text(stringResource(R.string.ml_models_translation_summary), color = OnSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             Spacer(Modifier.height(6.dp))
-            translationLanguages.forEachIndexed { index, target ->
+            visibleTranslationRows(translationLanguages, quickLanguages, translationStatus, showAllTranslations).forEachIndexed { index, target ->
                 if (index > 0) HorizontalDivider(color = Outline.copy(alpha = 0.4f))
                 ModelRow(
                     label = target.label,
@@ -253,6 +280,16 @@ internal fun MlModelManagerPanel(modifier: Modifier = Modifier) {
                                 }
                         }
                     },
+                )
+            }
+            TextButton(
+                onClick = { showAllTranslations = !showAllTranslations },
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Text(
+                    if (showAllTranslations) stringResource(R.string.ml_models_translation_show_fewer)
+                    else stringResource(R.string.ml_models_translation_show_all, translationLanguages.size),
+                    color = Primary,
                 )
             }
         }

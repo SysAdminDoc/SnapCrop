@@ -8,6 +8,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import com.google.mlkit.nl.translate.TranslateLanguage
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldState
@@ -38,6 +42,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Crop
@@ -272,7 +277,10 @@ fun CropEditorScreen(
     var ocrScanCompleted by remember(bitmap) {
         mutableStateOf(initialOcrReviewed || initialOcrBlocks.isNotEmpty())
     }
-    var translateTarget by remember { mutableStateOf(TextTranslator.defaultTarget) }
+    var translateTarget by remember {
+        mutableStateOf(TextTranslator.targetFor(drawPrefs.getString(TextTranslator.PREF_TARGET, null)))
+    }
+    var showLanguagePicker by remember { mutableStateOf(false) }
     var translation by remember { mutableStateOf<TextTranslation?>(null) }
     var translationError by remember { mutableStateOf<String?>(null) }
     var translationStatus by remember { mutableStateOf<String?>(null) }
@@ -371,6 +379,13 @@ fun CropEditorScreen(
                 translating = false
             }
         }
+    }
+
+    fun chooseTranslateTarget(target: TranslationTarget) {
+        translateTarget = target
+        translation = null
+        translationError = null
+        drawPrefs.edit().putString(TextTranslator.PREF_TARGET, target.language).apply()
     }
 
     fun captureSnapshot() = EditorSnapshot(
@@ -4158,14 +4173,13 @@ fun CropEditorScreen(
                             modifier = Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            TextTranslator.targetLanguages.forEach { target ->
+                            // A language picked from the full list stays up front as its own chip.
+                            val quick = TextTranslator.quickTargets
+                            val chips = if (quick.any { it.language == translateTarget.language }) quick else listOf(translateTarget) + quick
+                            chips.forEach { target ->
                                 FilterChip(
-                                    selected = translateTarget == target,
-                                    onClick = {
-                                        translateTarget = target
-                                        translation = null
-                                        translationError = null
-                                    },
+                                    selected = translateTarget.language == target.language,
+                                    onClick = { chooseTranslateTarget(target) },
                                     label = { Text(target.label, fontSize = 11.sp) },
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = PrimaryContainer,
@@ -4176,6 +4190,17 @@ fun CropEditorScreen(
                                     shape = RoundedCornerShape(8.dp)
                                 )
                             }
+                            AssistChip(
+                                onClick = { showLanguagePicker = true },
+                                label = { Text(stringResource(R.string.ocr_more_languages, TextTranslator.targetLanguages.size), fontSize = 11.sp) },
+                                leadingIcon = { Icon(Icons.Default.Language, null, modifier = Modifier.size(16.dp)) },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = SurfaceVariant,
+                                    labelColor = Primary,
+                                    leadingIconContentColor = Primary
+                                ),
+                                shape = RoundedCornerShape(8.dp)
+                            )
                         }
                     }
 
@@ -4263,6 +4288,55 @@ fun CropEditorScreen(
             },
             containerColor = SurfaceVariant
         )
+
+        if (showLanguagePicker) {
+            // Marks the models already on the phone; without Play services the list still works, just unmarked.
+            var onDevice by remember { mutableStateOf(setOf(TranslateLanguage.ENGLISH)) }
+            LaunchedEffect(Unit) {
+                runCatching { TranslationModelManager.installedLanguages() }.onSuccess { onDevice = it }
+            }
+            AlertDialog(
+                onDismissRequest = { showLanguagePicker = false },
+                title = { Text(stringResource(R.string.ocr_target_language), color = OnSurface) },
+                text = {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                        items(TextTranslator.targetLanguages, key = { it.language }) { target ->
+                            val selected = target.language == translateTarget.language
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp)
+                                    .selectable(selected = selected, role = Role.RadioButton) {
+                                        chooseTranslateTarget(target)
+                                        showLanguagePicker = false
+                                    }
+                                    .padding(horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    target.label,
+                                    color = if (selected) Primary else OnSurface,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (target.language in onDevice) {
+                                    Text(stringResource(R.string.ocr_language_on_device), color = OnSurfaceVariant, fontSize = 11.sp)
+                                }
+                                if (selected) {
+                                    Icon(Icons.Default.Check, null, tint = Primary, modifier = Modifier.padding(start = 8.dp).size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showLanguagePicker = false }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
+                },
+                containerColor = SurfaceVariant
+            )
+        }
     }
 
     externalActionFallback?.let { fallback ->

@@ -63,6 +63,7 @@ internal object SettingsPreferenceSchema {
         string("batch_rename_profile"),
         string(ImageRedactor.PREF_REDACTION_STYLE),
         string(OcrScript.PREF_KEY),
+        string(TextTranslator.PREF_TARGET),
         string(UserAppProfileStore.PREF_KEY),
         string(CustomRedactionPatternStore.PREF_KEY),
         string(ScreenshotService.PREF_LAST_ACTION),

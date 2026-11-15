@@ -609,6 +609,8 @@
     <string name="ml_model_remove">Remove</string>
     <string name="ml_model_ocr_size">About 4 MB when installed; exact transfer size is shown while downloading.</string>
     <string name="ml_model_translation_size">Approximately 30 MB installed</string>
+    <string name="ml_models_translation_show_all">Show all %1$d languages</string>
+    <string name="ml_models_translation_show_fewer">Show fewer languages</string>
     <string name="ml_model_shared_storage">OCR removal is a best-effort release request because Play services can share modules with other apps.</string>
     <string name="ml_model_action_failed">%1$s. Retry on Wi-Fi after checking storage and Google Play services.</string>
     <string name="settings_search_summary_appearance">Theme and visual privacy defaults</string>
@@ -1146,6 +1148,8 @@
     <string name="ocr_select_hint">Long-press a word to select it. Copy and Translate then use only your selection.</string>
     <string name="ocr_selection_uses">Copy and Translate use “%1$s”</string>
     <string name="ocr_copied_selection">Copied selection</string>
+    <string name="ocr_more_languages">All %1$d languages</string>
+    <string name="ocr_language_on_device">On device</string>
     <string name="ocr_review">Review</string>
     <string name="ocr_review_title">Review recognized text</string>
     <string name="ocr_review_help">Correct individual blocks, delete unwanted text, or select two or more blocks to merge them in reading order. Image pixels are never changed.</string>
