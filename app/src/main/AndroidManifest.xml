@@ -44,6 +44,8 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
+        <!-- Google Lens handoff for the editor's Search image action. -->
+        <package android:name="com.google.android.googlequicksearchbox" />
     </queries>
 
     <application

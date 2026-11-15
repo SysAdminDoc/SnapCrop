@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.ImageSearch
 import androidx.compose.material.icons.filled.PhotoSizeSelectLarge
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Redo
@@ -143,6 +144,8 @@ fun CropEditorScreen(
     onRotate: () -> Unit,
     onFlipH: () -> Unit,
     onFlipV: () -> Unit,
+    reverseSearchEngines: List<ReverseSearchEngine> = emptyList(),
+    onReverseSearch: (ReverseSearchEngine, Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit = { _, _, _, _, _, _ -> },
     onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
     onOcrChanged: (List<TextBlock>) -> Unit = {},
     onOcrReviewedChanged: (Boolean) -> Unit = {},
@@ -197,6 +200,7 @@ fun CropEditorScreen(
     var selectedCutBand by remember { mutableIntStateOf(-1) }
     var showHelp by remember { mutableStateOf(false) }
     var showEditorMenu by remember { mutableStateOf(false) }
+    var showReverseSearch by remember { mutableStateOf(false) }
     if (showHelp) {
         LocalHelpDialog(
             onOpenRoute = { route ->
@@ -1776,6 +1780,13 @@ fun CropEditorScreen(
                             onClick = { onFlipV(); showEditorMenu = false },
                             leadingIcon = { Icon(Icons.Default.Flip, null, modifier = Modifier.graphicsLayer(rotationZ = 90f)) }
                         )
+                        if (reverseSearchEngines.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.editor_search_image)) },
+                                onClick = { showReverseSearch = true; showEditorMenu = false },
+                                leadingIcon = { Icon(Icons.Default.ImageSearch, null) }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.help_content_description)) },
                             onClick = { showHelp = true; showEditorMenu = false },
@@ -4289,6 +4300,20 @@ fun CropEditorScreen(
                 containerColor = SurfaceVariant
             )
         }
+    }
+
+    if (showReverseSearch) {
+        ReverseSearchDialog(
+            engines = reverseSearchEngines,
+            onPick = { engine ->
+                showReverseSearch = false
+                onReverseSearch(
+                    engine, currentCropRect(), redactions.map { it.copy() }, drawPaths.toList(),
+                    exportAdjustments(), CutoutEditState(cutBands, cutSeparatorStyle)
+                )
+            },
+            onDismiss = { showReverseSearch = false },
+        )
     }
 
     externalActionFallback?.let { fallback ->

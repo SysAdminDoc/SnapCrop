@@ -368,6 +368,10 @@ class CropActivity : ComponentActivity() {
                             onRotate = { rotateBitmap() },
                             onFlipH = { flipBitmap(horizontal = true) },
                             onFlipV = { flipBitmap(horizontal = false) },
+                            reverseSearchEngines = remember { ReverseImageSearch.availableEngines(googleLensAvailable()) },
+                            onReverseSearch = { engine, rect, redactions, draw, adj, cutout ->
+                                reverseSearch(engine, bmp, rect, redactions, draw, adj, cutout)
+                            },
                             onOcrIndexed = { text, codes ->
                                 val uri = sourceUri
                                 val indexEnabled = getSharedPreferences("snapcrop", MODE_PRIVATE)
@@ -1356,6 +1360,85 @@ class CropActivity : ComponentActivity() {
                 cropped?.let { if (!it.isRecycled) it.recycle() }
                 withContext(Dispatchers.Main) {
                     if (pendingMutationPurpose == null) isSaving.value = false
+                }
+            }
+        }
+    }
+
+    private fun googleLensAvailable(): Boolean = runCatching {
+        packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_SEND).setType("image/jpeg").setPackage(ReverseImageSearch.GOOGLE_APP_PACKAGE),
+            0,
+        ).isNotEmpty()
+    }.getOrDefault(false)
+
+    /** Searches the edited image (crop, redactions and all) on [engine] (issue #4). */
+    private fun reverseSearch(
+        engine: ReverseSearchEngine,
+        bitmap: Bitmap,
+        rect: Rect,
+        redactions: List<RedactionRegion>,
+        drawPaths: List<DrawPath>,
+        adj: FloatArray,
+        cutout: CutoutEditState,
+    ) {
+        val engineName = getString(engine.labelRes)
+        if (engine != ReverseSearchEngine.GOOGLE_LENS) {
+            Toast.makeText(this, getString(R.string.reverse_search_working, engineName), Toast.LENGTH_SHORT).show()
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val jpeg = try {
+                val rendered = CropImageRenderer.render(bitmap, rect, redactions, drawPaths, adj, cutout)
+                try {
+                    ReverseImageSearch.encodeForSearch(rendered)
+                } finally {
+                    rendered.recycle()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@CropActivity, R.string.reverse_search_failed_image, Toast.LENGTH_LONG).show()
+                }
+                return@launch
+            }
+            if (engine == ReverseSearchEngine.GOOGLE_LENS) {
+                var outcome = ExternalLaunchOutcome.FAILED
+                CropCacheArtifactPublisher.publish(
+                    file = File(File(cacheDir, CacheCleanupPolicy.SHARED_CROPS_DIRECTORY), ReverseImageSearch.CACHE_FILE_NAME),
+                    writer = { target -> target.writeBytes(jpeg); true },
+                    dispatcher = { target ->
+                        val uri = FileProvider.getUriForFile(this@CropActivity, "${packageName}.fileprovider", target)
+                        withContext(Dispatchers.Main) {
+                            outcome = ExternalIntentLauncher(this@CropActivity).launch(ReverseImageSearch.googleLensIntent(uri))
+                        }
+                    },
+                )
+                if (outcome != ExternalLaunchOutcome.LAUNCHED) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@CropActivity, R.string.reverse_search_failed_lens, Toast.LENGTH_LONG).show()
+                    }
+                }
+                return@launch
+            }
+            val outcome = ReverseImageSearch.upload(engine, jpeg)
+            withContext(Dispatchers.Main) {
+                when (outcome) {
+                    is ReverseSearchOutcome.Results -> {
+                        val launched = ExternalIntentLauncher(this@CropActivity).launchUrl(outcome.url)
+                        if (launched != ExternalLaunchOutcome.LAUNCHED) {
+                            val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                            cm.setPrimaryClip(ClipData.newPlainText(engineName, outcome.url))
+                            Toast.makeText(this@CropActivity, R.string.reverse_search_no_browser, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    is ReverseSearchOutcome.Failed -> {
+                        val message = when (outcome.reason) {
+                            ReverseSearchOutcome.Reason.NETWORK -> R.string.reverse_search_failed_network
+                            ReverseSearchOutcome.Reason.NO_RESULTS_PAGE -> R.string.reverse_search_failed_results
+                        }
+                        Toast.makeText(this@CropActivity, getString(message, engineName), Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }

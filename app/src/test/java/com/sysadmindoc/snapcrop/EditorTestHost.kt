@@ -16,6 +16,8 @@ internal fun ComposeContentTestRule.hostEditor(
     initialOcrBlocks: List<TextBlock> = emptyList(),
     onRotate: () -> Unit = {},
     onRootView: (android.view.View) -> Unit = {},
+    reverseSearchEngines: List<ReverseSearchEngine> = emptyList(),
+    onReverseSearch: (ReverseSearchEngine, Rect) -> Unit = { _, _ -> },
 ) {
     setContent {
         onRootView(LocalView.current)
@@ -38,6 +40,8 @@ internal fun ComposeContentTestRule.hostEditor(
                 onRotate = onRotate,
                 onFlipH = {},
                 onFlipV = {},
+                reverseSearchEngines = reverseSearchEngines,
+                onReverseSearch = { engine, rect, _, _, _, _ -> onReverseSearch(engine, rect) },
                 replaceOriginalOnSave = false,
             )
         }
