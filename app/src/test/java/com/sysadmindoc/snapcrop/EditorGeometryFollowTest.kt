@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -79,6 +80,33 @@ class EditorGeometryFollowTest {
             assertEquals(Rect(0, 0, 800, 400), state.crop)
             assertEquals(Rect(160, 100, 200, 380), state.redactions.single().bounds)
             assertEquals(listOf(PointF(790f, 390f), PointF(750f, 300f)), state.draws.single().points)
+        }
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w420dp-h900dp-mdpi")
+    fun cutBandsAddedAfterARotateReachTheDraft() {
+        val shown = mutableStateOf(whiteTestBitmap(400, 800))
+        val crop = mutableStateOf(Rect(0, 0, 400, 800))
+        var draft: (() -> EditorDraft)? = null
+        compose.hostEditor(
+            shownBitmap = shown,
+            cropRect = crop,
+            onRotate = { mapped ->
+                shown.value = transformed(shown.value, Matrix().apply { postRotate(90f) })
+                crop.value = mapped
+            },
+            registerStateProvider = { draft = it },
+        )
+
+        compose.onNode(hasContentDescription("Rotate") and hasClickAction()).performClick()
+        compose.onAllNodes(hasText("Cut Out") and hasClickAction()).onFirst().performClick()
+        compose.onNode(hasText("Add horizontal") and hasClickAction()).performClick()
+
+        compose.runOnIdle {
+            val band = draft!!().cutout.bands.single()
+            assertEquals(CutAxis.HORIZONTAL, band.axis)
+            assertEquals(true, band.endExclusive <= 400)
         }
     }
 

@@ -196,8 +196,9 @@ fun CropEditorScreen(
 
     // Edit modes
     var editMode by remember { mutableStateOf(EditMode.CROP) }
-    var cutBands by remember(bitmap) { mutableStateOf(initialCutout.bands) }
-    var cutSeparatorStyle by remember(bitmap) { mutableStateOf(initialCutout.separatorStyle) }
+    // Re-seeded from the host when the bitmap changes (see the LaunchedEffect after the OCR state).
+    var cutBands by remember { mutableStateOf(initialCutout.bands) }
+    var cutSeparatorStyle by remember { mutableStateOf(initialCutout.separatorStyle) }
     var selectedCutBand by remember { mutableIntStateOf(-1) }
     var showHelp by remember { mutableStateOf(false) }
     var showEditorMenu by remember { mutableStateOf(false) }
@@ -273,7 +274,7 @@ fun CropEditorScreen(
 
     var showPalette by remember { mutableStateOf(false) }
     var showResizeDialog by remember { mutableStateOf(false) }
-    var ocrBlocks by remember(bitmap) { mutableStateOf(initialOcrBlocks.map(TextBlock::deepCopy)) }
+    var ocrBlocks by remember { mutableStateOf(initialOcrBlocks.map(TextBlock::deepCopy)) }
     var ocrLoading by remember { mutableStateOf(false) }
     var scannedCodes by remember { mutableStateOf<List<ScannedCode>>(emptyList()) }
     var selectedOcrText by remember { mutableStateOf<String?>(null) }
@@ -281,8 +282,17 @@ fun CropEditorScreen(
     var showOcrReview by remember { mutableStateOf(false) }
     val selectedOcrBlocks = remember { mutableStateListOf<Int>() }
     val ocrDraftTexts = remember { mutableStateMapOf<Int, String>() }
-    var ocrScanCompleted by remember(bitmap) {
+    var ocrScanCompleted by remember {
         mutableStateOf(initialOcrReviewed || initialOcrBlocks.isNotEmpty())
+    }
+    // A turn, mirror, resize or background removal swaps the bitmap, and the host resets the scan
+    // and cut bands with it. The holders above stay the same objects across the swap because the
+    // draft provider, registered once, keeps reading them; keyed holders left it reading the old ones.
+    LaunchedEffect(bitmap) {
+        cutBands = initialCutout.bands
+        cutSeparatorStyle = initialCutout.separatorStyle
+        ocrBlocks = initialOcrBlocks.map(TextBlock::deepCopy)
+        ocrScanCompleted = initialOcrReviewed || initialOcrBlocks.isNotEmpty()
     }
     var translateTarget by remember {
         mutableStateOf(TextTranslator.targetFor(drawPrefs.getString(TextTranslator.PREF_TARGET, null)))
