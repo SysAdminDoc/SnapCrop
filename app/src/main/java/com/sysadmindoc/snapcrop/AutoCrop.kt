@@ -141,10 +141,23 @@ object AutoCrop {
         // Use the most common corner color as reference border color
         val borderColor = corners.groupBy { it }.maxByOrNull { it.value.size }?.key ?: corners[0]
 
-        val top = findTopEdge(bitmap, w, scanTop, scanBottom, borderColor)
-        val bottom = findBottomEdge(bitmap, w, scanTop, scanBottom, borderColor)
-        val left = findLeftEdge(bitmap, w, top, bottom, borderColor)
-        val right = findRightEdge(bitmap, w, top, bottom, borderColor)
+        // The scans call a line border when 85% of its samples match, so the sparse first and last
+        // lines of real content (the tops of letters, a thin rule) pass as border and get cut off.
+        // Each edge walks back out past any line that still holds a non-border pixel.
+        val rowLimit = max(8, (scanBottom - scanTop) / 25)
+        val top = growEdge(findTopEdge(bitmap, w, scanTop, scanBottom, borderColor), -1, scanTop, rowLimit) {
+            rowHasInk(bitmap, it, w, borderColor)
+        }
+        val bottom = growEdge(findBottomEdge(bitmap, w, scanTop, scanBottom, borderColor), 1, scanBottom, rowLimit) {
+            rowHasInk(bitmap, it, w, borderColor)
+        }
+        val columnLimit = max(8, w / 25)
+        val left = growEdge(findLeftEdge(bitmap, w, top, bottom, borderColor), -1, 0, columnLimit) {
+            columnHasInk(bitmap, it, top, bottom, borderColor)
+        }
+        val right = growEdge(findRightEdge(bitmap, w, top, bottom, borderColor), 1, w, columnLimit) {
+            columnHasInk(bitmap, it, top, bottom, borderColor)
+        }
 
         val cropLeft = max(0, left - PADDING)
         val cropTop = max(scanTop, top - PADDING)
@@ -262,6 +275,46 @@ object AutoCrop {
             }
         }
         return w
+    }
+
+    /**
+     * Moves [edge] outward by [direction] (-1 toward 0, +1 toward [bound]) to take in content lines
+     * just outside it, stepping over clean gaps shorter than a quarter of [limit] (the dot over an
+     * "i", an underline). It stops at the first clean run that long. A margin that never shows one
+     * within [limit] lines is grain or noise rather than the edge of the content, so the edge stays.
+     * Top and left edges are inclusive and bottom and right exclusive, so the next line out is
+     * edge - 1 going toward 0 and edge itself going toward [bound].
+     */
+    private inline fun growEdge(edge: Int, direction: Int, bound: Int, limit: Int, hasInk: (Int) -> Boolean): Int {
+        val gap = max(4, limit / 4)
+        var at = edge
+        var grown = edge
+        var clean = 0
+        repeat(limit) {
+            val line = if (direction < 0) at - 1 else at
+            if (if (direction < 0) line < bound else line >= bound) return grown
+            at += direction
+            if (hasInk(line)) {
+                grown = at
+                clean = 0
+            } else if (++clean >= gap) {
+                return grown
+            }
+        }
+        return edge
+    }
+
+    private fun rowHasInk(bitmap: Bitmap, y: Int, w: Int, borderColor: Int): Boolean {
+        val row = IntArray(w)
+        bitmap.getPixels(row, 0, w, 0, y, w, 1)
+        return row.any { !colorsMatch(it, borderColor) }
+    }
+
+    private fun columnHasInk(bitmap: Bitmap, x: Int, top: Int, bottom: Int, borderColor: Int): Boolean {
+        if (bottom <= top) return false
+        val column = IntArray(bottom - top)
+        bitmap.getPixels(column, 0, 1, x, top, 1, bottom - top)
+        return column.any { !colorsMatch(it, borderColor) }
     }
 
     private fun isRowUniform(bitmap: Bitmap, y: Int, w: Int): Boolean {
