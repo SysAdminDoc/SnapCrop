@@ -16,7 +16,7 @@ class CropImageRendererRoutingTest {
         assertTrue(renderer.contains("fun render("))
         assertTrue(renderer.contains("private fun applyRedactions("))
         assertTrue(renderer.contains("private fun applyDraw("))
-        assertTrue(renderer.contains("private fun applyAdjustments("))
+        assertTrue(renderer.contains("internal fun applyAdjustments("))
         assertTrue(renderer.contains("private fun applyGradientBackground("))
         assertTrue(renderer.contains("val rendered = applyRedactions(drawn, redactions)"))
         assertTrue(preview.contains("fun renderEditorPreviewBitmap("))
