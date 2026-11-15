@@ -2709,6 +2709,8 @@ fun CropEditorScreen(
                     onDismiss = { previewMode = false }
                 )
             } else {
+                // DrawScope isn't composable, so the draw lambda reads the palette captured here.
+                val palette = LocalSnapCropColors.current
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
@@ -3141,8 +3143,8 @@ fun CropEditorScreen(
                             drawW,
                             drawH,
                             scale,
-                            Primary,
-                            Tertiary,
+                            palette.primary,
+                            palette.tertiary,
                         )
                     }
 
@@ -3170,14 +3172,14 @@ fun CropEditorScreen(
                         drawPath(quadPath, Color.Black.copy(alpha = 0.5f), blendMode = androidx.compose.ui.graphics.BlendMode.DstOut)
 
                         // Quad outline
-                        drawLine(CropBorder, pTL, pTR, 2.dp.toPx())
-                        drawLine(CropBorder, pTR, pBR, 2.dp.toPx())
-                        drawLine(CropBorder, pBR, pBL, 2.dp.toPx())
-                        drawLine(CropBorder, pBL, pTL, 2.dp.toPx())
+                        drawLine(palette.cropBorder, pTL, pTR, 2.dp.toPx())
+                        drawLine(palette.cropBorder, pTR, pBR, 2.dp.toPx())
+                        drawLine(palette.cropBorder, pBR, pBL, 2.dp.toPx())
+                        drawLine(palette.cropBorder, pBL, pTL, 2.dp.toPx())
 
                         // Grid lines inside quad (interpolated thirds)
                         if (gridMode < 2) {
-                            val gridColor = CropBorder.copy(alpha = 0.3f)
+                            val gridColor = palette.cropBorder.copy(alpha = 0.3f)
                             for (i in 1..2) {
                                 val t = i / 3f
                                 val lineStart = Offset(pTL.x + (pBL.x - pTL.x) * t, pTL.y + (pBL.y - pTL.y) * t)
@@ -3190,10 +3192,10 @@ fun CropEditorScreen(
                         }
 
                         // Corner handles
-                        drawCircle(CropHandle, handleRadius, pTL)
-                        drawCircle(CropHandle, handleRadius, pTR)
-                        drawCircle(CropHandle, handleRadius, pBR)
-                        drawCircle(CropHandle, handleRadius, pBL)
+                        drawCircle(palette.cropHandle, handleRadius, pTL)
+                        drawCircle(palette.cropHandle, handleRadius, pTR)
+                        drawCircle(palette.cropHandle, handleRadius, pBR)
+                        drawCircle(palette.cropHandle, handleRadius, pBL)
                     } else {
                     // Dim overlay
                     drawRect(DimOverlay, Offset(ox, oy), Size(drawW, st - oy))
@@ -3201,11 +3203,11 @@ fun CropEditorScreen(
                     drawRect(DimOverlay, Offset(ox, st), Size(sl - ox, sb - st))
                     drawRect(DimOverlay, Offset(sr, st), Size(ox + drawW - sr, sb - st))
 
-                    drawRect(CropBorder, Offset(sl, st), Size(sr - sl, sb - st), style = Stroke(2.dp.toPx()))
+                    drawRect(palette.cropBorder, Offset(sl, st), Size(sr - sl, sb - st), style = Stroke(2.dp.toPx()))
 
                     // Snap guide lines (show when crop edge aligns with a guide)
                     if (activeHandle != DragHandle.NONE && activeHandle != DragHandle.CENTER && selectedRatio.ratio == null) {
-                        val snapGuideColor = Primary.copy(alpha = 0.35f)
+                        val snapGuideColor = palette.primary.copy(alpha = 0.35f)
                         val xGuides = listOf(0, bitmap.width / 4, bitmap.width / 3, bitmap.width / 2,
                             bitmap.width * 2 / 3, bitmap.width * 3 / 4, bitmap.width)
                         val yGuides = listOf(0, bitmap.height / 4, bitmap.height / 3, bitmap.height / 2,
@@ -3227,7 +3229,7 @@ fun CropEditorScreen(
                     }
 
                     // Grid overlay (tap crop border text to cycle: thirds → golden → off)
-                    val gridColor = CropBorder.copy(alpha = 0.3f)
+                    val gridColor = palette.cropBorder.copy(alpha = 0.3f)
                     val cw = sr - sl; val ch = sb - st
                     when (gridMode) {
                         0 -> { // Rule of thirds
@@ -3250,17 +3252,17 @@ fun CropEditorScreen(
                     }
 
                     // Corner handles
-                    drawCornerHandle(sl, st, handleRadius, false, false)
-                    drawCornerHandle(sr, st, handleRadius, true, false)
-                    drawCornerHandle(sl, sb, handleRadius, false, true)
-                    drawCornerHandle(sr, sb, handleRadius, true, true)
+                    drawCornerHandle(sl, st, handleRadius, false, false, palette.cropHandle)
+                    drawCornerHandle(sr, st, handleRadius, true, false, palette.cropHandle)
+                    drawCornerHandle(sl, sb, handleRadius, false, true, palette.cropHandle)
+                    drawCornerHandle(sr, sb, handleRadius, true, true, palette.cropHandle)
 
                     // Edge midpoint dots
                     val midR = handleRadius * 0.5f
-                    drawCircle(CropHandle, midR, Offset((sl + sr) / 2, st))
-                    drawCircle(CropHandle, midR, Offset((sl + sr) / 2, sb))
-                    drawCircle(CropHandle, midR, Offset(sl, (st + sb) / 2))
-                    drawCircle(CropHandle, midR, Offset(sr, (st + sb) / 2))
+                    drawCircle(palette.cropHandle, midR, Offset((sl + sr) / 2, st))
+                    drawCircle(palette.cropHandle, midR, Offset((sl + sr) / 2, sb))
+                    drawCircle(palette.cropHandle, midR, Offset(sl, (st + sb) / 2))
+                    drawCircle(palette.cropHandle, midR, Offset(sr, (st + sb) / 2))
 
                     // Shape crop preview overlay
                     if (selectedRatio == AspectRatio.CIRCLE) {
@@ -3271,14 +3273,14 @@ fun CropEditorScreen(
                             val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
                             if (gradBrush != null) drawCircle(brush = gradBrush, radius = radius, center = Offset(cx, cy), alpha = 0.4f)
                         }
-                        drawCircle(CropBorder.copy(alpha = 0.5f), radius, Offset(cx, cy), style = Stroke(2.dp.toPx()))
+                        drawCircle(palette.cropBorder.copy(alpha = 0.5f), radius, Offset(cx, cy), style = Stroke(2.dp.toPx()))
                     } else if (selectedRatio == AspectRatio.ROUNDED) {
                         if (gradientBg > 0) {
                             val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
                             if (gradBrush != null) drawRoundRect(brush = gradBrush, topLeft = Offset(sl, st), size = Size(sr - sl, sb - st),
                                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), alpha = 0.4f)
                         }
-                        drawRoundRect(CropBorder.copy(alpha = 0.5f), Offset(sl, st), Size(sr - sl, sb - st),
+                        drawRoundRect(palette.cropBorder.copy(alpha = 0.5f), Offset(sl, st), Size(sr - sl, sb - st),
                             cornerRadius = androidx.compose.ui.geometry.CornerRadius(24.dp.toPx()), style = Stroke(2.dp.toPx()))
                     } else if (selectedRatio in listOf(AspectRatio.STAR, AspectRatio.HEART, AspectRatio.TRIANGLE, AspectRatio.HEXAGON, AspectRatio.DIAMOND)) {
                         val shapeSize = minOf(sr - sl, sb - st)
@@ -3330,7 +3332,7 @@ fun CropEditorScreen(
                             val gradBrush = getGradientBrush(gradientBg, sl, st, sr, sb)
                             if (gradBrush != null) drawPath(shapePath, brush = gradBrush, alpha = 0.4f)
                         }
-                        drawPath(shapePath, CropBorder.copy(alpha = 0.5f), style = Stroke(2.dp.toPx()))
+                        drawPath(shapePath, palette.cropBorder.copy(alpha = 0.5f), style = Stroke(2.dp.toPx()))
                     }
                     } // end else (non-perspective)
 
@@ -3342,10 +3344,10 @@ fun CropEditorScreen(
                         val px2 = ox + pr.right * scale; val py2 = oy + pr.bottom * scale
                         val fill = when (region.style) {
                             RedactionStyle.SOLID -> Color.Black.copy(alpha = if (region.enabled) 1f else 0.12f)
-                            RedactionStyle.PIXELATE -> Tertiary.copy(alpha = if (region.enabled) 0.42f else 0.10f)
+                            RedactionStyle.PIXELATE -> palette.tertiary.copy(alpha = if (region.enabled) 0.42f else 0.10f)
                             RedactionStyle.BLUR -> Color.White.copy(alpha = if (region.enabled) 0.28f else 0.08f)
                         }
-                        val border = if (index == selectedRedactionIndex) Secondary else Tertiary
+                        val border = if (index == selectedRedactionIndex) palette.secondary else palette.tertiary
                         drawRect(fill, Offset(px1, py1), Size(px2 - px1, py2 - py1))
                         drawRect(
                             border.copy(alpha = if (region.enabled) 0.9f else 0.45f),
@@ -3713,13 +3715,13 @@ fun CropEditorScreen(
                         val ds = pixDragStart!!; val dc = pixDragCurrent!!
                         val rx = minOf(ds.x, dc.x); val ry = minOf(ds.y, dc.y)
                         val rw = kotlin.math.abs(dc.x - ds.x); val rh = kotlin.math.abs(dc.y - ds.y)
-                        drawRect(Tertiary.copy(alpha = 0.25f), Offset(rx, ry), Size(rw, rh))
-                        drawRect(Tertiary, Offset(rx, ry), Size(rw, rh), style = Stroke(2.dp.toPx()))
+                        drawRect(palette.tertiary.copy(alpha = 0.25f), Offset(rx, ry), Size(rw, rh))
+                        drawRect(palette.tertiary, Offset(rx, ry), Size(rw, rh), style = Stroke(2.dp.toPx()))
                     }
 
                     // OCR text block + barcode overlays
                     if (editMode == EditMode.OCR) {
-                        val ocrColor = OcrAccent
+                        val ocrColor = palette.ocrAccent
                         for (block in ocrBlocks) {
                             val bl = ox + block.bounds.left * scale
                             val bt = oy + block.bounds.top * scale
@@ -3729,7 +3731,7 @@ fun CropEditorScreen(
                             drawRect(ocrColor.copy(alpha = 0.6f), Offset(bl, bt), Size(bw, bh), style = Stroke(1.5f.dp.toPx()))
                         }
                         // Barcodes in green
-                        val codeColor = Secondary
+                        val codeColor = palette.secondary
                         for (code in scannedCodes) {
                             val cl = ox + code.bounds.left * scale
                             val ct = oy + code.bounds.top * scale

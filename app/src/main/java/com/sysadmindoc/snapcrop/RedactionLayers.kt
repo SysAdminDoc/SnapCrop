@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -277,6 +278,8 @@ private fun redactionStyleLabel(style: RedactionStyle): String = stringResource(
     RedactionStyle.BLUR -> R.string.redaction_style_blur_short
 })
 
+@Composable
+@ReadOnlyComposable
 private fun redactionStyleColor(style: RedactionStyle): Color = when (style) {
     RedactionStyle.SOLID -> Color.Black
     RedactionStyle.PIXELATE -> Tertiary

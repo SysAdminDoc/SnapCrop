@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.sysadmindoc.snapcrop.ui.theme.Black
+import com.sysadmindoc.snapcrop.ui.theme.LocalSnapCropColors
 import com.sysadmindoc.snapcrop.ui.theme.MediaSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurface
 import com.sysadmindoc.snapcrop.ui.theme.OnSurfaceVariant
@@ -765,6 +766,7 @@ private fun ComparePreview(
     val regionState = stringResource(R.string.compare_region_state, ready.analysis.totalRegionCount)
     val moveDividerLeft = stringResource(R.string.compare_divider_left)
     val moveDividerRight = stringResource(R.string.compare_divider_right)
+    val palette = LocalSnapCropColors.current
     Canvas(
         modifier
             .padding(vertical = 6.dp)
@@ -862,7 +864,7 @@ private fun ComparePreview(
                 clipRect(left = contentLeft, top = contentTop, right = dividerX, bottom = contentTop + contentHeight) {
                     drawBefore()
                 }
-                drawLine(Primary, Offset(dividerX, contentTop), Offset(dividerX, contentTop + contentHeight), 3.dp.toPx())
+                drawLine(palette.primary, Offset(dividerX, contentTop), Offset(dividerX, contentTop + contentHeight), 3.dp.toPx())
             }
             CompareMode.OVERLAY -> {
                 drawBefore()
@@ -881,7 +883,7 @@ private fun ComparePreview(
                     val regionScaleX = contentWidth / ready.analysis.width
                     val regionScaleY = contentHeight / ready.analysis.height
                     drawRect(
-                        color = if (index == selectedRegion) Primary else Tertiary,
+                        color = if (index == selectedRegion) palette.primary else palette.tertiary,
                         topLeft = Offset(
                             contentLeft + region.left * regionScaleX,
                             contentTop + region.top * regionScaleY,

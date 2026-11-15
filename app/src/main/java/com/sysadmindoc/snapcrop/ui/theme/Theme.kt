@@ -1,6 +1,7 @@
 package com.sysadmindoc.snapcrop.ui.theme
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -8,8 +9,15 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -48,10 +56,19 @@ fun SnapCropTheme(
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val themePref = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
-        .getString("theme", "dark") ?: "dark"
+    val prefs = remember(context) { context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE) }
+    var themePref by remember(prefs) { mutableStateOf(prefs.getString(THEME_PREF_KEY, "dark")) }
+    // Settings writes the preference, and every open screen re-themes from it.
+    DisposableEffect(prefs) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { changed, key ->
+            // A null key is clear() on API 30+, which also drops the theme back to its default.
+            if (key == null || key == THEME_PREF_KEY) themePref = changed.getString(THEME_PREF_KEY, "dark")
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
     val dark = darkOverride ?: resolveDarkTheme(themePref, isSystemInDarkTheme())
-    isDarkTheme = dark
+    val colors = snapCropColors(dark)
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -63,67 +80,72 @@ fun SnapCropTheme(
         }
     }
 
-    val colorScheme = if (dark) {
+    CompositionLocalProvider(LocalSnapCropColors provides colors) {
+        MaterialTheme(
+            colorScheme = materialColorScheme(colors),
+            typography = SnapCropTypography,
+            shapes = SnapCropShapes,
+            content = content
+        )
+    }
+}
+
+private const val THEME_PREF_KEY = "theme"
+
+private fun materialColorScheme(colors: SnapCropColors): ColorScheme =
+    if (colors.isDark) {
         darkColorScheme(
-            primary = Primary,
-            onPrimary = OnPrimary,
-            primaryContainer = PrimaryContainer,
-            onPrimaryContainer = OnSurface,
-            secondary = Secondary,
-            onSecondary = OnPrimary,
-            tertiary = Tertiary,
-            onTertiary = OnPrimary,
-            background = Black,
-            surface = Surface,
-            surfaceVariant = SurfaceVariant,
-            surfaceContainerLow = Surface,
-            surfaceContainer = SurfaceContainer,
-            surfaceContainerHigh = SurfaceElevated,
-            surfaceContainerHighest = SurfaceElevated,
+            primary = colors.primary,
+            onPrimary = colors.onPrimary,
+            primaryContainer = colors.primaryContainer,
+            onPrimaryContainer = colors.onSurface,
+            secondary = colors.secondary,
+            onSecondary = colors.onPrimary,
+            tertiary = colors.tertiary,
+            onTertiary = colors.onPrimary,
+            background = colors.black,
+            surface = colors.surface,
+            surfaceVariant = colors.surfaceVariant,
+            surfaceContainerLow = colors.surface,
+            surfaceContainer = colors.surfaceContainer,
+            surfaceContainerHigh = colors.surfaceElevated,
+            surfaceContainerHighest = colors.surfaceElevated,
             surfaceTint = Color.Transparent,
-            onBackground = OnSurface,
-            onSurface = OnSurface,
-            onSurfaceVariant = OnSurfaceVariant,
-            outline = Outline,
-            outlineVariant = Outline.copy(alpha = 0.72f),
-            error = Danger,
-            onError = OnPrimary,
+            onBackground = colors.onSurface,
+            onSurface = colors.onSurface,
+            onSurfaceVariant = colors.onSurfaceVariant,
+            outline = colors.outline,
+            outlineVariant = colors.outline.copy(alpha = 0.72f),
+            error = colors.danger,
+            onError = colors.onPrimary,
         )
     } else {
         lightColorScheme(
-            primary = Primary,
-            onPrimary = OnPrimary,
-            primaryContainer = PrimaryContainer,
-            onPrimaryContainer = OnSurface,
-            secondary = Secondary,
-            onSecondary = OnPrimary,
-            tertiary = Tertiary,
-            onTertiary = OnPrimary,
-            background = Black,
-            surface = Surface,
-            surfaceVariant = SurfaceVariant,
-            surfaceContainerLow = Surface,
-            surfaceContainer = SurfaceContainer,
-            surfaceContainerHigh = SurfaceElevated,
-            surfaceContainerHighest = SurfaceElevated,
+            primary = colors.primary,
+            onPrimary = colors.onPrimary,
+            primaryContainer = colors.primaryContainer,
+            onPrimaryContainer = colors.onSurface,
+            secondary = colors.secondary,
+            onSecondary = colors.onPrimary,
+            tertiary = colors.tertiary,
+            onTertiary = colors.onPrimary,
+            background = colors.black,
+            surface = colors.surface,
+            surfaceVariant = colors.surfaceVariant,
+            surfaceContainerLow = colors.surface,
+            surfaceContainer = colors.surfaceContainer,
+            surfaceContainerHigh = colors.surfaceElevated,
+            surfaceContainerHighest = colors.surfaceElevated,
             surfaceTint = Color.Transparent,
-            onBackground = OnSurface,
-            onSurface = OnSurface,
-            onSurfaceVariant = OnSurfaceVariant,
-            outline = Outline,
-            outlineVariant = Outline.copy(alpha = 0.72f),
-            error = Danger,
-            onError = OnPrimary,
+            onBackground = colors.onSurface,
+            onSurface = colors.onSurface,
+            onSurfaceVariant = colors.onSurfaceVariant,
+            outline = colors.outline,
+            outlineVariant = colors.outline.copy(alpha = 0.72f),
+            error = colors.danger,
+            onError = colors.onPrimary,
         )
     }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = SnapCropTypography,
-        shapes = SnapCropShapes,
-        content = content
-    )
-}
 
 internal fun resolveDarkTheme(themePreference: String?, systemDark: Boolean): Boolean =
     when (themePreference) {

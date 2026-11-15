@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -40,9 +41,10 @@ internal fun Modifier.settingsAnchor(
     .testTag("settings-anchor-${destination.wireValue}")
     .then(
         if (highlightedDestination == destination) {
-            Modifier
-                .border(2.dp, Primary, RoundedCornerShape(10.dp))
-                .padding(2.dp)
+            // Reads the theme colour inside composed {} so this factory stays a plain Modifier function.
+            Modifier.composed {
+                border(2.dp, Primary, RoundedCornerShape(10.dp)).padding(2.dp)
+            }
         } else {
             Modifier
         }

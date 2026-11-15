@@ -5,7 +5,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.unit.dp
-import com.sysadmindoc.snapcrop.ui.theme.CropHandle
 
 internal fun getGradientBrush(
     gradIdx: Int,
@@ -35,12 +34,13 @@ internal fun DrawScope.drawCornerHandle(
     y: Float,
     radius: Float,
     isRight: Boolean,
-    isBottom: Boolean
+    isBottom: Boolean,
+    color: Color,
 ) {
     val len = radius * 2
     val stroke = 4.dp.toPx()
     val hDir = if (isRight) -1f else 1f
     val vDir = if (isBottom) -1f else 1f
-    drawLine(CropHandle, Offset(x, y), Offset(x + len * hDir, y), strokeWidth = stroke)
-    drawLine(CropHandle, Offset(x, y), Offset(x, y + len * vDir), strokeWidth = stroke)
+    drawLine(color, Offset(x, y), Offset(x + len * hDir, y), strokeWidth = stroke)
+    drawLine(color, Offset(x, y), Offset(x, y + len * vDir), strokeWidth = stroke)
 }

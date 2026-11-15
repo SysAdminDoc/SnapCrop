@@ -626,14 +626,8 @@ class SettingsActivity : ComponentActivity() {
                                         selected = themePref == key,
                                         onClick = {
                                             themePref = key
+                                            // SnapCropTheme listens for this key and re-themes every open screen.
                                             prefs.edit().putString("theme", key).apply()
-                                            isDarkTheme = when (key) {
-                                                "light" -> false
-                                                "system" -> resources.configuration.uiMode and
-                                                    android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
-                                                    android.content.res.Configuration.UI_MODE_NIGHT_YES
-                                                else -> true
-                                            }
                                         },
                                         label = { Text(stringResource(labelRes), fontSize = 13.sp) },
                                         colors = FilterChipDefaults.filterChipColors(
