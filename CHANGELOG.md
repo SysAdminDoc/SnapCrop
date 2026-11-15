@@ -17,6 +17,7 @@ All notable changes to SnapCrop will be documented in this file.
 - A recovery draft or project file saved after a rotate, flip or resize now opens again. SnapCrop used to record the turned image's size next to the original file's fingerprint, so reopening it failed with a size mismatch. Project files now keep the original's size and list the turns, mirrors and resizes, which get replayed on the original when it opens. Older project files still open the same way.
 - Auto-crop no longer mistakes an ordinary screenshot for a Reddit or X one. A blue line down the side of a page or a warm photo near the bottom used to pass for the app's colors, and the crop then trimmed real content off as if it were the app's toolbar. Now only a logo or badge sitting inside the bar counts. Web addresses also have to name the app outright, so pages like netflix.com or xbox.com stop counting as x.com.
 - Auto-crop keeps the first and last lines of your content whole. A row counted as empty margin when nearly all of it was background, so the tops of tall letters and a thin underline under the text got cut off. The crop edge now moves out past anything that isn't the margin color.
+- The before and after preview no longer shows the cropped picture on the Before side. When a crop made the image shorter, the result was drawn behind the whole frame and peeked out on both sides of the original.
 
 ## [v6.92.0] - 2026-09-05
 

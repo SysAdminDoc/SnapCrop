@@ -161,13 +161,17 @@ internal fun BeforeAfterPreview(
             val previewHeight = croppedPreview.height * previewScale
             val previewX = (size.width - previewWidth) / 2
             val previewY = (size.height - previewHeight) / 2
-            drawImage(
-                croppedPreview,
-                dstOffset = IntOffset(previewX.roundToInt(), previewY.roundToInt()),
-                dstSize = IntSize(previewWidth.roundToInt(), previewHeight.roundToInt())
-            )
-
             val dividerPx = size.width * dividerX
+            // Each side gets its own clip: the original is often narrower than the crop at its fit
+            // scale, and the result would show around it on the BEFORE side.
+            clipRect(left = dividerPx, top = 0f, right = size.width, bottom = size.height) {
+                drawImage(
+                    croppedPreview,
+                    dstOffset = IntOffset(previewX.roundToInt(), previewY.roundToInt()),
+                    dstSize = IntSize(previewWidth.roundToInt(), previewHeight.roundToInt())
+                )
+            }
+
             clipRect(left = 0f, top = 0f, right = dividerPx, bottom = size.height) {
                 val originalScale = min(size.width / imageBitmap.width, size.height / imageBitmap.height)
                 val originalWidth = imageBitmap.width * originalScale
