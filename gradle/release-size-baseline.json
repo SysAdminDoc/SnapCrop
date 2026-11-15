@@ -1,7 +1,7 @@
 {
     "schemaVersion": 2,
-    "baselineVersion": "6.89.0",
-    "rationale": "Replace transitive OkHttp 3.12.1 with security-fixed 4.12.0",
+    "baselineVersion": "6.93.0",
+    "rationale": "v6.93.0 features since v6.91.0 (OCR word selection and bare-link chips, 59 translation languages, rotate, image search, live Adjust previews, editor labels as string resources) add about 188 KB to classes.dex and 52 KB to resources.arsc per APK, with no dependency or native library change",
     "limits": {
         "artifactCompressedGrowthBytes": 262144,
         "artifactUncompressedGrowthBytes": 524288,
@@ -12,152 +12,152 @@
     },
     "artifacts": {
         "universal": {
-            "compressedBytes": 239459551,
-            "uncompressedBytes": 240124173,
+            "compressedBytes": 239934203,
+            "uncompressedBytes": 240609725,
             "categories": {
                 "metadata": {
-                    "compressedBytes": 22316,
+                    "compressedBytes": 22315,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288936,
-                    "uncompressedBytes": 10088799
+                    "compressedBytes": 9289412,
+                    "uncompressedBytes": 10089275
                 },
                 "dex": {
-                    "compressedBytes": 9887760,
-                    "uncompressedBytes": 9887760
+                    "compressedBytes": 10273768,
+                    "uncompressedBytes": 10273768
                 },
                 "native": {
                     "compressedBytes": 218838540,
                     "uncompressedBytes": 218838540
                 },
                 "other": {
-                    "compressedBytes": 61929,
-                    "uncompressedBytes": 126477
+                    "compressedBytes": 62206,
+                    "uncompressedBytes": 128001
                 },
                 "resources": {
-                    "compressedBytes": 1057862,
-                    "uncompressedBytes": 1120764
+                    "compressedBytes": 1155407,
+                    "uncompressedBytes": 1218308
                 }
             }
         },
         "arm64-v8a": {
-            "compressedBytes": 77031806,
-            "uncompressedBytes": 77874969,
+            "compressedBytes": 77506458,
+            "uncompressedBytes": 78360521,
             "categories": {
                 "metadata": {
-                    "compressedBytes": 22316,
+                    "compressedBytes": 22315,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288936,
-                    "uncompressedBytes": 10088799
+                    "compressedBytes": 9289412,
+                    "uncompressedBytes": 10089275
                 },
                 "dex": {
-                    "compressedBytes": 9887760,
-                    "uncompressedBytes": 9887760
+                    "compressedBytes": 10273768,
+                    "uncompressedBytes": 10273768
                 },
                 "native": {
                     "compressedBytes": 56589336,
                     "uncompressedBytes": 56589336
                 },
                 "other": {
-                    "compressedBytes": 61929,
-                    "uncompressedBytes": 126477
+                    "compressedBytes": 62206,
+                    "uncompressedBytes": 128001
                 },
                 "resources": {
-                    "compressedBytes": 1057862,
-                    "uncompressedBytes": 1120764
+                    "compressedBytes": 1155407,
+                    "uncompressedBytes": 1218308
                 }
             }
         },
         "armeabi-v7a": {
-            "compressedBytes": 57288226,
-            "uncompressedBytes": 58142737,
+            "compressedBytes": 57762878,
+            "uncompressedBytes": 58628289,
             "categories": {
                 "metadata": {
-                    "compressedBytes": 22316,
+                    "compressedBytes": 22315,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288936,
-                    "uncompressedBytes": 10088799
+                    "compressedBytes": 9289412,
+                    "uncompressedBytes": 10089275
                 },
                 "dex": {
-                    "compressedBytes": 9887760,
-                    "uncompressedBytes": 9887760
+                    "compressedBytes": 10273768,
+                    "uncompressedBytes": 10273768
                 },
                 "native": {
                     "compressedBytes": 36857104,
                     "uncompressedBytes": 36857104
                 },
                 "other": {
-                    "compressedBytes": 61929,
-                    "uncompressedBytes": 126477
+                    "compressedBytes": 62206,
+                    "uncompressedBytes": 128001
                 },
                 "resources": {
-                    "compressedBytes": 1057862,
-                    "uncompressedBytes": 1120764
+                    "compressedBytes": 1155407,
+                    "uncompressedBytes": 1218308
                 }
             }
         },
         "x86": {
-            "compressedBytes": 83384598,
-            "uncompressedBytes": 84241685,
+            "compressedBytes": 83859250,
+            "uncompressedBytes": 84727237,
             "categories": {
                 "metadata": {
-                    "compressedBytes": 22316,
+                    "compressedBytes": 22315,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288936,
-                    "uncompressedBytes": 10088799
+                    "compressedBytes": 9289412,
+                    "uncompressedBytes": 10089275
                 },
                 "dex": {
-                    "compressedBytes": 9887760,
-                    "uncompressedBytes": 9887760
+                    "compressedBytes": 10273768,
+                    "uncompressedBytes": 10273768
                 },
                 "native": {
                     "compressedBytes": 62956052,
                     "uncompressedBytes": 62956052
                 },
                 "other": {
-                    "compressedBytes": 61929,
-                    "uncompressedBytes": 126477
+                    "compressedBytes": 62206,
+                    "uncompressedBytes": 128001
                 },
                 "resources": {
-                    "compressedBytes": 1057862,
-                    "uncompressedBytes": 1120764
+                    "compressedBytes": 1155407,
+                    "uncompressedBytes": 1218308
                 }
             }
         },
         "x86_64": {
-            "compressedBytes": 82875646,
-            "uncompressedBytes": 83721681,
+            "compressedBytes": 83350298,
+            "uncompressedBytes": 84207233,
             "categories": {
                 "metadata": {
-                    "compressedBytes": 22316,
+                    "compressedBytes": 22315,
                     "uncompressedBytes": 61833
                 },
                 "assets": {
-                    "compressedBytes": 9288936,
-                    "uncompressedBytes": 10088799
+                    "compressedBytes": 9289412,
+                    "uncompressedBytes": 10089275
                 },
                 "dex": {
-                    "compressedBytes": 9887760,
-                    "uncompressedBytes": 9887760
+                    "compressedBytes": 10273768,
+                    "uncompressedBytes": 10273768
                 },
                 "native": {
                     "compressedBytes": 62436048,
                     "uncompressedBytes": 62436048
                 },
                 "other": {
-                    "compressedBytes": 61929,
-                    "uncompressedBytes": 126477
+                    "compressedBytes": 62206,
+                    "uncompressedBytes": 128001
                 },
                 "resources": {
-                    "compressedBytes": 1057862,
-                    "uncompressedBytes": 1120764
+                    "compressedBytes": 1155407,
+                    "uncompressedBytes": 1218308
                 }
             }
         }
