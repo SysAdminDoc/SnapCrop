@@ -2956,7 +2956,8 @@ internal fun HomeScreen(
     onViewAll: () -> Unit,
     onOpenCrop: (Uri) -> Unit,
     onCopyCrop: (Uri) -> Unit,
-    onDeleteCrop: (Uri) -> Unit
+    onDeleteCrop: (Uri) -> Unit,
+    versionName: String = BuildConfig.VERSION_NAME,
 ) {
     var cropPendingDelete by remember { mutableStateOf<RecentCrop?>(null) }
     var showDelayPicker by remember { mutableStateOf(false) }
@@ -3002,7 +3003,7 @@ internal fun HomeScreen(
                     color = OnSurface
                 )
                 Text(
-                    stringResource(R.string.home_subtitle, BuildConfig.VERSION_NAME),
+                    stringResource(R.string.home_subtitle, versionName),
                     color = OnSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

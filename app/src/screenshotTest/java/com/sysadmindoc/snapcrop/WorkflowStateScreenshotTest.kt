@@ -122,6 +122,8 @@ fun HomeWorkflowStateReferences() = WorkflowReference(HostWorkflow.HOME) {
         onOpenCrop = {},
         onCopyCrop = {},
         onDeleteCrop = {},
+        // Pinned so a version bump doesn't change the header pixels in the references.
+        versionName = "6.89.0-debug",
     )
 }
 
