@@ -8,6 +8,7 @@ All notable changes to SnapCrop will be documented in this file.
 - The screenshot notification's thumbnail is now sized from the capture itself instead of always shrinking it 8 times. A stitched long screenshot used to produce a huge thumbnail, which Android 17 rejects outright, while a small capture shrank into something you couldn't read. Thumbnails now fit inside 1024 px on the long edge.
 - OCR now turns links without "http" or "www" into tappable chips, like `github.com/user/repo` or `bbc.co.uk/news` (#4). Before, only full `https://` and `www.` addresses were picked up. Each link chip now shows the address it opens instead of a generic "Open link", and a period or closing bracket after a link no longer ends up in the address. File names like `README.md` and version numbers stay plain text.
 - You can now long-press in the OCR text window to select a single word or a few, and Copy and Translate then use only that selection (#2). A line under the text shows what they'll pick up, and with nothing selected they still take the whole block. The translated text is selectable too.
+- Crop mode has a rotate button at the end of the Straighten row (in the side panel on tablets), so each tap turns the image a quarter turn without going through the ⋮ menu (#4).
 
 ## [v6.92.0] - 2026-09-05
 

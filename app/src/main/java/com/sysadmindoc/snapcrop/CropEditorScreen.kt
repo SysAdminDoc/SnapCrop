@@ -1397,6 +1397,9 @@ fun CropEditorScreen(
                             ),
                             shape = RoundedCornerShape(8.dp)
                         )
+                        IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
+                            Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, stringResource(R.string.editor_rotate), tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
+                        }
                         IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
                         }
@@ -1979,6 +1982,15 @@ fun CropEditorScreen(
                         contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
                         Text(stringResource(R.string.adjust_reset), color = Primary, fontSize = 10.sp)
                     }
+                }
+                // One tap per quarter turn, so repeated turns skip the overflow menu (#4).
+                IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        @Suppress("DEPRECATION") Icons.Default.RotateRight,
+                        stringResource(R.string.editor_rotate),
+                        tint = if (cutBands.isEmpty()) Primary else OnSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
             }
         }
