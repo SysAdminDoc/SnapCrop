@@ -57,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -894,23 +895,29 @@ class CropActivity : ComponentActivity() {
                 }
                 editGeometry = EditGeometry(bmp.width, bmp.height, steps)
                 originalBitmap = shown
-                bitmapState.value = shown
-                projectLoadError.value = null
-                projectCanRelink.value = false
-                pendingRelinkProject = null
                 currentCropHints = CropSourceHints.normalize(
                     intentSourceHints + CropSourceHints.fromMedia(contentResolver, uri)
                 )
+                // The editor reads the project's edits once, when it first shows the bitmap, so
+                // they go out in the same snapshot as the bitmap, never after it.
+                Snapshot.withMutableSnapshot {
+                    if (project != null) {
+                        explicitSourceContext.value = project.sourceContext
+                        cropRect.value = project.cropRect
+                        cropMethod.value = "project"
+                        initialRedactions.value = project.redactions
+                        initialDrawPaths.value = project.drawLayers
+                        initialAdjustments.value = project.adjustments
+                        initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)
+                        initialOcrBlocks.value = project.ocrBlocks.map(TextBlock::deepCopy)
+                        initialOcrReviewed.value = project.ocrReviewed
+                    }
+                    bitmapState.value = shown
+                    projectLoadError.value = null
+                    projectCanRelink.value = false
+                }
+                pendingRelinkProject = null
                 if (project != null) {
-                    explicitSourceContext.value = project.sourceContext
-                    cropRect.value = project.cropRect
-                    cropMethod.value = "project"
-                    initialRedactions.value = project.redactions
-                    initialDrawPaths.value = project.drawLayers
-                    initialAdjustments.value = project.adjustments
-                    initialCutout.value = CutoutEditState(project.cutBands, project.cutSeparatorStyle)
-                    initialOcrBlocks.value = project.ocrBlocks.map(TextBlock::deepCopy)
-                    initialOcrReviewed.value = project.ocrReviewed
                     if (restoringDraft) {
                         restoringDraft = false
                         val discarded = draftStore.discard()

@@ -19,6 +19,7 @@ All notable changes to SnapCrop will be documented in this file.
 - Auto-crop keeps the first and last lines of your content whole. A row counted as empty margin when nearly all of it was background, so the tops of tall letters and a thin underline under the text got cut off. The crop edge now moves out past anything that isn't the margin color.
 - The before and after preview no longer shows the cropped picture on the Before side. When a crop made the image shorter, the result was drawn behind the whole frame and peeked out on both sides of the original.
 - The update dialog in Settings shows which file it downloads and that file's SHA-256 first. With long release notes, the checksum used to sit below the fold of the scrolling notes.
+- Reopening a saved project, or picking up a recovery draft, brings back its redactions, drawings and adjustments again. When the picture showed up before the project finished loading, only the crop came back and everything else was left out.
 
 ## [v6.92.0] - 2026-09-05
 
