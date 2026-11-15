@@ -42,11 +42,11 @@ class DocumentationTrustContractTest {
         assertEquals(appVersion, rootVersion)
         assertEquals(appVersion, latestHistoryVersion)
 
-        assertTrue(readme.contains("Powerful Editor — ${simpleEnumCount(models, "EditMode")} Modes"))
-        assertTrue(readme.contains("Draw — ${constructorEnumCount(models, "DrawTool")} Tools"))
+        assertTrue(readme.contains("Editor (${simpleEnumCount(models, "EditMode")} modes)"))
+        assertTrue(readme.contains("Draw (${constructorEnumCount(models, "DrawTool")} tools)"))
         assertTrue(readme.contains("${constructorEnumCount(models, "AspectRatio")} aspect ratios"))
         val filterEffects = constructorEnumCount(models, "ImageFilter") - 1
-        assertTrue(readme.contains("Adjust — 13 Sliders + $filterEffects Filters"))
+        assertTrue(readme.contains("Adjust (13 sliders, $filterEffects filters)"))
     }
 
     @Test

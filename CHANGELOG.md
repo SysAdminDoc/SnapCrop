@@ -20,6 +20,7 @@ All notable changes to SnapCrop will be documented in this file.
 - The before and after preview no longer shows the cropped picture on the Before side. When a crop made the image shorter, the result was drawn behind the whole frame and peeked out on both sides of the original.
 - The update dialog in Settings shows which file it downloads and that file's SHA-256 first. With long release notes, the checksum used to sit below the fold of the scrolling notes.
 - Reopening a saved project, or picking up a recovery draft, brings back its redactions, drawings and adjustments again. When the picture showed up before the project finished loading, only the crop came back and everything else was left out.
+- The README is written more plainly, and its Tech Stack table now describes the theme as it is (near-black with a coral accent). It used to say AMOLED black with Catppuccin accents.
 
 ## [v6.92.0] - 2026-09-05
 
