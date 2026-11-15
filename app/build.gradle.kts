@@ -318,6 +318,11 @@ tasks.cyclonedxDirectBom {
     includeConfigs.set(listOf("releaseRuntimeClasspath"))
     skipConfigs.set(listOf(".*[Tt]est.*", "debug.*", "androidTest.*"))
 }
+// The CycloneDX plugin adds the SBOM to its consumable configuration only when this task is
+// realized. A gate that lists lint or tests before verifyOfficialRelease resolves classpaths
+// while building the task graph, which locks that configuration first and fails with "Cannot
+// mutate the artifacts of configuration ':app:cyclonedxDirectBom'". Realize it now instead.
+tasks.cyclonedxDirectBom.get()
 
 val osvExceptionPolicyFile = rootProject.layout.projectDirectory.file("gradle/osv-exceptions.json")
 val expiredOsvExceptionFixture = layout.projectDirectory.file("src/test/resources/osv-exceptions-expired.json")
