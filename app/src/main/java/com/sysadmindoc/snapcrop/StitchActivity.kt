@@ -193,40 +193,25 @@ class StitchActivity : ComponentActivity() {
         applySecureWindow(this)
     }
 
-    private fun getSaveFormat(): Triple<Bitmap.CompressFormat, Int, String> {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
-                @Suppress("DEPRECATION")
-                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-                          else Bitmap.CompressFormat.WEBP
-                Triple(fmt, quality, "webp")
-            }
-            prefs.getBoolean("use_jpeg", false) -> Triple(Bitmap.CompressFormat.JPEG, quality, "jpg")
-            else -> Triple(Bitmap.CompressFormat.PNG, 100, "png")
-        }
-    }
-
     private fun saveToGallery(bitmap: Bitmap) {
-        val (fmt, quality, ext) = getSaveFormat()
-        val mime = when (ext) { "jpg" -> "image/jpeg"; "webp" -> "image/webp"; else -> "image/png" }
-        val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
-            .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+        val format = resolveSaveFormat(ExportPresetStore.current(prefs), bitmap.width, bitmap.height)
+        val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
         val result = MediaStoreImageWriter.write(
             resolver = contentResolver,
             request = MediaStoreImageWriter.Request(
-                displayName = "SnapCrop_Stitch_${System.currentTimeMillis()}.$ext",
-                mimeType = mime,
+                displayName = "SnapCrop_Stitch_${System.currentTimeMillis()}.${format.ext}",
+                mimeType = format.mime,
                 relativePath = savePath,
             ),
         ) { output ->
-            bitmap.compress(fmt, quality, output)
+            bitmap.compress(format.format, format.quality, output)
         }
 
         runOnUiThread {
             if (result is MediaStoreImageWriter.Result.Success) {
                 Toast.makeText(this, getString(R.string.stitch_saved), Toast.LENGTH_SHORT).show()
+                if (format.webpDowngraded) showWebpDowngradeToast()
                 finish()
             } else {
                 Toast.makeText(this, getString(R.string.toast_save_failed), Toast.LENGTH_SHORT).show()

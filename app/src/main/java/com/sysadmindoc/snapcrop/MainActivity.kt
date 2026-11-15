@@ -254,18 +254,28 @@ class MainActivity : ComponentActivity() {
         recentWorkflowIds.value = RecentWorkflowStore.record(recentWorkflowPrefs(), workflow)
     }
 
-    private fun getSaveFormat(): Triple<android.graphics.Bitmap.CompressFormat, Int, String> {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
-                @Suppress("DEPRECATION")
-                val fmt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
-                          else android.graphics.Bitmap.CompressFormat.WEBP
-                Triple(fmt, quality, "webp")
-            }
-            prefs.getBoolean("use_jpeg", false) -> Triple(android.graphics.Bitmap.CompressFormat.JPEG, quality, "jpg")
-            else -> Triple(android.graphics.Bitmap.CompressFormat.PNG, 100, "png")
+    private fun saveFormatFor(bitmap: Bitmap): ResolvedExportFormat = resolveSaveFormat(
+        ExportPresetStore.current(getSharedPreferences("snapcrop", MODE_PRIVATE)),
+        bitmap.width,
+        bitmap.height
+    )
+
+    /** Summary toast for a batch, with the WebP-too-large note appended when any item fell back to PNG. */
+    private fun showBatchSummary(summary: BatchRunSummary, webpDowngraded: Boolean) {
+        val msg = getString(
+            R.string.batch_result_summary,
+            summary.saved,
+            summary.skipped,
+            summary.oversized,
+            summary.unreadable,
+            summary.failed,
+            summary.cancelled,
+        )
+        if (webpDowngraded) {
+            val note = getString(R.string.toast_webp_too_large, WEBP_MAX_DIMENSION)
+            Toast.makeText(this, "$msg\n$note", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -400,6 +410,7 @@ class MainActivity : ComponentActivity() {
             val navBarPx = SystemBars.navigationBarHeight(resources)
             val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
             val userProfiles = UserAppProfileStore.load(prefs)
+            var webpDowngraded = false
             val summary = BatchWorkflowRunner.run(
                 uris = uris,
                 cancelled = { batchCancelled.value },
@@ -444,25 +455,21 @@ class MainActivity : ComponentActivity() {
                             }
                             if (batchCancelled.value) return@process BatchItemOutcome.CANCELLED
 
-                            val (fmt, qual, ext) = getSaveFormat()
-                            val mime = when (ext) {
-                                "jpg" -> "image/jpeg"
-                                "webp" -> "image/webp"
-                                else -> "image/png"
-                            }
+                            val format = saveFormatFor(toSave)
                             val savePath = prefs.getString("save_path", "Pictures/SnapCrop")
                                 ?: "Pictures/SnapCrop"
                             val result = MediaStoreImageWriter.write(
                                 resolver = contentResolver,
                                 request = MediaStoreImageWriter.Request(
-                                    displayName = "SnapCrop_${System.currentTimeMillis()}.$ext",
-                                    mimeType = mime,
+                                    displayName = "SnapCrop_${System.currentTimeMillis()}.${format.ext}",
+                                    mimeType = format.mime,
                                     relativePath = savePath,
                                 ),
                             ) { output ->
-                                toSave.compress(fmt, qual, output)
+                                toSave.compress(format.format, format.quality, output)
                             }
                             if (result is MediaStoreImageWriter.Result.Success) {
+                                if (format.webpDowngraded) webpDowngraded = true
                                 BatchItemOutcome.SAVED
                             } else {
                                 BatchItemOutcome.FAILED
@@ -481,16 +488,7 @@ class MainActivity : ComponentActivity() {
             )
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                val msg = getString(
-                    R.string.batch_result_summary,
-                    summary.saved,
-                    summary.skipped,
-                    summary.oversized,
-                    summary.unreadable,
-                    summary.failed,
-                    summary.cancelled,
-                )
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                showBatchSummary(summary, webpDowngraded)
                 loadRecentCrops()
             }
         }
@@ -1763,6 +1761,7 @@ class MainActivity : ComponentActivity() {
         if (uris.isEmpty()) return
         batchCancelled.value = false
         lifecycleScope.launch(Dispatchers.IO) {
+            var webpDowngraded = false
             val summary = BatchWorkflowRunner.run(
                 uris = uris,
                 cancelled = { batchCancelled.value },
@@ -1793,25 +1792,21 @@ class MainActivity : ComponentActivity() {
                             val outputBitmap = Bitmap.createScaledBitmap(bmp, newWidth, newHeight, true)
                                 .also { resized = it }
                             if (batchCancelled.value) return@process BatchItemOutcome.CANCELLED
-                            val (fmt, qual, ext) = getSaveFormat()
-                            val mime = when (ext) {
-                                "jpg" -> "image/jpeg"
-                                "webp" -> "image/webp"
-                                else -> "image/png"
-                            }
+                            val format = saveFormatFor(outputBitmap)
                             val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
                                 .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
                             val result = MediaStoreImageWriter.write(
                                 resolver = contentResolver,
                                 request = MediaStoreImageWriter.Request(
-                                    displayName = "SnapCrop_Resize_${System.currentTimeMillis()}.$ext",
-                                    mimeType = mime,
+                                    displayName = "SnapCrop_Resize_${System.currentTimeMillis()}.${format.ext}",
+                                    mimeType = format.mime,
                                     relativePath = savePath,
                                 ),
                             ) { output ->
-                                outputBitmap.compress(fmt, qual, output)
+                                outputBitmap.compress(format.format, format.quality, output)
                             }
                             if (result is MediaStoreImageWriter.Result.Success) {
+                                if (format.webpDowngraded) webpDowngraded = true
                                 BatchItemOutcome.SAVED
                             } else {
                                 BatchItemOutcome.FAILED
@@ -1830,16 +1825,7 @@ class MainActivity : ComponentActivity() {
             )
             withContext(Dispatchers.Main) {
                 batchProgress.value = ""
-                val msg = getString(
-                    R.string.batch_result_summary,
-                    summary.saved,
-                    summary.skipped,
-                    summary.oversized,
-                    summary.unreadable,
-                    summary.failed,
-                    summary.cancelled,
-                )
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                showBatchSummary(summary, webpDowngraded)
                 galleryRefreshKey.intValue++
             }
         }
@@ -2364,6 +2350,7 @@ class MainActivity : ComponentActivity() {
                     ShareOptions(ShareMetadataPolicy.PRESERVE, includeSourceLink = false)
                 } ?: return@launch
                 val policy = options.metadataPolicy
+                var webpDowngraded = false
 
                 val sharedUris = if (policy == ShareMetadataPolicy.PRESERVE) {
                     uris
@@ -2378,13 +2365,14 @@ class MainActivity : ComponentActivity() {
                     preparedDirectory = java.io.File(shareRoot, System.nanoTime().toString()).apply {
                         if (!mkdirs()) throw IOException("Could not create a private share directory")
                     }
-                    val (format, quality, ext) = getSaveFormat()
                     imageUris.mapIndexed { index, sourceUri ->
                         val bitmap = contentResolver.openInputStream(sourceUri)?.use(BitmapFactory::decodeStream)
                             ?: throw IOException("Could not decode shared image")
                         try {
-                            val file = java.io.File(preparedDirectory, "share_$index.$ext")
-                            val encoded = file.outputStream().use { bitmap.compress(format, quality, it) }
+                            val format = saveFormatFor(bitmap)
+                            if (format.webpDowngraded) webpDowngraded = true
+                            val file = java.io.File(preparedDirectory, "share_$index.${format.ext}")
+                            val encoded = file.outputStream().use { bitmap.compress(format.format, format.quality, it) }
                             if (!encoded) throw IOException("Could not encode shared image")
                             val outputUri = androidx.core.content.FileProvider.getUriForFile(
                                 this@MainActivity,
@@ -2408,6 +2396,7 @@ class MainActivity : ComponentActivity() {
                     else -> "image/*"
                 }
                 withContext(Dispatchers.Main) {
+                    if (webpDowngraded) showWebpDowngradeToast(shared = true)
                     dispatchShareIntent(
                         sharedUris,
                         shareType,

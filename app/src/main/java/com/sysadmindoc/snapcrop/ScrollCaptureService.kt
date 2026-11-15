@@ -340,25 +340,23 @@ class ScrollCaptureService : AccessibilityService() {
                 } else {
                     LongScreenshotStore.deleteReviewFile(reviewFile.previewPath)
                     LongScreenshotStore.deleteReviewBundle(this@ScrollCaptureService, reviewFile.bundlePath)
-                    val fallbackUri = withContext(Dispatchers.IO) {
+                    val fallback = withContext(Dispatchers.IO) {
                         LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                     }
-                    if (fallbackUri != null) {
+                    if (fallback != null) {
                         successful = true
-                        Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
-                        openEditor(fallbackUri)
+                        showFallbackSaved(fallback)
                     } else {
                         Toast.makeText(this, getString(R.string.long_screenshot_save_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
             } else {
-                val fallbackUri = withContext(Dispatchers.IO) {
+                val fallback = withContext(Dispatchers.IO) {
                     LongScreenshotStore.saveToGallery(this@ScrollCaptureService, stitched)
                 }
-                if (fallbackUri != null) {
+                if (fallback != null) {
                     successful = true
-                    Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
-                    openEditor(fallbackUri)
+                    showFallbackSaved(fallback)
                 } else {
                     Toast.makeText(this, getString(R.string.long_screenshot_save_failed), Toast.LENGTH_SHORT).show()
                 }
@@ -385,6 +383,12 @@ class ScrollCaptureService : AccessibilityService() {
         } catch (_: Exception) {
             false
         }
+
+    private fun showFallbackSaved(saved: SavedLongScreenshot) {
+        Toast.makeText(this, getString(R.string.long_screenshot_review_fallback), Toast.LENGTH_SHORT).show()
+        if (saved.webpDowngraded) showWebpDowngradeToast()
+        openEditor(saved.uri)
+    }
 
     private fun openEditor(uri: android.net.Uri) {
         try {

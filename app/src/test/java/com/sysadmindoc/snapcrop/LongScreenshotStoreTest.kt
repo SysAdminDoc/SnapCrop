@@ -3,7 +3,11 @@ package com.sysadmindoc.snapcrop
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.OutputStream
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 class LongScreenshotStoreTest {
@@ -66,7 +71,50 @@ class LongScreenshotStoreTest {
         outside.deleteRecursively()
     }
 
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    fun webpPreferenceSavesATallLongScreenshotAsPng() {
+        context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE).edit()
+            .putBoolean("use_webp", true)
+            .putBoolean("use_jpeg", false)
+            .commit()
+        val tall = Bitmap.createBitmap(1080, 20_000, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+        val gateway = RecordingGateway()
+
+        val saved = LongScreenshotStore.saveToGallery(context, tall, gateway)
+        tall.recycle()
+
+        assertNotNull(saved)
+        assertTrue(requireNotNull(saved).webpDowngraded)
+        val request = requireNotNull(gateway.request)
+        assertEquals("image/png", request.mimeType)
+        assertTrue(request.displayName, request.displayName.endsWith(".png"))
+        val pngSignature = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertArrayEquals(pngSignature, gateway.output.toByteArray().copyOf(8))
+        assertEquals(1, gateway.publishCalls)
+    }
+
     private fun frame(color: Int): Bitmap = Bitmap.createBitmap(32, 48, Bitmap.Config.ARGB_8888).apply {
         eraseColor(color)
+    }
+
+    private class RecordingGateway : MediaStoreImageWriter.Gateway {
+        val output = ByteArrayOutputStream()
+        var request: MediaStoreImageWriter.Request? = null
+        var publishCalls = 0
+
+        override fun insert(request: MediaStoreImageWriter.Request): Uri {
+            this.request = request
+            return Uri.parse("content://media/external/images/media/7")
+        }
+
+        override fun openOutputStream(uri: Uri): OutputStream = output
+
+        override fun publish(uri: Uri): Int {
+            publishCalls++
+            return 1
+        }
+
+        override fun delete(uri: Uri): Int = 1
     }
 }

@@ -4,17 +4,15 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import androidx.core.content.FileProvider
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
 
-internal data class ScrollSaveFormat(
-    val format: Bitmap.CompressFormat,
-    val quality: Int,
-    val ext: String,
-    val mime: String
+internal data class SavedLongScreenshot(
+    val uri: Uri,
+    /** True when a WebP preference was saved as PNG because the image is past the WebP limit. */
+    val webpDowngraded: Boolean
 )
 
 internal data class LongScreenshotReviewFile(
@@ -28,25 +26,6 @@ internal object LongScreenshotStore {
     private const val PLAN_FILE = "stitch_plan.bin"
     private const val PLAN_VERSION = 1
     private const val MAX_FRAMES = 10
-
-    fun getSaveFormat(context: Context): ScrollSaveFormat {
-        val prefs = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
-                @Suppress("DEPRECATION")
-                val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    Bitmap.CompressFormat.WEBP_LOSSY
-                } else {
-                    Bitmap.CompressFormat.WEBP
-                }
-                ScrollSaveFormat(format, quality, "webp", "image/webp")
-            }
-            prefs.getBoolean("use_jpeg", false) ->
-                ScrollSaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            else -> ScrollSaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-        }
-    }
 
     fun writeReviewFile(
         context: Context,
@@ -173,12 +152,16 @@ internal object LongScreenshotStore {
         }
     }
 
-    fun saveToGallery(context: Context, bitmap: Bitmap): Uri? {
-        val saveFormat = getSaveFormat(context)
+    fun saveToGallery(
+        context: Context,
+        bitmap: Bitmap,
+        gateway: MediaStoreImageWriter.Gateway = MediaStoreImageWriter.ContentResolverGateway(context.contentResolver)
+    ): SavedLongScreenshot? {
         val prefs = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
+        val saveFormat = resolveSaveFormat(ExportPresetStore.current(prefs), bitmap.width, bitmap.height)
         val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
         return when (val result = MediaStoreImageWriter.write(
-            resolver = context.contentResolver,
+            gateway = gateway,
             request = MediaStoreImageWriter.Request(
                 displayName = "SnapCrop_Long_${System.currentTimeMillis()}.${saveFormat.ext}",
                 mimeType = saveFormat.mime,
@@ -187,7 +170,7 @@ internal object LongScreenshotStore {
         ) { output ->
             bitmap.compress(saveFormat.format, saveFormat.quality, output)
         }) {
-            is MediaStoreImageWriter.Result.Success -> result.uri
+            is MediaStoreImageWriter.Result.Success -> SavedLongScreenshot(result.uri, saveFormat.webpDowngraded)
             is MediaStoreImageWriter.Result.Failure -> null
         }
     }

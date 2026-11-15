@@ -580,20 +580,6 @@ class CropActivity : ComponentActivity() {
     private fun effectiveDeleteOriginalOnSave(): Boolean =
         getDeletePref() && !projectSidecarsEnabled()
 
-    private fun getSaveFormat(
-        bitmap: Bitmap? = null,
-        settings: ExportSettings = currentExportSettings()
-    ): Pair<Bitmap.CompressFormat, Int> {
-        val resolved = getExportFormat(
-            forcePng = false,
-            ultraHdr = bitmap?.hasUltraHdrGainmap() == true,
-            settings = settings,
-            outputWidth = bitmap?.width ?: 0,
-            outputHeight = bitmap?.height ?: 0
-        )
-        return resolved.format to resolved.quality
-    }
-
     private fun getExportFormat(
         forcePng: Boolean,
         ultraHdr: Boolean = false,
@@ -601,13 +587,12 @@ class CropActivity : ComponentActivity() {
         outputWidth: Int = 0,
         outputHeight: Int = 0
     ): CropExportFormat {
-        val r = resolveExportFormat(
-            settings.format,
-            settings.quality,
-            forcePng,
-            ultraHdr,
-            outputWidth = outputWidth,
-            outputHeight = outputHeight
+        val r = resolveSaveFormat(
+            settings,
+            outputWidth,
+            outputHeight,
+            forcePng = forcePng,
+            ultraHdr = ultraHdr
         )
         return CropExportFormat(r.format, r.quality, r.ext, r.mime, r.webpDowngraded)
     }
@@ -1783,9 +1768,19 @@ class CropActivity : ComponentActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val exportSettings = currentExportSettings()
             val out = applyExportDecorations(shareBitmap, exportSettings)
-            val (format, quality) = getSaveFormat(out, exportSettings)
+            val resolved = getExportFormat(
+                forcePng = false,
+                ultraHdr = out.hasUltraHdrGainmap(),
+                settings = exportSettings,
+                outputWidth = out.width,
+                outputHeight = out.height
+            )
             val hasShapeCrop = adj.size > 3 && adj[3] >= 1f
-            val (shareFmt, shareQual) = if (hasShapeCrop && !out.hasUltraHdrGainmap()) Bitmap.CompressFormat.PNG to 100 else format to quality
+            val forcedShapePng = hasShapeCrop && !out.hasUltraHdrGainmap()
+            val (shareFmt, shareQual) = if (forcedShapePng) Bitmap.CompressFormat.PNG to 100 else resolved.format to resolved.quality
+            if (resolved.webpDowngraded && !forcedShapePng) {
+                runOnUiThread { showWebpDowngradeToast(shared = true) }
+            }
             val isWebp = shareFmt.isWebpFormat()
             val ext = when { shareFmt == Bitmap.CompressFormat.JPEG -> "jpg"; isWebp -> "webp"; else -> "png" }
             val mime = when { shareFmt == Bitmap.CompressFormat.JPEG -> "image/jpeg"; isWebp -> "image/webp"; else -> "image/png" }
@@ -2052,13 +2047,7 @@ class CropActivity : ComponentActivity() {
             outputHeight = bitmap.height
         )
         if (exportFormat.webpDowngraded) {
-            runOnUiThread {
-                Toast.makeText(
-                    this,
-                    getString(R.string.toast_webp_too_large, WEBP_MAX_DIMENSION),
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            runOnUiThread { showWebpDowngradeToast() }
         }
         val format = exportFormat.format
         val quality = exportFormat.quality

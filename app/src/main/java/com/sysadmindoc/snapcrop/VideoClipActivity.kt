@@ -3,7 +3,6 @@ package com.sysadmindoc.snapcrop
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -121,25 +120,6 @@ class VideoClipActivity : ComponentActivity() {
         applySecureWindow(this)
     }
 
-    private fun getSaveFormat(): FrameSaveFormat {
-        val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
-        val quality = prefs.getInt("jpeg_quality", 95)
-        return when {
-            prefs.getBoolean("use_webp", false) -> {
-                @Suppress("DEPRECATION")
-                val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    Bitmap.CompressFormat.WEBP_LOSSY
-                } else {
-                    Bitmap.CompressFormat.WEBP
-                }
-                FrameSaveFormat(format, quality, "webp", "image/webp")
-            }
-            prefs.getBoolean("use_jpeg", false) ->
-                FrameSaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            else -> FrameSaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-        }
-    }
-
     private fun grabFrame(timeMs: Long) {
         val uri = videoUri.value ?: return
         if (isWorking.value) return
@@ -166,9 +146,9 @@ class VideoClipActivity : ComponentActivity() {
                     return@launch
                 }
 
-                val saveFormat = getSaveFormat()
-                val savePath = getSharedPreferences("snapcrop", MODE_PRIVATE)
-                    .getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
+                val prefs = getSharedPreferences("snapcrop", MODE_PRIVATE)
+                val saveFormat = resolveSaveFormat(ExportPresetStore.current(prefs), frame.width, frame.height)
+                val savePath = prefs.getString("save_path", "Pictures/SnapCrop") ?: "Pictures/SnapCrop"
                 val savedUri = try {
                     VideoClipExporter.saveFrameToGallery(
                         contentResolver,
@@ -186,6 +166,7 @@ class VideoClipActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     if (savedUri != null) {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_saved), Toast.LENGTH_SHORT).show()
+                        if (saveFormat.webpDowngraded) showWebpDowngradeToast()
                         startActivity(Intent(this@VideoClipActivity, CropActivity::class.java).apply { data = savedUri })
                     } else {
                         Toast.makeText(this@VideoClipActivity, getString(R.string.video_frame_save_failed), Toast.LENGTH_SHORT).show()
@@ -262,13 +243,6 @@ class VideoClipActivity : ComponentActivity() {
         }
     }
 }
-
-private data class FrameSaveFormat(
-    val format: Bitmap.CompressFormat,
-    val quality: Int,
-    val ext: String,
-    val mime: String
-)
 
 @Composable
 internal fun VideoClipScreen(

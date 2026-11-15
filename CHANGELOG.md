@@ -21,6 +21,7 @@ All notable changes to SnapCrop will be documented in this file.
 - The update dialog in Settings shows which file it downloads and that file's SHA-256 first. With long release notes, the checksum used to sit below the fold of the scrolling notes.
 - Reopening a saved project, or picking up a recovery draft, brings back its redactions, drawings and adjustments again. When the picture showed up before the project finished loading, only the crop came back and everything else was left out.
 - The README is written more plainly, and its Tech Stack table now describes the theme as it is (near-black with a coral accent). It used to say AMOLED black with Catppuccin accents.
+- Saving as WebP no longer fails on pictures taller or wider than 16,383 px outside the editor. Long screenshots, Stitch, Collage, Device Frame, video frames, Gallery batch crops, resizes and shares, and quick saves from the screenshot notification now save those as PNG, the way the editor already did, and tell you why. The earlier fix only covered the editor, so a tall long screenshot with WebP picked failed on the review screen every time you hit Save. Sharing a picture that size from the editor now says why it arrived as a PNG too.
 
 ## [v6.92.0] - 2026-09-05
 

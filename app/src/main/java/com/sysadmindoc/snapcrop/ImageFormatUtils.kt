@@ -1,5 +1,6 @@
 package com.sysadmindoc.snapcrop
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -7,6 +8,7 @@ import android.graphics.Gainmap
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.os.Build
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import kotlin.math.roundToInt
 
@@ -83,6 +85,38 @@ internal fun resolveExportFormat(
         ExportImageFormat.JPEG -> ResolvedExportFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
         ExportImageFormat.PNG -> png
     }
+}
+
+/**
+ * The encoder choice for every save path: the editor, Gallery batches and shares, Stitch, Collage,
+ * Device Frame, video frames, long screenshots and the screenshot service. [outputWidth] and
+ * [outputHeight] are the size of the bitmap about to be encoded, so a WebP preference that the
+ * encoder can't represent comes back as PNG with [ResolvedExportFormat.webpDowngraded] set.
+ * [formatOverride] is a per-rule format (auto-action rules) that replaces the settings' format.
+ */
+internal fun resolveSaveFormat(
+    settings: ExportSettings,
+    outputWidth: Int,
+    outputHeight: Int,
+    formatOverride: ExportImageFormat? = null,
+    forcePng: Boolean = false,
+    ultraHdr: Boolean = false,
+): ResolvedExportFormat = resolveExportFormat(
+    userFormat = formatOverride ?: settings.format,
+    quality = settings.quality,
+    forcePng = forcePng,
+    ultraHdr = ultraHdr,
+    outputWidth = outputWidth,
+    outputHeight = outputHeight,
+)
+
+/**
+ * Says a WebP preference became PNG because the image is too large. [shared] picks the wording
+ * for a share, where nothing is saved. Main thread only.
+ */
+internal fun Context.showWebpDowngradeToast(shared: Boolean = false) {
+    val message = R.string.toast_webp_too_large_share.takeIf { shared } ?: R.string.toast_webp_too_large
+    Toast.makeText(this, getString(message, WEBP_MAX_DIMENSION), Toast.LENGTH_LONG).show()
 }
 
 /**

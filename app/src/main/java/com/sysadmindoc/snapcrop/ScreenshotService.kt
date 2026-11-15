@@ -21,8 +21,6 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 
-private data class SaveFormat(val format: Bitmap.CompressFormat, val quality: Int, val ext: String, val mime: String)
-
 class ScreenshotService : Service() {
 
     companion object {
@@ -327,28 +325,10 @@ class ScreenshotService : Service() {
         }
     }
 
-    private fun getSaveFormat(settings: ExportSettings, overrideFormat: String? = null): SaveFormat {
-        val quality = settings.quality
-        return when (UserAppProfileStore.normalizeExportFormat(overrideFormat.orEmpty())) {
-            "webp" -> {
-                @Suppress("DEPRECATION")
-                val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-                          else Bitmap.CompressFormat.WEBP
-                SaveFormat(fmt, quality, "webp", "image/webp")
-            }
-            "jpeg" -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-            "png" -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-            else -> when (settings.format) {
-                ExportImageFormat.WEBP -> {
-                    @Suppress("DEPRECATION")
-                    val fmt = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Bitmap.CompressFormat.WEBP_LOSSY
-                              else Bitmap.CompressFormat.WEBP
-                    SaveFormat(fmt, quality, "webp", "image/webp")
-                }
-                ExportImageFormat.JPEG -> SaveFormat(Bitmap.CompressFormat.JPEG, quality, "jpg", "image/jpeg")
-                ExportImageFormat.PNG -> SaveFormat(Bitmap.CompressFormat.PNG, 100, "png", "image/png")
-            }
-        }
+    /** An auto-action rule's format ("default" means the export settings decide). */
+    private fun ruleFormat(overrideFormat: String?): ExportImageFormat? {
+        val key = UserAppProfileStore.normalizeExportFormat(overrideFormat.orEmpty())
+        return ExportImageFormat.entries.firstOrNull { it.key == key }
     }
 
     private fun quickSave(uri: Uri, stopWhenDone: Boolean = false) {
@@ -445,7 +425,13 @@ class ScreenshotService : Service() {
                 if (watermarked !== decorated) decorated.recycle()
                 cropped = watermarked
 
-                val (fmt, quality, ext, mime) = getSaveFormat(exportSettings, actionRule?.exportFormat)
+                val saveFormat = resolveSaveFormat(
+                    exportSettings,
+                    watermarked.width,
+                    watermarked.height,
+                    formatOverride = ruleFormat(actionRule?.exportFormat)
+                )
+                val (fmt, quality, ext, mime) = saveFormat
                 val savePath = actionRule?.let { ConditionalAutoActions.savePath(prefs, it) }
                     ?: exportSettings.savePath
                 val displayName = ExportPresetStore.nextFilename(prefs, exportSettings)
@@ -489,14 +475,20 @@ class ScreenshotService : Service() {
                                 append(getString(R.string.notif_quick_auto_rule, actionRule.label, actionRule.albumName))
                                 if (redactionCount > 0) append(", replaced $redactionCount sensitive area(s)")
                                 if (actionRule.redactSensitiveText && redactionCount == 0) append(", no sensitive text found")
-                                if (actionRule.exportFormat != "default") append(", ${actionRule.exportFormat.uppercase()} export")
+                                if (actionRule.exportFormat != "default") {
+                                    val label = if (saveFormat.webpDowngraded) "PNG" else actionRule.exportFormat.uppercase()
+                                    append(", $label export")
+                                }
                                 if (exportPresetName != null) append(", $exportPresetName preset")
                             }
                         } else {
                             getString(R.string.toast_autocropped_saved) +
                                     (exportPresetName?.let { ", $it preset" } ?: "")
                         }
-                        handler.post { Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show() }
+                        handler.post {
+                            Toast.makeText(this@ScreenshotService, message, Toast.LENGTH_SHORT).show()
+                            if (saveFormat.webpDowngraded) showWebpDowngradeToast()
+                        }
                         OperationJournal.record(
                             this@ScreenshotService, DiagnosticOperation.QUICK_CROP, DiagnosticStage.COMPLETE,
                             DiagnosticResult.SUCCESS, journalStarted

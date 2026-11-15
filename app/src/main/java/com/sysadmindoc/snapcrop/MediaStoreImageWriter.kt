@@ -148,7 +148,7 @@ internal object MediaStoreImageWriter {
         if (error is CancellationException || error is Error) throw error
     }
 
-    private class ContentResolverGateway(
+    internal class ContentResolverGateway(
         private val resolver: ContentResolver,
     ) : Gateway {
         override fun insert(request: Request): Uri? {

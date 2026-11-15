@@ -133,4 +133,37 @@ class ImageFormatResolverTest {
         assertEquals(Bitmap.CompressFormat.JPEG, jpeg.format)
         assertFalse(jpeg.webpDowngraded)
     }
+
+    @Test
+    fun saveFormatReadsFormatAndQualityFromTheExportSettings() {
+        val settings = ExportSettings(format = ExportImageFormat.WEBP, quality = 72)
+        val r = resolveSaveFormat(settings, 1080, 2400)
+        assertEquals(Bitmap.CompressFormat.WEBP_LOSSY, r.format)
+        assertEquals(72, r.quality)
+        assertEquals("webp", r.ext)
+        assertEquals("image/webp", r.mime)
+        assertFalse(r.webpDowngraded)
+    }
+
+    @Test
+    fun saveFormatDowngradesAStitchedWebpPastTheLimit() {
+        val settings = ExportSettings(format = ExportImageFormat.WEBP, quality = 72)
+        val r = resolveSaveFormat(settings, 1080, 20_000)
+        assertEquals(Bitmap.CompressFormat.PNG, r.format)
+        assertEquals("png", r.ext)
+        assertEquals("image/png", r.mime)
+        assertTrue(r.webpDowngraded)
+    }
+
+    @Test
+    fun ruleOverrideReplacesTheSettingsFormatAndIsStillSizeChecked() {
+        val pngSettings = ExportSettings(format = ExportImageFormat.PNG, quality = 80)
+        val jpeg = resolveSaveFormat(pngSettings, 1080, 2400, formatOverride = ExportImageFormat.JPEG)
+        assertEquals(Bitmap.CompressFormat.JPEG, jpeg.format)
+        assertEquals(80, jpeg.quality)
+
+        val webpTooTall = resolveSaveFormat(pngSettings, 1080, 20_000, formatOverride = ExportImageFormat.WEBP)
+        assertEquals(Bitmap.CompressFormat.PNG, webpTooTall.format)
+        assertTrue(webpTooTall.webpDowngraded)
+    }
 }

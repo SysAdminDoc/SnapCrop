@@ -195,7 +195,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
         isSaving = true
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val savedUri = try {
+            val saved = try {
                 val bitmap = stitchPlan?.let { plan ->
                     LongScreenshotStore.renderBundle(this@LongScreenshotReviewActivity, bundlePath, plan)
                 } ?: contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
@@ -214,7 +214,7 @@ class LongScreenshotReviewActivity : ComponentActivity() {
 
             withContext(Dispatchers.Main) {
                 isSaving = false
-                if (savedUri == null) {
+                if (saved == null) {
                     Toast.makeText(
                         this@LongScreenshotReviewActivity,
                         getString(R.string.long_screenshot_save_failed),
@@ -228,10 +228,11 @@ class LongScreenshotReviewActivity : ComponentActivity() {
                     getString(R.string.long_screenshot_saved),
                     Toast.LENGTH_SHORT
                 ).show()
+                if (saved.webpDowngraded) showWebpDowngradeToast()
                 LongScreenshotStore.deleteReviewFile(reviewPath)
                 LongScreenshotStore.deleteReviewBundle(this@LongScreenshotReviewActivity, bundlePath)
                 keepReviewFile = true
-                pendingSavedUri = savedUri
+                pendingSavedUri = saved.uri
                 if (!requestSeedTrash()) openSavedResult()
             }
         }
