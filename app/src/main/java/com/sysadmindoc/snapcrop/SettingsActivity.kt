@@ -2259,23 +2259,7 @@ class SettingsActivity : ComponentActivity() {
                                 TextButton(onClick = { updateInfo = null }) { Text(stringResource(R.string.close), color = OnSurfaceVariant) }
                             },
                             title = { Text(stringResource(R.string.settings_update_available, info.versionName), color = OnSurface) },
-                            text = {
-                                Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
-                                    Text(
-                                        info.notes.ifBlank { stringResource(R.string.settings_update_body, info.versionName) },
-                                        color = OnSurfaceVariant,
-                                        fontSize = 12.sp,
-                                        lineHeight = 16.sp,
-                                    )
-                                    info.apkUrl?.let {
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(stringResource(R.string.settings_update_exact_asset), color = Primary, fontSize = 12.sp)
-                                    }
-                                    info.apkSha256?.let { digest ->
-                                        Text(stringResource(R.string.settings_update_checksum, digest), color = OnSurfaceVariant, fontSize = 11.sp)
-                                    }
-                                }
-                            },
+                            text = { UpdateDialogDetails(info) },
                             containerColor = SurfaceVariant
                         )
                     }
@@ -3354,6 +3338,31 @@ private fun ExportFormatChip(
         ),
         shape = RoundedCornerShape(8.dp)
     )
+}
+
+/**
+ * The update dialog's body. The asset line and its checksum come first so they're on screen to
+ * compare against the download, and the release notes scroll in their own box below them.
+ */
+@Composable
+internal fun UpdateDialogDetails(info: UpdateChecker.UpdateInfo) {
+    Column {
+        info.apkUrl?.let {
+            Text(stringResource(R.string.settings_update_exact_asset), color = Primary, fontSize = 12.sp)
+        }
+        info.apkSha256?.let { digest ->
+            Text(stringResource(R.string.settings_update_checksum, digest), color = OnSurfaceVariant, fontSize = 11.sp)
+        }
+        if (info.apkUrl != null || info.apkSha256 != null) Spacer(Modifier.height(8.dp))
+        Column(Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+            Text(
+                info.notes.ifBlank { stringResource(R.string.settings_update_body, info.versionName) },
+                color = OnSurfaceVariant,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            )
+        }
+    }
 }
 
 @Composable
