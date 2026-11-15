@@ -1143,6 +1143,9 @@
     <string name="ocr_translation_failed">Translation failed</string>
     <string name="ocr_target_language">Target language</string>
     <string name="ocr_copy">Copy</string>
+    <string name="ocr_select_hint">Long-press a word to select it. Copy and Translate then use only your selection.</string>
+    <string name="ocr_selection_uses">Copy and Translate use “%1$s”</string>
+    <string name="ocr_copied_selection">Copied selection</string>
     <string name="ocr_review">Review</string>
     <string name="ocr_review_title">Review recognized text</string>
     <string name="ocr_review_help">Correct individual blocks, delete unwanted text, or select two or more blocks to merge them in reading order. Image pixels are never changed.</string>

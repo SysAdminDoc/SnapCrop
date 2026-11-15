@@ -8,7 +8,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -67,7 +70,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -87,6 +92,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -4023,23 +4029,55 @@ fun CropEditorScreen(
 
     if (selectedOcrText != null && externalActionFallback == null) {
         val ocrText = selectedOcrText.orEmpty()
+        // Read-only field so a word or two can be picked out of the block (#2). The last
+        // non-empty selection drives Copy and Translate; it survives the field losing focus
+        // and clears only when the reader taps back into the text to deselect.
+        val ocrField = remember(ocrText) { TextFieldState(ocrText) }
+        var ocrFieldFocused by remember(ocrText) { mutableStateOf(false) }
+        var ocrPick by remember(ocrText) { mutableStateOf<String?>(null) }
+        LaunchedEffect(ocrField) {
+            snapshotFlow { ocrField.selection }.collect { selection ->
+                if (!selection.collapsed) {
+                    ocrPick = ocrSelectionText(ocrField.text, selection)
+                } else if (ocrFieldFocused) {
+                    ocrPick = null
+                }
+            }
+        }
+        LaunchedEffect(ocrPick) {
+            if (!translating) {
+                translation = null
+                translationError = null
+            }
+        }
+        val pickedText = ocrPick
         AlertDialog(
             onDismissRequest = { selectedOcrText = null },
             title = { Text(stringResource(R.string.mode_ocr), color = OnSurface) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        ocrText,
-                        color = OnSurface,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                    BasicTextField(
+                        state = ocrField,
+                        readOnly = true,
+                        textStyle = TextStyle(color = OnSurface, fontSize = 13.sp, lineHeight = 18.sp),
+                        cursorBrush = SolidColor(Primary),
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 140.dp)
                             .background(SurfaceContainer, RoundedCornerShape(8.dp))
                             .border(1.dp, Outline, RoundedCornerShape(8.dp))
                             .padding(10.dp)
-                            .verticalScroll(rememberScrollState())
+                            .onFocusChanged { ocrFieldFocused = it.isFocused }
+                    )
+                    Text(
+                        if (pickedText == null) {
+                            stringResource(R.string.ocr_select_hint)
+                        } else {
+                            stringResource(R.string.ocr_selection_uses, ocrSelectionPreview(pickedText))
+                        },
+                        color = if (pickedText == null) OnSurfaceVariant else Primary,
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     )
 
                     val entities = remember(ocrText) { extractEntities(ocrText) }
@@ -4155,19 +4193,21 @@ fun CropEditorScreen(
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(summary, color = Primary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                Text(
-                                    result.translatedText,
-                                    color = OnSurface,
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(max = 140.dp)
-                                        .background(SurfaceElevated, RoundedCornerShape(8.dp))
-                                        .border(1.dp, Outline, RoundedCornerShape(8.dp))
-                                        .padding(10.dp)
-                                        .verticalScroll(rememberScrollState())
-                                )
+                                SelectionContainer {
+                                    Text(
+                                        result.translatedText,
+                                        color = OnSurface,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 140.dp)
+                                            .background(SurfaceElevated, RoundedCornerShape(8.dp))
+                                            .border(1.dp, Outline, RoundedCornerShape(8.dp))
+                                            .padding(10.dp)
+                                            .verticalScroll(rememberScrollState())
+                                    )
+                                }
                             }
                         }
                         else -> Text(
@@ -4181,14 +4221,17 @@ fun CropEditorScreen(
             },
             confirmButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    val copiedSelectionMessage = stringResource(R.string.ocr_copied_selection)
                     TextButton(onClick = {
-                        val copy = translation?.translatedText ?: ocrText
-                        val label = if (translation != null) "SnapCrop Translation" else "SnapCrop OCR"
-                        val message = if (translation != null) "Copied translation" else "Copied text"
-                        copyText(label, copy, message)
+                        val result = translation
+                        when {
+                            result != null -> copyText("SnapCrop Translation", result.translatedText, "Copied translation")
+                            pickedText != null -> copyText("SnapCrop OCR", pickedText, copiedSelectionMessage)
+                            else -> copyText("SnapCrop OCR", ocrText, "Copied text")
+                        }
                     }) { Text(stringResource(R.string.ocr_copy), color = OnSurfaceVariant) }
                     Button(
-                        onClick = { translateText(ocrText) },
+                        onClick = { translateText(pickedText ?: ocrText) },
                         enabled = !translating,
                         colors = ButtonDefaults.buttonColors(containerColor = Primary),
                         shape = RoundedCornerShape(10.dp)
