@@ -29,6 +29,14 @@ internal class EditorHistoryController(
         return redo.removeAt(redo.lastIndex)
     }
 
+    /** Rewrites every stored snapshot, for when the image under them changes shape. */
+    fun remap(transform: (EditorSnapshot) -> EditorSnapshot) {
+        val mappedUndo = undo.map(transform)
+        val mappedRedo = redo.map(transform)
+        undo.clear(); undo.addAll(mappedUndo)
+        redo.clear(); redo.addAll(mappedRedo)
+    }
+
     fun jumpTo(index: Int, current: EditorSnapshot): EditorSnapshot? {
         if (index !in undo.indices) return null
         redo += current

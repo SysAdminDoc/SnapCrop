@@ -85,7 +85,7 @@ class OcrSelectionTest {
                     onAutoCrop = { Rect(0, 0, bitmap.width, bitmap.height) },
                     onSmartCrop = {},
                     onRemoveBg = { callback -> callback(null) },
-                    onResize = {},
+                    onResize = { _, _ -> },
                     onRotate = {},
                     onFlipH = {},
                     onFlipV = {},

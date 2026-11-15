@@ -328,19 +328,18 @@ class CropActivity : ComponentActivity() {
                                     cropMethod.value = "ai"
                                 }
                             },
-                            onResize = { maxDim ->
+                            onResize = { maxDim, crop ->
                                 val current = bitmapState.value ?: return@CropEditorScreen
-                                if (current.width <= maxDim && current.height <= maxDim) return@CropEditorScreen
-                                val scale = maxDim.toFloat() / maxOf(current.width, current.height)
-                                val newW = (current.width * scale).toInt()
-                                val newH = (current.height * scale).toInt()
-                                val resized = Bitmap.createScaledBitmap(current, newW, newH, true)
+                                val plan = ImageGeometryChange.resizeFor(current.width, current.height, maxDim)
+                                    ?: return@CropEditorScreen
+                                val resized = Bitmap.createScaledBitmap(current, plan.targetWidth, plan.targetHeight, true)
                                 if (current !== originalBitmap) current.recycle()
                                 originalBitmap?.recycle(); originalBitmap = null
                                 invalidateOcrReview()
                                 bitmapState.value = resized
-                                cropRect.value = Rect(0, 0, newW, newH)
+                                cropRect.value = crop
                                 cropMethod.value = ""
+                                dropStaleCutBands()
                             },
                             onRemoveBg = { onDone ->
                                 lifecycleScope.launch {
@@ -365,9 +364,9 @@ class CropActivity : ComponentActivity() {
                                     onDone(result.statusMessage)
                                 }
                             },
-                            onRotate = { rotateBitmap() },
-                            onFlipH = { flipBitmap(horizontal = true) },
-                            onFlipV = { flipBitmap(horizontal = false) },
+                            onRotate = { crop -> rotateBitmap(crop) },
+                            onFlipH = { crop -> flipBitmap(horizontal = true, crop = crop) },
+                            onFlipV = { crop -> flipBitmap(horizontal = false, crop = crop) },
                             reverseSearchEngines = remember { ReverseImageSearch.availableEngines(googleLensAvailable()) },
                             onReverseSearch = { engine, rect, redactions, draw, adj, cutout ->
                                 reverseSearch(engine, bmp, rect, redactions, draw, adj, cutout)
@@ -952,7 +951,8 @@ class CropActivity : ComponentActivity() {
         return Rect(l, t, r, b)
     }
 
-    private fun rotateBitmap() {
+    /** [crop] comes from the editor, already turned with its redactions and drawings. */
+    private fun rotateBitmap(crop: Rect) {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { postRotate(90f) }
         val rotated = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
@@ -964,12 +964,13 @@ class CropActivity : ComponentActivity() {
         originalBitmap = null
         invalidateOcrReview()
         bitmapState.value = rotated
-        cropRect.value = Rect(0, 0, rotated.width, rotated.height)
+        cropRect.value = crop
         cropMethod.value = ""
+        dropStaleCutBands()
         rotationKey.intValue++
     }
 
-    private fun flipBitmap(horizontal: Boolean) {
+    private fun flipBitmap(horizontal: Boolean, crop: Rect) {
         val current = bitmapState.value ?: return
         val matrix = Matrix().apply { if (horizontal) preScale(-1f, 1f) else preScale(1f, -1f) }
         val flipped = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
@@ -980,6 +981,15 @@ class CropActivity : ComponentActivity() {
         originalBitmap = null
         invalidateOcrReview()
         bitmapState.value = flipped
+        cropRect.value = crop
+        dropStaleCutBands()
+    }
+
+    // The editor re-seeds its cut bands from this value whenever the bitmap changes. Turns, flips
+    // and resizes only run with no cut bands, so bands loaded from a project earlier would come
+    // back in the old image's coordinates.
+    private fun dropStaleCutBands() {
+        initialCutout.value = initialCutout.value.copy(bands = emptyList())
     }
 
     private fun buildAnnotationSvg(

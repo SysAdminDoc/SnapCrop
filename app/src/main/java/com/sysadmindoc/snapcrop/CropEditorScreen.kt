@@ -140,10 +140,11 @@ fun CropEditorScreen(
     onAutoCrop: () -> Rect,
     onSmartCrop: () -> Unit,
     onRemoveBg: ((String?) -> Unit) -> Unit,
-    onResize: (Int) -> Unit,
-    onRotate: () -> Unit,
-    onFlipH: () -> Unit,
-    onFlipV: () -> Unit,
+    // Geometry callbacks get the crop already mapped into the new image's pixels.
+    onResize: (Int, Rect) -> Unit,
+    onRotate: (Rect) -> Unit,
+    onFlipH: (Rect) -> Unit,
+    onFlipV: (Rect) -> Unit,
     reverseSearchEngines: List<ReverseSearchEngine> = emptyList(),
     onReverseSearch: (ReverseSearchEngine, Rect, List<RedactionRegion>, List<DrawPath>, FloatArray, CutoutEditState) -> Unit = { _, _, _, _, _, _ -> },
     onOcrIndexed: (text: String, codes: List<String>) -> Unit = { _, _ -> },
@@ -445,6 +446,51 @@ fun CropEditorScreen(
 
     fun pushUndo() {
         history.record(captureSnapshot())
+    }
+
+    // Everything kept in bitmap pixels follows a turn, mirror or resize, history included, so a
+    // redaction still covers what it was drawn over. Returns the crop in the new image's pixels.
+    fun followImageGeometry(change: ImageGeometryChange): Rect {
+        val crop = change.mapRect(Rect(cropLeft, cropTop, cropRight, cropBottom))
+        cropLeft = crop.left; cropTop = crop.top; cropRight = crop.right; cropBottom = crop.bottom
+        val mappedRedactions = redactions.map(change::mapRedaction)
+        redactions.clear(); redactions.addAll(mappedRedactions)
+        val mappedDraws = drawPaths.map(change::mapDrawPath)
+        drawPaths.clear(); drawPaths.addAll(mappedDraws)
+        val mappedRedo = drawRedoStack.map(change::mapDrawPath)
+        drawRedoStack.clear(); drawRedoStack.addAll(mappedRedo)
+        currentDrawPoints.clear()
+        pixDragStart = null; pixDragCurrent = null
+        val quad = change.mapQuad(listOf(quadTL, quadTR, quadBR, quadBL))
+        quadTL = quad[0]; quadTR = quad[1]; quadBR = quad[2]; quadBL = quad[3]
+        rotationAngle = change.mapStraightenAngle(rotationAngle)
+        if (change is ImageGeometryChange.RotateClockwise) selectedRatio = selectedRatio.quarterTurned()
+        // The scan belongs to the old pixels; the host drops it too, this just doesn't wait a frame.
+        ocrBlocks = emptyList()
+        ocrScanCompleted = false
+        selectedOcrBlocks.clear()
+        history.remap(change::mapSnapshot)
+        zoomLevel = 1f; panX = 0f; panY = 0f
+        return crop
+    }
+
+    // Each checkpoints the draft after the host has swapped the bitmap, so the draft records the
+    // new image size along with the mapped state.
+    fun rotateImage() {
+        onRotate(followImageGeometry(ImageGeometryChange.RotateClockwise(bitmap.width, bitmap.height)))
+        onDraftChanged()
+    }
+
+    fun flipImage(horizontal: Boolean) {
+        val crop = followImageGeometry(ImageGeometryChange.Flip(bitmap.width, bitmap.height, horizontal))
+        if (horizontal) onFlipH(crop) else onFlipV(crop)
+        onDraftChanged()
+    }
+
+    fun resizeImage(maxDimension: Int) {
+        val change = ImageGeometryChange.resizeFor(bitmap.width, bitmap.height, maxDimension) ?: return
+        onResize(maxDimension, followImageGeometry(change))
+        onDraftChanged()
     }
 
     fun commitCutBands(updated: List<CutBand>) {
@@ -1448,10 +1494,10 @@ fun CropEditorScreen(
                             ),
                             shape = RoundedCornerShape(8.dp)
                         )
-                        IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = { rotateImage() }, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
                             Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, stringResource(R.string.editor_rotate), tint = OnSurfaceVariant, modifier = Modifier.size(18.dp))
                         }
-                        IconButton(onClick = onFlipV, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
+                        IconButton(onClick = { flipImage(horizontal = false) }, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
                             Icon(Icons.Default.Flip, stringResource(R.string.editor_flip_v), tint = OnSurfaceVariant, modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 90f))
                         }
                     }
@@ -1765,19 +1811,19 @@ fun CropEditorScreen(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.editor_rotate)) },
                             enabled = cutBands.isEmpty(),
-                            onClick = { onRotate(); showEditorMenu = false },
+                            onClick = { rotateImage(); showEditorMenu = false },
                             leadingIcon = { Icon(@Suppress("DEPRECATION") Icons.Default.RotateRight, null) }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.editor_flip_h)) },
                             enabled = cutBands.isEmpty(),
-                            onClick = { onFlipH(); showEditorMenu = false },
+                            onClick = { flipImage(horizontal = true); showEditorMenu = false },
                             leadingIcon = { Icon(Icons.Default.Flip, null) }
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.editor_flip_v)) },
                             enabled = cutBands.isEmpty(),
-                            onClick = { onFlipV(); showEditorMenu = false },
+                            onClick = { flipImage(horizontal = false); showEditorMenu = false },
                             leadingIcon = { Icon(Icons.Default.Flip, null, modifier = Modifier.graphicsLayer(rotationZ = 90f)) }
                         )
                         if (reverseSearchEngines.isNotEmpty()) {
@@ -2042,7 +2088,7 @@ fun CropEditorScreen(
                     }
                 }
                 // One tap per quarter turn, so repeated turns skip the overflow menu (#4).
-                IconButton(onClick = onRotate, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = { rotateImage() }, enabled = cutBands.isEmpty(), modifier = Modifier.size(48.dp)) {
                     Icon(
                         @Suppress("DEPRECATION") Icons.Default.RotateRight,
                         stringResource(R.string.editor_rotate),
@@ -4350,7 +4396,7 @@ fun CropEditorScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showResizeDialog = false; onResize(selectedSize) }, enabled = cutBands.isEmpty()) {
+                TextButton(onClick = { showResizeDialog = false; resizeImage(selectedSize) }, enabled = cutBands.isEmpty()) {
                     Text(stringResource(R.string.resize), color = Primary)
                 }
             },
