@@ -267,6 +267,8 @@ fun CropEditorScreen(
     }
 
     var bgRemoving by remember { mutableStateOf(false) }
+    // Subject segmentation ships only through Google Play services; like Lens, hide it where there is none.
+    val backgroundRemovalAvailable = remember { !MlKitStatus.playServicesMissing(context) }
     var bgRemovalStatus by remember { mutableStateOf<String?>(null) }
     var paletteColors by remember { mutableStateOf<List<ColorPaletteExtractor.PaletteColor>>(emptyList()) }
 
@@ -1413,7 +1415,7 @@ fun CropEditorScreen(
                         ) { Text(stringResource(R.string.crop_ai), fontSize = 11.sp, color = Tertiary) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalButton(
+                        if (backgroundRemovalAvailable) FilledTonalButton(
                             onClick = { startBackgroundRemoval() },
                             enabled = !bgRemoving,
                             colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
@@ -3779,7 +3781,7 @@ fun CropEditorScreen(
                         Spacer(Modifier.width(4.dp)); Text(stringResource(R.string.crop_ai), fontSize = 13.sp, color = Tertiary)
                     }
 
-                    FilledTonalButton(
+                    if (backgroundRemovalAvailable) FilledTonalButton(
                         onClick = { startBackgroundRemoval() },
                         enabled = !bgRemoving,
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = Secondary.copy(alpha = 0.2f)),
@@ -4271,7 +4273,7 @@ fun CropEditorScreen(
                             }
                         }
                         else -> Text(
-                            "Language models download over Wi-Fi once per language pair. If Play Services reports storage or model errors, free space and retry.",
+                            "Language models download over Wi-Fi once per language pair. If a download fails, free some space and retry.",
                             color = OnSurfaceVariant,
                             fontSize = 11.sp,
                             lineHeight = 15.sp

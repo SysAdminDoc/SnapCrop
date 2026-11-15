@@ -87,9 +87,6 @@ object TextTranslator {
         val original = text.trim()
         require(original.isNotEmpty()) { "No text selected" }
 
-        context?.let { appContext ->
-            MlKitStatus.playServicesIssue(appContext)?.let { throw IllegalStateException(it) }
-        }
         onProgress(context?.getString(MlKitStatus.TRANSLATION_IDENTIFYING) ?: "Identifying source language on device…")
         val identifiedTag = identifySource(original, languageContext) { languageIdentifier.identifyLanguage(it).awaitResult() }
             ?: throw IllegalArgumentException("Could not identify the source language")

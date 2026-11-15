@@ -36,7 +36,7 @@ object BackgroundRemover {
             return BackgroundRemovalResult(bitmap, changed = false, statusMessage = "Image is no longer available.")
         }
         context?.let { appContext ->
-            MlKitStatus.playServicesIssue(appContext)?.let { message ->
+            MlKitStatus.playServicesIssue(appContext, MlKitFeature.SUBJECT_SEGMENTATION)?.let { message ->
                 MlKitStatusStore.markSubjectSegmentationError(appContext, message)
                 return BackgroundRemovalResult(bitmap, changed = false, statusMessage = message)
             }

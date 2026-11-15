@@ -90,10 +90,16 @@ enum class OcrScript(val key: String, val label: String) {
     companion object {
         const val PREF_KEY = "ocr_script"
         fun fromKey(key: String?): OcrScript = entries.firstOrNull { it.key == key } ?: LATIN
+        /** The saved script, or Latin on a phone without Play services to run the others. */
         fun fromContext(context: Context): OcrScript {
             val prefs = context.getSharedPreferences("snapcrop", Context.MODE_PRIVATE)
-            return fromKey(prefs.getString(PREF_KEY, null))
+            val saved = fromKey(prefs.getString(PREF_KEY, null))
+            return usable(saved, saved != LATIN && MlKitStatus.playServicesMissing(context))
         }
+
+        // The saved choice stays put, so it comes back if Play services does.
+        internal fun usable(saved: OcrScript, playServicesMissing: Boolean): OcrScript =
+            if (playServicesMissing) LATIN else saved
     }
 }
 

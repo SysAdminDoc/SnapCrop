@@ -120,7 +120,7 @@ Smart Erase runs on the phone by default. Experimental downloadable erase models
 - Review OCR blocks before export. Fix the text, merge blocks that belong together, or delete false detections, all without changing the screenshot's pixels.
 - Searchable PDF reports use only text you reviewed for the PDF's text layer and appendix. Settings can also save an opt-in UTF-8 `.txt` copy next to it (which may contain sensitive text).
 - Translate recognized text into any of the 59 languages ML Kit can translate offline, with language detection and downloadable models
-- When Play Services needs Wi-Fi, storage or an update, translation tells you what to download or retry
+- When a translation model needs Wi-Fi or more storage, translation tells you what to download or retry
 - Scan QR codes and barcodes
 - Double-tap a text block to crop straight to it
 
@@ -206,7 +206,7 @@ The in-app update check opens the exact `SnapCrop-<version>.apk` asset when GitH
 
 **Requirements**
 - Android 10+ (API 29)
-- Google Play services for features that download models, like Background Removal. The bundled editing and OCR features work offline.
+- Google Play services for background removal and for Chinese, Japanese, Korean and Devanagari OCR. On a phone without it, like CalyxOS or GrapheneOS without sandboxed Play, SnapCrop hides background removal and marks those OCR scripts as needing Play services instead of asking you to update it. Everything else works, translation, Latin OCR, barcodes, face blur and AI crop included, and the bundled editing and OCR features work offline.
 
 ---
 

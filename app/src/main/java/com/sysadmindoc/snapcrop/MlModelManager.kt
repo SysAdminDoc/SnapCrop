@@ -43,7 +43,7 @@ object OcrModelManager {
         // use and areModulesAvailable initiates GMS IPC; keep both off the main
         // thread so a cold/slow Play services never stalls the caller's UI thread.
         return withContext(Dispatchers.IO) {
-            MlKitStatus.playServicesIssue(context)?.let {
+            MlKitStatus.playServicesIssue(context, context.getString(R.string.ml_model_ocr_subject, script.label))?.let {
                 throw OcrModelUnavailableException(script, it)
             }
             withRecognizer(script) { recognizer ->

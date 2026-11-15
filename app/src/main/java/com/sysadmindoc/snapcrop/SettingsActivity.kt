@@ -1216,7 +1216,15 @@ class SettingsActivity : ComponentActivity() {
 
                     Spacer(Modifier.height(8.dp))
 
-                    var ocrScript by remember { mutableStateOf(OcrScript.fromKey(prefs.getString(OcrScript.PREF_KEY, null))) }
+                    val ocrScriptsNeedPlayServices = remember { MlKitStatus.playServicesMissing(this@SettingsActivity) }
+                    var ocrScript by remember {
+                        mutableStateOf(
+                            OcrScript.usable(
+                                OcrScript.fromKey(prefs.getString(OcrScript.PREF_KEY, null)),
+                                ocrScriptsNeedPlayServices,
+                            )
+                        )
+                    }
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1233,22 +1241,25 @@ class SettingsActivity : ComponentActivity() {
                                 OcrScript.entries.forEach { script ->
                                     FilterChip(
                                         selected = ocrScript == script,
+                                        enabled = script == OcrScript.LATIN || !ocrScriptsNeedPlayServices,
                                         onClick = {
                                             if (script == OcrScript.LATIN) {
                                                 ocrScript = script
                                                 prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
                                             } else {
                                                 lifecycleScope.launch {
-                                                    val installed = runCatching {
+                                                    val check = runCatching {
                                                         OcrModelManager.isInstalled(this@SettingsActivity, script)
-                                                    }.getOrDefault(false)
-                                                    if (installed) {
+                                                    }
+                                                    if (check.getOrDefault(false)) {
                                                         ocrScript = script
                                                         prefs.edit().putString(OcrScript.PREF_KEY, script.key).apply()
                                                     } else {
+                                                        // Play services turned off says so instead of "not installed".
                                                         Toast.makeText(
                                                             this@SettingsActivity,
-                                                            getString(R.string.ml_model_ocr_missing, script.label),
+                                                            (check.exceptionOrNull() as? OcrModelUnavailableException)?.message
+                                                                ?: getString(R.string.ml_model_ocr_missing, script.label),
                                                             Toast.LENGTH_LONG,
                                                         ).show()
                                                         openDestination(SettingsDestination.ML_MODELS)
@@ -1260,6 +1271,14 @@ class SettingsActivity : ComponentActivity() {
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                 }
+                            }
+                            if (ocrScriptsNeedPlayServices) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    stringResource(R.string.mlkit_ocr_scripts_need_play_services),
+                                    color = OnSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
                             }
                         }
                     }

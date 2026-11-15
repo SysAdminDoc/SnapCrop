@@ -48,6 +48,8 @@ internal enum class ManagedModelState {
     INSTALLED,
     REMOVING,
     FAILED,
+    /** The phone has no Google Play services, which this model is installed through. */
+    UNAVAILABLE,
 }
 
 /**
@@ -125,7 +127,9 @@ internal fun MlModelManagerPanel(modifier: Modifier = Modifier) {
     var refreshKey by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(refreshKey) {
-        optionalScripts.forEach { script ->
+        if (MlKitStatus.playServicesMissing(context)) {
+            ocrStatus = ocrStatus + optionalScripts.map { it to ManagedModelStatus(ManagedModelState.UNAVAILABLE) }
+        } else optionalScripts.forEach { script ->
             val status = runCatching { OcrModelManager.isInstalled(context, script) }
                 .fold(
                     onSuccess = {
@@ -373,4 +377,5 @@ private fun modelStatusLabel(status: ManagedModelStatus): String = when (status.
     ManagedModelState.INSTALLED -> stringResource(R.string.ml_model_installed)
     ManagedModelState.REMOVING -> stringResource(R.string.ml_model_removing)
     ManagedModelState.FAILED -> stringResource(R.string.ml_model_failed)
+    ManagedModelState.UNAVAILABLE -> stringResource(R.string.mlkit_needs_play_services)
 }

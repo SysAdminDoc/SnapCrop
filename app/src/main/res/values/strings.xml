@@ -588,6 +588,7 @@
     <string name="gallery_manage_index">Manage</string>
     <string name="settings_open_network_exports">Open network export settings</string>
     <string name="ml_model_ocr_missing">%1$s OCR is not installed. Download it under Settings › On-device models.</string>
+    <string name="ml_model_ocr_subject">%1$s OCR</string>
     <string name="ml_model_wifi_required">Connect to unmetered Wi-Fi to download this model.</string>
     <string name="ml_models_title">On-device models</string>
     <string name="ml_models_summary">Download, retry, or remove optional OCR and translation models. Image and text content stays on this device.</string>
@@ -613,7 +614,7 @@
     <string name="ml_models_translation_show_all">Show all %1$d languages</string>
     <string name="ml_models_translation_show_fewer">Show fewer languages</string>
     <string name="ml_model_shared_storage">OCR removal is a best-effort release request because Play services can share modules with other apps.</string>
-    <string name="ml_model_action_failed">%1$s. Retry on Wi-Fi after checking storage and Google Play services.</string>
+    <string name="ml_model_action_failed">%1$s. Check your free storage, then retry on Wi-Fi.</string>
     <string name="settings_search_summary_appearance">Theme and visual privacy defaults</string>
     <string name="settings_search_keywords_appearance">dark light system color preview display</string>
     <string name="settings_search_summary_save">Original-file and metadata behavior</string>
@@ -1474,10 +1475,18 @@
     <string name="mlkit_identifying">Identifying source language on device…</string>
     <string name="mlkit_translating">Translating on device…</string>
     <string name="mlkit_segmentation_prep">Preparing subject segmentation on device. First run may download a Play Services model over Wi-Fi.</string>
-    <string name="mlkit_translation_download">Downloading the %1$s translation model over Wi-Fi. Keep the app open and retry if Play Services asks for storage.</string>
+    <string name="mlkit_translation_download">Downloading the %1$s translation model over Wi-Fi. Keep the app open. If it runs out of space, free some and retry.</string>
     <string name="mlkit_play_attention">Google Play services needs attention (%1$s). Update Play services, free storage if prompted, then retry.</string>
-    <string name="mlkit_retry_wifi">Connect to Wi-Fi so Google Play services can download the %1$s model, then retry.</string>
-    <string name="mlkit_retry_storage">Free device storage so Google Play services can prepare %1$s, then retry.</string>
+    <string name="mlkit_play_missing">%1$s needs Google Play services, which this phone doesn\'t have.</string>
+    <string name="mlkit_play_disabled">%1$s needs Google Play services, which is turned off. Turn it on in system settings, then retry.</string>
+    <string name="mlkit_needs_play_services">Needs Google Play services</string>
+    <string name="mlkit_ocr_scripts_need_play_services">Chinese, Japanese, Korean and Devanagari need Google Play services, which this phone doesn\'t have. Latin works without it.</string>
+    <string name="mlkit_unavailable">%1$s unavailable.</string>
+    <string name="mlkit_unavailable_update">%1$s unavailable. Retry after updating Google Play services.</string>
+    <string name="mlkit_unavailable_detail">%1$s unavailable. %2$s</string>
+    <string name="mlkit_unavailable_detail_retry">%1$s unavailable. %2$s Retry after updating Google Play services or reconnecting to Wi-Fi.</string>
+    <string name="mlkit_retry_wifi">Connect to Wi-Fi so the %1$s model can download, then retry.</string>
+    <string name="mlkit_retry_storage">Free some storage space for %1$s, then retry.</string>
     <string name="mlkit_retry_update">Update Google Play services and retry %1$s.</string>
     <string name="mlkit_retry_generic">The %1$s model is not ready yet. Connect to Wi-Fi, keep SnapCrop open, and retry.</string>
 

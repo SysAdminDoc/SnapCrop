@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.ConnectivityManager
 import androidx.test.core.app.ApplicationProvider
+import com.google.android.gms.common.ConnectionResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeNoException
@@ -17,7 +18,7 @@ class MlModelInstrumentedTest {
     @Test
     fun optionalJapaneseOcrDownloadsRunsAndReleasesWithoutEmptyFailure() {
         runBlocking {
-            assumeTrue(MlKitStatus.playServicesIssue(context) == null)
+            assumeTrue(MlKitStatus.playServicesCode(context) == ConnectionResult.SUCCESS)
             val connectivity = context.getSystemService(ConnectivityManager::class.java)
             assumeTrue(connectivity.activeNetwork != null && !connectivity.isActiveNetworkMetered)
 
